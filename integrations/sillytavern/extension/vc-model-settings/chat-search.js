@@ -2,6 +2,7 @@
 // 高亮用 CSS Custom Highlight API，不往 .mes_text 子树插任何节点；不支持时只给当前匹配的 .mes 描边。
 import { icon } from './ui/icons.js';
 import { reducedMotion } from './desktop/transition.js';
+import { jumpToMessage } from './chat-scroll.js';
 
 const STYLE_ID = 'vc-desktop-chat-search-css';
 const DEBOUNCE_MS = 250;
@@ -121,7 +122,8 @@ export function mountChatSearch({ pane, getContext, doc = pane.ownerDocument } =
         }
         const { mes, range } = matches[index];
         mes.setAttribute('data-vc-search-current', '');
-        if (scroll) (range.startContainer.parentElement || mes).scrollIntoView({ block: 'center', behavior: reducedMotion() ? 'auto' : 'smooth' });
+        // 跳转走会话滚动模块（平滑滚动 + 高亮）；它没挂载时退回原生滚动。
+        if (scroll && !jumpToMessage(mes.getAttribute('mesid'))) (range.startContainer.parentElement || mes).scrollIntoView({ block: 'center', behavior: reducedMotion() ? 'auto' : 'smooth' });
     }
     // 起点取第一条还没滚出视口上沿的匹配，其后都在下方；没有就取最后一条。
     function startIndex() {
@@ -160,6 +162,18 @@ export function mountChatSearch({ pane, getContext, doc = pane.ownerDocument } =
         step(event.shiftKey ? -1 : 1);
     });
 
+    // ⌘F / Ctrl+F 打开会话内搜索（会话页可见时）；Esc 在没有更上层浮层处理时关闭它。
+    const onKey = (event) => {
+        if ((event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey && String(event.key).toLowerCase() === 'f') {
+            if (pane.getClientRects?.().length === 0) return;
+            event.preventDefault();
+            open();
+            return;
+        }
+        if (event.key === 'Escape' && !event.defaultPrevented && !bar.hidden) { event.preventDefault(); close(); }
+    };
+    doc.addEventListener('keydown', onKey);
+
     const ctx = getContext?.(), source = ctx?.eventSource, types = ctx?.eventTypes || {};
     const onChat = () => close();
     const onMessage = () => { if (!bar.hidden && input.value.trim()) { clearTimeout(timer); timer = setTimeout(() => run({ keep: true }), DEBOUNCE_MS); } };
@@ -173,6 +187,7 @@ export function mountChatSearch({ pane, getContext, doc = pane.ownerDocument } =
         toggle, bar, open, close,
         destroy() {
             close();
+            doc.removeEventListener('keydown', onKey);
             for (const [type, handler] of bound) source.removeListener?.(type, handler);
             bar.remove(); toggle.remove();
         },

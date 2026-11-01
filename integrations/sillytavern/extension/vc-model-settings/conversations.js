@@ -320,7 +320,11 @@ export function conversationRows(relationships, { chats = [], chatsComplete = fa
                 if (ref) row.characterRef = ref;
             }
         }
-        if (pendingInboxWrites(inboxRows, { relationshipId: instance.relationshipId }).length > 0) row.unread = true;
+        const pending = pendingInboxWrites(inboxRows, { relationshipId: instance.relationshipId }).length;
+        if (pending > 0) {
+            row.unread = true;
+            row.unreadCount = pending;
+        }
         rows.push(row);
     }
     const unique = dropSharedFiles(rows);
@@ -351,7 +355,7 @@ export function renderConversationRow(row) {
     const time = textField(row?.time);
     // 预览只显示正文：去掉 <voice/>、表情包等标记。
     const preview = textField(row?.preview).replace(/<[^<>]*>/g, '').trim() || '暂无消息';
-    return `<button type="button" class="vc-cell vc-convo" data-relationship-id="${esc(row?.relationshipId || '')}"${title.inst && title.inst === title.name ? ' data-same-name' : ''} aria-label="${esc(label)}"><span class="vc-convo-avatar-slot">${avatarHtml(row, title)}</span><span class="vc-grow"><span class="vc-convo-top"><span class="vc-convo-name">${esc(title.name)}</span>${title.inst ? `<span class="vc-convo-inst">${esc(title.inst)}</span>` : ''}${time ? `<span class="vc-convo-time vc-num"${Number.isFinite(row?.timeMs) ? ` data-time="${row.timeMs}"` : ''}>${esc(time)}</span>` : ''}</span><span class="vc-convo-preview">${esc(preview)}</span></span>${row?.unread ? '<i class="vc-convo-unread" aria-hidden="true"></i>' : ''}</button>`;
+    return `<button type="button" class="vc-cell vc-convo" data-relationship-id="${esc(row?.relationshipId || '')}"${title.inst && title.inst === title.name ? ' data-same-name' : ''} aria-label="${esc(label)}"><span class="vc-convo-avatar-slot">${avatarHtml(row, title)}</span><span class="vc-grow"><span class="vc-convo-top"><span class="vc-convo-name">${esc(title.name)}</span>${title.inst ? `<span class="vc-convo-inst">${esc(title.inst)}</span>` : ''}${time ? `<span class="vc-convo-time vc-num"${Number.isFinite(row?.timeMs) ? ` data-time="${row.timeMs}"` : ''}>${esc(time)}</span>` : ''}</span><span class="vc-convo-preview">${esc(preview)}</span></span>${row?.unread ? `<i class="vc-convo-unread" aria-hidden="true"${row.unreadCount > 0 ? ` data-count="${row.unreadCount > 99 ? '99+' : row.unreadCount}"` : ''}></i>` : ''}</button>`;
 }
 
 export function renderConversationRows(rows) {

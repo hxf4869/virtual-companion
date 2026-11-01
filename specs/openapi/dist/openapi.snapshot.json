@@ -65,6 +65,8 @@
     "getMemory",
     "updateMemory",
     "deleteMemory",
+    "pinMemory",
+    "unpinMemory",
     "confirmMemoryCandidate",
     "rejectMemoryCandidate",
     "listMemoryEvidence",
@@ -77,6 +79,12 @@
     "getProactivePolicy",
     "putProactivePolicy",
     "getCompanionState",
+    "createReplySuggestions",
+    "createFavorite",
+    "listFavorites",
+    "deleteFavorite",
+    "listDiary",
+    "getDiaryEntry",
     "runProactive",
     "listFollowUps",
     "getFollowUp",
@@ -179,6 +187,6 @@
   ],
   "source": {
     "path": "specs/openapi/virtual-companion.yaml",
-    "sha256": "5a20d71f48e13c8f022ec79a9d4d9a605eb8784ff6e010403ac9f530011d9cc9"
+    "sha256": "5d32a137337e2786d2fbaf237e82f2a8261789cf72faf712488c9acc776e85b9"
   }
 }

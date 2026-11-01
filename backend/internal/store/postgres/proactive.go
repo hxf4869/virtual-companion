@@ -27,6 +27,7 @@ type CompanionState struct {
 	Mood        int
 	Energy      int
 	BusyUntil   *time.Time
+	Activity    string
 }
 
 // ProactiveRunResult is one forced or scheduled pass for a relationship.
@@ -98,6 +99,7 @@ func (s *Store) GetCompanionState(ctx context.Context, owner, relationshipID int
 		MoodTier: loaded.World.Mood.Tier, MoodVibe: loaded.World.Mood.Vibe, MoodLine: loaded.World.Mood.Line,
 		EmotionLine: loaded.World.Emotion.Line, Closeness: loaded.World.Emotion.Closeness,
 		Mood: loaded.World.Emotion.Mood, Energy: loaded.World.Emotion.Energy,
+		Activity: proactive.Activity(relationshipID, now, loaded.World.Location, loaded.World.Mood.Vibe),
 	}
 	if !loaded.World.BusyUntil.IsZero() && now.Before(loaded.World.BusyUntil) {
 		until := loaded.World.BusyUntil.UTC()
@@ -293,49 +295,53 @@ func (s *Store) SaveProactivePlan(ctx context.Context, owner, relationshipID int
 		}
 	}
 	err := s.WithOwner(ctx, owner, func(ctx context.Context, tx pgx.Tx) error {
-		if plan.Trigger.Kind == proactive.KindContinue {
-			ref, _, err := openTopicTx(ctx, tx, owner, relationshipID)
-			if err != nil {
-				return err
-			}
-			if ref == "" || ref != plan.TopicRef {
-				return ErrConflict
-			}
-		}
-		var messageID int64
-		if err := tx.QueryRow(ctx, `
-			SELECT vc.insert_proactive_message($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
-			owner, relationshipID, plan.Trigger.Key, plan.Trigger.Kind, plan.Trigger.Cluster, plan.Trigger.Reminder,
-			body, plan.TopicRef, plan.SendAt, nullTime(plan.ArmedAt)).Scan(&messageID); err != nil {
-			return err
-		}
-		var rates map[string]float64
-		err := tx.QueryRow(ctx, `SELECT proactive_voice_rates FROM vc.voice_settings WHERE owner_user_id=$1`, owner).Scan(&rates)
-		if errors.Is(err, pgx.ErrNoRows) {
-			rates = voice.DefaultSettings().ProactiveVoiceRates
-		} else if err != nil {
-			return err
-		}
-		selected := rand.Float64() < rates[voice.ProactiveScene(plan.Trigger.Key)]
-		if _, err := tx.Exec(ctx, `SELECT vc.select_proactive_voice($1,$2,$3)`, owner, messageID, selected); err != nil {
-			return err
-		}
-		if plan.Trigger.Cooldown > 0 {
-			if _, err := tx.Exec(ctx, `SELECT vc.save_proactive_cooldown($1,$2,$3,$4)`,
-				owner, relationshipID, "trigger:"+plan.Trigger.Key, at.Add(plan.Trigger.Cooldown)); err != nil {
-				return err
-			}
-		}
-		if plan.Trigger.ClusterCD > 0 {
-			if _, err := tx.Exec(ctx, `SELECT vc.save_proactive_cooldown($1,$2,$3,$4)`,
-				owner, relationshipID, "cluster:"+plan.Trigger.Cluster, at.Add(plan.Trigger.ClusterCD)); err != nil {
-				return err
-			}
-		}
-		_, err = tx.Exec(ctx, `SELECT vc.note_proactive_judgment($1,$2,$3)`, owner, relationshipID, at)
-		return err
+		return saveProactivePlanTx(ctx, tx, owner, relationshipID, plan, body, at)
 	})
 	return mapFollowUpErr(err)
+}
+
+func saveProactivePlanTx(ctx context.Context, tx pgx.Tx, owner, relationshipID int64, plan proactive.Plan, body string, at time.Time) error {
+	if plan.Trigger.Kind == proactive.KindContinue {
+		ref, _, err := openTopicTx(ctx, tx, owner, relationshipID)
+		if err != nil {
+			return err
+		}
+		if ref == "" || ref != plan.TopicRef {
+			return ErrConflict
+		}
+	}
+	var messageID int64
+	if err := tx.QueryRow(ctx, `
+		SELECT vc.insert_proactive_message($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+		owner, relationshipID, plan.Trigger.Key, plan.Trigger.Kind, plan.Trigger.Cluster, plan.Trigger.Reminder,
+		body, plan.TopicRef, plan.SendAt, nullTime(plan.ArmedAt)).Scan(&messageID); err != nil {
+		return err
+	}
+	var rates map[string]float64
+	err := tx.QueryRow(ctx, `SELECT proactive_voice_rates FROM vc.voice_settings WHERE owner_user_id=$1`, owner).Scan(&rates)
+	if errors.Is(err, pgx.ErrNoRows) {
+		rates = voice.DefaultSettings().ProactiveVoiceRates
+	} else if err != nil {
+		return err
+	}
+	selected := rand.Float64() < rates[voice.ProactiveScene(plan.Trigger.Key)]
+	if _, err := tx.Exec(ctx, `SELECT vc.select_proactive_voice($1,$2,$3)`, owner, messageID, selected); err != nil {
+		return err
+	}
+	if plan.Trigger.Cooldown > 0 {
+		if _, err := tx.Exec(ctx, `SELECT vc.save_proactive_cooldown($1,$2,$3,$4)`,
+			owner, relationshipID, "trigger:"+plan.Trigger.Key, at.Add(plan.Trigger.Cooldown)); err != nil {
+			return err
+		}
+	}
+	if plan.Trigger.ClusterCD > 0 {
+		if _, err := tx.Exec(ctx, `SELECT vc.save_proactive_cooldown($1,$2,$3,$4)`,
+			owner, relationshipID, "cluster:"+plan.Trigger.Cluster, at.Add(plan.Trigger.ClusterCD)); err != nil {
+			return err
+		}
+	}
+	_, err = tx.Exec(ctx, `SELECT vc.note_proactive_judgment($1,$2,$3)`, owner, relationshipID, at)
+	return err
 }
 
 type ProactiveVoiceCandidate struct {

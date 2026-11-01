@@ -11,9 +11,9 @@ note: 'The API consumer matrix remains the deletion/scope source. KEEP requires 
   the OpenAPI surface: GET /actuator/health, GET /actuator/health/liveness, GET /actuator/health/readiness,
   GET /actuator/prometheus.'
 counts:
-  KEEP: 113
+  KEEP: 124
   SIMPLIFY: 5
-  DEFER: 15
+  DEFER: 12
   RETIRE: 42
 operations:
 - operationId: callMemoryCoreModel
@@ -630,14 +630,20 @@ operations:
   method: POST
   path: /api/v1/relationships/{relationshipId}/reminders
   currentH5Callers: []
-  decision: DEFER
-  replacementOrImpact: The user reminder page stays deferred and this route is not implemented. W11 creates a cancellable vc.reminder only through executeTool.
+  decision: KEEP
+  keepBecause:
+  - owner-instruction
+  replacementOrImpact: >-
+    UX-32 user reminder. Stored as an ACTIVE vc.reminder; at remindAt the proactive pass has the character mention it, whatever the proactive mode.
 - operationId: listReminders
   method: GET
   path: /api/v1/relationships/{relationshipId}/reminders
   currentH5Callers: []
-  decision: DEFER
-  replacementOrImpact: The user reminder page stays deferred and this route is not implemented. Listing model-created reminders is not a separate operation.
+  decision: KEEP
+  keepBecause:
+  - owner-instruction
+  replacementOrImpact: >-
+    UX-32 list of the relationship's ACTIVE reminders, soonest first.
 - operationId: updateReminder
   method: PATCH
   path: /api/v1/reminders/{reminderId}
@@ -648,8 +654,11 @@ operations:
   method: DELETE
   path: /api/v1/reminders/{reminderId}
   currentH5Callers: []
-  decision: DEFER
-  replacementOrImpact: The user reminder page stays deferred and this route is not implemented. Tool cancellation keeps the row as CANCELLED.
+  decision: KEEP
+  keepBecause:
+  - owner-instruction
+  replacementOrImpact: >-
+    UX-32 user cancel of a reminder by deleting the row. Tool cancellation keeps CANCELLED.
 - operationId: getProactivePolicy
   method: GET
   path: /api/v1/relationships/{relationshipId}/proactive-policy
@@ -683,6 +692,78 @@ operations:
     Read today's stored mood, the decayed emotion line and busyUntil.
     Mood is idempotent per relationship and local day. Emotion is updated
     on companion memory recall, not by this read.
+- operationId: createReplySuggestions
+  method: POST
+  path: /api/v1/relationships/{relationshipId}/reply-suggestions
+  currentH5Callers: []
+  decision: KEEP
+  keepBecause:
+  - owner-instruction
+  replacementOrImpact: >-
+    UX-28 up to three short reply chips from the background model at low temperature. Stores nothing, never enters memory, metered.
+- operationId: pinMemory
+  method: PUT
+  path: /api/v1/memories/{memoryId}/pin
+  currentH5Callers: []
+  decision: KEEP
+  keepBecause:
+  - owner-instruction
+  replacementOrImpact: >-
+    UX-31 pin a memory; recall puts pinned memories first.
+- operationId: unpinMemory
+  method: DELETE
+  path: /api/v1/memories/{memoryId}/pin
+  currentH5Callers: []
+  decision: KEEP
+  keepBecause:
+  - owner-instruction
+  replacementOrImpact: >-
+    UX-31 remove the pin.
+- operationId: createFavorite
+  method: POST
+  path: /api/v1/relationships/{relationshipId}/favorites
+  currentH5Callers: []
+  decision: KEEP
+  keepBecause:
+  - owner-instruction
+  replacementOrImpact: >-
+    UX-32 save a message snapshot with its ST source position. Never fed to memory or prompts.
+- operationId: listFavorites
+  method: GET
+  path: /api/v1/relationships/{relationshipId}/favorites
+  currentH5Callers: []
+  decision: KEEP
+  keepBecause:
+  - owner-instruction
+  replacementOrImpact: >-
+    UX-32 keyset page of favorites, newest first.
+- operationId: deleteFavorite
+  method: DELETE
+  path: /api/v1/favorites/{favoriteId}
+  currentH5Callers: []
+  decision: KEEP
+  keepBecause:
+  - owner-instruction
+  replacementOrImpact: >-
+    UX-32 remove one favorite.
+- operationId: listDiary
+  method: GET
+  path: /api/v1/relationships/{relationshipId}/diary
+  currentH5Callers: []
+  decision: KEEP
+  keepBecause:
+  - owner-instruction
+  replacementOrImpact: >-
+    UX-33 diary pages of a local month. Written nightly by the background model, one page per day, never enters memory.
+- operationId: getDiaryEntry
+  method: GET
+  path: /api/v1/diary/{entryId}
+  currentH5Callers: []
+  decision: KEEP
+  keepBecause:
+  - owner-instruction
+  replacementOrImpact: >-
+    UX-33 one diary page.
 - operationId: runProactive
   method: POST
   path: /api/v1/relationships/{relationshipId}/proactive-run

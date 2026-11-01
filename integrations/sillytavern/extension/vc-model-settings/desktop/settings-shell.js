@@ -14,6 +14,9 @@ import { fetchVoiceSettings, fetchVoiceEngines, saveVoiceSettings } from '../api
 import { invalidateVoicePolicy } from '../voice-chat.js';
 import { mountDataRights } from '../data-rights.js';
 import { readReducedMotion, writeReducedMotion, transitionContent } from './transition.js';
+import { SUGGEST_KEY, suggestEnabled } from './suggest.js';
+import { EFFECTS_KEY, effectsEnabled } from '../chat-react.js';
+import { NOTIFY_KEY, notifySupported, requestNotifyPermission, systemNotifyEnabled } from './notify.js';
 const esc = value => String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
 const categories = [['account','账户','user-round','gray'],['model','模型','cpu','blue'],['voice','语音','mic','orange'],['notifications','通知','bell','pink'],['appearance','外观','monitor','purple'],['data','账户与数据','shield','green']];
 export function mountSettingsShell(container, { getContext = () => ({}) } = {}) {
@@ -78,8 +81,15 @@ export function mountSettingsShell(container, { getContext = () => ({}) } = {}) 
             body.innerHTML = `<div class="vc-desk-group"><button type="button" class="vc-cell vc-settings-open-account"><span class="vc-grow">账户与数据</span>${icon('chevron-right',{size:16})}</button></div>`;
             body.querySelector('button').onclick = event => (account ??= mountDataRights()).open(event.currentTarget);
         } else if (key === 'notifications') {
-            body.innerHTML = `<div class="vc-desk-group"><button type="button" class="vc-cell"><span class="vc-grow">陪伴</span>${icon('chevron-right',{size:16})}</button></div>`;
-            body.querySelector('button').onclick = () => window.dispatchEvent(new CustomEvent('vc-shell-navigate',{detail:{destination:'inbox'}}));
+            const granted = notifySupported() && Notification.permission === 'granted';
+            body.innerHTML = `<div class="vc-desk-group"><button type="button" class="vc-cell" data-open-inbox><span class="vc-grow">陪伴</span>${icon('chevron-right',{size:16})}</button></div>${notifySupported()?`<section class="vc-desk-group"><div class="vc-desk-field"><span>桌面通知</span><button type="button" class="vc-switch" role="switch" aria-label="桌面通知" aria-checked="${granted && systemNotifyEnabled()}"><span></span></button></div></section>`:''}`;
+            body.querySelector('[data-open-inbox]').onclick = () => window.dispatchEvent(new CustomEvent('vc-shell-navigate',{detail:{destination:'inbox'}}));
+            const notifySwitch = body.querySelector('[role="switch"]');
+            if (notifySwitch) bindSwitch(notifySwitch,{onChange:async on=>{
+                try{localStorage.setItem(NOTIFY_KEY,on?'on':'off');}catch{/* 隐私模式下仅本次有效 */}
+                if(!on)return;
+                if(await requestNotifyPermission()!=='granted'){notifySwitch.setAttribute('aria-checked','false');showToast('浏览器没有允许通知，可在浏览器的网站设置里打开');}
+            }});
         } else {
             body.innerHTML = `<div class="vc-desk-group"><button type="button" class="vc-cell"><span class="vc-grow">${esc(title)}</span>${icon('chevron-right',{size:16})}</button></div>`;
             body.querySelector('button').onclick = () => void openDrawer(key);
@@ -140,8 +150,11 @@ async function mountVoice(content,body) {
 }
 function mountAppearance(body) {
     const segment=(key,labels,index)=>`<div class="vc-segment" data-preference="${key}"><i class="vc-segment-thumb"></i>${labels.map((label,i)=>`<button type="button" aria-pressed="${i===index}">${label}</button>`).join('')}</div>`;
-    body.innerHTML=`<section class="vc-desk-group"><h2>外观</h2><div class="vc-desk-field"><span>外观</span>${segment('theme',['跟随系统','浅色','深色'],['auto','light','dark'].indexOf(readThemeMode()))}</div><div class="vc-desk-field"><span>回复样式</span>${segment('reply',['铺开','气泡'],readReplyStyle()==='bubble'?1:0)}</div><div class="vc-desk-field"><span>减弱动态效果</span><button type="button" class="vc-switch" role="switch" aria-label="减弱动态效果" aria-checked="${readReducedMotion()}"><span></span></button></div></section>`;
+    body.innerHTML=`<section class="vc-desk-group"><h2>外观</h2><div class="vc-desk-field"><span>外观</span>${segment('theme',['跟随系统','浅色','深色'],['auto','light','dark'].indexOf(readThemeMode()))}</div><div class="vc-desk-field"><span>回复样式</span>${segment('reply',['铺开','气泡'],readReplyStyle()==='bubble'?1:0)}</div><div class="vc-desk-field"><span>减弱动态效果</span><button type="button" class="vc-switch" role="switch" data-preference="motion" aria-label="减弱动态效果" aria-checked="${readReducedMotion()}"><span></span></button></div><div class="vc-desk-field"><span>建议回复</span><button type="button" class="vc-switch" role="switch" data-preference="suggest" aria-label="建议回复" aria-checked="${suggestEnabled()}"><span></span></button></div><div class="vc-desk-field"><span>关键词特效</span><button type="button" class="vc-switch" role="switch" data-preference="effects" aria-label="关键词特效" aria-checked="${effectsEnabled()}"><span></span></button></div></section>`;
     bindSegment(body.querySelector('[data-preference="theme"]'),{onChange:index=>setThemeMode(['auto','light','dark'][index])});
     bindSegment(body.querySelector('[data-preference="reply"]'),{onChange:index=>{writeReplyStyle(index?'bubble':'spread');}});
-    bindSwitch(body.querySelector('[role="switch"]'),{onChange:writeReducedMotion});
+    bindSwitch(body.querySelector('[data-preference="motion"]'),{onChange:writeReducedMotion});
+    const writePref=(key)=>(on)=>{try{localStorage.setItem(key,on?'on':'off');}catch{/* 隐私模式下仅本次有效 */}};
+    bindSwitch(body.querySelector('[data-preference="suggest"]'),{onChange:writePref(SUGGEST_KEY)});
+    bindSwitch(body.querySelector('[data-preference="effects"]'),{onChange:writePref(EFFECTS_KEY)});
 }

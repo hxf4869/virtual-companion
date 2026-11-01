@@ -9,10 +9,17 @@ export function rotateHue(rgb, degrees = 40) {
     const result=h<1?[c,x,0]:h<2?[x,c,0]:h<3?[0,c,x]:h<4?[0,x,c]:h<5?[x,0,c]:[c,0,x];
     return result.map((v) => Math.round((v+m)*255)).join(',');
 }
+// UX-34 晨昏氛围：本地时段 -> 时段名；色相 / 亮度偏移量由主题 CSS 变量按 data-vc-period 提供。
+export function timeOfDayShift(date = new Date()) {
+    const h = date.getHours();
+    return h >= 6 && h < 10 ? 'morning' : h >= 10 && h < 17 ? 'noon' : h >= 17 && h < 20 ? 'evening' : 'night';
+}
 export function mountAurora(doc = document) {
     const root=doc.createElement('div');root.className='vc-desktop-aurora';root.setAttribute('aria-hidden','true');doc.body.prepend(root);
     const syncVisibility=()=>root.classList.toggle('is-paused',doc.hidden);
     doc.addEventListener('visibilitychange',syncVisibility);syncVisibility();
+    const syncPeriod=()=>{root.dataset.vcPeriod=timeOfDayShift(new Date());};
+    syncPeriod();const periodTimer=setInterval(syncPeriod,60000);
     let current='',timer;
     function setTint(tint='') {
         if(current===tint && root.firstElementChild)return;
@@ -30,5 +37,5 @@ export function mountAurora(doc = document) {
 old.classList.add('is-leaving');timer=setTimeout(()=>old.remove(),900);}
     }
     setTint();
-    return {root,setTint,destroy(){clearTimeout(timer);doc.removeEventListener('visibilitychange',syncVisibility);root.remove();}};
+    return {root,setTint,destroy(){clearTimeout(timer);clearInterval(periodTimer);doc.removeEventListener('visibilitychange',syncVisibility);root.remove();}};
 }

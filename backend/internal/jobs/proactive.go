@@ -68,6 +68,15 @@ func (l *Loop) runProactive(ctx context.Context, store *postgres.Store, owner, r
 	if err != nil {
 		return postgres.ProactiveRunResult{}, err
 	}
+	if filed, err := l.deliverDueReminder(ctx, store, owner, relationshipID, now); err != nil {
+		return postgres.ProactiveRunResult{}, err
+	} else if filed && !delivered {
+		if id, ok, err := store.DeliverDueProactive(ctx, owner, relationshipID, now, postgres.FollowUpGenerationFinish{}, nil); err != nil {
+			return postgres.ProactiveRunResult{}, err
+		} else if ok {
+			eventID, delivered = id, true
+		}
+	}
 	loaded, err := store.LoadProactiveContext(ctx, owner, relationshipID, now)
 	if err != nil {
 		return postgres.ProactiveRunResult{}, err
@@ -231,6 +240,10 @@ func (l *Loop) completeProactive(ctx context.Context, store *postgres.Store, own
 	}
 	settled = true
 	if callErr != nil {
+		// 只记错误分类码，不记提示词或模型输出。
+		if _, code := companion.ClassifyAttempt(callErr); l.log != nil {
+			l.log.Info("proactive model call failed", slog.String("suffix", suffix), slog.String("error_code", code))
+		}
 		return "", "PROVIDER", nil
 	}
 	return written.String(), "", nil
@@ -255,11 +268,14 @@ func pregenRoute(p postgres.ResolvedPurpose) (modelprovider.Route, error) {
 	return openProactiveRoute(p, maxOut)
 }
 
+// reasoningMinOutputTokens 与记忆提取回调的 min(4096, 模型上限) 保持一致。
+const reasoningMinOutputTokens = 4096
+
 func openProactiveRoute(p postgres.ResolvedPurpose, maxOut int) (modelprovider.Route, error) {
 	if strings.TrimSpace(p.ProviderName) == "" || strings.TrimSpace(p.Model.ModelID) == "" || maxOut < 1 {
 		return modelprovider.Route{}, errFollowUpParameters
 	}
-	return modelprovider.Route{
+	route := modelprovider.Route{
 		UseProfileParams: true,
 		ProviderID:       p.ProviderID,
 		SupplierName:     p.ProviderName,
@@ -267,7 +283,17 @@ func openProactiveRoute(p postgres.ResolvedPurpose, maxOut int) (modelprovider.R
 		BaseURL:          p.BaseURL,
 		ModelID:          p.Model.ModelID,
 		MaxOutputTokens:  maxOut,
-	}, nil
+	}
+	// 与记忆提取一致：带上模型配置里的推理强度。推理型配置的思考过程也计入输出上限，
+	// 判断 / 预生成 / 日记 / 建议回复的小预算会被上游拒绝（本地实测 64–2048 均失败，4096 成功），
+	// 因此推理时把上限抬到与记忆提取相同的 4096（不超过模型自身上限）；正文长度仍由提示词与解析截断约束。
+	if p.Model.GenerationParams != nil && p.Protocol != postgres.ProtocolAnthropic {
+		route.ReasoningEffort = p.Model.GenerationParams.ReasoningEffort
+	}
+	if route.ReasoningEffort != nil && route.MaxOutputTokens < reasoningMinOutputTokens {
+		route.MaxOutputTokens = min(reasoningMinOutputTokens, max(p.Model.MaxOutputTokens, maxOut))
+	}
+	return route, nil
 }
 
 func (l *Loop) proactiveLog(code string) {

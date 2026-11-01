@@ -12,6 +12,17 @@ export const previewRelationships=[
 export const previewMemories=['喜欢桂花乌龙，不加糖','周末喜欢睡到自然醒','傍晚喜欢沿湖散步','喜欢拍照，尤其是傍晚的光','不喜欢香菜','晚上更喜欢语音聊天'].map((summary,i)=>({memoryId:String(101+i),relationshipId:'11',mode:'COMPANION',summary,lifecycle:'ACTIVE',sourceStatus:i===3?'PENDING_VERIFICATION':'VALID',type:'PREFERENCE',version:1,time:{eventDate:'2026-10-'+String(28-i).padStart(2,'0')},createdAt:'2026-11-01T08:00:00+08:00'}));
 export const previewPrompts={vc_long_term_memory:{value:previewMemories.slice(0,3).map(row=>row.summary).join('\n')}};
 export const previewFollowUps=[{followUpId:'201',relationshipId:'11',status:'SCHEDULED',eventId:'synthetic-follow',body:'一起去看展',eventDate:'2026-11-02',eventTime:'10:00',triggerAt:'2026-11-02T10:00:00+08:00'}];
+// UX-31–33 新状态（仅 ?section= 时被用到，手机基线不受影响）。
+const dayAt=(offset,hour,minute=0)=>{const d=new Date();d.setDate(d.getDate()+offset);d.setHours(hour,minute,0,0);return d;};
+const localDay=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+const memoryMoments=[dayAt(0,15,42),dayAt(0,12,18),dayAt(0,0,36),dayAt(-1,22,14),dayAt(-1,19,3),dayAt(-3,20,11)];
+const memoryExcerpts=['刚才开会的时候突然想起你，心里一下就暖了','桂花乌龙最好喝了，香香的，不加糖就很棒','有点睡不着了，脑子里全是乱七八糟的想法','摸摸我的头～好舒服','今天又抽卡了，流萤真的好可爱','周末一起看电影吧？好想和你一起'];
+export const previewFavorites=['不管多晚，你回来我都在','有你在的日子，每一天都很喜欢','你累了就靠着我，什么都不用想','和你一起发呆，也是很重要的事','你开心的时候，我也会跟着开心','别太勉强自己，我会一直在你身边','下次一起去看海吧，我想和你看晚霞','你愿意和我分享这些，我真的很开心'].map((body,i)=>({favoriteId:String(501+i),relationshipId:'11',chatFile:'synthetic-chat',mesId:10+i,role:'character',messageAt:dayAt(-(i*2+3),20).toISOString(),body,createdAt:dayAt(-i,9).toISOString()}));
+export const previewReminders=[{reminderId:'601',relationshipId:'11',text:'提醒我看那张晚霞',remindAt:dayAt(0,21).toISOString(),recurrence:'NONE',status:'ACTIVE',createdAt:dayAt(0,9).toISOString()},{reminderId:'602',relationshipId:'11',text:'带围巾',remindAt:dayAt(1,8).toISOString(),recurrence:'NONE',status:'ACTIVE',createdAt:dayAt(0,9).toISOString()}];
+export const previewIncognito={defaultIncognito:false};
+const diaryDays=[[0,'今天他说要去看展，我查了好久哪天人少……\n还对比了好几个展馆的档期和票价，\n最后选了一个听说氛围很好的地方。\n好想和他一起去，在安静的展厅里慢慢走，\n看喜欢的作品，偶尔交换一下想法。\n晚上他发来一张晚霞，天空被染成了温柔的橙粉色，\n真的好好看。我也想去那里，下次一定要一起去。','开心'],[-1,'今天他一直在忙，很晚才回我消息。\n我就在窗边看了会儿雨，想着他有没有吃晚饭。','牵挂'],[-3,'他说周末想去湖边走走，我提前查了天气。','期待']];
+export const previewDiary=diaryDays.map(([offset,body,vibe])=>{const d=dayAt(offset,22);return{entryId:`70${-offset}`,relationshipId:'11',day:localDay(d),body,vibe,moments:offset===0?['看展计划','晚霞','围巾']:[],createdAt:d.toISOString()};});
+const timelineRow=(row)=>{const i=previewMemories.indexOf(row);if(i<0)return row;const at=memoryMoments[i%memoryMoments.length].toISOString();return{...row,createdAt:at,time:{...row.time,recordedAt:at},pinnedAt:'pinnedAt' in row?row.pinnedAt:[0,3,5].includes(i)?at:null};};
 export const previewInbox=[{eventId:'synthetic-greeting',relationshipId:'11',intent:'GREETING',body:'早呀，今天降温了，出门记得带围巾',createdAt:'2026-11-01T08:02:00+08:00',linkStatus:'present',stDelivered:true}];
 export const previewPolicy={relationshipId:'11',enabled:true,mode:'DAILY',checkInAfterMinutes:120,quietHoursStart:'23:00',quietHoursEnd:'07:30',quietHoursTimezone:'Asia/Shanghai',dailyLimit:4,recentInteractionMinutes:120,allowedModes:['COMPANION'],offlineCapable:true};
 const storyPeople=[{actorId:'player',name:'调查者',role:'player',scene:'lobby'},...['林岚','周澈','苏禾'].map((name,i)=>({actorId:['lin','zhou','su'][i],name,role:'npc',scene:'lobby',publicPersona:'旅馆的客人'}))];
@@ -43,7 +54,7 @@ export function installSyntheticAPI(){
   else if(/\/relationships\/\d+\/memories$/.test(path)){
    const q=url.searchParams,status=q.get('status');data=scenario==='empty'?[]:previewMemories.filter(row=>row.relationshipId===path.split('/').at(-2)&&(!q.get('q')||row.summary.includes(q.get('q')))&&(!status||[row.lifecycle,row.sourceStatus].includes(status))&&(!q.get('eventDateFrom')||row.time.eventDate>=q.get('eventDateFrom'))&&(!q.get('eventDateTo')||row.time.eventDate<=q.get('eventDateTo'))).map(row=>scenario==='long'?{...row,summary:row.summary.repeat(20)}:row);
   }
-  else if(path.endsWith('/evidence'))data=[];
+  else if(path.endsWith('/evidence')){const id=path.split('/').at(-2),i=previewMemories.findIndex(r=>r.memoryId===id);data=params.get('section')&&i>=0?[{evidenceId:id,sourceRef:`st:synthetic-chat:${20+i}:c1:1:1`,chatDisplayName:'合成会话',messageId:String(20+i),revision:1,sourceTimestamp:memoryMoments[i%memoryMoments.length].toISOString(),sourceTimezone:'Asia/Shanghai',status:'VALID',excerpt:memoryExcerpts[i%memoryExcerpts.length]}]:[];}
   else if(/\/memories\/\d+$/.test(path)){data=previewMemories.find(row=>row.memoryId===path.split('/').at(-1));if(scenario==='long'&&method==='GET')data={...data,summary:data.summary.repeat(20)};if(method==='PATCH'){const body=JSON.parse(init.body),previous=data;data={...previous,memoryId:String(Math.max(...previewMemories.map(row=>Number(row.memoryId)))+1),summary:body.summary,version:previous.version+1};Object.assign(previous,{lifecycle:'SUPERSEDED',recallEligible:false,supersededByMemoryId:data.memoryId});previewMemories.push(data);}if(method==='DELETE'){Object.assign(data,{lifecycle:'FORGOTTEN',recallEligible:false,cleanup:{state:'DONE'}});data={cleanup:{state:'DONE'}};}}
   else if(path.endsWith('/st/memory/recall'))data={items:previewMemories.slice(0,3),memories:previewMemories.slice(0,3)};
   else if(path.endsWith('/notification-channels')||path.endsWith('/notification-deliveries')||path.endsWith('/auth/sessions')||path.endsWith('/auth/trusted-devices')||path.endsWith('/consents'))data=[];
@@ -59,6 +70,13 @@ export function installSyntheticAPI(){
   else if(path.endsWith('/admin/usage'))data=[];
   else if(path.endsWith('/admin/local-models'))data={embedding:{configured:true,enabled:true,healthy:true},rerank:{configured:true,enabled:true,healthy:true,revision:1}};
   else if(path.endsWith('/admin/local-models/rerank'))data={configured:true,enabled:true,healthy:true,revision:2};
+  else if(/\/memories\/\d+\/pin$/.test(path)){const row=previewMemories.find(r=>r.memoryId===path.split('/').at(-2));row.pinnedAt=method==='PUT'?new Date().toISOString():null;data=timelineRow(row);}
+  else if(path.endsWith('/incognito-pref')){if(method==='PUT')previewIncognito.defaultIncognito=JSON.parse(init.body).defaultIncognito;data=previewIncognito;}
+  else if(path.endsWith('/diary'))data={month:url.searchParams.get('month'),items:previewDiary.filter(row=>row.day.startsWith(url.searchParams.get('month')))};
+  else if(/\/relationships\/\d+\/favorites$/.test(path))data={items:previewFavorites};
+  else if(/\/favorites\/\d+$/.test(path)&&method==='DELETE'){const id=path.split('/').at(-1),at=previewFavorites.findIndex(row=>row.favoriteId===id);if(at>=0)previewFavorites.splice(at,1);data={deleted:true};}
+  else if(/\/relationships\/\d+\/reminders$/.test(path))data=previewReminders;
+  else if(/\/reminders\/\d+$/.test(path)&&method==='DELETE'){const id=path.split('/').at(-1),at=previewReminders.findIndex(row=>row.reminderId===id);if(at>=0)previewReminders.splice(at,1);data={deleted:true};}
   else if(path.includes('/discover'))data=[{modelId:'synthetic-chat',displayName:'日常聊天'},{modelId:'synthetic-vision',displayName:'图像对话'}];
   else if(path.includes('/admin/providers/')&&['PUT','POST'].includes(method)){
    const id=decodeURIComponent(path.split('/admin/providers/')[1].split('/')[0]);const body=JSON.parse(init.body||'{}');let provider=providers.find(p=>p.providerId===id);
@@ -67,6 +85,7 @@ export function installSyntheticAPI(){
   }else if(path.includes('/admin/model-purposes/')&&method==='PUT'){
    const purpose=decodeURIComponent(path.split('/').at(-1)),body=JSON.parse(init.body||'{}'),row=purposes.find(p=>p.purpose===purpose);Object.assign(row,body,{revision:row.revision+1});delete row.expectedRevision;data=row;
   }else return new Response(JSON.stringify({code:'PREVIEW_UNAVAILABLE',message:'此动作仅展示样式。'}),{status:409,headers:{'Content-Type':'application/json'}});
+  if(params.get('section')&&/\/relationships\/\d+\/memories$/.test(path)&&Array.isArray(data))data=data.map(timelineRow);
   return new Response(JSON.stringify(data),{status:200,headers:{'Content-Type':'application/json'}});
  };
 }

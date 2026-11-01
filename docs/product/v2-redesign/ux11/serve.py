@@ -19,7 +19,7 @@ class Handler(SimpleHTTPRequestHandler):
         base = EXT if source else ROOT
         relative = path[len(prefix):] if source else path.lstrip('/') or 'index.html'
         target = (base / relative).resolve()
-        if not target.is_relative_to(base) or target.suffix not in {'.html','.js','.mjs','.css','.svg','.png','.webp','.jpg'}:
+        if not target.is_relative_to(base) or target.suffix not in {'.html','.js','.mjs','.css','.svg','.png','.webp','.jpg','.woff2'}:
             self.send_error(404); return
         if baseline:
             try:

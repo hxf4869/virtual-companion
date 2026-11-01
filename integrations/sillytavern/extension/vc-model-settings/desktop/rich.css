@@ -1,1 +1,70 @@
-/* UX-27 富消息：语音条、图片查看、动作描写（桌面）。 */
+/* UX-27 富消息：语音条、图片查看；UX-34 共享元素过渡与晨昏氛围（桌面）。 */
+html[data-vc-layout="desktop"] body.vc-ui {
+  --vc-lightbox-scrim: rgb(0 0 0 / .6);
+  --vc-lightbox-blur: 16px;
+  --vc-dur-shared: 250ms;
+  --vc-dur-ambient: 60s;
+  --vc-ambient-hue-shift: 0deg;
+  --vc-ambient-bright: 1;
+}
+html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-aurora[data-vc-period="morning"] { --vc-ambient-hue-shift: -8deg; --vc-ambient-bright: 1.06; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-aurora[data-vc-period="noon"] { --vc-ambient-hue-shift: 0deg; --vc-ambient-bright: 1.03; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-aurora[data-vc-period="evening"] { --vc-ambient-hue-shift: 10deg; --vc-ambient-bright: .98; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-aurora[data-vc-period="night"] { --vc-ambient-hue-shift: -14deg; --vc-ambient-bright: .9; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-aurora { filter: hue-rotate(var(--vc-ambient-hue-shift)) brightness(var(--vc-ambient-bright)); transition: filter var(--vc-dur-ambient) linear; }
+@media (prefers-reduced-transparency: reduce) {
+  html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-aurora[data-vc-period] { --vc-ambient-hue-shift: 0deg; --vc-ambient-bright: 1; }
+}
+
+/* 共享元素过渡 */
+html[data-vc-layout="desktop"]::view-transition-group(vc-shared),
+html[data-vc-layout="desktop"]::view-transition-group(vc-lightbox-img) { animation-duration: var(--vc-dur-shared); animation-timing-function: var(--vc-spring); }
+
+/* 语音条：波形区按时长定宽，24 根柱，已播放着角色色；转文字与倍速同一行 */
+/* 语音行用网格：Chrome 计算换行 flex 的 max-content 不计列间距，会把倍速与「转文字」挤到下一行。 */
+html[data-vc-layout="desktop"] body.vc-ui.vc-reply-bubble #chat > .mes:not(.vc-rich) .vc-voice.vc-voice-desk { display: grid; grid-template-columns: max-content max-content 1fr; justify-items: start; align-items: center; gap: var(--vc-space-xxs) var(--vc-space-xs); width: max-content; max-width: 100%; }
+html[data-vc-layout="desktop"] body.vc-ui.vc-reply-bubble #chat > .mes:not(.vc-rich) .vc-voice-desk .vc-voice-bar { width: auto; max-width: none; }
+html[data-vc-layout="desktop"] body.vc-ui.vc-reply-bubble #chat > .mes:not(.vc-rich) .vc-voice-desk :is(.vc-voice-bar,.vc-voice-speed,.vc-voice-transcribe) { grid-row: 1; }
+html[data-vc-layout="desktop"] body.vc-ui.vc-reply-bubble #chat > .mes:not(.vc-rich) .vc-voice-desk .vc-voice-speed { grid-column: 2; margin-inline-start: var(--vc-space-xs); /* 让出未听圆点 */ }
+html[data-vc-layout="desktop"] body.vc-ui.vc-reply-bubble #chat > .mes:not(.vc-rich) .vc-voice-desk .vc-voice-transcribe { grid-column: 3; }
+html[data-vc-layout="desktop"] body.vc-ui.vc-reply-bubble #chat > .mes:not(.vc-rich) .vc-voice-desk .vc-voice-transcribe { white-space: nowrap; }
+html[data-vc-layout="desktop"] body.vc-ui.vc-reply-bubble #chat > .mes[is_user="true"]:not(.vc-rich) .vc-voice.vc-voice-desk { grid-template-columns: 1fr max-content max-content; justify-items: end; }
+html[data-vc-layout="desktop"] body.vc-ui.vc-reply-bubble #chat > .mes[is_user="true"]:not(.vc-rich) .vc-voice-desk .vc-voice-transcribe { grid-row: 1; grid-column: 1; }
+html[data-vc-layout="desktop"] body.vc-ui.vc-reply-bubble #chat > .mes[is_user="true"]:not(.vc-rich) .vc-voice-desk .vc-voice-speed { grid-row: 1; grid-column: 2; }
+html[data-vc-layout="desktop"] body.vc-ui.vc-reply-bubble #chat > .mes[is_user="true"]:not(.vc-rich) .vc-voice-desk .vc-voice-bar { grid-row: 1; grid-column: 3; }
+html[data-vc-layout="desktop"] body.vc-ui.vc-reply-bubble #chat > .mes:not(.vc-rich) .vc-voice-desk .vc-voice-text {
+ grid-row: 2; grid-column: 1 / -1; justify-self: start; box-sizing: border-box; padding: 10px 14px; background: var(--vc-raised); box-shadow: var(--vc-hairline);
+ border-radius: var(--vc-bub-r); font-size: var(--vc-fs-bubble); line-height: 1.5;
+}
+html[data-vc-layout="desktop"] body.vc-ui.vc-reply-bubble #chat > .mes[is_user="true"]:not(.vc-rich) .vc-voice-desk .vc-voice-text { justify-self: end; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-voice-desk .vc-voice-wave { flex: none; width: var(--vc-voice-w); justify-content: space-between; gap: 0; height: 24px; overflow: visible; touch-action: none; cursor: pointer; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-voice-desk .vc-voice-wave i { width: 2px; height: var(--h); opacity: .4; background: currentColor; transition: opacity var(--vc-dur-press) var(--vc-ease-out), background-color var(--vc-dur-press) var(--vc-ease-out); }
+html[data-vc-layout="desktop"] body.vc-ui .vc-voice-desk .vc-voice-wave i.on { opacity: 1; background: rgb(var(--vc-tint)); }
+html[data-vc-layout="desktop"] body.vc-ui .vc-voice-desk.vc-voice-playing .vc-voice-wave i { animation: none; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-voice-desk .vc-voice-speed { flex: none; min-width: 36px; height: 24px; padding: 0 var(--vc-space-xs); border: 0; border-radius: var(--vc-radius-pill); background: var(--vc-raised); color: var(--vc-ink-2); font: inherit; font-size: var(--vc-fs-footnote); font-variant-numeric: tabular-nums; cursor: pointer; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-voice-desk .vc-voice-speed:focus-visible { outline: 2px solid var(--vc-accent); outline-offset: 2px; }
+
+/* 消息图片：先占位，成图后同尺寸，不跳 */
+html[data-vc-layout="desktop"] body.vc-ui #chat > .mes .mes_text img:not(.avatar img):not(.vc-sticker-bubble img) { aspect-ratio: auto 4 / 3; max-width: 100%; height: auto; cursor: zoom-in; }
+
+/* 灯箱 */
+html[data-vc-layout="desktop"] .vc-lightbox { position: fixed; inset: 0; z-index: var(--vc-z-alert); display: grid; place-items: center; background: var(--vc-lightbox-scrim); backdrop-filter: blur(var(--vc-lightbox-blur)); animation: vc-lb-in var(--vc-dur-shared) var(--vc-spring); }
+html[data-vc-layout="desktop"] .vc-lb-stage { position: absolute; inset: 0; display: grid; place-items: center; overflow: hidden; }
+html[data-vc-layout="desktop"] .vc-lb-img { max-width: 90vw; max-height: 86vh; object-fit: contain; border-radius: var(--vc-radius-md); box-shadow: var(--vc-shadow-overlay); transition: transform var(--vc-dur-shared) var(--vc-spring); }
+html[data-vc-layout="desktop"] .vc-lb-bar { position: absolute; top: var(--vc-space-md); right: var(--vc-space-md); display: flex; align-items: center; gap: var(--vc-space-xs); padding: var(--vc-space-xxs) var(--vc-space-xs); border-radius: var(--vc-radius-pill); border: 1px solid var(--vc-rim); background: var(--vc-glass-3); backdrop-filter: blur(var(--vc-blur-3)) saturate(180%); color: var(--vc-ink); transition: opacity var(--vc-dur-standard) var(--vc-spring); }
+html[data-vc-layout="desktop"] .vc-lb-page { padding: 0 var(--vc-space-xs); font-size: var(--vc-fs-footnote); font-variant-numeric: tabular-nums; }
+html[data-vc-layout="desktop"] .vc-lb-btn { display: grid; place-items: center; width: 36px; height: 36px; padding: 0; border: 0; border-radius: var(--vc-radius-pill); background: transparent; color: inherit; cursor: pointer; }
+html[data-vc-layout="desktop"] .vc-lb-btn:hover:not(:disabled) { background: var(--vc-raised); }
+html[data-vc-layout="desktop"] .vc-lb-btn:disabled { opacity: .35; cursor: default; }
+html[data-vc-layout="desktop"] .vc-lb-btn:focus-visible { outline: 2px solid var(--vc-accent); outline-offset: 2px; }
+html[data-vc-layout="desktop"] .vc-lb-nav { position: absolute; top: 50%; translate: 0 -50%; width: 44px; height: 44px; border: 1px solid var(--vc-rim); background: var(--vc-glass-3); backdrop-filter: blur(var(--vc-blur-3)); color: var(--vc-ink); transition: opacity var(--vc-dur-standard) var(--vc-spring); }
+html[data-vc-layout="desktop"] .vc-lb-prev { left: var(--vc-space-md); }
+html[data-vc-layout="desktop"] .vc-lb-next { right: var(--vc-space-md); }
+html[data-vc-layout="desktop"] .vc-lightbox.is-idle :is(.vc-lb-bar, .vc-lb-nav) { opacity: 0; pointer-events: none; }
+@keyframes vc-lb-in { from { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  html[data-vc-layout="desktop"] .vc-lightbox { animation: none; }
+  html[data-vc-layout="desktop"] .vc-lb-img { transition: none; }
+}
+html[data-vc-layout="desktop"][data-vc-reduced-motion="true"] .vc-lightbox { animation: none; }
+html[data-vc-layout="desktop"][data-vc-reduced-motion="true"] .vc-lb-img { transition: none; }

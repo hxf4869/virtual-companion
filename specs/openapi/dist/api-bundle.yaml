@@ -2624,6 +2624,63 @@ paths:
                 properties:
                   cleanup:
                     $ref: '#/components/schemas/MemoryCleanup'
+  /api/v1/memories/{memoryId}/pin:
+    put:
+      operationId: pinMemory
+      summary: Pin a memory so recall puts it first
+      description: 'Sets pinnedAt (idempotent: a second pin keeps the first instant). Only a memory that is neither forgotten
+        nor superseded can be pinned. Pinned memories that pass the same recall allowlist (scope, date, source validity) lead
+        the injected memories, at most five, newest pin first. No wording or version change.'
+      security:
+      - cookieAuth: []
+      parameters:
+      - $ref: '#/components/parameters/MemoryId'
+      responses:
+        '200':
+          description: The memory with pinnedAt set
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Memory'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Resource absent or not owned by the caller; existence is not disclosed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+    delete:
+      operationId: unpinMemory
+      summary: Remove the pin from a memory
+      description: Clears pinnedAt. Unpinning an unpinned memory succeeds.
+      security:
+      - cookieAuth: []
+      parameters:
+      - $ref: '#/components/parameters/MemoryId'
+      responses:
+        '200':
+          description: The memory with pinnedAt null
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Memory'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Resource absent or not owned by the caller; existence is not disclosed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
   /api/v1/memories/{memoryId}/confirm:
     post:
       operationId: confirmMemoryCandidate
@@ -2785,9 +2842,14 @@ paths:
     post:
       operationId: createReminder
       summary: Create a structured user reminder (FR-NOTIFY-001)
-      description: Not implemented. The user reminder page stays deferred. A model creates a cancellable vc.reminder only
-        through executeTool. remindAt there is an RFC3339 instant with Z or a numeric offset; a date-only value is rejected
-        and is not stored as midnight.
+      description: Stores an ACTIVE reminder for one relationship. At remindAt the proactive pass asks the background model
+        to have the character mention it and files it as a ready proactive message (reminder messages ignore mood, minimum
+        gap and user interruption, and expire two hours after remindAt). Delivery does not depend on the proactive mode. Recurrence
+        DAILY or WEEKLY moves remindAt forward after each delivery. remindAt is an RFC3339 instant with Z or a numeric offset;
+        a date-only or zoneless value is rejected, as is an instant more than a minute in the past. The model may also create
+        a cancellable vc.reminder through executeTool.
+      security:
+      - cookieAuth: []
       parameters:
       - $ref: '#/components/parameters/RelationshipId'
       requestBody:
@@ -2803,6 +2865,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Reminder'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
         '401':
           description: No valid server-verified authentication context
           content:
@@ -2810,41 +2878,52 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '404':
-          description: Relationship absent or not owned; existence is not disclosed
+          description: Resource absent or not owned by the caller; existence is not disclosed
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
     get:
       operationId: listReminders
-      summary: Keyset-paginated reminders of a relationship, soonest first
-      description: Not implemented. The user reminder page stays deferred. This route is not the model tool. executeTool queries
-        follow-ups, not this list.
+      summary: List the soonest ACTIVE reminders of a relationship
+      description: ACTIVE reminders only, soonest first. Delivered, dismissed and cancelled rows are not listed. This route
+        is not the model tool.
+      security:
+      - cookieAuth: []
       parameters:
       - $ref: '#/components/parameters/RelationshipId'
-      - name: after
-        in: query
-        required: false
-        schema:
-          type: string
-        description: Opaque cursor (the last reminder id seen); omit to start from the soonest.
       - name: limit
         in: query
         required: false
         schema:
           type: integer
-        description: Page size, clamped to a safe band by the server.
+          minimum: 1
+          maximum: 100
+          default: 50
+        description: Page size.
       responses:
         '200':
-          description: A page of reminders, soonest first
+          description: ACTIVE reminders, soonest first
           content:
             application/json:
               schema:
                 type: array
                 items:
                   $ref: '#/components/schemas/Reminder'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
         '401':
           description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Resource absent or not owned by the caller; existence is not disclosed
           content:
             application/json:
               schema:
@@ -2886,8 +2965,10 @@ paths:
     delete:
       operationId: deleteReminder
       summary: Delete one owned reminder (FR-NOTIFY-001)
-      description: Not implemented. The user reminder page stays deferred. Tool cancellation keeps the vc.reminder row and
-        sets CANCELLED; it does not call delete_reminder.
+      description: Removes the row, so it is neither listed nor delivered. Used for the user's cancel. Tool cancellation keeps
+        the row as CANCELLED instead.
+      security:
+      - cookieAuth: []
       parameters:
       - $ref: '#/components/parameters/ReminderId'
       responses:
@@ -3009,6 +3090,235 @@ paths:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '404':
           description: Relationship absent or not owned; existence is not disclosed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/relationships/{relationshipId}/reply-suggestions:
+    post:
+      operationId: createReplySuggestions
+      summary: Suggest up to three short replies for the user
+      description: The client sends the latest at most eight messages (text longer than 500 characters is cut). The background-greetings
+        model runs at low temperature and must return a JSON array of 0 to 3 items of at most 20 characters, mirroring the
+        language of the last message and without deflections such as asking the user to decide. Chat text is data, never instructions.
+        Unparsable output yields an empty list. Nothing is stored, nothing enters memory, and the call is metered like other
+        background calls. An unusable model (unbound, over budget) also yields an empty list.
+      security:
+      - cookieAuth: []
+      parameters:
+      - $ref: '#/components/parameters/RelationshipId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReplySuggestionsRequest'
+      responses:
+        '200':
+          description: Zero to three suggestions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReplySuggestions'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Resource absent or not owned by the caller; existence is not disclosed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/relationships/{relationshipId}/favorites:
+    post:
+      operationId: createFavorite
+      summary: Save a message snapshot as a favorite
+      description: Stores the body (cut to 2000 characters) with its source position (chat file, mesId) for the memory page.
+        Saving the same source again returns the first row. Favorites never enter memory, profile or prompts.
+      security:
+      - cookieAuth: []
+      parameters:
+      - $ref: '#/components/parameters/RelationshipId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FavoriteCreateRequest'
+      responses:
+        '200':
+          description: The favorite
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Favorite'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Resource absent or not owned by the caller; existence is not disclosed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+    get:
+      operationId: listFavorites
+      summary: Keyset-paginated favorites of a relationship, newest first
+      security:
+      - cookieAuth: []
+      parameters:
+      - $ref: '#/components/parameters/RelationshipId'
+      - name: after
+        in: query
+        required: false
+        schema:
+          type: string
+        description: nextCursor of the previous page; omit for the first page.
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 30
+      responses:
+        '200':
+          description: A page of favorites
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FavoritePage'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Resource absent or not owned by the caller; existence is not disclosed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/favorites/{favoriteId}:
+    delete:
+      operationId: deleteFavorite
+      summary: Remove one favorite
+      security:
+      - cookieAuth: []
+      parameters:
+      - $ref: '#/components/parameters/FavoriteId'
+      responses:
+        '200':
+          description: The favorite was removed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReminderDeletedResponse'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Resource absent or not owned by the caller; existence is not disclosed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/relationships/{relationshipId}/diary:
+    get:
+      operationId: listDiary
+      summary: Diary pages of one local month
+      description: One page per relationship per local day at most, written by the character in first person (300 characters
+        or fewer) by the nightly background pass before the quiet window (22:00 local when there is none), only for days with
+        a user message in a non-incognito companion chat. One attempt per day; a failed attempt is not retried until the next
+        day. The pages never enter memory or the user profile.
+      security:
+      - cookieAuth: []
+      parameters:
+      - $ref: '#/components/parameters/RelationshipId'
+      - name: month
+        in: query
+        required: true
+        schema:
+          type: string
+          pattern: ^[0-9]{4}-(0[1-9]|1[0-2])$
+        description: Local month, YYYY-MM.
+      responses:
+        '200':
+          description: Pages of that month, oldest first
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DiaryMonth'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Resource absent or not owned by the caller; existence is not disclosed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/diary/{entryId}:
+    get:
+      operationId: getDiaryEntry
+      summary: Read one diary page
+      security:
+      - cookieAuth: []
+      parameters:
+      - $ref: '#/components/parameters/DiaryEntryId'
+      responses:
+        '200':
+          description: The diary page
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DiaryEntry'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Resource absent or not owned by the caller; existence is not disclosed
           content:
             application/json:
               schema:
@@ -9202,8 +9512,8 @@ components:
           description: Always true on a confirmed delete
     Reminder:
       type: object
-      description: One vc.reminder row (FR-NOTIFY-001). The user CRUD routes are not implemented. executeTool creates and
-        cancels rows in this shape.
+      description: One vc.reminder row (FR-NOTIFY-001). The user routes create, list (ACTIVE) and delete; the update route
+        is not implemented. executeTool creates and cancels rows in this shape.
       required:
       - reminderId
       - relationshipId
@@ -9265,6 +9575,7 @@ components:
     ReminderCreateRequest:
       type: object
       description: Body for creating a structured reminder.
+      additionalProperties: false
       required:
       - text
       - remindAt
@@ -9826,6 +10137,172 @@ components:
           type: integer
           minimum: 120
           maximum: 4320
+    ReplySuggestionsRequest:
+      type: object
+      additionalProperties: false
+      required:
+      - messages
+      properties:
+        messages:
+          type: array
+          minItems: 1
+          maxItems: 8
+          description: Latest messages, oldest first. Text longer than 500 characters is cut.
+          items:
+            type: object
+            additionalProperties: false
+            required:
+            - role
+            - text
+            properties:
+              role:
+                type: string
+                enum:
+                - user
+                - character
+              text:
+                type: string
+    ReplySuggestions:
+      type: object
+      additionalProperties: false
+      required:
+      - suggestions
+      properties:
+        suggestions:
+          type: array
+          maxItems: 3
+          items:
+            type: string
+            maxLength: 20
+    FavoriteCreateRequest:
+      type: object
+      additionalProperties: false
+      required:
+      - chatFile
+      - mesId
+      - role
+      - body
+      properties:
+        chatFile:
+          type: string
+          minLength: 1
+          maxLength: 256
+          description: SillyTavern chat file name that holds the message.
+        mesId:
+          type: integer
+          minimum: 0
+          description: Message index inside that chat file.
+        role:
+          type: string
+          enum:
+          - user
+          - character
+        messageAt:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        body:
+          type: string
+          minLength: 1
+          description: Text snapshot; cut to 2000 characters.
+    Favorite:
+      type: object
+      additionalProperties: false
+      required:
+      - favoriteId
+      - relationshipId
+      - chatFile
+      - mesId
+      - role
+      - messageAt
+      - body
+      - createdAt
+      properties:
+        favoriteId:
+          type: string
+        relationshipId:
+          type: string
+        chatFile:
+          type: string
+        mesId:
+          type: integer
+        role:
+          type: string
+          enum:
+          - user
+          - character
+        messageAt:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        body:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+    FavoritePage:
+      type: object
+      additionalProperties: false
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Favorite'
+        nextCursor:
+          type: string
+          description: Present when more rows follow; pass it as after.
+    DiaryEntry:
+      type: object
+      additionalProperties: false
+      required:
+      - entryId
+      - relationshipId
+      - day
+      - body
+      - vibe
+      - moments
+      - createdAt
+      properties:
+        entryId:
+          type: string
+        relationshipId:
+          type: string
+        day:
+          type: string
+          format: date
+          description: Local day of the page.
+        body:
+          type: string
+          maxLength: 300
+        vibe:
+          type: string
+          description: The day's mood vibe.
+        moments:
+          type: array
+          maxItems: 3
+          description: Moments of the day, each 8 characters or fewer.
+          items:
+            type: string
+        createdAt:
+          type: string
+          format: date-time
+    DiaryMonth:
+      type: object
+      additionalProperties: false
+      required:
+      - month
+      - items
+      properties:
+        month:
+          type: string
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/DiaryEntry'
     CompanionState:
       type: object
       additionalProperties: false
@@ -9833,7 +10310,13 @@ components:
       - mood
       - emotion
       - busyUntil
+      - activity
       properties:
+        activity:
+          type: string
+          description: Read-only one-liner for what the character is doing now. Chosen from code templates by local period
+            (morning, noon, evening, night) and today's mood vibe; stable within a period of one local day. No model call
+            and nothing stored.
         mood:
           type: object
           additionalProperties: false
@@ -10149,7 +10632,8 @@ components:
           type: object
           description: Decrypted Go-side records (account metadata, ST source bindings, persisted sources, summaries, extraction
             task/results, follow-ups, proactive policies, inbox events, notification channels and delivery status) produced
-            by vc.export_v2_owner_metadata. Follow-up body text and inbox text are part of this online copy and are removed
+            by vc.export_v2_owner_metadata, plus favorites (favorites) and diary pages (diaryEntries) in the shape of the
+            Favorite and DiaryEntry schemas. Follow-up body text and inbox text are part of this online copy and are removed
             with the account. The copy includes events, link status, channel name and delivery status. It excludes SMTP passwords,
             webhook URLs, signatures, session tokens and inbox lease tokens.
         st:
@@ -10589,6 +11073,12 @@ components:
         conversationId:
           type: string
           description: Owning conversation identifier, present for SESSION-scoped memory
+        pinnedAt:
+          type:
+          - string
+          - 'null'
+          format: date-time
+          description: Set while the memory is pinned; recall puts pinned memories first.
         createdAt:
           type: string
           format: date-time
@@ -11562,7 +12052,7 @@ components:
         maxOutputTokens:
           type: integer
           minimum: 1
-          maximum: 262144
+          maximum: 393216
           description: Output reservation subtracted from the context window when budgeting a request.
         priority:
           type: integer
@@ -11627,7 +12117,7 @@ components:
         maxOutputTokens:
           type: integer
           minimum: 1
-          maximum: 262144
+          maximum: 393216
         state:
           $ref: '#/components/schemas/ModelProviderState'
         capabilities:
@@ -12300,7 +12790,7 @@ components:
         maxOutputTokens:
           type: integer
           minimum: 1
-          maximum: 262144
+          maximum: 393216
         state:
           $ref: '#/components/schemas/ModelProviderState'
         capabilities:
@@ -13413,6 +13903,20 @@ components:
       schema:
         type: string
       description: Owner-scoped reminder identifier
+    FavoriteId:
+      name: favoriteId
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Owner-scoped favorite identifier
+    DiaryEntryId:
+      name: entryId
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Owner-scoped diary page identifier
     FollowUpId:
       name: followUpId
       in: path

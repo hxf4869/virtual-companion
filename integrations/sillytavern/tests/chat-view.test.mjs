@@ -971,7 +971,7 @@ test('UX-23 桌面气泡：data-vc-* 写在 .mes 上，不插节点；回到手�
     assert.equal(rows[0].querySelector('.mes_text').children.length, 0);
 });
 
-test('UX-23 桌面气泡生成中：#vc-chat-gen 是「正在输入」气泡，手机仍是「思考中」', () => {
+test('UX-23 桌面气泡生成中：#vc-chat-gen 是「正在输入」气泡（UX-25：450ms 后才显示），手机仍是「思考中」', async () => {
     for (const layout of ['desktop', 'mobile']) {
         const document = installMiniDom();
         document.documentElement.setAttribute('data-vc-layout', layout);
@@ -980,6 +980,11 @@ test('UX-23 桌面气泡生成中：#vc-chat-gen 是「正在输入」气泡，�
         document.body.setAttribute('data-generating', 'true');
         mountChatView({ getContext: () => ({ chat: [], chatMetadata: {}, characters: [] }), document });
         const line = document.querySelector('#vc-chat-gen');
+        if (layout === 'desktop') {
+            // UX-25：生成开始 450ms 内不显示，避免一闪而过。
+            assert.equal(line.hasAttribute('hidden'), true, 'desktop 防闪');
+            await new Promise((resolve) => setTimeout(resolve, 520));
+        }
         assert.equal(line.hasAttribute('hidden'), false, layout);
         assert.equal(line.hasAttribute('data-vc-typing'), layout === 'desktop', layout);
         assert.equal(line.textContent, layout === 'desktop' ? '正在输入' : '思考中', layout);

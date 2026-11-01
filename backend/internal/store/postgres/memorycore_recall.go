@@ -207,6 +207,11 @@ func (s *Store) searchEngineRecall(ctx context.Context, owner, rel, conv int64, 
 			found.Memories = append(found.Memories, m)
 		}
 	}
+	pinned, e := s.pinnedMemoryIDs(ctx, owner, rel)
+	if e != nil {
+		return engineRecall{}, e
+	}
+	found.Memories = pinMemoriesFirst(found.Memories, allowed, pinned, q.Limit)
 	if len(found.Memories) == 0 {
 		found.Observe.RecallEmpty = 1
 	} else {
@@ -234,4 +239,60 @@ func decodeEngineSearch(raw json.RawMessage) (hits []engineHit, gated []string, 
 		return nil, nil, false, RecallObserve{}
 	}
 	return body.Hits, body.Gated, true, body.Stats
+}
+
+// maxPinnedRecall bounds how many pinned memories may lead one injection.
+const maxPinnedRecall = 5
+
+func (s *Store) pinnedMemoryIDs(ctx context.Context, owner, rel int64) ([]int64, error) {
+	var ids []int64
+	err := s.WithOwner(ctx, owner, func(ctx context.Context, tx pgx.Tx) error {
+		rows, e := tx.Query(ctx, `SELECT out_id FROM vc.memory_pinned_ids($1,$2)`, owner, rel)
+		if e != nil {
+			return e
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var id int64
+			if e = rows.Scan(&id); e != nil {
+				return e
+			}
+			ids = append(ids, id)
+		}
+		return rows.Err()
+	})
+	return ids, mapStoreErr(err)
+}
+
+// pinMemoriesFirst puts pinned memories that already passed the trusted
+// allowlist in front of the ranked hits, newest pin first, then trims to limit.
+func pinMemoriesFirst(hits []Memory, allowed map[string]Memory, pinned []int64, limit int) []Memory {
+	if len(pinned) == 0 {
+		return hits
+	}
+	byID := make(map[int64]Memory, len(allowed))
+	for _, m := range allowed {
+		byID[m.ID] = m
+	}
+	out := make([]Memory, 0, len(hits)+maxPinnedRecall)
+	seenID := map[int64]bool{}
+	seenText := map[string]bool{}
+	for _, id := range pinned {
+		m, ok := byID[id]
+		if !ok || seenText[m.Summary] || len(out) == maxPinnedRecall {
+			continue
+		}
+		seenID[id], seenText[m.Summary] = true, true
+		out = append(out, m)
+	}
+	for _, m := range hits {
+		if !seenID[m.ID] && !seenText[m.Summary] {
+			seenText[m.Summary] = true
+			out = append(out, m)
+		}
+	}
+	if limit > 0 && len(out) > limit {
+		out = out[:limit]
+	}
+	return out
 }

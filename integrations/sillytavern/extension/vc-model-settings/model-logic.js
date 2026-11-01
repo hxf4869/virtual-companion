@@ -259,7 +259,7 @@ function parseIntField(value) {
 
 // 与后端真源一致的边界（V119 约束 / ValidateProviderID / ValidateBaseURL）：
 // providerId ^[a-z][a-z0-9-]{0,63}$；供应商显示名 1–80；模型显示名 1–100；
-// modelId 去空格后 1–200 且无控制字符；context 1–2,000,000；maxOutput 1–262,144。
+// modelId 去空格后 1–200 且无控制字符；context 1–2,000,000；maxOutput 1–393,216（MDL-1 放宽到 384k）。
 export function validateProviderForm(form, { isNew = false } = {}) {
     const errors = {};
     const displayName = String(form.displayName ?? '').trim();
@@ -329,8 +329,8 @@ export function validateModelForm(model) {
         errors.contextWindowTokens = '上下文窗口需为 1–2,000,000 之间的整数（单位：token）';
     }
     const maxOut = parseIntField(model.maxOutputTokens);
-    if (maxOut.bad || maxOut.empty || maxOut.value < 1 || maxOut.value > 262144) {
-        errors.maxOutputTokens = '最大输出 token 需为 1–262,144 之间的整数';
+    if (maxOut.bad || maxOut.empty || maxOut.value < 1 || maxOut.value > 393216) {
+        errors.maxOutputTokens = '最大输出 token 需为 1–393,216 之间的整数';
     } else if (ctx.value && ctx.value > 0 && maxOut.value >= ctx.value) {
         // 预算是否够给历史与工具结果留空间，由生成时的完整请求校验负责；此处只做边界。
         errors.maxOutputTokens = '最大输出 token 必须小于上下文窗口';

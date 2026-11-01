@@ -390,6 +390,20 @@ export async function init() {
             },
         });
         navigation.openInstance = (instance, opener) => shell?.openConversation?.(instance, opener);
+        // 记忆来源 / 收藏「回到对话」：打开对应关系的会话（收藏记录了聊天文件时切到该文件），高亮由记忆页重试 highlightMessage。
+        globalThis.addEventListener('vc-open-message', async (event) => {
+            const { relationshipId, chatFile } = event.detail || {};
+            if (relationshipId == null) return;
+            const ctx = getContext();
+            if (String(ctx?.chatMetadata?.vc_binding?.relationshipId ?? '') !== String(relationshipId)) {
+                const opened = await shell?.openConversation?.({ relationshipId });
+                if (opened === false) throw new Error('open-failed');
+            } else {
+                requestShellDestination('chat');
+            }
+            const file = typeof chatFile === 'string' ? chatFile.replace(/\.jsonl$/, '') : '';
+            if (file && getContext()?.getCurrentChatId?.() !== file) await getContext()?.openCharacterChat?.(file);
+        });
         if (shell) mountDesktopShell({ shell, getContext });
     }
     void mountConsentGate();

@@ -21,6 +21,9 @@ import {
     typingDelay,
 } from './reply-pipeline.js';
 import { openSheet } from './ui/sheet.js';
+import { highlightMessage as jumpHighlight, mountChatScroll } from './chat-scroll.js';
+import { actionLine, mountChatMotion, pagerPlan, shouldArrive, typingVisible } from './chat-motion.js';
+import { mountQuickSwitch } from './desktop/quick-switch.js';
 import { NEUTRAL_TINT, tintOf } from './ui/tint.js';
 import { clearMessageVoice, renderMessageVoice, voicePlayer } from './voice.js';
 import { chatVoiceAvailable, readReplyAloud, requestChatVoice } from './voice-chat.js';
@@ -66,6 +69,18 @@ let pendingRewrite = null;
 let revealMesId = '';
 const seenMessages = new WeakSet();
 let foldSequence = 0;
+let scrollApi = null;
+let motionApi = null;
+let quickSwitch = null;
+let chatChangedAt = Date.now();
+let typingSince = 0;
+let typingTimer = 0;
+const arrivalSeen = new WeakSet();
+
+/** 引用、搜索、记忆来源跳到某条消息：滚动并高亮。桌面之外或未打开会话时返回 false。 */
+export function highlightMessage(mesid, options) {
+    return jumpHighlight(mesid, options);
+}
 
 export function readReplyStyle(storage) {
     let stored = null;
@@ -368,9 +383,11 @@ export function mountChatView({ getContext, document: doc = document } = {}) {
         watch(chat, { childList: true, subtree: true, characterData: true }, scheduleChatMutations);
     }
     watchComposerHeight(doc);
+    ensureDesktopModules();
     // 窗口在手机 / 桌面布局间切换时，回复样式的布局默认值随之变化。
     watch(doc.documentElement, { attributes: true, attributeFilter: ['data-vc-layout'] }, () => {
         applyReplyStyle(doc, readReplyStyle());
+        ensureDesktopModules();
         refreshMessages();
     });
     watch(doc.body, { attributes: true, attributeFilter: ['data-generating'] }, () => {
@@ -468,14 +485,20 @@ function subscribe(doc) {
             generationFailed = false;
         }
         if (id) lastChatId = id;
+        chatChangedAt = Date.now();
         armPin();
+        scrollApi?.openChat();
         refreshAll();
     });
-    on(types.MESSAGE_SENT, () => { rewriteCount = 0; pendingRewrite = null; });
+    on(types.MESSAGE_SENT, () => {
+        rewriteCount = 0;
+        pendingRewrite = null;
+        if (scrollApi) { scrollApi.sent(); attachFollow(); }
+    });
     on(types.CHARACTER_MESSAGE_RENDERED, (id, type) => {
         const live = generationLive;
         generationLive = false;
-        if (live && type !== 'first_message') settleReply(id);
+        if (live && type !== 'first_message') { settleReply(id); scrollApi?.replyRendered(id); }
         refreshAll();
     });
     on(types.MESSAGE_SWIPED, () => { refreshMessages(); followIfNeeded(); });
@@ -683,14 +706,33 @@ function refreshMessages() {
         toggleClass(mes, 'vc-tools-pin', mes === pin);
         if (!seenMessages.has(mes)) {
             seenMessages.add(mes);
-            if (arrivalsPrimed && isUser(mes)) addClass(mes, 'vc-arrive');
+            if (!desktopLayout() && arrivalsPrimed && isUser(mes)) addClass(mes, 'vc-arrive');
         }
-        ensureTools(mes, { character: !isUser(mes) && !isSystem(mes) });
+        ensureTools(mes, { character: !isUser(mes) && !isSystem(mes), last: mes === pin });
     }
+    if (desktopLayout()) markArrivals(list, streaming);
     if (!streaming) arrivalsPrimed = true;
     syncGenerating();
     paintReplyMessages(list);
     syncTimeline(list);
+}
+
+/** 桌面入场：只有会话稳定后末尾新到的消息动一次；流式产生的回复、历史、切会话不动。 */
+function markArrivals(list, streaming) {
+    list.forEach((mes, i) => {
+        if (arrivalSeen.has(mes)) return;
+        arrivalSeen.add(mes);
+        const play = shouldArrive({
+            primed: arrivalsPrimed,
+            sinceChatMs: Date.now() - chatChangedAt,
+            streaming: streaming && !isUser(mes),
+            system: isSystem(mes),
+            isLast: i >= list.length - 2,
+        });
+        if (!play) return;
+        addClass(mes, 'vc-arrive');
+        mes.addEventListener?.('animationend', () => removeClass(mes, 'vc-arrive'), { once: true });
+    });
 }
 
 /** 桌面气泡：分组、日期胶囊、组尾时间与「已发送」都写成 .mes 上的 data-vc-*，由 CSS 渲染，不插节点。 */
@@ -748,7 +790,7 @@ function syncTimeline(list) {
     });
 }
 
-function ensureTools(mes, { character }) {
+function ensureTools(mes, { character, last = true }) {
     let tools = mes.querySelector?.('.vc-mes-tools');
     if (!tools) {
         tools = document.createElement('div');
@@ -757,7 +799,10 @@ function ensureTools(mes, { character }) {
     }
     const swipe = swipeLabel(mes);
     let pager = tools.querySelector('[data-vc-pager]');
-    if (character && swipe) {
+    // 桌面：候选切换只留在最后一条角色消息，末位的「›」就是重新生成。
+    const plan = desktopLayout() ? pagerPlan({ last, at: swipe?.at, n: swipe?.n }) : null;
+    const showPager = desktopLayout() ? Boolean(plan) : Boolean(swipe);
+    if (character && swipe && showPager) {
         if (!pager) {
             pager = document.createElement('div');
             pager.className = 'vc-mes-pager';
@@ -768,6 +813,12 @@ function ensureTools(mes, { character }) {
         const num = pager.querySelector('.vc-num');
         const text = `${swipe.at}/${swipe.n}`;
         if (num && num.textContent !== text) num.textContent = text;
+        if (plan) {
+            const prev = pager.querySelector('[data-vc-act="swipe-prev"]');
+            const next = pager.querySelector('[data-vc-act="swipe-next"]');
+            if (prev && prev.getAttribute('aria-label') !== plan.prev) prev.setAttribute('aria-label', plan.prev);
+            if (next && next.getAttribute('aria-label') !== plan.next) next.setAttribute('aria-label', plan.next);
+        }
     } else if (pager) {
         removeNode(pager);
     }
@@ -963,6 +1014,14 @@ function appendReplySegment(box, segment) {
     const seg = document.createElement('p');
     seg.className = text.startsWith('<sticker') ? 'vc-seg vc-seg-sticker' : 'vc-seg';
     seg.textContent = text;
+    if (desktopLayout() && !text.startsWith('<sticker')) {
+        // 动作描写（整段为（…）或 *…*）：无气泡的淡色斜体小字，样式在 desktop/chat.css。
+        const line = actionLine(text);
+        if (line.action) {
+            seg.classList.add('vc-seg-action');
+            seg.textContent = line.text;
+        }
+    }
     box.append(seg);
 }
 
@@ -1335,12 +1394,14 @@ function bindComposer(doc) {
     if (!box || !form || box.dataset?.vcFit === 'on' || box.getAttribute?.('data-vc-fit') === 'on') return;
     box.setAttribute('data-vc-fit', 'on');
     const fit = () => {
+        const idle = !String(box.value || '').trim();
+        toggleClass(form, 'vc-send-idle', idle);
+        // 桌面高度由 chat-compose.js 按行数计算；这里再写 auto 会退回 rows=2 的高度，发送后输入框不回缩。
+        if (desktopLayout()) return;
         const max = readMaxHeight(box);
         box.style.height = 'auto';
         const next = Math.min(max, Number(box.scrollHeight) || 0);
         if (next) box.style.height = `${next}px`;
-        const idle = !String(box.value || '').trim();
-        toggleClass(form, 'vc-send-idle', idle);
     };
     box.addEventListener('input', fit);
     fit();
@@ -1369,7 +1430,48 @@ function nowMs() {
     return typeof clock === 'function' ? clock.call(globalThis.performance) : Date.now();
 }
 
+function attachFollow() {
+    stickToBottom = true;
+    pinBottom = true;
+    pendingReply = false;
+    followIfNeeded();
+}
+
+function detachFollow() {
+    stickToBottom = false;
+    pinBottom = false;
+    pinUntil = 0;
+}
+
+/** 桌面专属模块（滚动与阅读、动效与快捷键、会话快速切换）；手机布局不挂载，切到桌面时才挂。 */
+function ensureDesktopModules() {
+    if (!desktopLayout()) return;
+    const chat = document.querySelector('#chat');
+    if (!chat?.parentElement) return;
+    if (!scrollApi) {
+        scrollApi = mountChatScroll({
+            chat,
+            hooks: {
+                isDesktop: desktopLayout,
+                attach: attachFollow,
+                detach: detachFollow,
+                getChatId: () => String(safeContext()?.chatId ?? ''),
+                dateLabel: (mesid) => {
+                    const ctx = safeContext();
+                    const ms = parseSendDate(ctx?.chat?.[mesid]?.send_date, ctx?.timestampToMoment);
+                    return ms === null ? '' : gapLabel(ms);
+                },
+            },
+        });
+    }
+    if (!motionApi) {
+        quickSwitch = mountQuickSwitch({ doc: document });
+        motionApi = mountChatMotion({ chat, hooks: { isDesktop: desktopLayout, toggleQuickSwitch: () => quickSwitch.toggle() } });
+    }
+}
+
 function armPin() {
+    if (scrollApi?.holding()) return;
     pinBottom = true;
     stickToBottom = true;
     pendingReply = false;
@@ -1531,6 +1633,7 @@ function applyPosterFrame() {
 function followIfNeeded() {
     const chat = document.querySelector('#chat');
     if (!chat) return;
+    if (scrollApi?.holding()) return; // 落地 / 还原阅读位置 / 平滑回到最新期间由 chat-scroll.js 接管
     const height = Number(chat.scrollHeight) || 0;
     const grew = height > seenScrollHeight + 1;
     const jump = document.querySelector('#vc-new-reply');
@@ -1612,12 +1715,28 @@ function syncGenerating() {
     if (!line) return;
     clearChildren(line);
     line.removeAttribute?.('data-vc-typing');
+    clearTimeout(typingTimer);
+    if (!on) typingSince = 0;
+    const lastMes = list[list.length - 1];
+    const canContinue = desktopLayout() && userStopped && !on && Boolean(lastMes) && !isUser(lastMes) && !isSystem(lastMes)
+        && Boolean(lastMes.querySelector?.('.mes_text')?.textContent?.trim());
+    for (const mes of list) toggleClass(mes, 'vc-stopped', canContinue && mes === lastMes);
     if (on) {
         // 桌面气泡下，空回复节点本身不画（CSS 隐藏），由这一行给出「正在输入」。
         const typing = desktopBubble();
         const waiting = generatingMes && !generatingMes.querySelector?.('.mes_text')?.textContent?.trim();
         // 回复节点还没出现时，在输入区上方给出可见的思考态。
         if (generatingMes && !(typing && waiting)) { hide(line); return; }
+        // 桌面：生成开始 450ms 内就有内容的不显示「正在输入」，避免一闪而过。
+        if (desktopLayout()) {
+            if (!typingSince) typingSince = nowMs();
+            const elapsed = nowMs() - typingSince;
+            if (!typingVisible(elapsed)) {
+                hide(line);
+                typingTimer = setTimeout(syncGenerating, Math.max(16, 450 - elapsed));
+                return;
+            }
+        }
         const dots = document.createElement('span');
         dots.className = 'vc-gen-dots';
         dots.setAttribute('aria-hidden', 'true');
@@ -1646,7 +1765,13 @@ function syncGenerating() {
         return;
     }
     if (userStopped) {
-        line.textContent = '已停止';
+        if (canContinue) {
+            const label = document.createElement('span');
+            label.textContent = '已停止 · ';
+            line.append(label, textButton('继续', () => continueGeneration()));
+        } else {
+            line.textContent = '已停止';
+        }
         show(line);
         return;
     }
@@ -1659,6 +1784,17 @@ function syncGenerating() {
         return;
     }
     hide(line);
+}
+
+/** 停止后接着写：走宿主原生 continue（选项菜单里的「继续」）。 */
+function continueGeneration() {
+    const button = document.querySelector('#option_continue');
+    if (button) {
+        button.click();
+        return;
+    }
+    const generate = safeContext()?.generate;
+    if (typeof generate === 'function') generate('continue');
 }
 
 function noteFailure() {
@@ -1680,6 +1816,10 @@ function syncLoad(ctx) {
         const parent = chat.parentElement || chat.parent;
         if (parent) insertBefore(parent, skeleton, chat);
     }
+    if (!desktopLayout() && skeleton.hasAttribute?.('data-vc-bubbles')) {
+        skeleton.removeAttribute('data-vc-bubbles');
+        skeleton.innerHTML = '<span class="vc-skeleton vc-skeleton-avatar"></span><span><span class="vc-skeleton vc-skeleton-line"></span><span class="vc-skeleton vc-skeleton-line is-short"></span></span>';
+    }
     const known = Boolean(ctx);
     if (!known && contextGetter) {
         if (!error) {
@@ -1697,9 +1837,43 @@ function syncLoad(ctx) {
         return;
     }
     hide(error);
+    if (desktopLayout()) {
+        syncDesktopLoad(skeleton, chat);
+        return;
+    }
     const waiting = !known && !childMes(chat).length && !document.querySelector('#vc-chat-empty')?.textContent?.trim();
     if (waiting) show(skeleton);
     else hide(skeleton);
+}
+
+const BUBBLE_SKELETON = [['in', 'w52'], ['out', 'w36'], ['in', 'w64 tall'], ['out', 'w28'], ['in', 'w44']]
+    .map(([side, size]) => `<span class="vc-sk-row" data-side="${side}">${side === 'in' ? '<span class="vc-skeleton vc-sk-avatar"></span>' : ''}<span class="vc-skeleton vc-sk-bubble ${size}"></span></span>`).join('');
+let loadSince = 0;
+let loadTimer = 0;
+const SKELETON_DELAY_MS = 300;
+
+/** 桌面会话加载骨架：与真实气泡同尺寸；300ms 内完成就不显示。 */
+function syncDesktopLoad(skeleton, chat) {
+    if (!skeleton.hasAttribute('data-vc-bubbles')) {
+        skeleton.setAttribute('data-vc-bubbles', '');
+        skeleton.innerHTML = BUBBLE_SKELETON;
+    }
+    clearTimeout(loadTimer);
+    const open = document.querySelector('#vc-shell')?.getAttribute?.('data-chat') === 'open';
+    const waiting = open && !childMes(chat).length && !document.querySelector('#vc-chat-empty')?.textContent?.trim();
+    if (!waiting) {
+        loadSince = 0;
+        hide(skeleton);
+        return;
+    }
+    if (!loadSince) loadSince = nowMs();
+    const elapsed = nowMs() - loadSince;
+    if (elapsed >= SKELETON_DELAY_MS) {
+        show(skeleton);
+        return;
+    }
+    hide(skeleton);
+    loadTimer = setTimeout(() => syncDesktopLoad(skeleton, chat), SKELETON_DELAY_MS - elapsed + 16);
 }
 
 function enhanceEmpty() {
