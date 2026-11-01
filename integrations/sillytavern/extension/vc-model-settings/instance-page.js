@@ -1103,19 +1103,25 @@ export function mountCharactersTab(container, options = {}) {
             list.inert = false;
         }
         if (action === 'save-persona' && personaEl) {
+            const editor = personaEl;
+            const ref = detailRef;
             const fields = {};
             for (const area of personaEl.querySelectorAll('[data-persona]')) fields[area.dataset.persona] = area.value;
             const save = options.savePersona || ((ref, next) => saveNativePersona({ getContext: options.getContext, characterRef: ref, fields: next }));
-            void save(detailRef, fields).then(() => {
-                const card = page.state.cards.find((item) => item.characterRef === detailRef);
+            for (const control of editor.querySelectorAll('button,textarea')) control.disabled = true;
+            void save(ref, fields).then(() => {
+                if (dead) return;
+                const card = page.state.cards.find((item) => item.characterRef === ref);
                 if (card && typeof fields.description === 'string') card.description = fields.description;
                 nav.pop();
                 personaEl = null;
                 list.inert = false;
                 paint();
             }).catch(() => {
-                const note = personaEl?.querySelector('[data-persona-error]');
+                const note = editor.querySelector('[data-persona-error]');
                 if (note) note.textContent = '没有完成，请重试。';
+            }).finally(() => {
+                if (editor.isConnected) for (const control of editor.querySelectorAll('button,textarea')) control.disabled = false;
             });
         }
         if (action === 'edit-name') {
