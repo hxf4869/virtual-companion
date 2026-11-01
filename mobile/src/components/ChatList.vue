@@ -2,7 +2,7 @@
     <view class="vc-chatlist">
         <view class="vc-search vc-glass">
             <VcIcon name="search" size="var(--vc-icon-sm)" />
-            <input class="vc-search-input" v-model="query" :placeholder="copy.search" :aria-label="copy.search" confirm-type="search" />
+            <input v-field-label class="vc-search-input" v-model="query" :placeholder="copy.search" :aria-label="copy.search" confirm-type="search" />
         </view>
         <view v-if="loading" class="vc-rows" aria-busy="true">
             <view v-for="n in 3" :key="n" class="vc-row vc-skeleton"></view>

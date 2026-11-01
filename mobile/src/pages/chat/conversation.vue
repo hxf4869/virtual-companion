@@ -4,7 +4,7 @@
         <view class="vc-conv-nav">
             <button role="button" tabindex="0" class="vc-round vc-glass" aria-label="返回" @click="back"><VcIcon name="chevron-left" /></button>
             <button role="button" tabindex="0" v-if="!searching" class="vc-identity vc-glass" @click="character"><VcAvatar :avatar="chat.target?.avatar" :name="chat.target?.name" size="var(--vc-avatar-nav)" /><text>{{ chat.target?.name }}</text><VcIcon name="chevron-right" size="var(--vc-icon-sm)" /></button>
-            <input v-else class="vc-chat-search vc-glass" v-model="query" :placeholder="copy.search" :aria-label="copy.search" focus />
+            <input v-field-label v-else class="vc-chat-search vc-glass" v-model="query" :placeholder="copy.search" :aria-label="copy.search" focus />
             <button role="button" tabindex="0" class="vc-round vc-glass" :aria-label="searching ? '完成' : copy.search" @click="toggleSearch"><VcIcon :name="searching ? 'x' : 'search'" /></button>
         </view>
         <view v-if="searching" class="vc-search-results"><text>{{ matches.length ? `${matchIndex + 1} / ${matches.length}` : '没有找到' }}</text><button role="button" tabindex="0" class="vc-plain-btn" aria-label="上一条" :disabled="!matches.length" :aria-disabled="!matches.length" @click="jump(-1)">‹</button><button role="button" tabindex="0" class="vc-plain-btn" aria-label="下一条" :disabled="!matches.length" :aria-disabled="!matches.length" @click="jump(1)">›</button></view>
@@ -27,7 +27,7 @@
             <view v-if="more" class="vc-composer-more vc-glass"><button role="button" tabindex="0" class="vc-plain-btn" :disabled="!chat.ready || chat.busy" :aria-disabled="!chat.ready || chat.busy" @click="generate('regenerate')">{{ copy.regenerate }}</button><button role="button" tabindex="0" class="vc-plain-btn" :disabled="!chat.ready || chat.busy" :aria-disabled="!chat.ready || chat.busy" @click="generate('continueReply')">{{ copy.continue }}</button></view>
             <view class="vc-composer vc-glass">
                 <button role="button" tabindex="0" class="vc-round" aria-label="更多" :aria-expanded="more" @click="more = !more"><VcIcon name="plus" /></button>
-                <textarea class="vc-chat-input" :value="chat.draft" :placeholder="copy.placeholder" :aria-label="copy.placeholder" auto-height :maxlength="-1" :adjust-position="false" @input="session.draft($event.detail.value)" @confirm="send" />
+                <textarea v-field-label class="vc-chat-input" :value="chat.draft" :placeholder="copy.placeholder" :aria-label="copy.placeholder" auto-height :maxlength="-1" :adjust-position="false" @input="session.draft($event.detail.value)" @confirm="send" />
                 <button role="button" tabindex="0" v-if="chat.busy" class="vc-round vc-send" :aria-label="copy.stop" @click="session.stop()"><VcIcon name="square" size="var(--vc-icon-sm)" /></button>
                 <button role="button" tabindex="0" v-else class="vc-round vc-send" :aria-label="copy.send" :disabled="!chat.ready || chat.error === 'save' || !chat.draft.trim()" :aria-disabled="!chat.ready || chat.error === 'save' || !chat.draft.trim()" @click="send"><VcIcon name="arrow-up" /></button>
             </view>
@@ -38,7 +38,7 @@
             </view>
         </view>
         <view v-if="editing" class="vc-menu-scrim" @click.self="editing = null">
-            <view class="vc-edit-sheet vc-glass" role="dialog" :aria-label="copy.editTitle"><view class="vc-edit-head"><button role="button" tabindex="0" class="vc-plain-btn" @click="editing = null">{{ copy.cancel }}</button><text>{{ copy.editTitle }}</text><button role="button" tabindex="0" class="vc-plain-btn" :disabled="saving" :aria-disabled="saving" @click="saveEdit">{{ copy.save }}</button></view><textarea v-model="editText" :maxlength="-1" :aria-label="copy.editTitle" /></view>
+            <view class="vc-edit-sheet vc-glass" role="dialog" :aria-label="copy.editTitle"><view class="vc-edit-head"><button role="button" tabindex="0" class="vc-plain-btn" @click="editing = null">{{ copy.cancel }}</button><text>{{ copy.editTitle }}</text><button role="button" tabindex="0" class="vc-plain-btn" :disabled="saving" :aria-disabled="saving" @click="saveEdit">{{ copy.save }}</button></view><textarea v-field-label v-model="editText" :maxlength="-1" :aria-label="copy.editTitle" /></view>
         </view>
         <view v-if="selectedText !== null" class="vc-menu-scrim" @click.self="selectedText = null"><view class="vc-edit-sheet vc-glass" role="dialog"><button role="button" tabindex="0" class="vc-plain-btn" @click="selectedText = null">完成</button><text class="vc-select-text" selectable>{{ selectedText }}</text></view></view>
         <view v-if="image" class="vc-image-viewer" role="dialog" aria-modal="true" aria-label="图片预览" @click="image = ''"> <button role="button" tabindex="0" class="vc-round vc-glass vc-image-close" aria-label="关闭图片" @click.stop="image = ''"><VcIcon name="x" /></button><image :src="image" mode="aspectFit" /></view>

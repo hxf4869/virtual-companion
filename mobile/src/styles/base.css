@@ -37,3 +37,33 @@ input, textarea { caret-color: var(--vc-accent); }
 /* 各页面共用的圆形命中区；不能放在一级页的局部样式里。 */
 .vc-round { width: var(--vc-touch); height: var(--vc-touch); flex: none; display: flex; align-items: center; justify-content: center; border-radius: var(--vc-radius-pill); color: var(--vc-ink); }
 .vc-round:not(.vc-glass):not(.vc-send) { background: none; }
+.vc-section { margin: var(--vc-space-xl) 0; }
+.vc-section-title { display: block; font-size: var(--vc-fs-headline); font-weight: 600; margin: 0 var(--vc-space-xs) var(--vc-space-xs); }
+.vc-group { background: var(--vc-card); border-radius: var(--vc-radius-lg); overflow: hidden; }
+.vc-field { display: flex; align-items: center; gap: var(--vc-space-sm); min-height: var(--vc-touch); padding: var(--vc-space-xs) var(--vc-space-md); color: var(--vc-ink); font-size: var(--vc-fs-body); }
+.vc-field + .vc-field { border-top: 0.5px solid var(--vc-separator); }
+.vc-field > text:first-child { flex: 1; }
+.vc-field input, .vc-field select { min-width: 0; max-width: 62%; color: var(--vc-ink); background: none; border: 0; font: inherit; text-align: right; }
+.vc-field select { min-height: var(--vc-touch); }
+.vc-field textarea { width: 100%; font-size: var(--vc-fs-body); color: var(--vc-ink); }
+.vc-field.is-column { align-items: stretch; flex-direction: column; }
+.vc-field.is-column input, .vc-field.is-column select { max-width: 100%; text-align: left; width: 100%; }
+.vc-field.is-link { width: 100%; box-sizing: border-box; text-align: left; background: none; border: 0; }
+.vc-field.is-link > text { flex: 1; }
+.vc-value { color: var(--vc-ink-2); font-size: var(--vc-fs-subhead); }
+.vc-error { display: block; color: var(--vc-danger); font-size: var(--vc-fs-footnote); padding: var(--vc-space-xs) var(--vc-space-md); }
+.vc-primary { min-height: var(--vc-touch); background: var(--vc-accent); color: var(--vc-on-accent); border: 0; border-radius: var(--vc-radius-pill); font-size: var(--vc-fs-body); }
+.vc-toggle { width: var(--vc-toggle-width); height: var(--vc-toggle-height); border-radius: var(--vc-radius-pill); border: 0; background: var(--vc-fill-2); padding: 0; position: relative; flex: none; }
+.vc-toggle::before { content: ''; width: var(--vc-toggle-thumb); height: var(--vc-toggle-thumb); position: absolute; top: var(--vc-toggle-inset); left: var(--vc-toggle-inset); border-radius: var(--vc-radius-pill); background: var(--vc-thumb); transition: transform var(--vc-dur-quick) var(--vc-spring); }
+.vc-toggle[aria-checked='true'] { background: var(--vc-accent); }
+.vc-toggle[aria-checked='true']::before { transform: translateX(var(--vc-toggle-travel)); }
+.vc-search { display: flex; align-items: center; gap: var(--vc-space-xs); height: var(--vc-touch); padding: 0 var(--vc-space-md); border-radius: var(--vc-radius-pill); color: var(--vc-ink-2); }
+.vc-search-input { flex: 1; min-width: 0; color: var(--vc-ink); font-size: var(--vc-fs-body); }
+.vc-empty { display: flex; flex-direction: column; align-items: center; gap: var(--vc-space-sm); padding: var(--vc-space-xxl) 0; color: var(--vc-ink-2); font-size: var(--vc-fs-body); }
+.vc-detail-page { min-height: 100dvh; }
+.vc-subnav { display: flex; position: sticky; top: 0; z-index: var(--vc-z-tabbar); align-items: center; justify-content: space-between; padding: calc(env(safe-area-inset-top) + var(--vc-space-xs)) var(--vc-space-md) var(--vc-space-xs); gap: var(--vc-space-xs); background: var(--vc-glass-strong); backdrop-filter: blur(var(--vc-blur-glass)); font-size: var(--vc-fs-headline); font-weight: 600; }
+.vc-nav-spacer { width: var(--vc-touch); flex: none; }
+.vc-detail-content { position: relative; z-index: var(--vc-z-content); padding: var(--vc-space-md) var(--vc-space-md) calc(var(--vc-space-xl) + env(safe-area-inset-bottom)); max-width: var(--vc-reading-max); box-sizing: border-box; margin: 0 auto; }
+.vc-segment { display: flex; padding: var(--vc-space-xxs); gap: var(--vc-space-xxs); background: var(--vc-fill); border-radius: var(--vc-radius-pill); margin: var(--vc-space-sm) 0; }
+.vc-segment button { flex: 1; min-height: var(--vc-touch); border: 0; background: none; color: var(--vc-ink-2); font-size: var(--vc-fs-subhead); border-radius: var(--vc-radius-pill); }
+.vc-segment button[aria-selected='true'] { background: var(--vc-thumb); color: var(--vc-ink); }

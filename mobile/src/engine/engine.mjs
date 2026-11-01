@@ -233,19 +233,66 @@ export function createEngine({ doc = globalThis.document, src = '/', onState } =
             }
             if (Number.isInteger(messageId)) win().document.querySelector(`#chat .mes[mesid="${messageId}"]`)?.scrollIntoView({ block: 'start' });
         },
+        // 使用引擎中已初始化的同源 API 边界，沿用身份快照、重新验证与版本冲突语义。
+        async ready() {
+            if(state === 'error') throw new Error('engine unavailable');
+            await api.start();
+            await until(() => state === 'ready' || state === 'error', { timeout: 180000, label: 'ready' });
+            if(state === 'error') throw new Error('engine unavailable');
+        },
+        async call(module, method, ...args) {
+            await api.ready();
+            const files = { api: 'api.js', inbox: 'inbox-page.js', instances: 'instance-page.js', drawers: 'drawers.js', story: 'story-page.js', voice: 'voice-chat.js', shell: 'chat-shell.js' };
+            if (!files[module]) throw new Error('unknown module');
+            const mod = await win().eval(`import('/scripts/extensions/third-party/vc-model-settings/${files[module]}')`);
+            return mod[method](...args);
+        },
+        card(avatar) {
+            const ch = script?.characters?.find(c=>c.avatar===avatar);
+            return ch ? { avatar: ch.avatar, name: ch.name, description: ch.description || ch.data?.description || '', characterRef: ch.data?.extensions?.vc_character_ref || '', theme: ch.data?.extensions?.vc_theme || '' } : null;
+        },
+        async importCard(file) {
+            if(file.size > 32 * 1024 * 1024) throw new Error('card too large');
+            const bytes = new (win().Uint8Array)(await file.arrayBuffer());
+            const mod = await win().eval("import('/scripts/extensions/third-party/vc-model-settings/instance-page.js')");
+            const inspected = mod.inspectCharacterFile(bytes, file.name);
+            if(!inspected.ok) throw new Error('invalid card');
+            return mod.importNativeCharacterFile({ name:file.name, bytes, format:inspected.format, getContext:ctx });
+        },
+        async createInstance(avatar, displayName, relationshipId) {
+            await api.ready();
+            const bindings = await win().eval("import('/scripts/extensions/third-party/vc-model-settings/instance-binding.js')");
+            bindings.holdCompanionBinding(true);
+            try {
+                await api.open(avatar, '');
+                let ch=api.card(avatar);
+                if(!ch.characterRef) { await ctx().writeExtensionField(Number(ctx().characterId),'vc_character_ref',crypto.randomUUID()); ch=api.card(avatar); }
+                await script.doNewChat(); await ctx().saveChat();
+                const binding=await api.call('api','resolveSTBinding',{ characterRef:ch.characterRef, displayName, chatIdentity:ctx().chatMetadata.vc_f2.id, mode:'COMPANION', ...(relationshipId?{relationshipId:String(relationshipId)}:{}) });
+                ctx().chatMetadata.vc_binding={...binding,displayName};
+                await ctx().saveChat();
+                return { ...ch, file:ctx().chatId };
+            } finally { bindings.holdCompanionBinding(false); }
+        },
+        binding() { return { ...(ctx()?.chatMetadata?.vc_binding || {}) }; },
+        async openDrawer(id) { await api.showStView(true); return api.call('drawers','openDrawerPage',id); },
         // 主题设置（ADR-0011 §7.1）：全局存 ST 扩展设置，角色覆盖存角色卡扩展字段。
         themeSettings() {
             const s = ctx()?.extensionSettings?.vc_theme || {};
             return { global: typeof s.global === 'string' ? s.global : undefined, mode: typeof s.mode === 'string' ? s.mode : undefined };
         },
         async saveThemeSettings({ global, mode }) {
+            await api.ready();
             const c = ctx();
             c.extensionSettings.vc_theme = { ...(c.extensionSettings.vc_theme || {}), ...(global !== undefined ? { global } : {}), ...(mode !== undefined ? { mode } : {}) };
             await script.saveSettings();
         },
-        async saveCharacterTheme(themeId) {
+        async saveCharacterTheme(themeId, avatar) {
+            await api.ready();
             const c = ctx();
-            await c.writeExtensionField(Number(c.characterId), 'vc_theme', themeId || '');
+            const index = avatar ? script.characters.findIndex(ch=>ch.avatar===avatar) : Number(c.characterId);
+            if(index < 0) throw new Error('character not found');
+            await c.writeExtensionField(index, 'vc_theme', themeId || '');
         },
         destroy() { observer?.disconnect(); frame?.remove(); frame = null; script = null; setState('idle'); },
     };

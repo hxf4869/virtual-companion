@@ -7,6 +7,7 @@ COPY mobile/index.html mobile/vite.config.js ./
 COPY mobile/src ./src
 # 与桌面共用的纯逻辑模块（按相对路径导入）
 COPY integrations/sillytavern/extension/vc-model-settings/reply-pipeline.js /opt/vc/integrations/sillytavern/extension/vc-model-settings/reply-pipeline.js
+COPY integrations/sillytavern/extension/vc-model-settings/model-logic.js /opt/vc/integrations/sillytavern/extension/vc-model-settings/model-logic.js
 RUN npx uni build
 
 FROM node:22.23.1-bookworm-slim@sha256:6c74791e557ce11fc957704f6d4fe134a7bc8d6f5ca4403205b2966bd488f6b3

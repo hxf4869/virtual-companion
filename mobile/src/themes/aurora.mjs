@@ -7,6 +7,8 @@ export default {
     modes: {
         light: {
             canvas: '#eef0f6',
+            'story-cover': '#143646',
+            'story-ink': '#f5f5f7',
             'aurora-alpha': '0.45',
             card: 'rgba(255,255,255,.72)',
             surface: '#ffffff',
@@ -42,6 +44,8 @@ export default {
         },
         dark: {
             canvas: '#07070a',
+            'story-cover': '#10232e',
+            'story-ink': '#f5f5f7',
             'aurora-alpha': '0.6',
             card: 'rgba(28,28,30,.72)',
             surface: '#000000',

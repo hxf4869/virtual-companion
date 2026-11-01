@@ -35,6 +35,7 @@ import { mb0SpikeScene } from './mb0-spike-accept.mjs';
 import { mbShellScene } from './mb-shell-accept.mjs';
 import { mbEngineScene } from './mb-engine-accept.mjs';
 import { mbChatScene } from './mb-chat-accept.mjs';
+import { mbPagesScene } from './mb-pages-accept.mjs';
 
 export const ACCEPT_SCENES = [
     memoryRealModelScene,
@@ -93,4 +94,5 @@ export const ACCEPT_SCENES = [
     mbShellScene,
     mbEngineScene,
     mbChatScene,
+    mbPagesScene,
 ];
