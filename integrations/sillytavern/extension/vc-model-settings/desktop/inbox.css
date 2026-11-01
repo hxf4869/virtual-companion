@@ -1,5 +1,5 @@
 /* UX-17：使用既有陪伴状态与动作。 */
-html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-inbox > .vc-screen { background:transparent; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-inbox > .vc-screen:first-child { position:relative; inset:auto; height:100%; background:transparent; }
 html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-inbox .vc-inbox-heading.vc-navbar { position:static; padding:0; background:transparent; box-shadow:none; }
 html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-inbox .vc-inbox-heading.vc-navbar::before { display:none; }
 html[data-vc-layout="desktop"] body.vc-ui .vc-shell-page[data-page="inbox"]:has(.vc-desktop-inbox) > .vc-navbar { display:none; }

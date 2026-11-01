@@ -20,6 +20,7 @@ html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-memory .vc-memory-summary 
 html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-memory .vc-memory-row { padding-right:24px; }
 html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-memory .vc-memory-row .vc-grow { min-width:0; }
 html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-memory .vc-memory-row-actions { display:flex; gap:var(--vc-space-xs); position:absolute; right:16px; top:50%; transform:translateY(-50%); opacity:0; pointer-events:none; background:var(--vc-raised); border-radius:var(--vc-radius-pill); }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-memory .vc-memory-row-actions .vc-btn { min-width:0; max-width:none; width:auto; padding-inline:var(--vc-space-sm); }
 html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-memory li:is(:hover,:focus-within) .vc-memory-row-actions { opacity:1; pointer-events:auto; }
 html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-memory .vc-memory-dates { padding:16px; }
 html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-memory .vc-memory-dates label { display:block; min-width:0; }
@@ -62,4 +63,4 @@ html[data-vc-layout="desktop"] body.vc-ui .vc-memory-editor textarea { height:au
 html[data-vc-layout="desktop"] body.vc-ui .vc-memory-editor.vc-memory-tab textarea { height:auto; min-height:120px; }
 html[data-vc-layout="desktop"] body.vc-ui .vc-memory-editor .vc-group-title { font-size:var(--vc-fs-headline); font-weight:600; }
 
-html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-memory > .vc-screen { background:transparent; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-memory > .vc-screen:first-child { position:relative; inset:auto; height:100%; background:transparent; }

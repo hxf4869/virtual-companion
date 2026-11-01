@@ -639,7 +639,7 @@ export async function sceneVcUiWalkthrough(ctx) {
                 await record(page, viewport.width, theme, 'memory-list', bucket);
                 try {
                     await dismissSheet();
-                    let memory = page.locator('[data-vc-page="memory"] [data-memory-id]:visible').first();
+                    let memory = page.locator('[data-vc-page="memory"] .vc-memory-row[data-memory-id]:visible').first();
                     if (!(await memory.count())) {
                         const pick = page.locator('[data-vc-page="memory"] [data-action="pick-instance"]:visible');
                         if (await pick.count()) {
@@ -656,7 +656,7 @@ export async function sceneVcUiWalkthrough(ctx) {
                                     return true;
                                 }, i);
                                 if (!picked) break;
-                                memory = page.locator('[data-vc-page="memory"] [data-memory-id]:visible').first();
+                                memory = page.locator('[data-vc-page="memory"] .vc-memory-row[data-memory-id]:visible').first();
                                 await until(async () => (await memory.count()) > 0, 400);
                                 if (await memory.count()) break;
                                 if (i + 1 < total) await pick.click();
