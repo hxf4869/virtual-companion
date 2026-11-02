@@ -23,14 +23,14 @@
 import VcAurora from './VcAurora.vue';import VcAvatar from './VcAvatar.vue';import VcIcon from './VcIcon.vue';
 import {createCallSession} from '../voice/call.mjs';import {getEngine,engineState} from '../engine/index.mjs';import {CALL_COPY} from '../copy.mjs';
 export default {
- components:{VcAurora,VcAvatar,VcIcon},props:{name:String,avatar:String,chat:Object,session:Object,maxSeconds:Number},emits:['close'],
+ components:{VcAurora,VcAvatar,VcIcon},props:{name:String,avatar:String,chat:Object,session:Object,maxSeconds:Number,opening:Object},emits:['close'],
  data:()=>({call:{phase:'connecting',elapsed:0,level:0},controller:null,captions:true,closing:false,engine:engineState}),
  computed:{duration(){return `${Math.floor(this.call.elapsed/60).toString().padStart(2,'0')}:${(this.call.elapsed%60).toString().padStart(2,'0')}`;},status(){return {connecting:CALL_COPY.connecting,listening:CALL_COPY.listening,thinking:CALL_COPY.thinking,speaking:CALL_COPY.speaking,error:CALL_COPY.failed}[this.call.phase]||CALL_COPY.listening;}},
  watch:{'engine.stView'(value){if(value)this.close();}},
- mounted(){this.opener=document.activeElement;this.$el.focus();this.init();this.visibility=()=>{if(document.hidden)this.close();};document.addEventListener('visibilitychange',this.visibility);},
- beforeUnmount(){document.removeEventListener('visibilitychange',this.visibility);if(!this.closing)void this.controller?.stop();if(this.opener?.getClientRects?.().length)this.opener.focus();},
+ mounted(){this.engine.callActive=true;this.opener=document.activeElement;this.$el.focus();this.init();this.visibility=()=>{if(document.hidden)this.close();};document.addEventListener('visibilitychange',this.visibility);},
+ beforeUnmount(){this.engine.callActive=false;document.removeEventListener('visibilitychange',this.visibility);if(!this.closing)void this.controller?.stop();if(this.opener?.getClientRects?.().length)this.opener.focus();},
  methods:{
-  async init(){const engine=getEngine();this.controller=createCallSession({state:this.call,engine,session:this.session,chat:this.chat,maxSeconds:this.maxSeconds,convert:(...args)=>engine.call('voiceInput','recordingWAV',...args),transcribe:(...args)=>engine.call('api','transcribeVoice',...args)});await this.controller.start();},
+  async init(){const engine=getEngine();this.controller=createCallSession({state:this.call,engine,session:this.session,chat:this.chat,maxSeconds:this.maxSeconds,opening:this.opening,convert:(...args)=>engine.call('voiceInput','recordingWAV',...args),transcribe:(...args)=>engine.call('api','transcribeVoice',...args)});await this.controller.start();},
   async retry(){this.closing=true;await this.controller.stop();this.closing=false;await this.init();},
   async close(){if(this.closing)return;this.closing=true;await this.controller?.stop();window.dispatchEvent(new CustomEvent('vc-call-metrics',{detail:this.controller?.stats}));this.$emit('close');},
   focusNext(e){const buttons=[...this.$el.querySelectorAll('[role="button"]')].filter(b=>!b.hasAttribute('disabled'));const i=buttons.indexOf(document.activeElement);buttons[i<0?(e.shiftKey?buttons.length-1:0):(i+(e.shiftKey?-1:1)+buttons.length)%buttons.length]?.focus();},

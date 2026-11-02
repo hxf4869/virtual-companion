@@ -11,7 +11,7 @@ note: 'The API consumer matrix remains the deletion/scope source. KEEP requires 
   the OpenAPI surface: GET /actuator/health, GET /actuator/health/liveness, GET /actuator/health/readiness,
   GET /actuator/prometheus.'
 counts:
-  KEEP: 124
+  KEEP: 125
   SIMPLIFY: 5
   DEFER: 12
   RETIRE: 42
@@ -847,6 +847,19 @@ operations:
   replacementOrImpact: >-
     Record in-app read. It does not mark SillyTavern delivered, change link
     status, or record a channel outcome.
+- operationId: respondInboxCall
+  method: POST
+  path: /api/v1/inbox/{eventId}/call
+  currentH5Callers:
+  - mobile/src/engine/index.mjs
+  decision: KEEP
+  keepBecause:
+  - owner-instruction
+  - h5-caller
+  replacementOrImpact: >-
+    Answer or decline one owner-scoped foreground call. A stable request UUID
+    fences duplicate clients and retries; the inbox retains missed voicemail.
+    App shells and system notifications remain outside this slice.
 - operationId: listNotificationChannels
   method: GET
   path: /api/v1/notification-channels

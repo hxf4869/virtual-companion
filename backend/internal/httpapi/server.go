@@ -493,6 +493,9 @@ func operation(path string) string {
 			return "inbox"
 		}
 		if strings.HasPrefix(path, "/api/v1/inbox/") {
+			if strings.HasSuffix(path, "/call") {
+				return "inbox_call"
+			}
 			switch {
 			case strings.HasSuffix(path, "/claim"):
 				return "inbox_claim"

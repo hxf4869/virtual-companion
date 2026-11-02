@@ -47,3 +47,4 @@ export const CALL_COPY = Object.freeze({
     prompt:'现在正在语音通话。像面对面交谈一样，用适合说出口的一两句短句回应；不要列表、旁白或复杂排版。',
     title:'语音通话',listening:'正在听…',thinking:'正在想…',speaking:'正在说话…',connecting:'正在连接…',failed:'没有完成，请重试。',
 });
+export const INCOMING_COPY=Object.freeze({title:'来电',answer:'接听',decline:'拒绝',message:'回消息',callback:'回电',handled:'这通来电已处理。',failed:'没有完成，请重试。',states:{RINGING:'来电',ANSWERED:'已接来电',DECLINED:'已拒接',MISSED:'未接来电'}});

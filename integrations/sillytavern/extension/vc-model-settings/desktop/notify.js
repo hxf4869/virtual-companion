@@ -24,7 +24,7 @@ export function previewOf(row) {
 export function newArrivals(rows, seen) {
     const fresh = [];
     for (const row of pendingInboxWrites(rows)) {
-        if (!row.eventId || seen.has(row.eventId)) continue;
+        if (!row.eventId || row.call || seen.has(row.eventId)) continue;
         seen.add(row.eventId);
         fresh.push(row);
     }

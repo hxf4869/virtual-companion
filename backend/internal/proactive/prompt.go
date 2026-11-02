@@ -48,8 +48,11 @@ func pregenPrompt(w World, item Trigger) string {
 	b.WriteString(fill(item.Line, w))
 	b.WriteString("。\n")
 	b.WriteString(PregenInstruction)
-	if item.Kind == KindContinue {
+	if item.Kind == KindContinue || item.Kind == KindCall {
 		b.WriteString(topicData(w.Topic))
+	}
+	if item.Kind == KindCall {
+		b.WriteString("\n" + CallOpeningInstruction)
 	}
 	b.WriteString("\n最近你主动发过的话（不要重复意思或句式）：\n")
 	b.WriteString(blank(w.RecentProactive, ""))

@@ -1143,7 +1143,7 @@
         "catalogId": "go-v1-api-scope",
         "counts": {
           "DEFER": 12,
-          "KEEP": 124,
+          "KEEP": 125,
           "RETIRE": 42,
           "SIMPLIFY": 5
         },
@@ -2127,6 +2127,20 @@
             "replacementOrImpact": "Record in-app read. It does not mark SillyTavern delivered, change link status, or record a channel outcome."
           },
           {
+            "currentH5Callers": [
+              "mobile/src/engine/index.mjs"
+            ],
+            "decision": "KEEP",
+            "keepBecause": [
+              "owner-instruction",
+              "h5-caller"
+            ],
+            "method": "POST",
+            "operationId": "respondInboxCall",
+            "path": "/api/v1/inbox/{eventId}/call",
+            "replacementOrImpact": "Answer or decline one owner-scoped foreground call. A stable request UUID fences duplicate clients and retries; the inbox retains missed voicemail. App shells and system notifications remain outside this slice."
+          },
+          {
             "currentH5Callers": [],
             "decision": "KEEP",
             "keepBecause": [
@@ -3065,7 +3079,7 @@
           }
         ]
       },
-      "sha256": "2231afadccc9dcb4685887fd85ce3bda21f4e670650db0ee823aa0bb27471ff6"
+      "sha256": "ecbd316fe907fcd3d12d0fa414fceff6b80f66c0a33c861ec36ee10b105dfdb5"
     },
     "memory-candidate-statuses.yaml": {
       "document": {

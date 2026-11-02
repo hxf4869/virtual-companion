@@ -14,7 +14,7 @@ test('预览：语音为 [语音] 秒数″，文字去标记取一行', () => {
 
 test('新到达：只认待写入的主动消息，每个 eventId 只报一次', () => {
     const seen = new Set();
-    const rows = [row('a'), row('b', { stDelivered: true }), row('c', { linkStatus: 'removed' }), row('d', { intent: 'WAITING_HOST' })];
+    const rows = [row('a'), row('b', { stDelivered: true }), row('c', { linkStatus: 'removed' }), row('d', { intent: 'WAITING_HOST' }), row('call',{call:{state:'RINGING'}})];
     assert.deepEqual(newArrivals(rows, seen).map((item) => item.eventId), ['a']);
     assert.deepEqual(newArrivals(rows, seen), []);
     assert.deepEqual(newArrivals([...rows, row('e')], seen).map((item) => item.eventId), ['e']);

@@ -3,9 +3,11 @@
         <text v-if="error" class="vc-error" role="alert">{{ error }}</text>
         <view v-if="loading" class="vc-empty" aria-busy="true">正在加载…</view>
         <view v-else-if="!events.length" class="vc-empty"><VcIcon name="heart" /><text>还没有新消息</text><button role="button" tabindex="0" class="vc-plain-btn" @click="load">重新加载</button></view>
-        <view class="vc-inbox-rows"><button v-for="event in events" :key="event.eventId" role="button" tabindex="0" class="vc-inbox-card" @click="openEvent(event)">
-            <VcAvatar :avatar="avatar(event)" :name="name(event)" /><view class="vc-inbox-body"><text class="vc-row-name">{{ name(event) }}</text><text>{{ event.body || '需要打开此会话继续' }}</text><text class="vc-value">{{ event.stDelivered ? '已写入' : '待写入' }}</text></view>
-        </button></view>
+        <view class="vc-inbox-rows"><view v-for="event in events" :key="event.eventId" class="vc-inbox-card" :data-inbox-event="event.eventId">
+            <VcAvatar :avatar="avatar(event)" :name="name(event)" /><view class="vc-inbox-body"><button role="button" tabindex="0" class="vc-inbox-open" @click="openEvent(event)"><text class="vc-row-name">{{ name(event) }}</text><text v-if="event.call" class="vc-value">{{ copy.states[event.call.state] }}</text></button>
+            <VcVoice v-if="event.voice" :message="{id:-1,text:event.body,user:false,extra:{vc_voice:event.voice}}" /><text v-else>{{ event.body || '需要打开此会话继续' }}</text><text class="vc-value">{{ event.stDelivered ? '已写入' : '待写入' }}</text>
+            <button v-if="event.call && event.call.state!=='RINGING'" role="button" tabindex="0" class="vc-plain-btn vc-callback" :disabled="!event.stDelivered" :aria-disabled="!event.stDelivered" @click="openEvent(event,true)"><VcIcon name="phone" size="var(--vc-icon-sm)" />{{ copy.callback }}</button></view>
+        </view></view>
         <view class="vc-section"><text class="vc-section-title">跟进</text><view class="vc-group">
             <view v-for="f in followUps" :key="f.followUpId" class="vc-field"><view class="vc-follow-body"><text>{{ f.body || '跟进事项' }}</text><text class="vc-value">{{ f.status === 'SCHEDULED' ? '待跟进' : f.status === 'CANCELLED' ? '已取消' : '已询问' }}</text></view><button v-if="f.status === 'SCHEDULED'" role="button" tabindex="0" class="vc-plain-btn" @click="cancelFollow(f)">取消</button></view>
         </view></view>
@@ -18,9 +20,10 @@
     </view>
 </template>
 <script>
-import VcAvatar from './VcAvatar.vue';import VcIcon from './VcIcon.vue';import {getEngine,getServer} from '../engine/index.mjs';import {writeAction,errorText,reportError} from '../ui/actions.mjs';import {confirmAlert,showToast} from '../ui/feedback.mjs';
+import VcAvatar from './VcAvatar.vue';import VcIcon from './VcIcon.vue';import VcVoice from './VcVoice.vue';import {getEngine,getServer,incomingState} from '../engine/index.mjs';import {prepareIncomingCall} from '../voice/incoming.mjs';import {INCOMING_COPY} from '../copy.mjs';import {writeAction,errorText,reportError} from '../ui/actions.mjs';import {confirmAlert,showToast} from '../ui/feedback.mjs';
 export default {
- components:{VcAvatar,VcIcon},data:()=>({events:[],relationships:[],chats:[],cards:[],followUps:[],relationshipId:'',policy:null,baseline:'',loading:true,error:'',busy:false,alive:true}),
+ components:{VcAvatar,VcIcon,VcVoice},data:()=>({events:[],incoming:incomingState,copy:INCOMING_COPY,relationships:[],chats:[],cards:[],followUps:[],relationshipId:'',policy:null,baseline:'',loading:true,error:'',busy:false,alive:true}),
+ watch:{'incoming.events'(rows){this.events=rows;}},
  mounted(){this.load();},beforeUnmount(){this.alive=false;},
  methods:{
   call(module,method,...args){return getEngine().call(module,method,...args);},
@@ -32,13 +35,16 @@ export default {
   async changeRelationship(){if(!await this.canLeave()){this.relationshipId=this.policy.relationshipId;return;}try{await this.loadPolicy();}catch(e){reportError(e);}},
   async savePolicy(){if(this.busy)return;const quiet=[this.policy.quietHoursStart,this.policy.quietHoursEnd,this.policy.quietHoursTimezone];if(quiet.some(Boolean)&&!quiet.every(Boolean)){this.error='静默时段需要同时填写开始、结束和时区。';return;}this.busy=true;this.error='';try{const body=await this.call('inbox','proactivePolicyPayload',this.policy);await writeAction(()=>this.call('inbox','putProactivePolicy',this.relationshipId,body));this.baseline=JSON.stringify(this.policy);showToast('已保存');}catch(e){this.error=errorText(e);}finally{this.busy=false;}},
   async cancelFollow(f){try{await writeAction(()=>this.call('inbox','cancelFollowUp',f.followUpId));await this.loadPolicy();}catch(e){reportError(e);}},
-  async openEvent(e){const row=this.chats.find(c=>String(c.binding?.conversationId)===String(e.conversationId));if(!row){showToast('需要打开此会话继续');return;}try{await this.call('inbox','markInboxRead',e.eventId);uni.navigateTo({url:`/pages/chat/conversation?avatar=${encodeURIComponent(row.avatar)}&file=${encodeURIComponent(row.file)}&name=${encodeURIComponent(this.name(e))}`});}catch(err){reportError(err);}},
+  async openEvent(e,callback=false){const row=this.chats.find(c=>String(c.binding?.conversationId)===String(e.conversationId));if(!row){showToast('需要打开此会话继续');return;}try{await this.call('inbox','markInboxRead',e.eventId);if(callback)prepareIncomingCall({...e,callback:true});uni.navigateTo({url:`/pages/chat/conversation?avatar=${encodeURIComponent(row.avatar)}&file=${encodeURIComponent(row.file)}&name=${encodeURIComponent(this.name(e))}${callback?`&call=${encodeURIComponent(e.eventId)}`:''}`});}catch(err){reportError(err);}},
  },
 };
 </script>
 <style>
 .vc-inbox-rows { display: flex; flex-direction: column; gap: var(--vc-space-sm); }
-.vc-inbox-card { display: flex; align-items: flex-start; gap: var(--vc-space-sm); width: 100%; padding: var(--vc-space-md); background: var(--vc-card); border-radius: var(--vc-radius-lg); color: var(--vc-ink); text-align: left; }
+.vc-inbox-card { display: flex; align-items: flex-start; gap: var(--vc-space-sm); box-sizing: border-box; width: 100%; padding: var(--vc-space-md); background: var(--vc-card); border-radius: var(--vc-radius-lg); color: var(--vc-ink); text-align: left; }
 .vc-inbox-body, .vc-follow-body { flex: 1; display: flex; flex-direction: column; gap: var(--vc-space-xs); min-width: 0; font-size: var(--vc-fs-body); }
 .vc-row-name { font-size: var(--vc-fs-headline); font-weight: 600; }
+.vc-inbox-open { display: flex; flex-direction: column; align-items: flex-start; gap: var(--vc-space-xxs); padding: 0; background: none; border: 0; color: var(--vc-ink); text-align: left; min-height: var(--vc-touch); }
+.vc-callback { display: flex; align-items: center; gap: var(--vc-space-xxs); align-self: flex-start; }
+.vc-inbox-card .vc-callback[disabled] { background: none; color: var(--vc-ink-3); }
 </style>

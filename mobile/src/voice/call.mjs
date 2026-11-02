@@ -38,7 +38,7 @@ export function createCallCapture({onSpeech,onQuiet,onUtterance,onLevel,onError,
 }
 
 // ASR 只跑一个；识别中继续说的话依次合并，生成/播放中的开口立即打断。
-export function createCallSession({state,engine,session,chat,convert,transcribe,maxSeconds=60,capture=createCallCapture,now=Date.now}) {
+export function createCallSession({state,engine,session,chat,convert,transcribe,opening,maxSeconds=60,capture=createCallCapture,now=Date.now}) {
  Object.assign(state,{phase:'connecting',muted:false,elapsed:0,level:0,previous:'',current:'',error:'',clipId:'',needsPlay:false,textRequired:false});
  const stats={turns:0,interruptions:0,latencies:[]};
  let alive=false,epoch=0,speaking=false,recorder,clock,started=0,draining=false,drainDone=Promise.resolve(),asrAbort,queue=[],queuedMs=0,texts=[],voiceMs=0,asrMs=0,emotion,lastEndedAt=0;
@@ -102,7 +102,8 @@ export function createCallSession({state,engine,session,chat,convert,transcribe,
       lastEndedAt=now();queuedMs+=durationMs;queue.push({raw,durationMs});if(!speaking)state.phase='listening';void drain();
      },onError(){if(alive){state.error=CALL_COPY.failed;void api.stop().then(()=>{state.phase='error';});}},
     });
-    await recorder.start();if(!alive)return;started=now();clock=setInterval(()=>{state.elapsed=Math.floor((now()-started)/1000);},500);state.phase='listening';
+    const openingToken=epoch;await recorder.start();if(!alive)return;started=now();clock=setInterval(()=>{state.elapsed=Math.floor((now()-started)/1000);},500);state.phase='listening';
+    if(opening?.body&&current(openingToken)){present(opening.body);if(opening.voice?.status==='ready')await play(opening.voice.clipId,openingToken);else state.textRequired=true;}
    }catch{await api.stop();state.phase='error';state.error=CALL_COPY.failed;}
   },
   setMuted(value){state.muted=value;recorder?.setMuted(value);},

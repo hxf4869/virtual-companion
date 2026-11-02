@@ -179,6 +179,7 @@ test('路由常量只覆盖本页需要放行的方法与路径', () => {
     expectPath('POST', '/api/v1/follow-ups/41/cancel');
     expectPath('GET', '/api/v1/inbox');
     expectPath('POST', '/api/v1/inbox/evt-pending/read');
+    expectPath('POST', '/api/v1/inbox/evt-pending/call');
     expectPath('GET', '/api/v1/notification-channels');
     expectPath('PUT', '/api/v1/notification-channels');
     expectPath('GET', '/api/v1/notification-deliveries');

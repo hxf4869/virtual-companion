@@ -270,6 +270,7 @@ export function buildPlan(model, body, headerDirective, ctlOverride) {
     if (!explicitText) {
         const proactive = proactiveFixtureText(messageBlob(body));
         if (proactive) text = proactive;
+        if (merged.proactiveCall === true && messageBlob(body).includes('判断现在要不要主动找对方')) text = '{"kind":"call","timing":"in_minutes"}';
     }
     return {
         model,

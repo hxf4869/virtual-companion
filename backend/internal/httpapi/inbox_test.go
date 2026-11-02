@@ -177,6 +177,8 @@ func inboxRequest(t *testing.T, srv *Server, store *inboxHTTPStore, method, path
 		srv.handleAckInbox(rec, req)
 	case strings.HasSuffix(path, "/read"):
 		srv.handleMarkInboxRead(rec, req)
+	case strings.HasSuffix(path, "/call"):
+		srv.handleRespondInboxCall(rec, req)
 	default:
 		t.Fatalf("unmapped %s %s", method, path)
 	}

@@ -8,6 +8,7 @@ const (
 	KindContinue = "continue_topic"
 	KindShare    = "share"
 	KindCare     = "care"
+	KindCall     = "call"
 
 	ModeOff         = "OFF"
 	ModeFollowUp    = "FOLLOW_UP"
@@ -43,6 +44,7 @@ func catalog() []Trigger {
 		{Key: "continue_topic", Kind: KindContinue, Cluster: ClusterTopic, Weight: 3, Cooldown: 12 * time.Hour, Modes: []string{ModeCloseFriend}, Line: TriggerContinueTopic},
 		{Key: "share_day", Kind: KindShare, Cluster: ClusterShare, Weight: 2, Cooldown: 18 * time.Hour, Modes: []string{ModeCloseFriend}, Line: TriggerShareDay},
 		{Key: "care", Kind: KindCare, Cluster: ClusterCare, Weight: 4, Cooldown: 8 * time.Hour, Modes: []string{ModeCloseFriend}, Line: TriggerCare},
+		{Key: "call", Kind: KindCall, Cluster: ClusterTopic, Weight: 1, Cooldown: 24 * time.Hour, ClusterCD: 12 * time.Hour, Modes: []string{ModeCloseFriend}, Line: TriggerCall},
 	}
 }
 

@@ -170,6 +170,7 @@ func (s *Store) CreateNotificationDeliveries(ctx context.Context, owner int64, e
 			   AND c.enabled
 			   AND i.relationship_id = ANY (c.relationship_ids)
 			 WHERE i.owner_user_id = $1 AND i.event_id = $2
+			   AND i.call_state IS NULL
 			 ORDER BY c.id`, owner, eventID)
 		if err != nil {
 			return err

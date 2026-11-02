@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"regexp"
 	"strings"
 	"time"
 
@@ -27,23 +28,24 @@ type inboxLinkJSON struct {
 }
 
 type inboxEventJSON struct {
-	InboxID         string            `json:"inboxId"`
-	EventID         string            `json:"eventId"`
-	RelationshipID  string            `json:"relationshipId"`
-	ConversationID  string            `json:"conversationId"`
-	Branch          *string           `json:"branch"`
-	SourceRevision  *int64            `json:"sourceRevision"`
-	Intent          string            `json:"intent"`
-	Body            *string           `json:"body"`
-	Persisted       bool              `json:"persisted"`
-	STDelivered     bool              `json:"stDelivered"`
-	MessageID       *string           `json:"messageId"`
-	MessageRevision *int64            `json:"messageRevision"`
-	LinkStatus      string            `json:"linkStatus"`
-	Link            inboxLinkJSON     `json:"link"`
-	ReadAt          *time.Time        `json:"readAt"`
-	Read            bool              `json:"read"`
-	Voice           *voice.Attachment `json:"voice,omitempty"`
+	InboxID         string              `json:"inboxId"`
+	EventID         string              `json:"eventId"`
+	RelationshipID  string              `json:"relationshipId"`
+	ConversationID  string              `json:"conversationId"`
+	Branch          *string             `json:"branch"`
+	SourceRevision  *int64              `json:"sourceRevision"`
+	Intent          string              `json:"intent"`
+	Body            *string             `json:"body"`
+	Persisted       bool                `json:"persisted"`
+	STDelivered     bool                `json:"stDelivered"`
+	MessageID       *string             `json:"messageId"`
+	MessageRevision *int64              `json:"messageRevision"`
+	LinkStatus      string              `json:"linkStatus"`
+	Link            inboxLinkJSON       `json:"link"`
+	ReadAt          *time.Time          `json:"readAt"`
+	Read            bool                `json:"read"`
+	Voice           *voice.Attachment   `json:"voice,omitempty"`
+	Call            *postgres.InboxCall `json:"call,omitempty"`
 }
 
 type inboxClaimJSON struct {
@@ -74,7 +76,47 @@ func inboxEventJSONFrom(row postgres.InboxEvent) inboxEventJSON {
 		ReadAt: row.ReadAt,
 		Read:   row.ReadAt != nil,
 		Voice:  row.Voice,
+		Call:   row.Call,
 	}
+}
+
+var inboxCallUUID = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
+
+func (s *Server) handleRespondInboxCall(w http.ResponseWriter, r *http.Request) {
+	p := s.corePrincipal(w, r, true)
+	if p == nil {
+		return
+	}
+	var body struct {
+		Action    string `json:"action"`
+		RequestID string `json:"requestId"`
+	}
+	if !s.decodeJSON(w, r, &body) {
+		return
+	}
+	if (body.Action != "ANSWER" && body.Action != "DECLINE") || !inboxCallUUID.MatchString(body.RequestID) {
+		s.writeAPIError(w, 400, "INVALID_REQUEST", "invalid request")
+		return
+	}
+	if s.inbox(w) == nil {
+		return
+	}
+	st, ok := s.core.Store.(interface {
+		RespondInboxCall(context.Context, int64, string, string, string) (postgres.InboxEvent, bool, error)
+	})
+	if !ok {
+		s.writeAPIError(w, 503, "INVALID_REQUEST", "temporarily unavailable")
+		return
+	}
+	row, applied, err := st.RespondInboxCall(r.Context(), p.AccountID, strings.TrimSpace(r.PathValue("eventId")), body.Action, body.RequestID)
+	if err != nil {
+		s.writeInboxErr(w, err)
+		return
+	}
+	s.writeJSON(w, 200, struct {
+		Event   inboxEventJSON `json:"event"`
+		Applied bool           `json:"applied"`
+	}{inboxEventJSONFrom(row), applied})
 }
 
 func (s *Server) inbox(w http.ResponseWriter) inboxStore {

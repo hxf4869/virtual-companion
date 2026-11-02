@@ -1,6 +1,6 @@
 <script>
 import { startTheme } from './theme/store.mjs';
-import { startEngine } from './engine/index.mjs';
+import { startEngine, getIncomingCalls, engineState } from './engine/index.mjs';
 
 export default {
     onLaunch() {
@@ -10,5 +10,7 @@ export default {
         startEngine().catch(() => { /* 状态与错误已写入 engineState，由界面显示 */ });
         // #endif
     },
+    onHide(){getIncomingCalls().stop();},
+    onShow(){if(engineState.state==='ready')getIncomingCalls().start();},
 };
 </script>

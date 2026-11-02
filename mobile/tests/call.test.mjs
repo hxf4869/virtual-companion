@@ -2,6 +2,14 @@ import test from 'node:test';import assert from 'node:assert/strict';
 import {createCallCapture,createCallSession} from '../src/voice/call.mjs';
 const tick=()=>new Promise(r=>setImmediate(r));
 
+test('接听播放已有来电开场，不新建聊天消息；无语音时保留字幕',async()=>{
+ for(const voice of [undefined,{status:'ready',clipId:'42'}]){
+  const state={},played=[];let sends=0;
+  const c=createCallSession({state,opening:{body:'合成开场',voice},engine:{setCallMode:async()=>{},stopVoice:async()=>{},playVoice:async id=>played.push(id)},session:{send:async()=>{sends++;}},chat:{busy:false},capture:()=>({start:async()=>{},stop(){}})});
+  await c.start();assert.equal(state.current,'合成开场');assert.equal(sends,0);assert.deepEqual(played,voice?['42']:[]);if(!voice)assert.equal(state.textRequired,true);await c.stop();
+ }
+});
+
 test('连续收音按停顿分段；静音和结束均释放当前录音',async()=>{
  let level,clock=0,stopped=0,speech=0;const clips=[],recorders=[];
  class Recorder {

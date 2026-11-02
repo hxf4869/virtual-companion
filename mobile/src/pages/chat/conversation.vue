@@ -46,7 +46,7 @@
         </view>
         <view v-if="selectedText !== null" class="vc-menu-scrim" @click.self="selectedText = null"><view class="vc-edit-sheet vc-glass" role="dialog"><button role="button" tabindex="0" class="vc-plain-btn" @click="selectedText = null">完成</button><text class="vc-select-text" selectable>{{ selectedText }}</text></view></view>
         <view v-if="image" class="vc-image-viewer" role="dialog" aria-modal="true" aria-label="图片预览" @click="image = ''"> <button role="button" tabindex="0" class="vc-round vc-glass vc-image-close" aria-label="关闭图片" @click.stop="image = ''"><VcIcon name="x" /></button><image :src="image" mode="aspectFit" /></view>
-        <VcCall v-if="callActive" ref="callView" :chat="chat" :session="session" :name="chat.target?.name" :avatar="chat.target?.avatar" :max-seconds="voicePolicy?.settings.maxRecordingSeconds || 60" @close="callActive=false" />
+        <VcCall v-if="callActive" ref="callView" :chat="chat" :session="session" :name="chat.target?.name" :avatar="chat.target?.avatar" :opening="callOpening" :max-seconds="voicePolicy?.settings.maxRecordingSeconds || 60" @close="callActive=false;callOpening=null" />
         <VcOverlays />
     </view>
 </template>
@@ -57,18 +57,19 @@ import VcIcon from '../../components/VcIcon.vue';
 import VcOverlays from '../../components/VcOverlays.vue';
 import ChatMessage from '../../components/ChatMessage.vue';
 import VcCall from '../../components/VcCall.vue';
-import { getEngine, getServer, showStView } from '../../engine/index.mjs';
+import { getEngine, getServer, engineState, showStView } from '../../engine/index.mjs';
 import { createChatSession } from '../../chat/session.mjs';
 import { groupMessages, quoteSummary } from '../../chat/format.mjs';
 import { setCharacterTheme } from '../../theme/store.mjs';
 import { tintOf, avatarUrl } from '../../ui/tint.mjs';
 import { COPY } from '../../copy.mjs';
 import { createVoiceInput } from '../../voice/input.mjs';
+import {takeIncomingCall} from '../../voice/incoming.mjs';
 import { confirmAlert, showToast } from '../../ui/feedback.mjs';
 
 export default {
     components: { VcAurora, VcAvatar, VcIcon, ChatMessage, VcOverlays, VcCall },
-    data: () => ({ copy: COPY, chat: {}, session: null, menu: null, more: false, editing: null, editText: '', selectedText: null, saving: false, image: '', atBottom: true, searching: false, query: '', matchIndex: 0,voice:{phase:'idle'},voiceAvailable:false,readAvailable:false,recorder:null,voicePolicy:null,callActive:false }),
+    data: () => ({ copy: COPY, chat: {}, session: null, menu: null, more: false, editing: null, editText: '', selectedText: null, saving: false, image: '', atBottom: true, searching: false, query: '', matchIndex: 0,voice:{phase:'idle'},voiceAvailable:false,readAvailable:false,recorder:null,voicePolicy:null,callActive:false,callOpening:null }),
     computed: {
         groups() { return groupMessages(this.chat.messages || []); },
         lastId() { return this.chat.messages?.at(-1)?.id ?? -1; },
@@ -77,16 +78,16 @@ export default {
         status() { return this.chat.error === 'send' ? COPY.failed : this.chat.error === 'save' ? COPY.saveFailed : this.chat.error === 'reply' ? COPY.error : this.chat.error ? COPY.connectFailed : COPY.connecting; },
         actions() { const a = [{id:'quote',label:COPY.quote,icon:'quote'},{id:'copy',label:COPY.copy,icon:'copy'},{id:'select',label:COPY.selectText,icon:'text-cursor'}]; if(this.readAvailable&&!this.menu?.user&&!this.chat.busy)a.push({id:'read',label:'朗读',icon:'volume-2'});if(!this.chat.busy) a.push({id:'edit',label:COPY.edit,icon:'pencil'}); if(!this.chat.busy && !this.menu?.user && this.menu?.id === this.lastId) a.push({id:'regenerate',label:COPY.regenerate,icon:'refresh-cw'}); return this.chat.busy ? a : [...a,{id:'remove',label:COPY.remove,icon:'trash-2'}]; },
     },
-    watch: { query() { this.matchIndex = 0; this.jump(0); } },
+    watch: { query() { this.matchIndex = 0; this.jump(0); },'voice.phase'(phase){engineState.voiceInputActive=phase!=='idle';} },
     onLoad(options) {
         this.live = true;
         this.session = createChatSession({ state: this.chat, engine: getEngine(), server: getServer(), changed: () => this.latest() });
         const target = { avatar: options.avatar || '', file: options.file || '', name: options.name || '' };
-        this.session.open(target).then(async()=>{ if(!this.live) return; const ch=getEngine().character(); const tint=await tintOf(avatarUrl(target.avatar)); if(!this.live) return; setCharacterTheme(ch?.theme, tint); this.latest(true);await this.setupVoice(); });
+        this.session.open(target).then(async()=>{ if(!this.live) return; const ch=getEngine().character(); const tint=await tintOf(avatarUrl(target.avatar)); if(!this.live) return; setCharacterTheme(ch?.theme, tint); this.latest(true);await this.setupVoice();const incoming=takeIncomingCall(options.call);if(this.live&&incoming&&this.voiceAvailable&&this.readAvailable){this.callOpening=incoming.callback?null:incoming;this.startCall();} });
         this.resize = () => document.documentElement.style.setProperty('--vc-vh', `${window.visualViewport?.height || window.innerHeight}px`);
         window.visualViewport?.addEventListener('resize', this.resize); this.resize();
     },
-    onHide() { this.recorder?.cancel();if(this.$refs.callView)this.$refs.callView.close();else getEngine().stopVoice().catch(()=>{}); },
+    onHide() { engineState.voiceInputActive=false;this.recorder?.cancel();if(this.$refs.callView)this.$refs.callView.close();else getEngine().stopVoice().catch(()=>{}); },
     onUnload() { this.live=false; this.recorder?.dispose();this.session?.dispose(); setCharacterTheme(); window.visualViewport?.removeEventListener('resize', this.resize); document.documentElement.style.removeProperty('--vc-vh'); },
     methods: {
         startCall(){const focused=document.activeElement;if(focused?.matches('input,textarea'))focused.blur();this.callActive=true;},

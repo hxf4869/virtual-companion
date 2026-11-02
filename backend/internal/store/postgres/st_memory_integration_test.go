@@ -72,7 +72,7 @@ func TestOpenTopicSourceMustRemainValidThroughDelivery(t *testing.T) {
 	}
 	snapshots[sourceChat].Revision++
 	snapshots[sourceChat].Messages[0].Eligible = false
-	if _, delivered, err := testEnv.store.DeliverDueProactive(ctx, 1, b.RelationshipID, plan.SendAt, FollowUpGenerationFinish{}, nil); err != nil || delivered {
+	if _, delivered, err := testEnv.store.DeliverDueProactive(ctx, 1, b.RelationshipID, plan.SendAt, FollowUpGenerationFinish{}, nil, false); err != nil || delivered {
 		t.Fatalf("invalidated topic delivered=%v err=%v", delivered, err)
 	}
 	var status string

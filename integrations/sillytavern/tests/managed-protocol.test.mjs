@@ -59,6 +59,11 @@ test('buildPlan：modelId 剧本为缺省，指令按 请求体 > 头 > __ctl �
     assert.equal(typeof unknownModel.text, 'string');
 });
 
+test('buildPlan：来电夹具只改变主动判断，保留开场预生成', () => {
+    const request={messages:[{role:'user',content:'判断现在要不要主动找对方'}]};
+    assert.equal(JSON.parse(buildPlan('vc03m-chat',request,null,{proactiveCall:true}).text).kind,'call');
+    assert.equal(buildPlan('vc03m-chat',{messages:[{role:'user',content:'像平时发微信那样随口说一两句'}]},null,{proactiveCall:true}).text,'有一阵没聊，想来跟你说句话');
+});
 test('buildPlan：主动判断与预生成走固定合成回复，显式 text 仍优先', () => {
     const judge = buildPlan('vc03m-chat', { messages: [{ role: 'user', content: '判断现在要不要主动找对方\n有一阵没聊了' }] }, null, null);
     assert.equal(judge.text, '{"kind":"check_in","timing":"in_minutes"}');

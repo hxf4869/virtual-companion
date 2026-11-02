@@ -11,7 +11,7 @@ type Decision struct {
 	Timing string `json:"timing"`
 }
 
-var kinds = map[string]bool{KindSilent: true, KindCheckIn: true, KindContinue: true, KindShare: true, KindCare: true}
+var kinds = map[string]bool{KindSilent: true, KindCheckIn: true, KindContinue: true, KindShare: true, KindCare: true, KindCall: true}
 var timings = map[string]bool{
 	"in_minutes": true, "in_half_hour": true, "in_hours": true,
 	"later_today": true, "next_morning": true, "next_noon": true, "next_evening": true,

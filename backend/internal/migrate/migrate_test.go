@@ -13,8 +13,8 @@ func TestEmbeddedMigrationsAreOrderedAndComplete(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(items) != 203 {
-		t.Fatalf("migration count = %d, want 203", len(items))
+	if len(items) != 204 {
+		t.Fatalf("migration count = %d, want 204", len(items))
 	}
 	// Versions must be strictly ascending.
 	for i := 1; i < len(items); i++ {
@@ -22,7 +22,7 @@ func TestEmbeddedMigrationsAreOrderedAndComplete(t *testing.T) {
 			t.Fatalf("migration[%d].Version = %d not after %d", i, items[i].Version, items[i-1].Version)
 		}
 	}
-	if items[len(items)-1].File != "V282__st_incognito_preference.sql" {
+	if items[len(items)-1].File != "V283__foreground_inbox_call.sql" {
 		t.Fatalf("latest migration = %q", items[len(items)-1].File)
 	}
 }
