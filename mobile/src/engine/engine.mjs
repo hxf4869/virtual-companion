@@ -48,6 +48,7 @@ export function createEngine({ doc = globalThis.document, src = '/', onState } =
     let ended = 0;
     let lastPopup = null;
     let activeCall = null;
+    let readVersion = 0;
 
     const win = () => frame?.contentWindow;
     const ctx = () => win()?.SillyTavern?.getContext?.();
@@ -285,12 +286,13 @@ export function createEngine({ doc = globalThis.document, src = '/', onState } =
             }});
         },
         async readAloud(id) {
+            const request = readVersion;
             await api.ready();
             const button=win().document.querySelector(`#chat .mes[mesid="${id}"] [data-vc-act="read"]`);
             if(!button)throw Error('voice unavailable');
-            return api.call('voice','readReplyAloud',id,button);
+            return api.call('voice','readReplyAloud',id,button,{isActive:()=>request===readVersion});
         },
-        async stopVoice() { const mod=await win().eval("import('/scripts/extensions/third-party/vc-model-settings/voice.js')");mod.voicePlayer.stop(); },
+        async stopVoice() { readVersion++;const mod=await win().eval("import('/scripts/extensions/third-party/vc-model-settings/voice.js')");mod.voicePlayer.stop(); },
         card(avatar) {
             const ch = script?.characters?.find(c=>c.avatar===avatar);
             return ch ? { avatar: ch.avatar, name: ch.name, description: ch.description || ch.data?.description || '', characterRef: ch.data?.extensions?.vc_character_ref || '', theme: ch.data?.extensions?.vc_theme || '' } : null;

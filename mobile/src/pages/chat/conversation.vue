@@ -88,9 +88,10 @@ export default {
         window.visualViewport?.addEventListener('resize', this.resize); this.resize();
     },
     onShow(){this.resize?.();if(!this.visible){this.visible=true;void this.restore();}},
-    onHide() { this.visible=false;this.session?.suspend();engineState.voiceInputActive=false;this.recorder?.cancel();setCharacterTheme();document.documentElement.style.removeProperty('--vc-vh');if(this.$refs.callView)this.$refs.callView.close();else getEngine().stopVoice().catch(()=>{}); },
-    onUnload() { this.live=false; this.recorder?.dispose();this.session?.dispose();window.visualViewport?.removeEventListener('resize', this.resize); },
+    onHide() { this.deactivate(); },
+    onUnload() { this.live=false;this.deactivate();this.recorder?.dispose();this.session?.dispose();window.visualViewport?.removeEventListener('resize', this.resize); },
     methods: {
+        deactivate(){if(!this.visible)return;this.visible=false;this.session?.suspend();engineState.voiceInputActive=false;this.recorder?.cancel();setCharacterTheme();document.documentElement.style.removeProperty('--vc-vh');if(this.$refs.callView)this.$refs.callView.close();else getEngine().stopVoice().catch(()=>{});},
         async restore(){if(!this.live||!this.visible||engineState.stView)return;await this.session.resume();await this.afterReady();},
         async afterReady(){if(!this.live||!this.visible||!this.session.isCurrent())return;const ch=getEngine().character();const tint=await tintOf(avatarUrl(this.chat.target.avatar));if(!this.live||!this.visible||!this.session.isCurrent())return;setCharacterTheme(ch?.theme,tint);this.latest(true);await this.setupVoice();if(this.callId&&this.session.isCurrent()){const incoming=takeIncomingCall(this.callId);this.callId='';if(incoming&&this.voiceAvailable&&this.readAvailable){this.callOpening=incoming.callback?null:incoming;this.startCall();}}},
         startCall(){if(!this.session.isCurrent())return;const focused=document.activeElement;if(focused?.matches('input,textarea'))focused.blur();this.callActive=true;},
@@ -109,7 +110,7 @@ export default {
         recordClick(e){if(e.pointerType==='touch'||!this.chat.ready||this.voice.phase==='transcribing')return;if(this.voice.phase==='recording')this.recorder.finish();else void this.recorder.start();},
         summary: quoteSummary,
         toggleSearch() { this.searching=!this.searching; if(!this.searching) this.query=''; },
-        back() { uni.navigateBack({ fail: () => uni.reLaunch({ url: '/pages/main/index' }) }); },
+        back() { if(getCurrentPages().length<2){uni.reLaunch({url:'/pages/main/index'});return;}uni.navigateBack({ fail: () => uni.reLaunch({ url: '/pages/main/index' }) }); },
         character() { uni.navigateTo({ url: `/pages/character/detail?avatar=${encodeURIComponent(this.chat.target.avatar)}` }); },
         scrolled(e) { const el=e.target; this.atBottom=el.scrollHeight - el.scrollTop - el.clientHeight < 100; },
         latest(force=false) { this.$nextTick(()=>{ if(!force && !this.atBottom) return; const el=this.$refs.thread?.$el || this.$refs.thread; if(el) { el.scrollTop=el.scrollHeight; this.atBottom=true; } }); },

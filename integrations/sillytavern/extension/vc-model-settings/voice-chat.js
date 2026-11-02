@@ -98,12 +98,13 @@ export function installChatVoice(options) {
     globalThis.addEventListener?.('vc-voice-settings-changed',()=>{invalidateVoicePolicy();void refresh();});
 }
 
-export async function readReplyAloud(index,button){
+export async function readReplyAloud(index,button,{isActive=()=>true}={}){
     if(!integration || button.disabled)return;
     const context=integration.getContext();const message=context.chat?.[index];const text=message?.mes;
     if(!message || message.is_user || message.is_system || context.chatMetadata?.vc_binding?.mode!=='COMPANION')return;
-    const active=()=>integration.getContext().chat===context.chat && context.chat[index]===message && message.mes===text;
+    const active=()=>isActive() && integration.getContext().chat===context.chat && context.chat[index]===message && message.mes===text;
     const {voicePlayer}=await import('./voice.js');const {icon}=await import('./ui/icons.js');
+    if(!active())return;
     const state=(playing)=>{button.setAttribute('aria-label',playing?'暂停语音':'朗读');button.setAttribute('aria-pressed',String(playing));button.innerHTML=icon(playing?'pause':'volume-2',{size:18});};
     const failure=()=>{state(false);button.title='没有完成，请重试。';button.vcRead=null;};
     if(button.vcRead?.message===message && button.vcRead.text===text){await voicePlayer.toggle(button.vcRead.clipId,{onState:state,onError:failure});return;}

@@ -59,6 +59,17 @@ export async function sceneVoiceChat(ctx) {
         await page.waitForFunction(()=>document.querySelector('#vc-engine').contentDocument.querySelector('#chat > .mes:last-child [data-vc-act="read"]')?.getAttribute('aria-pressed')==='true');
         assert.equal(await page.evaluate(()=>globalThis.__vcEngine.messages().at(-1).text),original);assert.ok(await page.locator('.vc-mobile-voice .vc-voice-bar[aria-pressed="true"]').count()<=1);
         await voiceShots(page,ctx,'MB-7','voice-chat');console.log('[MB-7] PASS H5 语音播放、12 波形、转文字与原文朗读');
+        stage='MB-7 leave while read aloud is pending';
+        await page.evaluate(()=>globalThis.__vcEngine.stopVoice());
+        await last.dispatchEvent('contextmenu');await page.getByRole('menuitem',{name:'编辑',exact:true}).click();await page.locator('.vc-edit-sheet textarea').fill('这条合成文字用于验收离页取消朗读。');await page.getByRole('button',{name:'保存',exact:true}).click();await page.locator('.vc-markdown',{hasText:'验收离页取消朗读'}).waitFor();
+        await voiceControl('kokoro',{delayMs:1500});
+        await page.evaluate(()=>{const w=document.querySelector('#vc-engine').contentWindow;const play=w.HTMLMediaElement.prototype.play;w.__vcReadStarts=0;w.HTMLMediaElement.prototype.play=function(...args){w.__vcReadStarts++;return play.apply(this,args);};});
+        const queued=page.waitForResponse(r=>r.request().method()==='POST'&&new URL(r.url()).pathname.endsWith('/voice-clips'));
+        await last.dispatchEvent('contextmenu');await page.getByRole('menuitem',{name:'朗读',exact:true}).click();assert.equal((await queued).status(),202);
+        await page.locator('.vc-conv-nav [aria-label="返回"]').click();await page.locator('.vc-main').waitFor();
+        await page.waitForFunction(()=>!document.querySelector('#vc-engine').contentDocument.querySelector('#chat > .mes:last-child [data-vc-act="read"]')?.disabled);
+        assert.equal(await page.evaluate(()=>document.querySelector('#vc-engine').contentWindow.__vcReadStarts),0,'离开对话后迟到朗读不得调用播放');
+        await voiceControl('kokoro');console.log('[MB-7] PASS 离开页面取消待完成的朗读');
     } catch(error) {
         const state=await page.evaluate(()=>{const c=globalThis.SillyTavern?.getContext?.()||document.querySelector('#vc-engine')?.contentWindow?.SillyTavern?.getContext?.();const m=c?.chat?.at(-1);return {length:c?.chat?.length,voice:m?.extra?.vc_voice?.status,attempt:m?.extra?.vc_voice_attempt?.sent,source:!!m?.extra?.vc_source?.id,generating:document.body.getAttribute('data-generating')};});
         const dir=path.resolve('.review-queue/MB-7');fs.mkdirSync(dir,{recursive:true});await page.screenshot({path:path.join(dir,'voice-chat-failure.png')});
