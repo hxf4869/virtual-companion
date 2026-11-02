@@ -1,8 +1,9 @@
 // 引擎就绪前直接读 ST 服务端接口（会话列表、历史先行）。ADR-0011 §1、MB-0 报告第 3 节。
-// 写请求要带 Go 会话身份头（x-vc-expected-*）与 CSRF；身份从 /auth/api/session 取，不缓存跨会话。
+// 写请求带 Go 身份头与 CSRF；页面首次取得的身份固定，登录变化后要求整页重载。
+import {BACKGROUND_FIELD,backgroundFile} from '../theme/background.mjs';
 
 export class ServerError extends Error {
-    constructor(status, path) { super(`HTTP ${status} ${path}`); this.status = status; this.path = path; }
+    constructor(status, path) { super(`HTTP ${status} ${path}`); this.status = status; this.path = path; if(status===401||status===409)this.kind='context-changed'; }
 }
 
 export function stripJsonl(name) {
@@ -44,11 +45,14 @@ export function createServer({ fetchImpl = (...a) => fetch(...a) } = {}) {
 
     async function headers() {
         if (!identity) {
-            const r = await fetchImpl('/auth/api/session', { headers: { Accept: 'application/json' } });
-            if (!r.ok) throw new ServerError(r.status, '/auth/api/session');
-            const j = await r.json();
-            identity = { accountId: String(j.accountId), sessionId: String(j.sessionId) };
+            identity = (async () => {
+                const r = await fetchImpl('/auth/api/session', { headers: { Accept: 'application/json' } });
+                if (!r.ok) throw new ServerError(r.status, '/auth/api/session');
+                const j = await r.json();
+                return { accountId: String(j.accountId), sessionId: String(j.sessionId) };
+            })().catch(error=>{identity=null;throw error;});
         }
+        const expected=await identity;
         if (!csrf) {
             const r = await fetchImpl('/csrf-token');
             if (!r.ok) throw new ServerError(r.status, '/csrf-token');
@@ -57,20 +61,24 @@ export function createServer({ fetchImpl = (...a) => fetch(...a) } = {}) {
         return {
             'Content-Type': 'application/json',
             'X-CSRF-Token': csrf,
-            'x-vc-expected-account-id': identity.accountId,
-            'x-vc-expected-session-id': identity.sessionId,
+            'x-vc-expected-account-id': expected.accountId,
+            'x-vc-expected-session-id': expected.sessionId,
         };
     }
 
-    async function post(path, body) {
-        const r = await fetchImpl(path, { method: 'POST', headers: await headers(), body: JSON.stringify(body ?? {}) });
-        if (r.status === 409 || r.status === 401) { identity = null; csrf = ''; }
+    async function post(path, body, {form=false,text=false}={}) {
+        const requestHeaders=await headers();if(form)delete requestHeaders['Content-Type'];
+        const r = await fetchImpl(path, { method: 'POST', headers: requestHeaders, body: form?body:JSON.stringify(body ?? {}) });
+        if (r.status === 409 || r.status === 401) csrf = '';
         if (!r.ok) throw new ServerError(r.status, path);
-        return r.json();
+        return text?r.text():r.json();
     }
 
     return {
         characters: () => post('/api/characters/all', {}),
+        async backgrounds(){return (await post('/api/backgrounds/all',{})).images.map(image=>image.filename).filter(backgroundFile);},
+        async uploadBackground(file){const form=new FormData();form.append('avatar',file,file.name);return post('/api/backgrounds/upload',form,{form:true,text:true});},
+        saveCharacterBackground:(avatar,file)=>post('/api/characters/merge-attributes',{avatar,data:{extensions:{[BACKGROUND_FIELD]:backgroundFile(file)}}},{text:true}),
         async recentChats(max = 50) {
             const rows = await post('/api/chats/recent', { max, metadata: true });
             return (Array.isArray(rows) ? rows : []).filter((r) => r.avatar).map((r) => ({

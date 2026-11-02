@@ -41,7 +41,7 @@ V2 方向（ADR-0009）的锁定 ST 宿主开发入口：真实上游栈 + 本�
 | `node scripts/stop-managed.mjs` | 先停止核验归属的 `memorycore.pid`，再停 `dev-managed/run/st.pid` 归属受管实例的进程（核对命令行，不碰 8742/8743 原生实例） |
 | `node scripts/status-managed.mjs` | 只读汇报受管实例状态（JSON；登录入口 `/auth/` 探活、账号映射只报 configured 布尔，不输出密钥与映射值） |
 | `node scripts/accept.mjs [--only C07]` | 真浏览器验收（下节）；不进 `scripts/check.sh` |
-| `node scripts/accept-managed.mjs [--filter <场景,…>]` | 受管端到端验收（见「受管端到端验收」节）：默认 14 个接口/协议场景；`ui03-browser` 真实界面场景需显式 `--filter`；不进 `scripts/check.sh` |
+| `node scripts/accept-managed.mjs [--filter <场景,…>]` | 受管端到端验收（见「受管端到端验收」节）：默认 14 个接口/协议场景；`ui03-browser` 真实界面场景需显式 `--filter`；同一受管根保留最近三轮 `accept-<时间>` 产物（含当前），创建入口清理旧轮；不进 `scripts/check.sh` |
 | `node scripts/protection-report.mjs [--archive … --key-file …]` | C1/D01 保护清单与权限报告（只读） |
 | `bash scripts/backup.sh <dataRoot> <config.yaml\|-> <out.vcbae1>` | C1 加密备份（tar → openssl aes-256-cbc → `vc_aead.py` VCBAE1 认证封装），口令用环境变量或 0600 keyfile |
 | `bash scripts/restore.sh <archive.vcbae1> <空目标目录>` | MAC 先校验再解密，恢复到隔离目录（0700/0600），不覆盖原 dataRoot |

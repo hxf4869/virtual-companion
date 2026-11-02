@@ -1,6 +1,6 @@
 <template>
-    <view class="vc-conversation">
-        <VcAurora />
+    <view class="vc-conversation" :class="{'has-scene':sceneActive}">
+        <VcAurora :background="background" @scene="sceneActive=$event" />
         <view class="vc-conv-nav">
             <button role="button" tabindex="0" class="vc-round vc-glass" aria-label="返回" @click="back"><VcIcon name="chevron-left" /></button>
             <button role="button" tabindex="0" v-if="!searching" class="vc-identity vc-glass" @click="character"><VcAvatar :avatar="chat.target?.avatar" :name="chat.target?.name" size="var(--vc-avatar-nav)" /><text>{{ chat.target?.name }}</text><VcIcon name="chevron-right" size="var(--vc-icon-sm)" /></button>
@@ -46,7 +46,7 @@
         </view>
         <view v-if="selectedText !== null" class="vc-menu-scrim" @click.self="selectedText = null"><view class="vc-edit-sheet vc-glass" role="dialog"><button role="button" tabindex="0" class="vc-plain-btn" @click="selectedText = null">完成</button><text class="vc-select-text" selectable>{{ selectedText }}</text></view></view>
         <view v-if="image" class="vc-image-viewer" role="dialog" aria-modal="true" aria-label="图片预览" @click="image = ''"> <button role="button" tabindex="0" class="vc-round vc-glass vc-image-close" aria-label="关闭图片" @click.stop="image = ''"><VcIcon name="x" /></button><image :src="image" mode="aspectFit" /></view>
-        <VcCall v-if="callActive" ref="callView" :chat="chat" :session="session" :name="chat.target?.name" :avatar="chat.target?.avatar" :opening="callOpening" :max-seconds="voicePolicy?.settings.maxRecordingSeconds || 60" @close="callActive=false;callOpening=null" />
+        <VcCall v-if="callActive" ref="callView" :chat="chat" :session="session" :name="chat.target?.name" :avatar="chat.target?.avatar" :background="background" :opening="callOpening" :max-seconds="voicePolicy?.settings.maxRecordingSeconds || 60" @close="callActive=false;callOpening=null" />
         <VcOverlays />
     </view>
 </template>
@@ -69,7 +69,7 @@ import { confirmAlert, showToast } from '../../ui/feedback.mjs';
 
 export default {
     components: { VcAurora, VcAvatar, VcIcon, ChatMessage, VcOverlays, VcCall },
-    data: () => ({ copy: COPY,engine:engineState, chat: {}, session: null, menu: null, more: false, editing: null, editText: '', selectedText: null, saving: false, image: '', atBottom: true, searching: false, query: '', matchIndex: 0,voice:{phase:'idle'},voiceAvailable:false,readAvailable:false,recorder:null,voicePolicy:null,callActive:false,callOpening:null }),
+    data: () => ({ copy: COPY,engine:engineState, chat: {}, session: null, menu: null, more: false, editing: null, editText: '', selectedText: null, saving: false, image: '', atBottom: true, searching: false, query: '', matchIndex: 0,voice:{phase:'idle'},voiceAvailable:false,readAvailable:false,recorder:null,voicePolicy:null,callActive:false,callOpening:null,background:'',sceneActive:false }),
     computed: {
         groups() { return groupMessages(this.chat.messages || []); },
         lastId() { return this.chat.messages?.at(-1)?.id ?? -1; },
@@ -93,7 +93,7 @@ export default {
     methods: {
         deactivate(){if(!this.visible)return;this.visible=false;this.session?.suspend();engineState.voiceInputActive=false;this.recorder?.cancel();setCharacterTheme();document.documentElement.style.removeProperty('--vc-vh');if(this.$refs.callView)this.$refs.callView.close();else getEngine().stopVoice().catch(()=>{});},
         async restore(){if(!this.live||!this.visible||engineState.stView)return;await this.session.resume();await this.afterReady();},
-        async afterReady(){if(!this.live||!this.visible||!this.session.isCurrent())return;const ch=getEngine().character();const tint=await tintOf(avatarUrl(this.chat.target.avatar));if(!this.live||!this.visible||!this.session.isCurrent())return;setCharacterTheme(ch?.theme,tint);this.latest(true);await this.setupVoice();if(this.callId&&this.session.isCurrent()){const incoming=takeIncomingCall(this.callId);this.callId='';if(incoming&&this.voiceAvailable&&this.readAvailable){this.callOpening=incoming.callback?null:incoming;this.startCall();}}},
+        async afterReady(){if(!this.live||!this.visible||!this.session.isCurrent())return;const ch=getEngine().character();this.background=ch?.background||'';const tint=await tintOf(avatarUrl(this.chat.target.avatar));if(!this.live||!this.visible||!this.session.isCurrent())return;setCharacterTheme(ch?.theme,tint);this.latest(true);await this.setupVoice();if(this.callId&&this.session.isCurrent()){const incoming=takeIncomingCall(this.callId);this.callId='';if(incoming&&this.voiceAvailable&&this.readAvailable){this.callOpening=incoming.callback?null:incoming;this.startCall();}}},
         startCall(){if(!this.session.isCurrent())return;const focused=document.activeElement;if(focused?.matches('input,textarea'))focused.blur();this.callActive=true;},
         async setupVoice(){
             this.recorder?.dispose();this.recorder=null;const engine=getEngine(),policy=await engine.voicePolicy();if(!this.live||!this.visible||!this.session.isCurrent())return;
@@ -143,6 +143,7 @@ export default {
 .vc-recording-note { padding: var(--vc-space-xs) var(--vc-space-md); border-radius: var(--vc-radius-pill); font-size: var(--vc-fs-footnote); margin-bottom: var(--vc-space-xs); text-align: center; }
 .vc-recording-meter { height: 3px; background: var(--vc-accent); transform-origin: center; margin-top: var(--vc-space-xxs); border-radius: var(--vc-radius-pill); }
 .vc-conversation { position: fixed; inset: 0; height: var(--vc-vh, 100dvh); display: flex; flex-direction: column; color: var(--vc-ink); }
+.vc-conversation.has-scene { --vc-bubble-char: var(--vc-bubble-char-scene); }
 .vc-conv-nav { flex: none; display: flex; align-items: center; justify-content: space-between; gap: var(--vc-space-xs); padding: calc(env(safe-area-inset-top) + var(--vc-space-xs)) var(--vc-space-md) var(--vc-space-xs); position: relative; z-index: var(--vc-z-content); }
 .vc-identity { min-width: 0; max-width: 70%; display: flex; gap: var(--vc-space-xs); align-items: center; border: 0; border-radius: var(--vc-radius-pill); min-height: var(--vc-touch); color: var(--vc-ink); font-size: var(--vc-fs-headline); font-weight: 600; }
 .vc-identity text { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }

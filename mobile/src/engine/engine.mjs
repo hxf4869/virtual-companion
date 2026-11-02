@@ -3,6 +3,7 @@
 // 入口与 MB-0 验证一致：公开 getContext()、原生 script.js 导出、原生 DOM（与现有扩展同一路径）。
 import { toMessage } from './server.mjs';
 import { CALL_COPY } from '../copy.mjs';
+import {BACKGROUND_FIELD,backgroundFile} from '../theme/background.mjs';
 
 export const STATES = ['idle', 'loading', 'ready', 'reloading', 'error'];
 
@@ -163,7 +164,7 @@ export function createEngine({ doc = globalThis.document, src = '/', onState } =
         character() {
             const c = ctx(); const i = Number(c?.characterId);
             const ch = Number.isInteger(i) ? c.characters[i] : null;
-            return ch ? { index: i, name: ch.name, avatar: ch.avatar, theme: ch.data?.extensions?.vc_theme || '' } : null;
+            return ch ? { index: i, name: ch.name, avatar: ch.avatar, theme: ch.data?.extensions?.vc_theme || '',background:backgroundFile(ch.data?.extensions?.[BACKGROUND_FIELD]) } : null;
         },
         generating: () => Boolean(script?.isGenerating?.()),
         // 发送走原生输入框与发送键：与现有扩展同一路径（含陪伴模式的连发合并）。
@@ -295,8 +296,9 @@ export function createEngine({ doc = globalThis.document, src = '/', onState } =
         async stopVoice() { readVersion++;const mod=await win().eval("import('/scripts/extensions/third-party/vc-model-settings/voice.js')");mod.voicePlayer.stop(); },
         card(avatar) {
             const ch = script?.characters?.find(c=>c.avatar===avatar);
-            return ch ? { avatar: ch.avatar, name: ch.name, description: ch.description || ch.data?.description || '', characterRef: ch.data?.extensions?.vc_character_ref || '', theme: ch.data?.extensions?.vc_theme || '' } : null;
+            return ch ? { avatar: ch.avatar, name: ch.name, description: ch.description || ch.data?.description || '', characterRef: ch.data?.extensions?.vc_character_ref || '', theme: ch.data?.extensions?.vc_theme || '',background:backgroundFile(ch.data?.extensions?.[BACKGROUND_FIELD]) } : null;
         },
+        async refreshCharacters(){await api.ready();await script.getCharacters();},
         async importCard(file) {
             if(file.size > 32 * 1024 * 1024) throw new Error('card too large');
             const bytes = new (win().Uint8Array)(await file.arrayBuffer());

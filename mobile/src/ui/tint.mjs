@@ -35,6 +35,6 @@ export function tintOf(src) {
     return p;
 }
 
-export function avatarUrl(avatar) {
-    return avatar ? `/thumbnail?type=avatar&file=${encodeURIComponent(avatar)}` : '';
+export function avatarUrl(avatar,origin=globalThis.location?.origin||'') {
+    return avatar ? `${origin}/thumbnail?type=avatar&file=${encodeURIComponent(avatar)}` : '';
 }

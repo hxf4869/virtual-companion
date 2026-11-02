@@ -35,7 +35,7 @@ test('写请求带 Go 会话身份头与 CSRF，且只取一次身份', async ()
     assert.equal(f.calls.filter((c) => c.path === '/auth/api/session').length, 1);
 });
 
-test('409 / 401 后重新取身份；错误带状态码', async () => {
+test('409 / 401 后保留页面身份；错误带状态码', async () => {
     let n = 0;
     const f = fakeFetch({
         '/auth/api/session': { body: { accountId: '42', sessionId: '7' } },
@@ -46,7 +46,20 @@ test('409 / 401 后重新取身份；错误带状态码', async () => {
     await assert.rejects(s.recentChats(), (e) => e instanceof ServerError && e.status === 409);
     const rows = await s.recentChats();
     assert.deepEqual(rows, [{ avatar: 'a.png', file: 'x', preview: '最后一句', updated: 5, items: 3, binding: null }]);
-    assert.equal(f.calls.filter((c) => c.path === '/auth/api/session').length, 2);
+    assert.equal(f.calls.filter((c) => c.path === '/auth/api/session').length, 1);
+});
+
+test('列表与角色并行加载共享首次身份快照，迟到身份不能覆盖原页面', async () => {
+    let sessions = 0; const identities = [];
+    const server = createServer({ fetchImpl: async (path, init = {}) => {
+        if (path === '/auth/api/session') return Response.json({ accountId: ++sessions === 1 ? 'A' : 'B', sessionId: 'session' });
+        if (path === '/csrf-token') return Response.json({ token: 'csrf' });
+        identities.push(init.headers['x-vc-expected-account-id']);
+        return Response.json([]);
+    } });
+    await Promise.all([server.recentChats(), server.characters()]);
+    assert.deepEqual(identities, ['A', 'A']);
+    assert.equal(sessions, 1);
 });
 
 test('消息映射与文件名', () => {

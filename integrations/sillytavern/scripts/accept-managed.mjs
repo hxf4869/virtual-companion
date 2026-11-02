@@ -679,10 +679,15 @@ async function runFull() {
     const ts = new Date().toISOString().replace(/[:.]/g, '-');
     const artifactsDir = path.join(ARTIFACTS_ROOT, `accept-${ts}`);
     fs.mkdirSync(artifactsDir, { recursive: true, mode: 0o700 });
+    // 同一受管根只保留最近三轮（含当前）；命名之外的目录和符号链接不清理。
+    const oldAcceptArtifacts = fs.readdirSync(ARTIFACTS_ROOT, { withFileTypes: true })
+        .filter(entry => entry.isDirectory() && /^accept-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z$/.test(entry.name))
+        .map(entry => entry.name).sort().reverse().slice(3);
+    for (const name of oldAcceptArtifacts) fs.rmSync(path.join(ARTIFACTS_ROOT, name), { recursive: true, force: true });
 
     const secrets = {
-        needsVoice: selected.some((id) => id.startsWith('voice-') || id === 'mb-call' || id === 'mb-incoming'),
-        needsASR: selected.includes('voice-input') || selected.includes('mb-call') || selected.includes('mb-incoming'),
+        needsVoice: selected.some((id) => id.startsWith('voice-') || ['mb-call','mb-incoming','mb-background'].includes(id)),
+        needsASR: selected.some(id=>['voice-input','mb-call','mb-incoming','mb-background'].includes(id)),
         needsRights: selected.some((id) => id.startsWith('rights-')),
         needsMemory: selected.some(id => id.startsWith('memory-')),
         pgPassword: synthSecret(18),

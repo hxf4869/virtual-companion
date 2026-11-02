@@ -39,6 +39,7 @@ import { mbChatScene } from './mb-chat-accept.mjs';
 import { mbPagesScene } from './mb-pages-accept.mjs';
 import { mbCallScene } from './mb-call-accept.mjs';
 import { mbIncomingScene } from './mb-incoming-accept.mjs';
+import { mbBackgroundScene } from './mb-background-accept.mjs';
 
 export const ACCEPT_SCENES = [
     memoryRealModelScene,
@@ -101,4 +102,5 @@ export const ACCEPT_SCENES = [
     mbPagesScene,
     mbCallScene,
     mbIncomingScene,
+    mbBackgroundScene,
 ];

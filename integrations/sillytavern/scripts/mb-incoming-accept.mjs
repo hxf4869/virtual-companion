@@ -16,6 +16,7 @@ export async function sceneMbIncoming(ctx){
   assert.equal((await st.call('POST','/api/chats/save',{avatar_url:card.avatar,file_name:file,chat:rows})).status,200);
   const source=await voiceCall(ctx,'POST','/api/v1/st/sources/reconcile',{chatIdentities:[identity]});
   await voiceCall(ctx,'POST','/api/v1/st/memory/recall',{chatIdentity:identity,revision:source[0].revision,enabled:true,budgetTokens:1024});
+  const scene='landscape autumn great tree.jpg';assert.ok((await st.call('POST','/api/backgrounds/all',{})).json.images.some(i=>i.filename===scene));assert.equal((await st.call('POST','/api/characters/merge-attributes',{avatar:card.avatar,data:{extensions:{vc_mobile_background:scene}}})).status,200);
   const policy=await voiceCall(ctx,'GET',`/api/v1/relationships/${relationship}/proactive-policy`);
   // Four distinct call dispositions need four fixture slots; the product default stays three.
   await voiceCall(ctx,'PUT',`/api/v1/relationships/${relationship}/proactive-policy`,{...policy,enabled:true,mode:'CLOSE_FRIEND',offlineCapable:true,dailyLimit:6,quietHoursStart:'23:00',quietHoursEnd:'08:00',quietHoursTimezone:'UTC',checkInAfterMinutes:120});
@@ -33,7 +34,7 @@ export async function sceneMbIncoming(ctx){
   const mine=async()=> (await voiceCall(ctx,'GET','/api/v1/inbox')).filter(e=>e.relationshipId===relationship);
   const first=(await mine()).find(e=>e.eventId===firstResult.eventId);assert.equal(first.call.state,'RINGING');assert.equal(first.voice?.status,'ready');
   const incoming=()=>page.getByRole('dialog',{name:'来电',exact:true});await page.evaluate(()=>globalThis.__vcIncoming.poll());assert.equal(await incoming().count(),0,'recording is not interrupted by another microphone view');await page.getByRole('button',{name:'结束录音',exact:true}).focus();await page.keyboard.press('Escape');await page.getByRole('button',{name:'开始录音',exact:true}).waitFor();await page.evaluate(()=>globalThis.__vcIncoming.poll());await incoming().waitFor({timeout:15000});
-  stage='ring screenshots';
+  stage='ring screenshots';await incoming().locator('.vc-scene.is-ready').waitFor();
   const shots=async prefix=>{for(const mode of ['light','dark']){await page.evaluate(({mode,tokens})=>{for(const [key,value]of Object.entries(tokens))document.documentElement.style.setProperty(`--vc-${key}`,value);document.documentElement.dataset.vcTheme=mode;},{mode,tokens:aurora.modes[mode]});for(const width of [390,1440]){await page.setViewportSize({width,height:width===390?844:1000});await page.screenshot({path:path.join(SHOTS,`${prefix}-${width}-${mode}.png`)});assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));}}};
   await shots('incoming');await incoming().getByRole('button',{name:'拒绝',exact:true}).click();await incoming().waitFor({state:'detached'});assert.equal((await mine()).find(e=>e.eventId===first.eventId).call.state,'DECLINED');
   await page.getByRole('button',{name:'返回',exact:true}).first().click();await page.locator('.vc-main').waitFor();

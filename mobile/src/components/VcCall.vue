@@ -1,12 +1,12 @@
 <template>
- <div class="vc-call" role="dialog" aria-modal="true" aria-label="语音通话" tabindex="-1" @keydown.esc.stop.prevent="close" @keydown.tab.prevent="focusNext">
-  <VcAurora />
+ <div class="vc-call" :class="{'has-scene':sceneActive}" role="dialog" aria-modal="true" aria-label="语音通话" tabindex="-1" @keydown.esc.stop.prevent="close" @keydown.tab.prevent="focusNext">
+  <VcAurora :background="background" @scene="sceneActive=$event" />
   <view class="vc-call-content">
    <view class="vc-call-person">
     <view class="vc-call-ring" :class="{'is-speaking':call.phase==='speaking'}" :style="{transform:`scale(${1+call.level*.12})`}"><VcAvatar :avatar="avatar" :name="name" size="var(--vc-avatar-call)" /></view>
-    <text class="vc-call-name">{{ name }}</text><text class="vc-call-time">{{ duration }}</text><text class="vc-call-status" role="status">{{ call.error || status }}</text>
+    <view class="vc-call-details"><text class="vc-call-name">{{ name }}</text><text class="vc-call-time">{{ duration }}</text><text class="vc-call-status" role="status">{{ call.error || status }}</text></view>
    </view>
-   <view v-if="captions || call.textRequired" class="vc-call-captions" aria-live="polite"><text class="vc-call-previous">{{ call.previous }}</text><text class="vc-call-current">{{ call.current }}</text></view>
+   <view v-if="captions || call.textRequired" class="vc-call-captions" aria-live="polite"><text v-if="call.previous" class="vc-call-previous">{{ call.previous }}</text><text v-if="call.current" class="vc-call-current">{{ call.current }}</text></view>
    <view class="vc-call-controls">
     <button v-if="call.needsPlay" role="button" tabindex="0" class="vc-plain-btn" @click="controller.retryPlay()">继续播放</button>
     <button v-if="call.phase==='error'" role="button" tabindex="0" class="vc-plain-btn" :disabled="closing" @click="retry">重试</button>
@@ -23,8 +23,8 @@
 import VcAurora from './VcAurora.vue';import VcAvatar from './VcAvatar.vue';import VcIcon from './VcIcon.vue';
 import {createCallSession} from '../voice/call.mjs';import {getEngine,engineState} from '../engine/index.mjs';import {CALL_COPY} from '../copy.mjs';
 export default {
- components:{VcAurora,VcAvatar,VcIcon},props:{name:String,avatar:String,chat:Object,session:Object,maxSeconds:Number,opening:Object},emits:['close'],
- data:()=>({call:{phase:'connecting',elapsed:0,level:0},controller:null,captions:true,closing:false,engine:engineState}),
+ components:{VcAurora,VcAvatar,VcIcon},props:{name:String,avatar:String,background:String,chat:Object,session:Object,maxSeconds:Number,opening:Object},emits:['close'],
+ data:()=>({call:{phase:'connecting',elapsed:0,level:0},controller:null,captions:true,closing:false,engine:engineState,sceneActive:false}),
  computed:{duration(){return `${Math.floor(this.call.elapsed/60).toString().padStart(2,'0')}:${(this.call.elapsed%60).toString().padStart(2,'0')}`;},status(){return {connecting:CALL_COPY.connecting,listening:CALL_COPY.listening,thinking:CALL_COPY.thinking,speaking:CALL_COPY.speaking,error:CALL_COPY.failed}[this.call.phase]||CALL_COPY.listening;}},
  watch:{'engine.stView'(value){if(value)this.close();}},
  mounted(){this.engine.callActive=true;this.opener=document.activeElement;this.$el.focus();this.init();this.visibility=()=>{if(document.hidden)this.close();};document.addEventListener('visibilitychange',this.visibility);},
@@ -43,7 +43,8 @@ export default {
 .vc-call-person { display: flex; flex-direction: column; align-items: center; margin-top: clamp(var(--vc-space-xl),6vh,80px); }
 .vc-call-ring { border-radius: var(--vc-radius-pill); box-shadow: 0 0 0 var(--vc-space-md) rgba(var(--tint),.08),0 0 0 var(--vc-space-xxl) rgba(var(--tint),.04); transition: transform var(--vc-dur-press) var(--vc-ease-out); }
 .vc-call-ring.is-speaking { animation: vc-call-breathe var(--vc-dur-emphasized) var(--vc-ease-in-out) infinite alternate; }
-.vc-call-name { font-size: var(--vc-fs-title-2); font-weight: 600; margin-top: var(--vc-space-xxl); }
+.vc-call-details { display: flex; flex-direction: column; align-items: center; margin-top: var(--vc-space-xxl); }
+.vc-call-name { font-size: var(--vc-fs-title-2); font-weight: 600; }
 .vc-call-time { font-size: var(--vc-fs-subhead); color: var(--vc-ink-2); font-variant-numeric: tabular-nums; margin-top: var(--vc-space-xs); }
 .vc-call-status { font-size: var(--vc-fs-subhead); color: var(--vc-ink-2); min-height: var(--vc-space-xl); margin-top: var(--vc-space-xs); }
 .vc-call-captions { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--vc-space-md); flex: 1; padding: var(--vc-space-lg) var(--vc-space-md); text-align: center; min-height: 0; }
@@ -56,5 +57,8 @@ export default {
 .vc-call-action { width: var(--vc-call-action); height: var(--vc-call-action); border: 0; border-radius: var(--vc-radius-pill); display: flex; align-items: center; justify-content: center; color: var(--vc-ink); }
 .vc-call-action[aria-pressed='true'] { background: var(--vc-glass-strong); }
 .vc-call-hangup { width: var(--vc-call-hangup); height: var(--vc-call-hangup); background: var(--vc-danger-fill); color: var(--vc-on-accent); border: 0; border-radius: var(--vc-radius-pill); display: flex; align-items: center; justify-content: center; }
+.vc-call.has-scene { --vc-ink-2: var(--vc-ink); }
+.vc-call.has-scene .vc-call-details { padding: var(--vc-space-sm) var(--vc-space-md); background: var(--vc-glass-strong); border-radius: var(--vc-radius-lg); }
+.vc-call.has-scene :is(.vc-call-captions > text, .vc-call-option > text, .vc-call-controls > .vc-plain-btn) { padding: var(--vc-space-xxs) var(--vc-space-xs); background: var(--vc-glass-strong); border-radius: var(--vc-radius-sm); }
 @keyframes vc-call-breathe { to { scale: 1.04; } }
 </style>
