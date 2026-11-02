@@ -7,6 +7,15 @@ import { providerCatalogSpec } from './lib/accept-scene-helpers.mjs';
 import { reauthForWrite } from './lib/reauth-write.mjs';
 import { prepareSourceIdentities } from '../server-plugin/virtual-companion/lib/source-identity.js';
 
+const BACKGROUND_SAMPLING = Object.freeze({ temperature: 0.3, topP: 0.8 });
+const samplingOf = capture => ({ temperature: capture.body?.temperature, topP: capture.body?.top_p });
+
+export function assertBackgroundSampling(samples) {
+    const failed = Object.entries(samples).filter(([, calls]) => !calls.length || calls.some(call =>
+        call.temperature !== BACKGROUND_SAMPLING.temperature || call.topP !== BACKGROUND_SAMPLING.topP)).map(([kind]) => kind);
+    check(failed.length === 0, `background profile sampling mismatch: ${failed.join(', ')} (expected temperature=0.3, top_p=0.8)`);
+}
+
 function check(ok, label) { if (!ok) throw new Error(`UX24: ${label}`); }
 function response(r, label, status = 200) {
     check(r.status === status, `${label}: HTTP ${r.status}, expected ${status}`);
@@ -24,6 +33,7 @@ export function assertSuggestions(body, expected) {
 }
 
 export async function verifySuggestions(ctx, relationshipId, model) {
+    const sampling = [];
     const request = () => ctx.admin.call('POST', `/api/v1/relationships/${relationshipId}/reply-suggestions`, {
         messages: [{ role: 'character', text: '合成角色问候' }],
     });
@@ -37,9 +47,12 @@ export async function verifySuggestions(ctx, relationshipId, model) {
             const since = (await ctx.fixtureHttp.captures()).at(-1)?.seq || 0;
             assertSuggestions(response(await request(), 'suggestions'), expected);
             const captures = await ctx.fixtureHttp.captures({ protocol: 'chat', since });
-            check(captures.some(c => c.model === model), 'suggestion request did not reach fixture');
+            const requests = captures.filter(c => c.model === model);
+            check(requests.length > 0, 'suggestion request did not reach fixture');
+            sampling.push(...requests.map(samplingOf));
         }
     } finally { await ctx.fixtureHttp.setOverride(model, null); }
+    return sampling;
 }
 
 // Scheduler runs every 30s. Allow 90s for the first page, then observe another
@@ -108,8 +121,8 @@ async function verifyDiary(ctx, { st, card, owner, relation, characterRef, polic
         AND (s.source_timestamp AT TIME ZONE '${schedule.quietHoursTimezone}')::date=DATE '${schedule.day}';`).trim() === '1',
     'today non-incognito user source not persisted');
     const readMonth = async () => response(await ctx.admin.call('GET', `${base}/diary?month=${schedule.day.slice(0, 7)}`), 'diary month').items;
-    const calls = async () => (await ctx.fixtureHttp.captures({ protocol: 'chat', since }))
-        .filter(c => c.model === 'ux24-background' && JSON.stringify(c.body).includes('<vc-chat-day>') && JSON.stringify(c.body).includes(marker)).length;
+    const requests = async () => (await ctx.fixtureHttp.captures({ protocol: 'chat', since }))
+        .filter(c => c.model === 'ux24-background' && JSON.stringify(c.body).includes('<vc-chat-day>') && JSON.stringify(c.body).includes(marker));
     let entry;
     await waitFor(async () => {
         entry = (await readMonth()).find(e => e.day === schedule.day);
@@ -119,14 +132,14 @@ async function verifyDiary(ctx, { st, card, owner, relation, characterRef, polic
     const entryId = id(entry.entryId);
     const single = response(await ctx.admin.call('GET', `/api/v1/diary/${entryId}`), 'generated diary single entry');
     check(single.entryId === entryId && single.day === schedule.day && single.body === body && JSON.stringify(single.moments) === JSON.stringify(moments), 'generated diary single entry mismatch');
-    assertDiaryOnce(before, stats(), await calls());
+    assertDiaryOnce(before, stats(), (await requests()).length);
     // Observe another complete 30s scheduler interval plus 5s slack. Counts include
     // model attempts, not just the unique page constraint (which could hide retries).
     await delay(35000);
     const entries = (await readMonth()).filter(e => e.day === schedule.day);
     check(entries.length === 1 && entries[0].entryId === entryId && entries[0].body === body, 'diary changed across scheduler interval');
-    assertDiaryOnce(before, stats(), await calls());
-    return { generated: true, monthAndEntryRead: true, singleModelAttempt: true, repeatObservationMs: 35000,
+    assertDiaryOnce(before, stats(), (await requests()).length);
+    return { sampling: (await requests()).map(samplingOf), generated: true, monthAndEntryRead: true, singleModelAttempt: true, repeatObservationMs: 35000,
         generationTimeoutMs: 90000, incognitoExclusion: 'infra/db/tests/309_ux24_targets.sql (not run here)' };
 }
 
@@ -140,7 +153,9 @@ export async function sceneUx24Backend(ctx) {
     // Dedicated fixture model avoids changing hl-proactive's response overrides.
     const provider = 'ux24-synthetic'; // This scene owns both ux24-* fixture overrides.
     const models = [
-        { ...spec.models[0], profileKey: 'background', modelId: 'ux24-background' },
+        { ...spec.models[0], profileKey: 'background', modelId: 'ux24-background',
+            capabilities: { ...spec.models[0].capabilities, temperature: 'DECLARED', topP: 'DECLARED' },
+            generationParams: { ...BACKGROUND_SAMPLING } },
         { ...spec.models[0], profileKey: 'memory', modelId: 'ux24-memory', contextWindowTokens: 32768, maxOutputTokens: 4096,
             capabilities: { ...spec.models[0].capabilities, temperature: 'DECLARED' } },
     ];
@@ -229,7 +244,7 @@ export async function sceneUx24Backend(ctx) {
         response(await ctx.admin.call('DELETE', `/api/v1/favorites/${favoriteId}`), 'delete favorite');
         check(response(await ctx.admin.call('GET', `${base}/favorites`), 'list after delete').items.length === 0, 'favorite survived delete');
 
-        await verifySuggestions(ctx, relation, 'ux24-background');
+        const suggestionsSampling = await verifySuggestions(ctx, relation, 'ux24-background');
         await ctx.fixtureHttp.setOverride('ux24-background', { text: '之前约好提醒你，现在到时间啦' });
         const createReminder = async (time, text) => response(await ctx.admin.call('POST', `${base}/reminders`, { text, remindAt: at(time), recurrence: 'NONE' }), 'create reminder');
         const due = await createReminder('10:00:00', '合成提醒一');
@@ -248,6 +263,9 @@ export async function sceneUx24Backend(ctx) {
         await runAt('11:00:00'); check((await inbox()).length === 1, 'cancelled reminder delivered');
         check(response(await ctx.admin.call('GET', `${base}/reminders`), 'remaining reminders').length === 0, 'consumed/cancelled reminder remains active');
         const diary = await verifyDiary(ctx, { st, card, owner, relation, characterRef: binding.characterRef, policy });
+        // Defer only sampling assertions so one RED run observes both real call paths.
+        // Retain scalar sampling fields only, never request bodies in results/errors.
+        assertBackgroundSampling({ suggestions: suggestionsSampling, diary: diary.sampling });
         ctx.results.ux24Backend = { memoryPinRecall: true, favorites: true, favoriteOwnerIsolation: true,
             suggestionsSuccessEmptyFailure: true, reminderDueCancelNoDuplicate: true, diary };
     } finally {

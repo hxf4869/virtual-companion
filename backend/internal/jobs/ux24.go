@@ -16,8 +16,6 @@ import (
 const (
 	diaryMaxTokens        = 640
 	suggestMaxTokens      = 160
-	suggestTemperature    = 0.3
-	diaryTemperature      = 0.4
 	diaryTargetWindow     = 36 * time.Hour
 	reminderMaxTokens     = followGenMaxTokens
 	backgroundUnavailable = "UNAVAILABLE"
@@ -26,8 +24,8 @@ const (
 // CompleteBackground runs one text completion on the BACKGROUND_GREETINGS
 // purpose model with usage accounting. A non-empty reason means the model was
 // not usable (unbound, budget, credential, provider); the text is then empty.
-// temperature nil keeps the profile's own parameters.
-func (l *Loop) CompleteBackground(ctx context.Context, owner, relationshipID int64, prompt string, maxTokens int, temperature *float64) (string, string, error) {
+// Sampling parameters come from the pinned profile and use greetingRoute's validation.
+func (l *Loop) CompleteBackground(ctx context.Context, owner, relationshipID int64, prompt string, maxTokens int) (string, string, error) {
 	if l == nil || l.providerFactory == nil {
 		return "", backgroundUnavailable, nil
 	}
@@ -42,14 +40,15 @@ func (l *Loop) CompleteBackground(ctx context.Context, owner, relationshipID int
 	if limit := resolved.Model.MaxOutputTokens; limit > 0 && limit < maxTokens {
 		maxTokens = limit
 	}
-	route, err := openProactiveRoute(resolved, maxTokens)
+	route, err := greetingRoute(resolved)
 	if err != nil {
 		return "", "PARAMETERS", nil
 	}
-	if temperature != nil {
-		t := *temperature
-		route.Temperature = &t
-		route.TopP = nil
+	route.MaxOutputTokens = maxTokens
+	// Reasoning consumes the output budget too; retain the existing 4096-token
+	// floor without exceeding the profile's model limit.
+	if route.ReasoningEffort != nil && route.MaxOutputTokens < reasoningMinOutputTokens {
+		route.MaxOutputTokens = min(reasoningMinOutputTokens, resolved.Model.MaxOutputTokens)
 	}
 	if err := refreshFollowCredential(ctx, store, &route, resolved.ProviderRevision); err != nil {
 		return "", "CREDENTIAL", nil
@@ -64,7 +63,7 @@ func (l *Loop) SuggestReplies(ctx context.Context, owner, relationshipID int64, 
 	if len(messages) == 0 {
 		return []string{}, nil
 	}
-	text, reason, err := l.CompleteBackground(ctx, owner, relationshipID, proactive.ReplySuggestionsPrompt(messages), suggestMaxTokens, nil)
+	text, reason, err := l.CompleteBackground(ctx, owner, relationshipID, proactive.ReplySuggestionsPrompt(messages), suggestMaxTokens)
 	if err != nil {
 		return nil, err
 	}
@@ -93,7 +92,7 @@ func (l *Loop) deliverDueReminder(ctx context.Context, store *postgres.Store, ow
 	if err != nil || due == nil {
 		return false, err
 	}
-	body, reason, err := l.CompleteBackground(ctx, owner, relationshipID, proactive.ReminderPrompt(due.CharName, due.UserName, due.Text), reminderMaxTokens, nil)
+	body, reason, err := l.CompleteBackground(ctx, owner, relationshipID, proactive.ReminderPrompt(due.CharName, due.UserName, due.Text), reminderMaxTokens)
 	if err != nil || reason != "" {
 		return false, err
 	}
@@ -144,8 +143,7 @@ func (l *Loop) writeDiary(ctx context.Context, store *postgres.Store, owner, rel
 	if err := store.NoteDiaryAttempt(ctx, owner, relationshipID, now); err != nil {
 		return err
 	}
-	temp := diaryTemperature
-	text, reason, err := l.CompleteBackground(ctx, owner, relationshipID, proactive.DiaryPrompt(input.CharName, input.UserName, input.Vibe, input.Turns), diaryMaxTokens, &temp)
+	text, reason, err := l.CompleteBackground(ctx, owner, relationshipID, proactive.DiaryPrompt(input.CharName, input.UserName, input.Vibe, input.Turns), diaryMaxTokens)
 	if err != nil || reason != "" {
 		return err
 	}

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { assertSuggestions, verifySuggestions, ux24BackendScene, diarySchedule, assertDiaryOnce } from './ux24-backend-accept.mjs';
+import { assertSuggestions, verifySuggestions, ux24BackendScene, diarySchedule, assertDiaryOnce, assertBackgroundSampling } from './ux24-backend-accept.mjs';
 
 function fixture({ fail = false, capture = true } = {}) {
     let directive, seq = 0;
@@ -16,7 +16,7 @@ function fixture({ fail = false, capture = true } = {}) {
             assert.equal(path, '/api/v1/relationships/42/reply-suggestions');
             assert.equal(body.messages[0].role, 'character');
             assert.equal(typeof body.messages[0].text, 'string');
-            if (capture) captures.push({ seq: ++seq, model: 'ux24-background' });
+            if (capture) captures.push({ seq: ++seq, model: 'ux24-background', body: { temperature: 0.3, top_p: 0.8 } });
             return { status: fail ? 503 : 200, json: { suggestions: directive.error ? [] : JSON.parse(directive.text) } };
         } },
     };
@@ -29,7 +29,8 @@ test('scene is opt-in and uses only existing managed dependencies', () => {
 });
 test('suggestions enforce successful content, explicit silence and provider failure', async () => {
     const ctx = fixture();
-    await verifySuggestions(ctx, '42', 'ux24-background');
+    const sampling = await verifySuggestions(ctx, '42', 'ux24-background');
+    assert.deepEqual(sampling, Array.from({ length: 3 }, () => ({ temperature: 0.3, topP: 0.8 })));
     assert.equal(ctx.changes.length, 4);
     assert.equal(ctx.changes[2].error.status, 500);
     assert.equal(ctx.changes.at(-1), null);
@@ -81,4 +82,19 @@ test('unique diary row cannot mask repeated generation or a fabricated page with
     assert.throws(() => assertDiaryOnce(before, once, 2), /reach fixture exactly once/);
     assert.throws(() => assertDiaryOnce(before, { ...once, cooldownUntil: null }, 1), /cooldown missing/);
     assert.throws(() => assertDiaryOnce(before, { ...once, pages: 2 }, 1), /exactly one page/);
+});
+
+
+test('sampling regression detects omitted suggestions and forced diary temperature without dumping bodies', () => {
+    const valid = [{ temperature: 0.3, topP: 0.8 }];
+    assertBackgroundSampling({ suggestions: valid, diary: valid });
+    assert.throws(() => assertBackgroundSampling({
+        suggestions: [{ temperature: undefined, topP: undefined, body: 'synthetic-private-marker' }],
+        diary: [{ temperature: 0.4, topP: undefined }],
+    }), error => {
+        assert.match(error.message, /sampling mismatch: suggestions, diary/);
+        assert.doesNotMatch(error.message, /synthetic-private-marker/);
+        return true;
+    });
+    assert.throws(() => assertBackgroundSampling({ suggestions: valid, diary: [] }), /sampling mismatch: diary/);
 });
