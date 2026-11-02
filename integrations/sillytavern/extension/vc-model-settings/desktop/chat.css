@@ -316,6 +316,7 @@ html[data-vc-layout="desktop"] body.vc-ui #chat .edit_textarea {
  background: var(--vc-raised); box-shadow: var(--vc-shadow-inset-edge); color: var(--vc-ink);
  font: inherit; font-size: var(--vc-fs-bubble); line-height: 1.5; resize: vertical;
 }
+html[data-vc-layout="desktop"] body.vc-ui #chat > .mes:has(.edit_textarea) .ch_name { display: flex !important; height: auto; /* 恢复被直聊隐藏的原生编辑操作行 */ }
 html[data-vc-layout="desktop"] body.vc-ui #chat .mes_edit_buttons { gap: var(--vc-space-xs); justify-content: flex-end; width: 100%; margin-top: var(--vc-space-xs); }
 html[data-vc-layout="desktop"] body.vc-ui #chat .mes_edit_buttons :is(.mes_edit_copy,.mes_edit_add_reasoning,.mes_edit_delete,.mes_edit_up,.mes_edit_down) { display: none; /* 复制、删除由消息菜单提供 */ }
 html[data-vc-layout="desktop"] body.vc-ui #chat .mes_edit_buttons :is(.mes_edit_done,.mes_edit_cancel) {

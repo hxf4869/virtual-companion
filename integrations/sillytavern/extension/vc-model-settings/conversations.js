@@ -3,10 +3,10 @@
 // 头像优先用当前会话快照，否则用同名或同角色引用的角色卡头像；都没有才用首字。
 // 同一关系只保留一行；同一个聊天文件也只保留一行。
 // 聊天目录已经列全时，几秒内连着创建的同名分身不再占第二行：没有自己的聊天文件，
-// 或者两份文件的最后一句相同（选中角色时自动开的聊天，和紧接着打开的那份）。
+// 或者两份文件的最后一句相同（选中角色时自动开的聊天，和紧接着打开的那份）；已知身份不同的聊天始终分别显示。
 // 隔开一段时间另建的实例，或最后一句已经不同的两份聊天，各自一行；看起来一样时才加序号（外壳 · 2）。
 import { instancesFrom, safeImageUrl } from './instance-page.js';
-import { pendingInboxWrites } from './chat-shell.js';
+import { unreadInboxEvents } from './chat-shell.js';
 
 export const EMPTY_CONVERSATIONS_COPY = '还没有会话';
 export const CONVERSATIONS_ERROR_COPY = '会话没有加载出来';
@@ -132,6 +132,8 @@ export function chatSnapshotFromContext(context) {
         break;
     }
     const snap = { relationshipId: String(binding.relationshipId) };
+    const chatIdentity = textField(context.chatMetadata?.vc_f2?.id);
+    if (chatIdentity) snap.chatIdentity = chatIdentity;
     const characterRef = card?.data?.extensions?.vc_character_ref;
     if (typeof characterRef === 'string' && characterRef) snap.characterRef = characterRef;
     if (Number.isInteger(index) && index >= 0 && card) snap.characterIndex = index;
@@ -235,6 +237,7 @@ function dropShadowTwins(rows) {
 }
 
 function echoTwin(left, right) {
+    if (left?.chatIdentity && right?.chatIdentity && left.chatIdentity !== right.chatIdentity) return false;
     const preview = textField(left?.preview);
     if (!preview || preview !== textField(right?.preview)) return false;
     if (!textField(left?.file) || !textField(right?.file)) return false;
@@ -310,6 +313,8 @@ export function conversationRows(relationships, { chats = [], chatsComplete = fa
         }
         const file = textField(chat?.file);
         if (file) row.file = file;
+        const chatIdentity = textField(chat?.chatIdentity);
+        if (chatIdentity) row.chatIdentity = chatIdentity;
         if (Number.isInteger(chat?.characterIndex) && chat.characterIndex >= 0) row.characterIndex = chat.characterIndex;
         const characterRef = textField(chat?.characterRef);
         if (characterRef) row.characterRef = characterRef;
@@ -322,7 +327,7 @@ export function conversationRows(relationships, { chats = [], chatsComplete = fa
                 if (ref) row.characterRef = ref;
             }
         }
-        const pending = pendingInboxWrites(inboxRows, { relationshipId: instance.relationshipId }).length;
+        const pending = unreadInboxEvents(inboxRows, { relationshipId: instance.relationshipId }).length;
         if (pending > 0) {
             row.unread = true;
             row.unreadCount = pending;

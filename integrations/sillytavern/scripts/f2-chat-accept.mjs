@@ -221,6 +221,8 @@ async function shootPair(page, ctx, prefix, { extra = [], scroll = '' } = {}) {
             });
             const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
             if (overflow > 1) throw new Error(`${prefix} ${viewport.name} 横向溢出 ${overflow}px`);
+            if (await page.locator('#vc-emoji-btn').isVisible() !== (viewport.width >= 744)) throw new Error(`${prefix} ${viewport.name} 表情入口断点状态错误`);
+            if (viewport.width < 744 && await page.locator('#vc-latest:visible,#vc-date-chip:visible').count()) throw new Error(`${prefix} ${viewport.name} 残留桌面滚动控件`);
             await shot(page, ctx, `${prefix}-${viewport.name}-${mode}.png`);
         }
     }
@@ -330,6 +332,7 @@ export async function sceneF2ChatUi(ctx) {
             return Boolean(poster && chat && poster.parentElement !== chat && !chat.contains(poster) && document.querySelector('#extensionsMenuButton'));
         });
         if (!placed) fail(new Error('海报位置或魔杖节点不符合约定'));
+        const relationshipId = await page.evaluate(() => String(SillyTavern.getContext().chatMetadata.vc_binding.relationshipId));
         const swipeNext = page.locator('#chat > .mes.vc-tools-pin [data-vc-act="swipe-next"]');
         try {
             await swipeNext.waitFor({ state: 'visible', timeout: 30000 });
@@ -524,9 +527,41 @@ export async function sceneF2ChatUi(ctx) {
         } catch (error) {
             fail(error);
         }
-        await openChat(page, avatar, file);
-
         await page.setViewportSize({ width: 1440, height: 900 });
+        console.log('[f2-chat-ui] 原生慢切换的延迟骨架');
+        await page.evaluate(() => {
+            const root = document.querySelector('#vc-shell');
+            const skeleton = document.querySelector('#vc-chat-skeleton');
+            const trace = window.__vcF2LoadTrace = {};
+            const record = () => {
+                if (root.dataset.openState === 'pending' && trace.start === undefined) trace.start = performance.now();
+                if (trace.start !== undefined && !skeleton.hidden && trace.shown === undefined) trace.shown = performance.now();
+            };
+            const stateObserver = new MutationObserver(record);
+            const skeletonObserver = new MutationObserver(record);
+            stateObserver.observe(root, { attributes: true, attributeFilter: ['data-open-state'] });
+            skeletonObserver.observe(skeleton, { attributes: true, attributeFilter: ['hidden'] });
+            window.__vcF2StopLoadProbe = () => { stateObserver.disconnect(); skeletonObserver.disconnect(); };
+        });
+        await page.route('**/api/chats/get', async route => {
+            await new Promise(resolve => setTimeout(resolve, 1500));
+            await route.continue();
+        });
+        try {
+            await page.locator(`#vc-shell .vc-convo[data-relationship-id="${relationshipId}"]`).click();
+            await page.locator('#vc-chat-skeleton:visible').waitFor({ timeout: 4000 });
+            if (await page.locator('#vc-chat-empty-wrap:visible').count()) fail(new Error('会话加载时仍显示空会话提示'));
+            const delayMs = await page.evaluate(() => window.__vcF2LoadTrace.shown - window.__vcF2LoadTrace.start);
+            if (!(delayMs >= 300)) fail(new Error(`会话骨架未遵守 300ms 延迟（${delayMs}）`));
+            await page.waitForFunction(file => document.querySelector('#vc-shell').dataset.openState === 'open'
+                && SillyTavern.getContext().chatId === file, file, { timeout: 20000 });
+            await page.locator('#vc-chat-skeleton').waitFor({ state: 'hidden' });
+            ctx.results.desktopConversationLoading = { delayMs, emptySuppressed: true, hiddenAfterLoad: true };
+        } finally {
+            await page.unroute('**/api/chats/get');
+            await page.evaluate(() => window.__vcF2StopLoadProbe());
+        }
+
         await theme(page, 'light');
         await ctx.fixtureHttp.setOverride('vc03m-chat', {
             text: '慢速流。'.repeat(40),
@@ -577,23 +612,20 @@ export async function sceneF2ChatUi(ctx) {
             const chat = document.querySelector('#chat');
             return Boolean(chat && chat.scrollHeight > chat.clientHeight + 40);
         }, null, { timeout: 20000 });
-        await page.evaluate(() => {
-            const chat = document.querySelector('#chat');
-            if (chat) chat.scrollTop = 0;
-        });
-        await page.waitForFunction(() => document.querySelector('#vc-new-reply')?.classList.contains('is-on') === true, null, { timeout: 8000 });
-        const replyPad = await page.evaluate(() => {
-            const chat = document.querySelector('#chat');
-            const padding = Number.parseFloat(getComputedStyle(chat).paddingBottom) || 0;
-            return { padding };
-        });
-        if (replyPad.padding < 36) fail(new Error(`新回复出现时阅读区没有留出胶囊高度 ${replyPad.padding}`));
+        await page.locator('#chat').hover();
+        await page.mouse.wheel(0, -30000);
+        const latest = page.locator('#vc-latest:visible');
+        await latest.waitFor({ timeout: 8000 });
+        const latestBounds = await latest.boundingBox();
+        const chatBounds = await page.locator('#chat').boundingBox();
+        if (!latestBounds || !chatBounds || latestBounds.y < chatBounds.y || latestBounds.y + latestBounds.height > chatBounds.y + chatBounds.height) fail(new Error('回到最新按钮不在聊天视口内'));
+        if (await page.locator('#vc-new-reply:visible').count()) fail(new Error('桌面仍显示旧新回复胶囊'));
         await shot(page, ctx, 'new-reply-away-1440-light.png');
-        await page.evaluate(() => {
+        await latest.click();
+        await page.waitForFunction(() => {
             const chat = document.querySelector('#chat');
-            if (chat) chat.scrollTop = chat.scrollHeight;
-        });
-        await page.waitForFunction(() => document.querySelector('#vc-new-reply')?.classList.contains('is-on') !== true, null, { timeout: 3000 });
+            return chat.scrollHeight - chat.scrollTop - chat.clientHeight <= 24 && document.querySelector('#vc-latest')?.hidden === true;
+        }, null, { timeout: 3000 });
         const stoppedSave = page.waitForResponse((response) => response.request().method() === 'POST' && response.url().includes('/api/chats/save'), { timeout: 20000 });
         const diag = await page.evaluate(() => {
             const before = document.body.dataset.generating || '';
@@ -787,6 +819,45 @@ export async function sceneF2ChatUi(ctx) {
         await page.waitForSelector('#vc-memory-sheet-host', { state: 'detached' });
         const focused = await page.evaluate(() => document.activeElement?.getAttribute?.('data-vc-poster') || '');
         if (focused !== 'memory') fail(new Error(`关闭记忆 sheet 后焦点没有回到海报按钮（${focused || '无'}）`));
+
+        console.log('[f2-chat-ui] 桌面消息编辑保存与取消');
+        await page.setViewportSize({ width: 1440, height: 900 });
+        const beforeEdit = await page.evaluate(() => {
+            const chat = SillyTavern.getContext().chat;
+            const index = chat.findLastIndex(message => message.is_user);
+            return { index, text: chat[index].mes };
+        });
+        const composer = page.locator('#send_textarea');
+        await composer.fill(''); await composer.press('ArrowUp');
+        const editor = page.locator('.edit_textarea:visible'); await editor.waitFor();
+        await editor.fill('合成取消编辑，不应保存。');
+        await page.locator('.mes_edit_cancel:visible').click();
+        if (await page.evaluate(index => SillyTavern.getContext().chat[index].mes, beforeEdit.index) !== beforeEdit.text) fail(new Error('取消编辑改变了原消息'));
+        await composer.press('ArrowUp'); await editor.waitFor();
+        const revised = `${beforeEdit.text}\n合成编辑已保存。`;
+        await editor.fill(revised); await page.locator('.mes_edit_done:visible').click();
+        await page.waitForFunction(({index,text}) => !document.querySelector('.edit_textarea') && SillyTavern.getContext().chat[index].mes === text,
+            { index: beforeEdit.index, text: revised });
+        await page.evaluate(async () => { const native = await import('/script.js'); await native.saveChatConditional(); });
+        ctx.results.desktopMessageEditor = { mouseCancel: true, cancelPreserves: true, mouseSave: true };
+
+        console.log('[f2-chat-ui] 拍一拍来源对账与生成');
+        await ctx.fixtureHttp.setOverride('vc03m-chat', { text: '晚安，合成拍一拍回复。' });
+        const patBefore = await page.evaluate(() => ({
+            length: SillyTavern.getContext().chat.length,
+            count: SillyTavern.getContext().chat.filter(message => message.extra?.vc_kind === 'pat').length,
+        }));
+        const patSince = (await ctx.fixtureHttp.captures()).at(-1)?.seq || 0;
+        await page.locator('.vc-shell-chat [data-who-avatar]').dblclick();
+        await page.waitForFunction(before => {
+            const chat = SillyTavern.getContext().chat;
+            return chat.length >= before.length + 2 && !chat.at(-1)?.is_system && !chat.at(-1)?.is_user && document.body.dataset.generating !== 'true';
+        }, patBefore, { timeout: 30000 });
+        const patAfter = await page.evaluate(() => SillyTavern.getContext().chat.filter(message => message.extra?.vc_kind === 'pat').length);
+        if (patAfter !== patBefore.count + 1) fail(new Error('拍一拍未恰好追加一条系统消息'));
+        const patCalls = (await ctx.fixtureHttp.captures({ since: patSince })).filter(call => call.model === 'vc03m-chat');
+        if (patCalls.length !== 1 || !patCalls[0].body?.messages?.some(message => String(message.content).includes('拍了拍'))) fail(new Error('拍一拍未携带提示触发恰好一次模型调用'));
+        ctx.results.desktopPat = { sourceReconciled: true, oneSystemMessage: true, oneModelCall: true, nudgeInRequest: true };
 
         await bc.close();
     } finally {

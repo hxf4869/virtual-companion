@@ -138,7 +138,7 @@ html[data-vc-layout="desktop"] body.vc-ui .vc-mem-actions .vc-circle:hover { col
 html[data-vc-layout="desktop"] body.vc-ui .vc-mem-actions .vc-circle[aria-pressed="true"] { color:var(--vc-accent); }
 html[data-vc-layout="desktop"] body.vc-ui .vc-mem-actions .vc-circle[aria-pressed="true"] .vc-icon { fill:currentColor; }
 html[data-vc-layout="desktop"] body.vc-ui .vc-mem-card:is(:hover,:focus-within) .vc-mem-actions { opacity:1; pointer-events:auto; }
-html[data-vc-layout="desktop"] body.vc-ui .vc-mem-card:is(:hover,:focus-within) :is(.vc-mem-time,.vc-mem-pin) { opacity:0; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-mem-card:is(:hover,:focus-within) :is(.vc-mem-time,.vc-mem-pin) { opacity:0; pointer-events:none; }
 html[data-vc-layout="desktop"] body.vc-ui .vc-mem-card.is-editing { box-shadow: var(--vc-shadow-card); }
 html[data-vc-layout="desktop"] body.vc-ui .vc-mem-edit { display:grid; gap:var(--vc-space-xs); padding:var(--vc-space-sm) var(--vc-space-md) var(--vc-space-xs); }
 html[data-vc-layout="desktop"] body.vc-ui .vc-mem-edit textarea { width:100%; height:auto; min-height:64px; padding:var(--vc-space-xs) var(--vc-space-sm); resize:vertical; background:var(--vc-glass-3); border-color:var(--vc-accent); }

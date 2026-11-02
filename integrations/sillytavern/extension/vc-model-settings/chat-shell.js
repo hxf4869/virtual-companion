@@ -36,6 +36,14 @@ export function pendingInboxWrites(rows, scope = {}) {
     });
 }
 
+// 原生写入确认与应用已读是两个独立状态；通知、侧栏与会话计数使用后者。
+export function unreadInboxEvents(rows, scope = {}) {
+    if (!Array.isArray(rows)) return [];
+    return rows.filter(row => row?.intent === 'BODY' && row.read !== true && row.linkStatus === 'present'
+        && (scope.conversationId == null || scope.conversationId === '' || String(row.conversationId) === String(scope.conversationId))
+        && (scope.relationshipId == null || scope.relationshipId === '' || String(row.relationshipId) === String(scope.relationshipId)));
+}
+
 export function renderInboxStrip(count) {
     const total = Number(count);
     if (!Number.isInteger(total) || total <= 0) return '';

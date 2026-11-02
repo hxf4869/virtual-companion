@@ -605,11 +605,13 @@ async function confirmDelete(options) {
 }
 
 export function mountStickerSettingsEntry(doc, { open } = {}) {
-    const forms = typeof doc.querySelectorAll === 'function' ? [...doc.querySelectorAll('.vc-settings-form')] : [];
+    const forms = typeof doc.querySelectorAll === 'function'
+        ? ['.vc-settings-form', '.vc-settings-body'].flatMap(selector => [...doc.querySelectorAll(selector)]) : [];
     for (const form of forms) {
         if (form.querySelector?.('[data-vc-sticker-entry]')) continue;
         const models = form.querySelector?.('[data-action="models"]');
-        const group = models?.parent || models?.parentElement;
+        const group = models?.parent || models?.parentElement
+            || form.querySelector?.('[data-preference="theme"]')?.closest('.vc-desk-group');
         if (!group) continue;
         const button = doc.createElement('button');
         button.type = 'button';
@@ -690,7 +692,7 @@ async function deleteUserFile(id) {
 
 function openStickerPage(button) {
     const doc = button?.ownerDocument || globalThis.document;
-    const form = button?.closest?.('.vc-settings-form');
+    const form = button?.closest?.('.vc-settings-form,.vc-settings-body');
     const parent = form?.parentElement || form?.parent;
     if (!doc || !form || !parent) return;
     const host = form.closest?.('.vc-sheet') || doc.querySelector?.('.vc-shell-settings');
@@ -698,6 +700,8 @@ function openStickerPage(button) {
     const heading = host?.querySelector?.('.vc-large-title') || null;
     const previousTitle = titleNode?.textContent || '';
     const previousHeading = heading?.textContent || '';
+    const desktopHeader = parent.querySelector?.('.vc-settings-header');
+    if (desktopHeader) desktopHeader.hidden = true;
     if (titleNode) titleNode.textContent = '表情包';
     if (heading && heading !== titleNode) {
         heading.hidden = true;
@@ -707,6 +711,7 @@ function openStickerPage(button) {
     const close = () => {
         page?.remove();
         parent.append(form);
+        if (desktopHeader) desktopHeader.hidden = false;
         if (titleNode) titleNode.textContent = previousTitle || '设置';
         if (heading) {
             heading.textContent = previousHeading || '设置';

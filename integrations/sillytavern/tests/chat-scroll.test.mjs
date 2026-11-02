@@ -2,8 +2,9 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
     ATTACH_PX, LAND_OFFSET, anchorDelta, badgeText, centerTop, landingTop, latestLabel, latestVisible,
-    nextFollow, nextRead, scrollDuration, shouldLand, unreadInfo,
+    mountChatScroll, nextFollow, nextRead, scrollDuration, shouldLand, unreadInfo,
 } from '../extension/vc-model-settings/chat-scroll.js';
+import { installMiniDom } from './mini-dom.mjs';
 
 test('跟随 / 脱离：只有用户输入改状态', () => {
     assert.equal(nextFollow('follow', { type: 'user-scroll', up: true, gap: 10 }), 'detached');
@@ -62,4 +63,41 @@ test('已读只前进；未读从第一条未读角色消息起算', () => {
 test('向上加载历史：锚点位移就是 scrollTop 补偿量', () => {
     assert.equal(anchorDelta(40, 1240), 1200);
     assert.equal(anchorDelta(40, 40), 0);
+});
+
+test('列表背后的聊天不恢复位置，展开对话列后才按实际尺寸恢复', t => {
+    const doc = installMiniDom(); doc.addEventListener = () => {};
+    const shell = doc.createElement('div'); shell.id = 'vc-shell'; shell.dataset.chat = 'closed';
+    shell.dataset.destination = 'chat'; doc.body.append(shell);
+    const chat = doc.createElement('div'); shell.append(chat); chat.parentElement = shell;
+    chat.scrollTop = 0; chat.clientHeight = 80; chat.scrollHeight = 5600;
+    chat.getBoundingClientRect = () => ({ top: 0, bottom: chat.clientHeight });
+    let rowHeight = 560;
+    for (let id = 0; id < 10; id++) {
+        const row = doc.createElement('div'); row.className = 'mes'; row.setAttribute('mesid', id);
+        row.getBoundingClientRect = () => ({ top: id * rowHeight - chat.scrollTop, bottom: (id + 1) * rowHeight - chat.scrollTop, height: rowHeight });
+        chat.append(row);
+    }
+    const frames = [], values = new Map([['vc-read:qa-chat', '9'], ['vc-pos:qa-chat', '3']]);
+    const previous = { raf: globalThis.requestAnimationFrame, storage: globalThis.localStorage };
+    globalThis.requestAnimationFrame = fn => frames.push(fn);
+    globalThis.localStorage = { getItem: key => values.get(key) ?? null, setItem: (key, value) => values.set(key, String(value)), removeItem: key => values.delete(key) };
+    t.mock.method(globalThis, 'setTimeout', () => 0);
+    t.after(() => { globalThis.requestAnimationFrame = previous.raf; globalThis.localStorage = previous.storage; });
+    const flush = () => { for (let i = 0; frames.length && i < 40; i++) frames.shift()(); };
+    let desktop = true;
+    const api = mountChatScroll({ chat, doc, hooks: { isDesktop: () => desktop, getChatId: () => 'qa-chat', attach() {}, detach() {}, dateLabel: () => '' } });
+    flush();
+    assert.equal(chat.scrollTop, 0, '隐藏列的临时窄尺寸不能用于恢复');
+    shell.dataset.chat = 'open'; rowHeight = 100; chat.clientHeight = 400; chat.scrollHeight = 1000;
+    api.openChat(); flush();
+    assert.equal(chat.scrollTop, 276, '第三条消息应停在展开后的视口顶部下 24px');
+    assert.equal(values.get('vc-pos:qa-chat'), '3');
+    assert.equal(doc.querySelector('#vc-latest').hidden, false);
+    desktop = false; api.refresh();
+    assert.equal(doc.querySelector('#vc-latest').hidden, true);
+    assert.equal(doc.querySelector('#vc-date-chip').hidden, true, '桌面浮动日期不能残留成手机页底部文字');
+    desktop = true; api.refresh();
+    assert.equal(doc.querySelector('#vc-latest').hidden, false);
+    assert.equal(doc.querySelector('#vc-date-chip').hidden, false);
 });

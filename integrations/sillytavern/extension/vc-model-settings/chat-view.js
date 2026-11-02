@@ -51,6 +51,7 @@ let pinUntil = 0;
 let applyingScroll = 0;
 let userScroll = false;
 let chatWasLaidOut = false;
+let watchedChatColumn = null;
 const PIN_TRIES = 8;
 const PIN_MS = 600;
 const LAID_OUT_PX = 48;
@@ -369,6 +370,7 @@ export function mountChatView({ getContext, document: doc = document } = {}) {
     subscribe(doc);
     refreshAll();
     const syncShell = () => {
+        watchChatColumn(doc);
         tuckWand(doc);
         dressComposer(doc);
         watchStatus();
@@ -388,6 +390,7 @@ export function mountChatView({ getContext, document: doc = document } = {}) {
     watch(doc.documentElement, { attributes: true, attributeFilter: ['data-vc-layout'] }, () => {
         applyReplyStyle(doc, readReplyStyle());
         ensureDesktopModules();
+        scrollApi?.refresh();
         refreshMessages();
     });
     watch(doc.body, { attributes: true, attributeFilter: ['data-generating'] }, () => {
@@ -1518,12 +1521,20 @@ function watchChatBox(chat) {
 
 function watchChatColumn(doc) {
     const shell = doc.querySelector?.('#vc-shell');
-    if (!shell) return;
-    watch(shell, { attributes: true, attributeFilter: ['data-chat'] }, () => {
-        if (shell.getAttribute?.('data-chat') !== 'open') {
+    if (!shell || shell === watchedChatColumn) return;
+    watchedChatColumn = shell;
+    let open = shell.getAttribute('data-chat') === 'open';
+    watch(shell, { attributes: true, attributeFilter: ['data-chat', 'data-open-state'] }, () => {
+        syncLoad(safeContext());
+        enhanceEmpty();
+        const next = shell.getAttribute('data-chat') === 'open';
+        if (next === open) return;
+        open = next;
+        if (!open) {
             chatWasLaidOut = false;
             return;
         }
+        scrollApi?.openChat();
         armPin();
         followIfNeeded();
     });
@@ -1859,8 +1870,10 @@ function syncDesktopLoad(skeleton, chat) {
         skeleton.innerHTML = BUBBLE_SKELETON;
     }
     clearTimeout(loadTimer);
-    const open = document.querySelector('#vc-shell')?.getAttribute?.('data-chat') === 'open';
-    const waiting = open && !childMes(chat).length && !document.querySelector('#vc-chat-empty')?.textContent?.trim();
+    const shell = document.querySelector('#vc-shell');
+    const open = shell?.getAttribute?.('data-chat') === 'open';
+    const waiting = shell?.dataset.openState === 'pending'
+        || (open && !childMes(chat).length && !document.querySelector('#vc-chat-empty')?.textContent?.trim());
     if (!waiting) {
         loadSince = 0;
         hide(skeleton);
@@ -1881,7 +1894,7 @@ function enhanceEmpty() {
     if (!empty) return;
     const text = empty.textContent.trim();
     let wrap = document.querySelector('#vc-chat-empty-wrap');
-    if (!text) {
+    if (!text || (desktopLayout() && document.querySelector('#vc-shell')?.dataset.openState === 'pending')) {
         hide(wrap);
         return;
     }

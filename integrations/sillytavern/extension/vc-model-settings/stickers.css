@@ -10,7 +10,7 @@ body.vc-ui .vc-sticker-page {
 }
 
 /* 桌面聊天目的地的对话列选择器比设置页更具体，设置层会被挤到下一行。表情包页打开时盖住这一列。 */
-body.vc-ui #vc-shell[data-chrome="sidebar"][data-settings="page"] .vc-shell-settings:has(.vc-sticker-page) {
+body.vc-ui #vc-shell[data-chrome="sidebar"][data-settings="page"] .vc-shell-settings:has(> .vc-sticker-page) {
     position: absolute;
     inset: 0;
     z-index: 4;

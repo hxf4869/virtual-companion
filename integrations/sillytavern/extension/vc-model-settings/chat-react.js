@@ -90,6 +90,14 @@ export function takeNudges(metadata) {
     return list.map((item) => item?.text).filter(Boolean).join('\n');
 }
 
+export async function injectNudges(ctx) {
+    if (!ctx?.setExtensionPrompt) return;
+    const text = takeNudges(ctx.chatMetadata);
+    if (!text) return;
+    ctx.setExtensionPrompt(NUDGE_PROMPT, text, 1, 0, false, 0);
+    await ctx.saveMetadata?.();
+}
+
 export function planPat({ now, last } = {}) {
     return { generate: !(Number.isFinite(last) && now - last < PAT_WINDOW_MS) };
 }
@@ -276,9 +284,9 @@ export function mountChatReact({ getContext, document: doc = globalThis.document
     let syncQueued = false;
     function sync() {
         syncQueued = false;
+        dressComposer();
         if (!desktop()) return;
         for (const mes of rows()) syncRow(mes);
-        dressComposer();
     }
     function queueSync() {
         if (syncQueued) return;
@@ -650,15 +658,7 @@ export function mountChatReact({ getContext, document: doc = globalThis.document
         await ctx.saveMetadata?.();
     }
 
-    // 下一次生成前注入一次，之后清空。
-    function injectNudges() {
-        const ctx = context();
-        if (!ctx?.setExtensionPrompt) return;
-        const text = takeNudges(ctx.chatMetadata);
-        if (!text) return;
-        ctx.setExtensionPrompt(NUDGE_PROMPT, text, 1, 0, false, 0);
-        void ctx.saveMetadata?.();
-    }
+    // 下一次生成前注入一次，元数据落盘完成后才继续宿主生成。
     function clearNudgePrompt() {
         context()?.setExtensionPrompt?.(NUDGE_PROMPT, '', 1, 0, false, 0);
     }
@@ -739,7 +739,7 @@ export function mountChatReact({ getContext, document: doc = globalThis.document
         if (type === 'quiet' || type === 'impersonate' || dryRun) return;
         live = true;
         liveSince = Date.now();
-        injectNudges();
+        return injectNudges(context());
     });
     on(types.GENERATION_ENDED, clearNudgePrompt);
     on(types.GENERATION_STOPPED, clearNudgePrompt);

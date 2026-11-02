@@ -340,6 +340,35 @@ test('两个真实聊天文件各自一行，同名实例仍能区分', () => {
     assert.match(html, /vc-convo-preview">乙/);
 });
 
+test('已写入原生聊天但未读的消息计入会话徽标，应用已读后清除', () => {
+    const relationships = [{ relationshipId: '7', personaRef: 'st-character', companionName: '合成角色' }];
+    const item = { eventId: 'qa-notify', relationshipId: '7', conversationId: '8', intent: 'BODY', linkStatus: 'present', stDelivered: true, read: false };
+    const [unread] = conversationRows(relationships, { inboxRows: [item] });
+    assert.equal(unread.unreadCount, 1);
+    assert.equal(unread.unread, true);
+    const [read] = conversationRows(relationships, { inboxRows: [{ ...item, read: true }] });
+    assert.equal(read.unread, undefined);
+});
+
+test('同一秒创建且末条相同的独立聊天按持久身份分别显示', () => {
+    const relationships = [
+        { relationshipId: '5', personaRef: 'st-character', companionName: '合成角色', createdAt: '2026-11-02T01:07:34.300Z' },
+        { relationshipId: '6', personaRef: 'st-character', companionName: '合成角色', createdAt: '2026-11-02T01:07:34.800Z' },
+    ];
+    const recent = chatSnapshotsFromRecent([{
+        file_id: 'chat-a', avatar: 'qa.png', mes: '相同的最后一句。',
+        chat_metadata: { vc_f2: { id: 'identity-a' }, vc_binding: { relationshipId: '5', characterRef: 'qa-ref' } },
+    }]);
+    const current = chatSnapshotFromContext({
+        characterId: 0, characters: [{ name: '合成角色', avatar: 'qa.png', data: { extensions: { vc_character_ref: 'qa-ref' } } }],
+        chatId: 'chat-b', chat: [{ is_user: false, mes: '相同的最后一句。' }],
+        chatMetadata: { vc_f2: { id: 'identity-b' }, vc_binding: { relationshipId: '6' } },
+    });
+    const rows = conversationRows(relationships, { chats: [...recent, current], chatsComplete: true });
+    assert.deepEqual(rows.map(row => row.relationshipId), ['5', '6']);
+    assert.deepEqual(rows.map(row => row.file), ['chat-a', 'chat-b']);
+});
+
 test('几秒内连着创建、开场白相同的两份聊天只留后一条', () => {
     const relationships = [
         { relationshipId: '5', personaRef: 'st-character', companionName: '走查 13d72836', createdAt: '2026-10-30T11:16:58.360Z' },

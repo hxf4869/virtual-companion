@@ -1,6 +1,6 @@
 // UX-30 通知与未读（桌面）：复用收件箱数据，其他会话 / 页面收到新的主动消息时弹站内横幅，
 // 标签页隐藏时发系统通知（仅权限已授予），标签页标题加 `(N) ` 前缀。手机不变。
-import { pendingInboxWrites } from '../chat-shell.js';
+import { unreadInboxEvents } from '../chat-shell.js';
 
 export const COPY = Object.freeze({
     now: '现在',
@@ -8,7 +8,7 @@ export const COPY = Object.freeze({
 });
 export const BANNER_MS = 5000;
 export const POLL_MS = 30000;
-const TITLE_PREFIX = /^\(\d+\) /;
+const TITLE_PREFIX = /^\(\d+\+?\) /;
 const PREVIEW_MAX = 60;
 
 // ---- 纯逻辑（单测直接覆盖） ----
@@ -20,10 +20,10 @@ export function previewOf(row) {
     return [...text].slice(0, PREVIEW_MAX).join('');
 }
 
-// 待写入的主动消息里 eventId 没见过的；seen 会被更新。
+// 未读主动消息里 eventId 没见过的；seen 会被更新。
 export function newArrivals(rows, seen) {
     const fresh = [];
-    for (const row of pendingInboxWrites(rows)) {
+    for (const row of unreadInboxEvents(rows)) {
         if (!row.eventId || seen.has(row.eventId)) continue;
         seen.add(row.eventId);
         fresh.push(row);
@@ -135,7 +135,7 @@ export function createNotifier({ document: doc = globalThis.document, describe, 
     function ingest(rows, { viewing = null } = {}) {
         if (!desktop() || !Array.isArray(rows)) return;
         const fresh = newArrivals(rows, seen);
-        const count = pendingInboxWrites(rows).length;
+        const count = unreadInboxEvents(rows).length;
         doc.title = titleWithCount(doc.title, count);
         if (!seeded) { seeded = true; return; } // 首次只记下已有的，不把存量当新消息
         const row = fresh.at(-1);

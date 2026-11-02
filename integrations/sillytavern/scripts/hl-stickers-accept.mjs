@@ -107,7 +107,7 @@ async function openStickers(page) {
     const ready = await page.waitForFunction(() => {
         const shown = (el) => el && el.getClientRects().length > 0;
         const narrow = window.innerWidth < 744;
-        const form = [...document.querySelectorAll('.vc-settings-form')].find(shown);
+        const form = [...document.querySelectorAll(narrow ? '.vc-settings-form' : '.vc-settings-shell')].find(shown);
         if (!form) return false;
         if (narrow) return Boolean(form.closest('.vc-sheet'));
         return document.querySelector('#vc-shell')?.dataset.settings === 'page';
@@ -133,10 +133,13 @@ async function openStickers(page) {
     if (!ready) throw new Error('设置页没有出现');
     // 等弹层到达全高再滚动入口，避免 scrollIntoView 把仍在运动的宿主一并滚出视口。
     await page.waitForFunction(() => {
-        const form = [...document.querySelectorAll('.vc-settings-form')].find((el) => el.getClientRects().length > 0);
+        const form = [...document.querySelectorAll('.vc-settings-form,.vc-settings-shell')].find((el) => el.getClientRects().length > 0);
         const sheet = form?.closest('.vc-sheet');
         return Boolean(form) && (!sheet || sheet.style.transform === 'translateY(0px)');
     }, null, { timeout: 8000 });
+    if (await page.evaluate(() => window.innerWidth >= 744)) {
+        await page.locator('.vc-settings-shell button[data-category="appearance"]').click();
+    }
     await page.waitForFunction(() => [...document.querySelectorAll('[data-vc-sticker-entry]')].some((el) => el.getClientRects().length > 0), null, { timeout: 10000 });
     await page.evaluate(() => {
         const button = [...document.querySelectorAll('[data-vc-sticker-entry]')].find((el) => el.getClientRects().length > 0);
@@ -150,8 +153,12 @@ async function closeSettings(page) {
     await page.evaluate(() => {
         const shown = (el) => el && el.getClientRects().length > 0;
         [...document.querySelectorAll('[data-vc-sticker-back]')].find(shown)?.click();
-        [...document.querySelectorAll('.vc-sheet-done, [data-settings-done]')].find(shown)?.click();
     });
+    if (await page.evaluate(() => window.innerWidth >= 744)) {
+        await page.locator('#vc-shell [data-nav="chat"]:visible').first().click();
+    } else {
+        await page.locator('.vc-sheet-done:visible').click();
+    }
     await page.waitForFunction(() => !document.querySelector('.vc-sheet') && document.querySelector('#vc-shell')?.dataset.settings !== 'page', null, { timeout: 8000 });
 }
 

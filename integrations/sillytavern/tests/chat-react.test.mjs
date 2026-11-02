@@ -2,13 +2,35 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
     EMOJI, NUDGE_KEY, PAT_WINDOW_MS, addNudge, dropNudge, effectsEnabled, emojiCount, keywordEffect, patNudge,
-    planPat, pushRecent, reactionNudge, readRecent, runPat, searchEmoji, searchStickers, stickerMarkup, takeNudges, toggleReaction, writeRecent,
+    injectNudges, mountChatReact, planPat, pushRecent, reactionNudge, readRecent, runPat, searchEmoji, searchStickers, stickerMarkup, takeNudges, toggleReaction, writeRecent,
 } from '../extension/vc-model-settings/chat-react.js';
+import { installMiniDom } from './mini-dom.mjs';
 
 function memoryStore(seed = {}) {
     const data = new Map(Object.entries(seed));
     return { getItem: (k) => (data.has(k) ? data.get(k) : null), setItem: (k, v) => data.set(k, String(v)), removeItem: (k) => data.delete(k) };
 }
+
+test('桌面表情入口在缩为手机后隐藏，返回桌面恢复且不重复挂载', () => {
+    const document = installMiniDom();
+    const frames = [], resize = [];
+    document.addEventListener = () => {};
+    document.defaultView = {
+        requestAnimationFrame: callback => { frames.push(callback); },
+        addEventListener: (name, callback) => { if (name === 'resize') resize.push(callback); },
+    };
+    const flush = () => { while (frames.length) frames.shift()(); };
+    const form = document.createElement('form'); form.id = 'send_form'; document.body.append(form);
+    document.documentElement.dataset.vcLayout = 'desktop';
+    mountChatReact({ document, getContext: () => ({ chat: [], chatMetadata: {} }) });
+    flush();
+    assert.equal(document.querySelector('#vc-emoji-btn').hidden, false);
+    document.documentElement.dataset.vcLayout = 'mobile'; resize.forEach(callback => callback()); flush();
+    assert.equal(document.querySelector('#vc-emoji-btn').hidden, true);
+    document.documentElement.dataset.vcLayout = 'desktop'; resize.forEach(callback => callback()); flush();
+    assert.equal(document.querySelector('#vc-emoji-btn').hidden, false);
+    assert.equal(document.querySelectorAll('#vc-emoji-btn').length, 1);
+});
 
 test('纯 emoji：1–3 个返回个数，夹杂文字、超过 3 个、符号不算', () => {
     assert.equal(emojiCount('😂'), 1);
@@ -79,6 +101,23 @@ test('拍一拍：10 秒内只晃不再生成；系统行、待注入、生成�
     assert.equal(ctx.chat.length, 1);
     const busy = await runPat({ ctx, now: 20000, state, busy: true });
     assert.deepEqual(busy, { generated: false, posted: true });
+});
+
+test('回应提示清空后的元数据须保存完成，生成事件才能继续', async () => {
+    let acknowledge;
+    const saved = new Promise(resolve => { acknowledge = resolve; });
+    const prompts = [];
+    const ctx = { chatMetadata: {}, setExtensionPrompt: (...args) => prompts.push(args), saveMetadata: () => saved };
+    addNudge(ctx.chatMetadata, { id: 'pat:qa', text: '合成拍一拍提示' });
+    let continued = false;
+    const pending = injectNudges(ctx).then(() => { continued = true; });
+    await Promise.resolve();
+    assert.equal(continued, false, '未收到保存确认前不能使用旧来源版本继续生成');
+    assert.equal(prompts.length, 1);
+    assert.equal(prompts[0][1], '合成拍一拍提示');
+    assert.equal(NUDGE_KEY in ctx.chatMetadata, false);
+    acknowledge(); await pending;
+    assert.equal(continued, true);
 });
 
 test('关键词特效：命中词与开关', () => {

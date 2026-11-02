@@ -119,6 +119,10 @@ export const highlightMessage = jumpToMessage;
 export function mountChatScroll({ chat, doc = document, hooks }) {
     if (!chat || active) return active;
     const desktop = () => hooks.isDesktop();
+    const conversationVisible = () => {
+        const shell = doc.querySelector('#vc-shell');
+        return shell?.dataset.chat === 'open' && shell.dataset.destination === 'chat' && shell.dataset.settings !== 'page';
+    };
     let state = 'follow';
     let lastTop = Number(chat.scrollTop) || 0;
     let lastInput = -1e9;
@@ -223,9 +227,13 @@ export function mountChatScroll({ chat, doc = document, hooks }) {
     }
 
     function refreshLatest() {
-        if (!desktop()) { if (nodes) nodes.latest.hidden = true; return; }
+        if (!desktop()) {
+            if (nodes) { nodes.latest.hidden = true; nodes.chip.hidden = true; }
+            return;
+        }
         const n = ensureNodes();
         if (!n) return;
+        n.chip.hidden = false;
         const show = latestVisible(gap());
         const count = show ? unreadCount() : 0;
         const text = badgeText(count);
@@ -269,7 +277,7 @@ export function mountChatScroll({ chat, doc = document, hooks }) {
     function scheduleRead() {
         clearTimeout(readTimer);
         readTimer = setTimeout(() => {
-            if (!desktop() || doc.hidden || holding || !chatId) return;
+            if (!desktop() || !conversationVisible() || doc.hidden || holding || !chatId) return;
             const id = visibleBottomId();
             const next = nextRead(lastRead, id);
             if (next !== lastRead) {
@@ -282,7 +290,7 @@ export function mountChatScroll({ chat, doc = document, hooks }) {
     function schedulePos() {
         clearTimeout(posTimer);
         posTimer = setTimeout(() => {
-            if (!desktop() || holding || !chatId) return;
+            if (!desktop() || !conversationVisible() || holding || !chatId) return;
             if (gap() <= ATTACH_PX) { writeNumber(posKey(chatId), null); return; }
             const first = firstVisible();
             if (first) writeNumber(posKey(chatId), first.id);
@@ -320,7 +328,8 @@ export function mountChatScroll({ chat, doc = document, hooks }) {
         dividerId = null;
         state = 'follow';
         anchor = null;
-        if (!desktop() || !chatId) { releaseHold(); applyDivider(); return; }
+        openToken = null;
+        if (!desktop() || !conversationVisible() || !chatId) { releaseHold(); applyDivider(); return; }
         lastRead = readNumber(readKey(chatId));
         openRead = lastRead;
         holding = true;
@@ -447,7 +456,7 @@ export function mountChatScroll({ chat, doc = document, hooks }) {
 
     const onScroll = () => {
         scrollFrame = 0;
-        if (!desktop()) return;
+        if (!desktop() || !conversationVisible()) return;
         const top = Number(chat.scrollTop) || 0;
         const user = nowMs() - lastInput < 250;
         if (user) {

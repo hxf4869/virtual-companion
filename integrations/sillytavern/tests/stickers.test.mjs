@@ -419,6 +419,22 @@ test('表情样式不写死色值和字号', async () => {
     assert.equal(/\d+ms/.test(body), false);
 });
 
+test('桌面外观页提供表情包入口，重复扫描仍只挂载一次', () => {
+    const doc = installMiniDom();
+    const body = doc.createElement('div'); body.className = 'vc-settings-body';
+    const group = doc.createElement('section'); group.className = 'vc-desk-group';
+    const theme = doc.createElement('div'); theme.setAttribute('data-preference', 'theme');
+    group.append(theme); body.append(group); doc.body.append(body);
+    let opened = null;
+    const options = { open: button => { opened = button; } };
+    mountStickerSettingsEntry(doc, options);
+    mountStickerSettingsEntry(doc, options);
+    const entries = body.querySelectorAll('[data-vc-sticker-entry]');
+    assert.equal(entries.length, 1);
+    entries[0].click();
+    assert.equal(opened, entries[0]);
+});
+
 const FLUENT_NOTE = 'Microsoft Fluent Emoji, Copyright (c) Microsoft Corporation, MIT License, https://github.com/microsoft/fluentui-emoji';
 
 test('表情包行内是缩略图、可读标签和删除，许可署名按包在列表底部只出现一次', () => {

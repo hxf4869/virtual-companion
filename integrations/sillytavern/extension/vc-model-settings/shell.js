@@ -8,7 +8,8 @@ import { readThemeMode, readVcUiFlag, setThemeMode } from './ui/theme.js';
 import { readViewport } from './ui/viewport.js';
 import { fetchRelationships } from './api.js';
 import { sharedTransition } from './desktop/transition.js';
-import { loadInboxEvents, pendingInboxWrites } from './chat-shell.js';
+import { loadInboxEvents, pendingInboxWrites, unreadInboxEvents } from './chat-shell.js';
+import { markInboxRead } from './inbox-page.js';
 import { createNotifier, POLL_MS } from './desktop/notify.js';
 import {
     avatarUrl,
@@ -1024,7 +1025,7 @@ export function mountShell(options = {}) {
             releaseMotion(chatPane);
             releaseMotion(pages);
             selectDestination('chat', null, { legacy: false });
-        }, { from: fromButton?.querySelector?.('[data-fly-from]'), to: () => whoAvatar.querySelector?.('[data-fly-target]'), name: 'vc-shared' });
+        }, { from: fromButton?.querySelector?.('[data-fly-from]'), to: () => whoAvatar.querySelector?.('[data-fly-target]'), name: 'vc-shared' }).then(() => refreshInbox());
     }
 
     async function openFromInstance(instance, opener) {
@@ -1059,9 +1060,18 @@ export function mountShell(options = {}) {
         } catch {
             inboxRows = [];
         }
+        const viewing = viewingRelationship();
+        if (root.dataset.chrome === 'sidebar' && viewing && !doc.hidden) {
+            for (const row of unreadInboxEvents(inboxRows, { relationshipId: viewing })) {
+                try {
+                    const saved = await markInboxRead(row.eventId);
+                    inboxRows = inboxRows.map(item => item.eventId === row.eventId ? saved : item);
+                } catch { /* 未确认的已读写入保留未读状态。 */ }
+            }
+        }
         paintBadge(pendingInboxWrites(inboxRows, inboxScope(getContext())).length);
         const dot = root.querySelector('[data-dot="chat"]');
-        if (dot) dot.hidden = pendingInboxWrites(inboxRows).length === 0;
+        if (dot) dot.hidden = unreadInboxEvents(inboxRows).length === 0;
         notifier.ingest(inboxRows, { viewing: viewingRelationship() });
     }
 
@@ -1397,7 +1407,7 @@ export function mountShell(options = {}) {
     }
     syncWhoTint();
     // UX-30 桌面每 30s 轮询收件箱，有新增 / 已读变化时刷新会话列表未读数。
-    const pendingSignature = () => pendingInboxWrites(inboxRows).map((item) => item.eventId).join();
+    const pendingSignature = () => unreadInboxEvents(inboxRows).map((item) => item.eventId).join();
     setInterval(async () => {
         if (root.dataset.chrome === 'tabbar') return;
         const before = pendingSignature();
