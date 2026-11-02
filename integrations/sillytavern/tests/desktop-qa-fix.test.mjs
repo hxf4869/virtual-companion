@@ -13,8 +13,11 @@ test('UX-22 QA P1-7 陪伴页离开守卫：与设置页相同的捕获阶段拦
 
 test('UX-22 QA P1-9 陪伴模式分段：有底色轨道 + 白色滑块，且只在桌面', async () => {
     const css = strip(await ext('desktop/inbox.css'));
-    assert.match(css, /\.vc-proactive-modes \.vc-cell\[aria-pressed\] \{[^}]*background: rgba\(118,118,128,\.12\)/);
-    assert.match(css, /\.vc-proactive-modes \.vc-cell\[aria-pressed="true"\]::before \{[^}]*background: var\(--vc-thumb\)[^}]*box-shadow: 0 2px 6px/);
+    assert.match(css, /\.vc-proactive-modes \.vc-cell\[aria-pressed\] \{[^}]*background: var\(--vc-segment-fill\)/);
+    assert.match(css, /\.vc-proactive-modes \.vc-cell\[aria-pressed="true"\]::before \{[^}]*background: var\(--vc-thumb\)[^}]*box-shadow: var\(--vc-shadow-segment\)/);
+    const theme = await ext('desktop/themes/aurora.css');
+    assert.match(theme, /--vc-segment-fill: rgba\(118,118,128,\.12\)/);
+    assert.match(theme, /--vc-shadow-segment: 0 2px 6px rgba\(0,0,0,\.12\)/);
     for (const line of css.split('\n')) if (/^\S.*\{/.test(line) && !line.startsWith('@') && !line.startsWith('}')) assert.match(line, /^html\[data-vc-layout="desktop"\]/, line.slice(0, 90));
 });
 

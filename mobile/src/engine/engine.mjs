@@ -280,7 +280,7 @@ export function createEngine({ doc = globalThis.document, src = '/', onState } =
         async voiceBubble(snapshot, document) {
             await api.ready();
             const message=ctx().chat[snapshot.id];
-            return api.call('audio','createVoiceBubble',{document,text:snapshot.text,voice:snapshot.extra?.vc_voice,input:snapshot.user?snapshot.extra?.vc_voice_input:null,onPlayed(){
+            return api.call('audio','createVoiceBubble',{document,mobile:true,text:snapshot.text,voice:snapshot.extra?.vc_voice,input:snapshot.user?snapshot.extra?.vc_voice_input:null,onPlayed(){
                 if(ctx().chat[snapshot.id]===message&&message?.extra?.vc_voice?.clipId===snapshot.extra?.vc_voice?.clipId){message.extra.vc_voice.played=true;void ctx().saveChat();}
             }});
         },

@@ -74,11 +74,11 @@
 
 ### UX-31 记忆时间线与可控（迁移 V278 + Go + 前端）
 - 记忆页右栏改为时间线：按日期分组，卡片含记忆正文、来源一句（`evidence.excerpt`，点击跳回原消息并高亮）、悬停显示钉住 / 编辑 / 忘记。
-- 左栏：时间线 / 已钉住 / 待核验 / 已失效，分隔后「日记」「收藏」，底部「这次不记」开关（`incognito-pref`）。
+- 左栏：时间线 / 已钉住 / 待核验 / 已失效，分隔后「日记」「收藏」，底部「新对话不记」开关（`incognito-pref`，Owner 续接确认仅对新建对话生效，不更改当前对话）。
 - 钉住：`memory` 加 `pinned_at`（V278），新接口 `PUT|DELETE /api/v1/memories/{memoryId}/pin`；钉住的记忆在召回时优先注入。编辑走现有纠正，忘记走现有删除。
 
 ### UX-32 收藏与提醒（迁移 V279 + Go + 前端）
-- 收藏：右键「收藏」保存该条正文快照与来源（会话、`mesid`、时间）；新表 `vc.favorite`（V279，RLS owner），接口 `GET|POST /api/v1/relationships/{relationshipId}/favorites`、`DELETE /api/v1/favorites/{favoriteId}`。记忆页「收藏」为卡片墙，点「回到对话」跳回原消息。
+- 收藏：右键「收藏」保存该条正文快照与来源（会话、`mesid`、时间）；新表 `vc.favorite`（V279，RLS owner），接口 `GET|POST /api/v1/relationships/{relationshipId}/favorites`、`DELETE /api/v1/favorites/{favoriteId}`。记忆页「收藏」为卡片墙，点「回到对话」跳回原消息。定位时以已有消息时间、角色与正文快照做唯一匹配，避免删除前方消息后按过期楼层误跳；时间缺失、内容已改或匹配有歧义时提示失败。
 - 稍后提醒：右键「稍后提醒 › 20 分钟后 / 今晚 21:00 / 明天早上 / 选择时间…」；实现现有契约里未实现的用户创建提醒接口，到点由主动消息通道让角色提起（文案见 copy §20）。收藏页右栏「即将提醒」可取消。
 
 ### UX-33 日记（迁移 V280 + Go + 前端）

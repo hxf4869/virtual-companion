@@ -10,6 +10,7 @@ import { sourceNativeScene, rightsBrowserScene, rightsNativeScene } from './w06-
 import { memoryBrowserScene } from './w07-accept.mjs';
 import { memoryExtractProdScene } from './mem-extract-accept.mjs';
 import { w10InboxNotifyScene } from './w10-accept.mjs';
+import { ux24BackendScene } from './ux24-backend-accept.mjs';
 import { hlProactiveScene } from './hl-proactive-accept.mjs';
 import { voiceBackendScene } from './voice-backend-accept.mjs';
 import { voiceChatScene } from './voice-chat-accept.mjs';
@@ -71,6 +72,7 @@ export const ACCEPT_SCENES = [
     w11ToolMeterScene,
     w10InboxNotifyScene,
     hlProactiveScene,
+    ux24BackendScene,
     voiceBackendScene,
     voiceChatScene,
     voiceProactiveScene,

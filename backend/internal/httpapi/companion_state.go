@@ -31,6 +31,7 @@ type companionStateJSON struct {
 		Energy    int    `json:"energy"`
 	} `json:"emotion"`
 	BusyUntil *string `json:"busyUntil"`
+	Activity  string  `json:"activity"`
 }
 
 type proactiveRunJSON struct {
@@ -61,6 +62,7 @@ func (s *Server) handleGetCompanionState(w http.ResponseWriter, r *http.Request)
 	var body companionStateJSON
 	body.Mood.Tier, body.Mood.Vibe, body.Mood.Line = row.MoodTier, row.MoodVibe, row.MoodLine
 	body.Emotion.Line, body.Emotion.Closeness, body.Emotion.Mood, body.Emotion.Energy = row.EmotionLine, row.Closeness, row.Mood, row.Energy
+	body.Activity = row.Activity
 	if row.BusyUntil != nil {
 		text := row.BusyUntil.UTC().Format(time.RFC3339)
 		body.BusyUntil = &text

@@ -87,6 +87,9 @@ func (s *Store) ExportV2OwnerData(ctx context.Context, owner int64) (V2OwnerExpo
 			row[domain.field] = plain
 		}
 	}
+	if err := s.exportUX24Rows(ctx, owner, out.Go); err != nil {
+		return out, err
+	}
 	inboxN := goArrayLen(out.Go["inbox"])
 	channelN := goArrayLen(out.Go["notificationChannels"])
 	deliveryN := goArrayLen(out.Go["notificationDeliveries"])

@@ -7,7 +7,9 @@ import { popMenu } from './ui/menu.js';
 import { readThemeMode, readVcUiFlag, setThemeMode } from './ui/theme.js';
 import { readViewport } from './ui/viewport.js';
 import { fetchRelationships } from './api.js';
+import { sharedTransition } from './desktop/transition.js';
 import { loadInboxEvents, pendingInboxWrites } from './chat-shell.js';
+import { createNotifier, POLL_MS } from './desktop/notify.js';
 import {
     avatarUrl,
     chatSnapshotFromContext,
@@ -560,6 +562,15 @@ export function mountShell(options = {}) {
         badge.setAttribute('data-badge', 'inbox');
         side.append(label, badge);
         if (item.nav !== 'inbox') badge.remove();
+        if (item.nav === 'chat') {
+            // UX-30 侧栏「聊天」未读点，只在桌面侧栏里；有未读时显示。
+            const dot = doc.createElement('i');
+            dot.className = 'vc-side-dot';
+            dot.setAttribute('data-dot', 'chat');
+            dot.setAttribute('aria-hidden', 'true');
+            dot.hidden = true;
+            side.append(dot);
+        }
         sidebar.append(side);
 
         const tab = doc.createElement('button');
@@ -656,7 +667,11 @@ export function mountShell(options = {}) {
     const whoInst = doc.createElement('small');
     whoInst.setAttribute('data-who-inst', '');
     whoInst.hidden = true;
-    whoCopy.append(whoName, whoInst);
+    // UX-29 桌面副标题（心情 · 在做什么）；有内容时盖过实例名，手机不显示。
+    const whoSub = doc.createElement('small');
+    whoSub.setAttribute('data-who-sub', '');
+    whoSub.hidden = true;
+    whoCopy.append(whoName, whoSub, whoInst);
     who.append(whoAvatar, whoCopy);
     whoSlot.append(who);
     const capsule = doc.createElement('div');
@@ -732,6 +747,36 @@ export function mountShell(options = {}) {
     const timers = new Set();
     const chatBound = new WeakSet();
 
+    let statusCard = null;
+    let statusLoading = false;
+    let lastIdentityRow = null;
+    // UX-29 状态卡只在桌面用：桌面首次画标题栏时才加载，手机不多拉模块。
+    function loadStatusCard() {
+        if (statusLoading || chromeForWidth(globalThis.innerWidth).nav === 'tabbar') return;
+        if (typeof doc.addEventListener !== 'function' || typeof whoAvatar.addEventListener !== 'function') return;
+        statusLoading = true;
+        import('./desktop/status-card.js').then(({ mountStatusCard }) => {
+            statusCard = mountStatusCard({ getContext, document: doc, who, avatar: whoAvatar, sub: whoSub });
+            if (lastIdentityRow) statusCard?.setRelationship(lastIdentityRow);
+        }).catch(() => { statusLoading = false; });
+    }
+    const viewingRelationship = () => {
+        if (root.dataset.chat !== 'open' || root.dataset.destination !== 'chat' || root.dataset.settings === 'page') return null;
+        const id = inboxScope(getContext()).relationshipId;
+        return id == null || id === '' ? null : String(id);
+    };
+    const notifier = createNotifier({
+        document: doc,
+        describe(id) {
+            const row = rowById.get(String(id));
+            return row ? { name: titlesOf(row).name, avatar: avatarUrl(row.avatar) || '' } : {};
+        },
+        onOpen(id) {
+            const row = rowById.get(String(id));
+            void openFromInstance(row || { relationshipId: String(id) }, null);
+        },
+    });
+
     function paintBadge(count) {
         const text = count > 99 ? '99+' : String(count);
         for (const slot of root.querySelectorAll('[data-badge="inbox"]')) {
@@ -767,6 +812,9 @@ export function mountShell(options = {}) {
             letter.textContent = [...title.name][0] || '';
             whoAvatar.append(letter);
         }
+        lastIdentityRow = row;
+        if (statusCard) statusCard.setRelationship(row);
+        else loadStatusCard();
     }
 
     function placeSheld() {
@@ -962,17 +1010,21 @@ export function mountShell(options = {}) {
             listHeldFor = nextId;
         }
         entered = true;
-        paintIdentity(row);
         const phone = chromeForWidth(globalThis.innerWidth).nav === 'tabbar';
         if (phone) {
+            paintIdentity(row);
             showChat(row, fromButton);
             return;
         }
-        chatPane.classList.remove('is-push', 'is-pop');
-        root.dataset.chat = 'open';
-        releaseMotion(chatPane);
-        releaseMotion(pages);
-        selectDestination('chat', null, { legacy: false });
+        // 桌面：会话列表头像到标题栏头像的共享元素过渡（不支持或减少动效时同步直接更新）。
+        return sharedTransition(() => {
+            paintIdentity(row);
+            chatPane.classList.remove('is-push', 'is-pop');
+            root.dataset.chat = 'open';
+            releaseMotion(chatPane);
+            releaseMotion(pages);
+            selectDestination('chat', null, { legacy: false });
+        }, { from: fromButton?.querySelector?.('[data-fly-from]'), to: () => whoAvatar.querySelector?.('[data-fly-target]'), name: 'vc-shared' });
     }
 
     async function openFromInstance(instance, opener) {
@@ -989,7 +1041,8 @@ export function mountShell(options = {}) {
         if (!row.relationshipId && !row.file && !Number.isInteger(row.characterIndex)) return false;
         const ok = await openInstanceChat(row, { getContext, loadNative });
         if (!ok) return false;
-        openChatColumn(row, opener);
+        // 打开会话返回时对话栏已展开（桌面过渡把更新推迟到下一帧，这里等它完成）。
+        await openChatColumn(row, opener);
         return true;
     }
 
@@ -1007,6 +1060,9 @@ export function mountShell(options = {}) {
             inboxRows = [];
         }
         paintBadge(pendingInboxWrites(inboxRows, inboxScope(getContext())).length);
+        const dot = root.querySelector('[data-dot="chat"]');
+        if (dot) dot.hidden = pendingInboxWrites(inboxRows).length === 0;
+        notifier.ingest(inboxRows, { viewing: viewingRelationship() });
     }
 
     async function reload() {
@@ -1340,6 +1396,14 @@ export function mountShell(options = {}) {
         tintObserver.observe(doc.body, { attributes: true, attributeFilter: ['style'] });
     }
     syncWhoTint();
+    // UX-30 桌面每 30s 轮询收件箱，有新增 / 已读变化时刷新会话列表未读数。
+    const pendingSignature = () => pendingInboxWrites(inboxRows).map((item) => item.eventId).join();
+    setInterval(async () => {
+        if (root.dataset.chrome === 'tabbar') return;
+        const before = pendingSignature();
+        await refreshInbox();
+        if (pendingSignature() !== before) void reload();
+    }, POLL_MS).unref?.();
     selectDestination('chat', null, { legacy: false });
     applyChrome();
     schedule();

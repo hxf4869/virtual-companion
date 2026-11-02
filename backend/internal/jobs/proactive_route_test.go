@@ -5,8 +5,35 @@ import (
 
 	"github.com/hxf4869/virtual-companion/internal/companion"
 	"github.com/hxf4869/virtual-companion/internal/proactive"
+
 	"github.com/hxf4869/virtual-companion/internal/store/postgres"
 )
+
+func TestOpenProactiveRouteReasoningFloor(t *testing.T) {
+	effort := "max"
+	base := postgres.ResolvedPurpose{ProviderID: "p", ProviderName: "p", Protocol: "OPENAI_CHAT_COMPLETIONS", BaseURL: "https://example.invalid"}
+	base.Model.ModelID = "m"
+	base.Model.MaxOutputTokens = 393216
+
+	plain, err := openProactiveRoute(base, 64)
+	if err != nil || plain.MaxOutputTokens != 64 || plain.ReasoningEffort != nil {
+		t.Fatalf("non-reasoning route = %+v, %v", plain, err)
+	}
+
+	reasoning := base
+	reasoning.Model.GenerationParams = &postgres.GenerationParams{ReasoningEffort: &effort}
+	got, err := openProactiveRoute(reasoning, 64)
+	if err != nil || got.MaxOutputTokens != 4096 || got.ReasoningEffort == nil || *got.ReasoningEffort != "max" {
+		t.Fatalf("reasoning route = %+v, %v", got, err)
+	}
+
+	small := reasoning
+	small.Model.MaxOutputTokens = 2048
+	got, _ = openProactiveRoute(small, 64)
+	if got.MaxOutputTokens != 2048 {
+		t.Fatalf("floor must not exceed the model limit: %d", got.MaxOutputTokens)
+	}
+}
 
 func TestJudgmentRouteForcesLowTemperature(t *testing.T) {
 	temp := 0.3

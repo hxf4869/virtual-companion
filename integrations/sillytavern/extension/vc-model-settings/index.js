@@ -43,6 +43,7 @@ import { mountChatView, openChatMoreMenu, openMemoryInspector, posterTarget } fr
 import { mountChatCompose } from './chat-compose.js';
 import { mountChatReact } from './chat-react.js';
 import { mountLightbox } from './lightbox.js';
+import { openMessageSource } from './message-source.js';
 import { installStickers } from './stickers.js';
 import { installChatVoice } from './voice-chat.js';
 import { installVoiceInput } from './voice-input.js';
@@ -92,6 +93,7 @@ function mountVcUi() {
         const link = document.createElement('link');
         link.id = id;
         link.rel = 'stylesheet';
+        if (file.startsWith('./desktop/')) link.media = '(min-width: 744px)';
         link.href = new URL(file, import.meta.url).href;
         document.head.append(link);
     }
@@ -333,6 +335,7 @@ export async function init() {
                 onOpenInstance: (instance) => navigation.openInstance(instance),
             }),
             memory: (container) => mountMemoryTab(container, {
+                onOpenMessage: detail => navigation.openMessage(detail),
                 getRelationshipId: () => {
                     const id = getContext().chatMetadata?.vc_binding?.relationshipId;
                     return id == null || id === '' ? '' : String(id);
@@ -390,6 +393,11 @@ export async function init() {
             },
         });
         navigation.openInstance = (instance, opener) => shell?.openConversation?.(instance, opener);
+        navigation.openMessage = detail => openMessageSource(detail, {
+            getContext,
+            openConversation: row => shell.openConversation(row),
+            loadNative: () => import('../../../../script.js'),
+        });
         if (shell) mountDesktopShell({ shell, getContext });
     }
     void mountConsentGate();

@@ -9,7 +9,6 @@ export default {
   const version=++this.version,m=this.message;
   const node=await getEngine().voiceBubble(m,document);
   if(version!==this.version)return;
-  const wave=node.querySelector('.vc-voice-wave');if(wave)while(wave.children.length<12)wave.append(document.createElement('i'));
   this.$el.replaceChildren(node);
  }},
 };
@@ -23,7 +22,7 @@ export default {
 .vc-mobile-voice :deep(.vc-voice-wave) { display: flex; align-items: center; gap: 2px; height: 28px; flex: 1; }
 .vc-mobile-voice :deep(.vc-voice-wave i) { width: 2px; height: 10px; border-radius: var(--vc-radius-pill); background: currentColor; }
 .vc-mobile-voice :deep(.vc-voice-wave i:nth-child(3n)) { height: 24px; }.vc-mobile-voice :deep(.vc-voice-wave i:nth-child(3n+1)) { height: 16px; }
-.vc-mobile-voice :deep(.vc-voice-playing .vc-voice-wave) { color: var(--vc-accent); }
+.vc-mobile-voice :deep(.vc-voice-wave i.on) { background: var(--vc-accent); }
 .vc-mobile-voice :deep(.vc-voice-playing .vc-voice-wave i) { animation: vc-voice-wave var(--vc-dur-emphasized) var(--vc-ease-in-out) infinite alternate; }
 .vc-mobile-voice :deep(.vc-voice-playing .vc-voice-wave i:nth-child(2n)) { animation-direction: alternate-reverse; }
 .vc-mobile-voice :deep(.vc-voice-duration) { white-space: nowrap; font-size: var(--vc-fs-body); font-variant-numeric: tabular-nums; }

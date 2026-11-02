@@ -879,7 +879,7 @@ func validPurpose(value string) bool {
 func validModel(model ProviderModel) bool {
 	if !validProfileKey(model.ProfileKey) || !validProfileKey(model.ModelID) ||
 		utf8.RuneCountInString(model.DisplayName) < 1 || utf8.RuneCountInString(model.DisplayName) > 100 ||
-		model.MaxOutputTokens < 1 || model.MaxOutputTokens > 262144 ||
+		model.MaxOutputTokens < 1 || model.MaxOutputTokens > 393216 ||
 		(model.State != ProviderEnabled && model.State != ProviderDisabled) {
 		return false
 	}

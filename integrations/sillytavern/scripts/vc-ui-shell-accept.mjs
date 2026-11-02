@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { waitFor } from './managed-lib.mjs';
 import { createShotBudget, keepSceneShot } from './lib/scene-shots.mjs';
+import { checkDesktopThemes } from './desktop-theme-checks.mjs';
 
 const VIEWPORTS = [
     { name: '360', width: 360, height: 780 },
@@ -574,7 +575,11 @@ export async function sceneVcUiShell(ctx) {
                         const hit = await back.evaluate((el) => {
                             const rect = el.getBoundingClientRect();
                             const probe = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
-                            return { width: rect.width, hit: probe === el || el.contains(probe) };
+                            return { width: rect.width, hit: probe === el || el.contains(probe),
+                                rect: { x: rect.x, y: rect.y, h: rect.height },
+                                blocker: probe ? { tag: probe.tagName, id: probe.id, class: String(probe.className), position: getComputedStyle(probe).position, z: getComputedStyle(probe).zIndex } : null,
+                                layers: document.elementsFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2).slice(0, 6).map(node => `${node.tagName}#${node.id}.${String(node.className)}`),
+                            };
                         });
                         if (!(hit.width > 0 && hit.hit)) throw new Error(`返回按钮中心未命中自身 ${JSON.stringify(hit)}`);
                         await back.click();
@@ -702,6 +707,7 @@ export async function sceneVcUiShell(ctx) {
                     }
                 }
             }
+            await checkDesktopThemes(page);
             const leaked = await page.evaluate((needles) => {
                 const surface = document.body.innerText || '';
                 return needles.some((item) => item && surface.includes(item));

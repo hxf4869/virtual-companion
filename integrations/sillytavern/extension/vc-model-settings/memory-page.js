@@ -2,13 +2,16 @@
 // Go 为唯一数据入口。发生时间使用 time，不从记录时间推算；关闭/切换会废弃迟到响应。
 import * as api from './api.js';
 import { confirmAlert, confirmDiscard } from './ui/alert.js';
-import { desktopLayout, presentMemory } from './desktop/presentation.js';
-import { bindSegment } from './ui/controls.js';
+import { desktopLayout } from './desktop/presentation.js';
+import { bindSegment, bindSwitch } from './ui/controls.js';
 import { icon } from './ui/icons.js';
 import { popMenu } from './ui/menu.js';
 import { animate } from './ui/motion.js';
 import { createNav } from './ui/nav.js';
 import { readVcUiFlag } from './ui/theme.js';
+import { showToast } from './ui/toast.js';
+import { createDiaryPage, DIARY_FONTS, ensureHandwriting, readDiaryFont, renderDiary, writeDiaryFont } from './diary-page.js';
+import { createFavoritesPage, glyph, renderFavorites } from './favorites-page.js';
 
 if (typeof globalThis.addEventListener !== 'function' || typeof globalThis.dispatchEvent !== 'function') {
     const bus = new EventTarget();
@@ -21,6 +24,8 @@ export const FORGET_NOTICE = '聊天原文仍保留，可能继续用于当前�
 export const MEMORY_EMPTY_DIALOG = '没有找到记忆。试试其他关键词或筛选条件。';
 export const MEMORY_EMPTY_TAB = '没有找到记忆';
 export const OPEN_MEMORY_EVENT = 'vc-open-memory';
+/** 记忆来源 / 收藏「回到对话」：detail = { relationshipId, chatIdentity?, chatFile?, mesId }。 */
+export const OPEN_MESSAGE_EVENT = 'vc-open-message';
 let memoryOpener = null;
 
 export function bindOpenMemory(open) {
@@ -484,6 +489,141 @@ export function renderMemoryTab(s) {
     </div>`;
 }
 
+// ---- UX-31 桌面时间线（左栏分区 + 按日分组的卡片）。手机与上面的 renderMemoryTab 保持原样。 ----
+export const MEMORY_SECTIONS = Object.freeze([
+    ['timeline', '时间线', 'clock', ''],
+    ['pinned', '已钉住', 'pin', 'ACTIVE'],
+    ['pending', '待核验', 'circle-check', 'PENDING_VERIFICATION'],
+    ['invalid', '已失效', 'ban', 'INVALID'],
+]);
+export const SECTION_STATUS = Object.freeze(Object.fromEntries(MEMORY_SECTIONS.map(([key, , , status]) => [key, status])));
+export const INCOGNITO_LABEL = '新对话不记';
+const pad2 = (n) => String(n).padStart(2, '0');
+const localKey = (date) => `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
+
+export function dayKeyOf(value) {
+    if (!value) return '';
+    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? '' : localKey(date);
+}
+
+/** 今天 / 昨天 / M月D日（跨年带年份）。 */
+export function dayGroupLabel(key, now = new Date()) {
+    if (!key) return '日期未知';
+    if (key === localKey(now)) return '今天';
+    if (key === localKey(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1))) return '昨天';
+    const [year, month, day] = key.split('-').map(Number);
+    return year === now.getFullYear() ? `${month}月${day}日` : `${year}年${month}月${day}日`;
+}
+
+export function clockOf(value) {
+    if (!value || /^\d{4}-\d{2}-\d{2}$/.test(value)) return '';
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? '' : `${pad2(date.getHours())}:${pad2(date.getMinutes())}`;
+}
+
+export const memoryMoment = (item) => item?.time?.recordedAt || item?.createdAt || item?.time?.eventDate || '';
+
+/** 按本地日期分组，保持接口返回的顺序（新的在前）。 */
+export function groupTimeline(items, now = new Date()) {
+    const groups = [];
+    for (const item of items) {
+        const key = dayKeyOf(memoryMoment(item));
+        let group = groups.find((entry) => entry.key === key);
+        if (!group) { group = { key, label: dayGroupLabel(key, now), items: [] }; groups.push(group); }
+        group.items.push(item);
+    }
+    return groups;
+}
+
+export function excerptOf(text, max = 36) {
+    const chars = [...String(text ?? '').replace(/\s+/g, ' ').trim()];
+    return chars.length > max ? `${chars.slice(0, max).join('')}…` : chars.join('');
+}
+
+/** st:<chatIdentity>:<messageId>:… */
+export function parseSourceRef(ref) {
+    const match = /^st:([^:]+):([^:]+):/.exec(String(ref ?? ''));
+    if (!match) return null;
+    return { chatIdentity: match[1], messageId: match[2], mesId: /^\d+$/.test(match[2]) ? Number(match[2]) : null };
+}
+
+/** 卡片上的「来自 今天 15:42：「……」」；没有可展示的摘录时返回 null。 */
+export function pickSource(evidence, now = new Date()) {
+    const row = (evidence || []).find((item) => item?.status === 'VALID' && String(item.excerpt ?? '').trim())
+        || (evidence || []).find((item) => String(item?.excerpt ?? '').trim());
+    if (!row) return null;
+    const key = dayKeyOf(row.sourceTimestamp);
+    const when = key ? `${dayGroupLabel(key, now)} ${clockOf(row.sourceTimestamp)}`.trim() : '';
+    const ref = parseSourceRef(row.sourceRef);
+    return { line: `来自${when ? ` ${when}` : ''}：「${excerptOf(row.excerpt)}」`, chatIdentity: ref?.chatIdentity || '', messageId: String(row.messageId || ref?.messageId || ''), mesId: ref?.mesId ?? (/^\d+$/.test(String(row.messageId)) ? Number(row.messageId) : null) };
+}
+
+function memoryCard(item, s, ui, locked) {
+    const id = idOf(item);
+    const pinned = Boolean(item.pinnedAt);
+    const editing = ui.inlineId === id && s.editing;
+    const at = memoryMoment(item);
+    const status = listStatus(item);
+    const forgetting = ['FORGETTING', 'FORGOTTEN'].includes(item.lifecycle);
+    const source = ui.sources?.get(id);
+    const sourceButton = `<button type="button" class="vc-mem-source" data-action="open-source" data-mid="${esc(id)}" ${source ? '' : 'hidden'}>${source ? esc(source.line) : ''}</button>`;
+    if (editing) {
+        return `<li class="vc-mem-card is-editing" data-mid="${esc(id)}"><div class="vc-mem-edit"><textarea id="vc-memory-draft" name="summary" rows="2" aria-label="编辑" required ${s.busy ? 'disabled' : ''}>${esc(s.draft)}</textarea>
+            <div class="vc-mem-edit-actions"><button type="button" class="vc-btn vc-btn-gray" data-action="cancel-inline" ${s.busy ? 'disabled' : ''}>取消</button><button type="button" class="vc-btn vc-btn-fill" data-action="save-inline" ${s.busy ? 'disabled' : ''}>保存</button></div></div>${sourceButton}</li>`;
+    }
+    const actions = [
+        `<button type="button" class="vc-circle" data-action="pin" data-mid="${esc(id)}" aria-pressed="${pinned}" aria-label="${pinned ? '取消钉住' : '钉住'}" ${locked || item.lifecycle !== 'ACTIVE' ? 'disabled' : ''}>${glyph('pin', 18)}</button>`,
+        item.lifecycle === 'ACTIVE' ? `<button type="button" class="vc-circle" data-action="edit-inline" data-mid="${esc(id)}" aria-label="编辑" ${locked ? 'disabled' : ''}>${icon('pencil', { size: 18 })}</button>` : '',
+        forgetting ? '' : `<button type="button" class="vc-circle" data-action="forget-inline" data-mid="${esc(id)}" aria-label="忘记" ${locked ? 'disabled' : ''}>${icon('trash-2', { size: 18 })}</button>`,
+    ].join('');
+    const current = s.detail && idOf(s.detail) === id;
+    return `<li class="vc-mem-card" data-pinned="${pinned}">
+        <button type="button" class="vc-cell vc-memory-row vc-mem-row" data-memory-id="${esc(id)}" aria-current="${current ? 'true' : 'false'}" ${locked ? 'disabled' : ''}><span class="vc-grow"><span class="vc-memory-summary vc-memory-content">${esc(item.summary)}</span>${status}</span></button>
+        ${sourceButton}
+        <div class="vc-mem-side"><div class="vc-mem-actions">${actions}</div><time class="vc-mem-time">${esc(clockOf(at))}</time>${pinned ? `<span class="vc-mem-pin" role="img" aria-label="已钉住">${glyph('pin', 16)}</span>` : ''}</div></li>`;
+}
+
+export function renderDesktopMemory(s, ui = {}) {
+    const section = ui.section || 'timeline';
+    const now = ui.now || new Date();
+    const locked = s.busy || s.editing;
+    const relationships = s.relationships || [];
+    const current = relationships.find((item) => String(item.relationshipId) === String(s.relationshipId));
+    const memorySection = MEMORY_SECTIONS.some(([key]) => key === section);
+    const items = section === 'pinned' ? (s.items || []).filter((item) => item.pinnedAt) : (s.items || []);
+    const loaded = !s.loading && !s.listError && relationships.length > 0;
+    const navItem = ([key, label, mark]) => `<button type="button" class="vc-mem-nav-item" data-action="section" data-section="${key}" aria-pressed="${section === key}" ${locked ? 'disabled' : ''}>${key === 'diary' ? icon('file-text', { size: 20 }) : glyph(mark, 20)}<span class="vc-grow">${label}</span>${key === section && memorySection && loaded ? `<span class="vc-mem-count">${items.length}${s.nextCursor ? '+' : ''}</span>` : ''}</button>`;
+    const instance = relationships.length
+        ? `<div class="vc-group"><button type="button" class="vc-cell" id="vc-memory-instance" data-action="pick-instance" aria-haspopup="menu" ${locked || s.loading ? 'disabled' : ''}><span class="vc-grow">实例</span><span class="vc-value vc-select-value">${esc(current ? relationshipLabel(current, relationships) : '未命名角色')}${icon('chevrons-up-down', { size: 16 })}</span></button></div>` : '';
+    const side = `<aside class="vc-memory-sidebar">${instance}<nav class="vc-mem-nav" aria-label="记忆">${MEMORY_SECTIONS.map(navItem).join('')}<hr>${navItem(['diary', '日记', ''])}<button type="button" class="vc-mem-nav-item" data-action="section" data-section="favorites" aria-pressed="${section === 'favorites'}" ${locked ? 'disabled' : ''}>${glyph('star', 20)}<span class="vc-grow">收藏</span></button></nav>
+        <div class="vc-mem-incognito"><span class="vc-grow">${INCOGNITO_LABEL}</span><button type="button" class="vc-switch" role="switch" data-vc-incognito aria-label="${INCOGNITO_LABEL}" aria-checked="${ui.incognito === true ? 'true' : 'false'}"></button></div></aside>`;
+    let main;
+    if (section === 'diary') main = ui.diary ? renderDiary(ui.diary, { font: ui.font }) : '';
+    else if (section === 'favorites') {
+        const names = Object.fromEntries(relationships.map((item) => [String(item.relationshipId), item.companionName || '']));
+        main = ui.favorites ? renderFavorites(ui.favorites, { names, now }) : '';
+    } else {
+        const disable = locked ? 'disabled' : '';
+        const search = `<form class="vc-mem-search" data-form="dfilters"><label class="vc-search"><span class="vc-clip">搜索记忆</span>${icon('search', { size: 18 })}<input type="search" name="q" aria-label="搜索记忆" placeholder="搜索记忆" value="${esc(s.filterDraft?.q || '')}" ${disable}><button class="vc-clip" type="submit" ${disable}>搜索</button></label>
+            <details class="vc-mem-dates"><summary class="vc-circle" aria-label="发生日期">${icon('sliders-horizontal', { size: 18 })}</summary><div class="vc-memory-dates"><label>从<input type="date" name="eventDateFrom" value="${esc(s.filterDraft?.eventDateFrom || '')}" ${disable}></label><label>至<input type="date" name="eventDateTo" value="${esc(s.filterDraft?.eventDateTo || '')}" ${disable}></label><button class="vc-btn vc-btn-text" type="submit" ${disable}>应用日期</button></div></details></form>`;
+        let results;
+        if (s.listError) results = `<div class="vc-empty">${icon('wifi-off', { size: 32 })}<p role="alert">${esc(s.listError)}</p>${tabBtn('retry-list', '重试', { fill: true })}</div>`;
+        else if (s.loading && !items.length) results = `${skeletonRows()}<p class="vc-clip" role="status">正在加载记忆…</p>`;
+        else if (!relationships.length) results = emptyBlock('brain', '还没有角色实例，请先在聊天中绑定角色。', 'retry-list', '重试');
+        else if (!items.length) {
+            const filtered = Object.entries(s.filters || {}).some(([key, value]) => key !== 'status' && String(value ?? '').trim() !== '');
+            results = `<div class="vc-empty">${icon('brain', { size: 32 })}<p class="vc-memory-empty" role="status">${MEMORY_EMPTY_TAB}</p>${filtered ? tabBtn('clear-filters', '清除筛选', { fill: true }) : ''}</div>`;
+        } else {
+            results = groupTimeline(items, now).map((group) => `<section class="vc-mem-day" aria-label="${esc(group.label)}"><h2>${esc(group.label)}</h2><ul class="vc-memory-list">${group.items.map((item) => memoryCard(item, s, ui, locked)).join('')}</ul></section>`).join('')
+                + `${s.loading ? '<p role="status">正在加载记忆…</p>' : ''}${s.nextCursor ? tabBtn('more', '加载更多', { disabled: s.loading || locked }) : ''}`;
+        }
+        main = `${search}<div class="vc-memory-results" aria-busy="${s.loading ? 'true' : 'false'}" aria-label="记忆列表">${results}</div>`;
+    }
+    return `<div class="vc-column" data-vc-section="${esc(section)}"><h1 class="vc-large-title" tabindex="-1" data-vc-owned-title>记忆</h1><div class="vc-memory-filters">${side}<div class="vc-memory-main">${main}</div></div></div>`;
+}
+
 export function renderMemoryDetailTab(s) {
     const backDisabled = s.busy || s.editing;
     const refreshDisabled = s.busy || s.detailLoading || s.editing;
@@ -546,6 +686,8 @@ function captureFocus(root) {
         name: active.name || '',
         memoryId: active.dataset?.memoryId || '',
         status: active.dataset?.status || '',
+        section: active.dataset?.section || '',
+        mid: active.dataset?.mid || '',
         start: typeof active.selectionStart === 'number' ? active.selectionStart : null,
         end: typeof active.selectionEnd === 'number' ? active.selectionEnd : null,
     };
@@ -557,6 +699,8 @@ function restoreFocus(root, saved) {
     if (saved.id) el = root.querySelector(`#${cssEscape(saved.id)}`);
     else if (saved.memoryId) el = root.querySelector(`[data-memory-id="${cssEscape(saved.memoryId)}"]`);
     else if (saved.status) el = root.querySelector(`[data-status="${cssEscape(saved.status)}"]`);
+    else if (saved.section) el = root.querySelector(`[data-section="${cssEscape(saved.section)}"]`);
+    else if (saved.action && saved.mid) el = root.querySelector(`[data-action="${cssEscape(saved.action)}"][data-mid="${cssEscape(saved.mid)}"]`);
     else if (saved.action) el = root.querySelector(`[data-action="${cssEscape(saved.action)}"]`);
     else if (saved.name) el = root.querySelector(`[name="${cssEscape(saved.name)}"]`);
     if (!el || typeof el.focus !== 'function') return;
@@ -570,7 +714,7 @@ function forgettingNow(previous, lifecycle) {
     return previous && !['FORGETTING', 'FORGOTTEN'].includes(previous) && ['FORGETTING', 'FORGOTTEN'].includes(lifecycle);
 }
 
-export function mountMemoryTab(container, { getRelationshipId = () => '' } = {}) {
+export function mountMemoryTab(container, { getRelationshipId = () => '', onOpenMessage } = {}) {
     if (!vcUiEnabled()) return { active: false, refresh() {}, destroy() {} };
     if (!container || typeof container.append !== 'function') throw new Error('mountMemoryTab requires a container');
     ensureMemoryStyles();
@@ -595,6 +739,17 @@ export function mountMemoryTab(container, { getRelationshipId = () => '' } = {})
     const started = new Set();
     const gone = new Set();
     const signal = ac.signal;
+    // UX-31–33 桌面分区状态；手机不读这些。
+    let section = 'timeline';
+    let inlineId = '';
+    let incognito = false;
+    let incognitoAsked = false;
+    let font = readDiaryFont();
+    let sourceEpoch = 0;
+    const sources = new Map();
+    const asked = new Set();
+    const diary = createDiaryPage({ onChange: () => { if (!stopped) paint(page.state); } });
+    const favorites = createFavoritesPage({ onChange: () => { if (!stopped) paint(page.state); } });
 
     function noteLife(state) {
         const seen = [];
@@ -643,8 +798,12 @@ export function mountMemoryTab(container, { getRelationshipId = () => '' } = {})
             ...state,
             items: (state.items || []).filter((item) => !gone.has(idOf(item)) && !started.has(idOf(item))),
         };
-        listScreen.innerHTML = `<div class="vc-scroll">${renderMemoryTab(visible)}</div>`;
-        if (desktopLayout()) presentMemory(listScreen, visible);
+        const desk = desktopLayout();
+        const inlineActive = desk && inlineId && !state.reauthAction && !state.conflict;
+        if (!inlineActive) inlineId = '';
+        const showDetail = state.view === 'detail' && !inlineActive;
+        listScreen.innerHTML = `<div class="vc-scroll">${desk ? renderDesktopMemory(visible, desktopUi()) : renderMemoryTab(visible)}</div>`;
+        if (desk) afterDesktopPaint(visible);
         if (datesOpen) {
             const details = listScreen.querySelector('.vc-memory-filters details');
             if (details) details.open = true;
@@ -669,8 +828,8 @@ export function mountMemoryTab(container, { getRelationshipId = () => '' } = {})
                 },
             });
         }
-        container.classList.toggle('is-detail', state.view === 'detail');
-        if (state.view === 'detail') {
+        container.classList.toggle('is-detail', showDetail);
+        if (showDetail) {
             const html = renderMemoryDetailTab(state);
             if (!detailEl?.isConnected) {
                 detailEl = document.createElement('section');
@@ -693,6 +852,157 @@ export function mountMemoryTab(container, { getRelationshipId = () => '' } = {})
             for (const id of [...pendingCollapse]) beginCollapse(id);
         }
         restoreFocus(detailEl?.classList.contains('vc-memory-editor') ? detailEl : container, saved);
+    }
+
+    const desktopUi = () => ({ section, inlineId, incognito, font, sources, diary: diary.state, favorites: favorites.state, now: new Date() });
+
+    function fillSources() {
+        for (const slot of listScreen.querySelectorAll('.vc-mem-source[data-mid]')) {
+            const entry = sources.get(slot.dataset.mid);
+            if (entry) { slot.textContent = entry.line; slot.hidden = false; }
+        }
+    }
+
+    // 来源一句只是点缀：并发 3 条按需读取证据，读不到就不显示。
+    async function loadSources(items) {
+        const epoch = sourceEpoch;
+        const todo = items.filter((item) => !asked.has(idOf(item)) && !['FORGETTING', 'FORGOTTEN'].includes(item.lifecycle));
+        for (const item of todo) asked.add(idOf(item));
+        let next = 0;
+        const worker = async () => {
+            while (next < todo.length && !stopped && epoch === sourceEpoch) {
+                const item = todo[next++];
+                try {
+                    const source = pickSource(await api.fetchMemoryEvidence(idOf(item)));
+                    if (source && epoch === sourceEpoch) sources.set(idOf(item), source);
+                } catch { /* 读不到来源就不显示这一行 */ }
+                if (!stopped && epoch === sourceEpoch) fillSources();
+            }
+        };
+        await Promise.all([worker(), worker(), worker()]);
+    }
+
+    function afterDesktopPaint(state) {
+        listScreen.querySelector('.vc-scroll')?.classList.add('vc-desktop-memory');
+        const toggle = listScreen.querySelector('[data-vc-incognito]');
+        if (toggle) {
+            bindSwitch(toggle, {
+                onChange(next) {
+                    incognito = next;
+                    api.setIncognitoPref(next).catch(() => {
+                        incognito = !next;
+                        toggle.setAttribute('aria-checked', String(!next));
+                        showToast('没有完成，请重试。', { type: 'failure' });
+                    });
+                },
+            });
+        }
+        if (!incognitoAsked) {
+            incognitoAsked = true;
+            api.getIncognitoPref().then((pref) => { if (!stopped) { incognito = pref?.defaultIncognito === true; paint(page.state); } }, () => {});
+        }
+        if (section === 'diary' && font === 'hand') ensureHandwriting();
+        const day = listScreen.querySelector('.vc-diary-day[aria-pressed="true"]');
+        const strip = day?.parentElement;
+        if (strip) strip.scrollLeft = day.offsetLeft - strip.clientWidth / 2 + day.offsetWidth / 2;
+        if (MEMORY_SECTIONS.some(([key]) => key === section) && !state.loading) {
+            fillSources();
+            void loadSources(section === 'pinned' ? state.items.filter((item) => item.pinnedAt) : state.items);
+        }
+    }
+
+    const reloadAux = () => {
+        if (section === 'diary') return diary.load(page.state.relationshipId);
+        if (section === 'favorites') return favorites.load(page.state.relationshipId);
+        return undefined;
+    };
+    function resetDesktopData() {
+        sourceEpoch++; sources.clear(); asked.clear(); diary.reset(); favorites.reset();
+    }
+    async function drainPinned() {
+        for (let i = 0; i < 10 && page.state.nextCursor && !stopped && section === 'pinned'; i++) await page.more();
+    }
+    async function enterSection(next) {
+        if (page.state.busy || page.state.editing || next === section) return;
+        section = next;
+        gone.clear(); pendingCollapse.clear();
+        paint(page.state);
+        const relationshipId = page.state.relationshipId;
+        if (next === 'diary') { await diary.load(relationshipId); return; }
+        if (next === 'favorites') { await favorites.load(relationshipId); return; }
+        const status = SECTION_STATUS[next];
+        if ((page.state.filters.status || '') !== status) {
+            await page.filter({ ...page.state.filters, status });
+            if (next === 'pinned') await drainPinned();
+        }
+    }
+
+    async function openMessage(detail) {
+        let mesId = detail.mesId;
+        try {
+            if (typeof onOpenMessage === 'function') mesId = await onOpenMessage(detail);
+            else globalThis.dispatchEvent(new CustomEvent(OPEN_MESSAGE_EVENT, { detail }));
+        } catch { showToast('没有完成，请重试。', { type: 'failure' }); return; }
+        if (!Number.isInteger(mesId)) return;
+        // 会话切换与渲染是异步的：等目标消息出现后滚动并高亮。
+        const chat = await import('./chat-view.js').catch(() => null);
+        for (let i = 0; i < 12 && !stopped; i++) {
+            if (chat?.highlightMessage?.(mesId)) return;
+            await new Promise((resolve) => setTimeout(resolve, 250));
+        }
+    }
+
+    async function togglePin(id) {
+        const item = page.state.items.find((row) => idOf(row) === id);
+        if (!item) return;
+        try {
+            const record = item.pinnedAt ? await api.unpinMemory(id) : await api.pinMemory(id);
+            if (stopped) return;
+            page.state.items = page.state.items.map((row) => (idOf(row) === id ? { ...row, ...record } : row));
+            if (page.state.detail && idOf(page.state.detail) === id) page.state.detail = { ...page.state.detail, pinnedAt: record.pinnedAt };
+            paint(page.state);
+        } catch { showToast('没有完成，请重试。', { type: 'failure' }); }
+    }
+
+    async function startInline(id) {
+        if (page.state.busy || page.state.editing) return;
+        inlineId = id;
+        await page.select(id);
+        if (page.state.detail && idOf(page.state.detail) === id && canEdit(page.state.detail)) {
+            page.edit();
+            container.querySelector('#vc-memory-draft')?.focus();
+        } else { inlineId = ''; page.back(); }
+    }
+
+    function cancelInline() {
+        page.cancelEdit();
+        inlineId = '';
+        page.back();
+    }
+
+    async function saveInline() {
+        const draft = page.state.draft.trim();
+        if (!draft || page.state.busy) return;
+        if (draft === page.state.detail?.summary) { cancelInline(); return; }
+        await page.save();
+        if (stopped || page.state.reauthAction || page.state.conflict) return; // 弹窗接管，草稿保留
+        if (page.state.editing) { if (page.state.detailError) showToast(page.state.detailError, { type: 'failure' }); return; }
+        inlineId = '';
+        page.back();
+    }
+
+    async function forgetInline(id, opener) {
+        if (page.state.busy || page.state.editing) return;
+        const ok = await confirmAlert({ title: '删除这条长期记忆？', message: FORGET_NOTICE, action: '删除', opener });
+        if (!ok || stopped) return;
+        inlineId = id;
+        await page.select(id);
+        if (!page.state.detail) { inlineId = ''; page.back(); return; }
+        await page.forget();
+        if (stopped || page.state.reauthAction) return;
+        inlineId = '';
+        if (page.state.detailError) showToast(page.state.detailError, { type: 'failure' });
+        page.back();
     }
 
     function syncDetailLayout() {
@@ -749,6 +1059,11 @@ export function mountMemoryTab(container, { getRelationshipId = () => '' } = {})
         }
     }, { signal, capture: true });
 
+    document.addEventListener('keydown', (event) => {
+        if (event.key !== 'Escape' || !inlineId || !page.state.editing || page.state.busy || document.querySelector('.vc-alert,.vc-menu,.vc-sheet')) return;
+        event.preventDefault(); event.stopImmediatePropagation(); cancelInline();
+    }, { signal, capture: true });
+
     document.addEventListener('input', (event) => {
         if (!owns(event.target)) return;
         const name = event.target?.name;
@@ -783,6 +1098,16 @@ export function mountMemoryTab(container, { getRelationshipId = () => '' } = {})
                 void page.filter({ q: data.q || '', status: data.status || '', eventDateFrom: data.eventDateFrom || '', eventDateTo: data.eventDateTo || '' });
             }
         }
+        if (form.dataset.form === 'dfilters') {
+            const data = Object.fromEntries(new FormData(form));
+            const end = form.elements.eventDateTo;
+            if (end) end.setCustomValidity(data.eventDateFrom && data.eventDateTo && data.eventDateFrom > data.eventDateTo ? '结束日期不能早于开始日期。' : '');
+            if (form.reportValidity()) {
+                gone.clear();
+                void page.filter({ q: data.q || '', status: SECTION_STATUS[section] ?? '', eventDateFrom: data.eventDateFrom || '', eventDateTo: data.eventDateTo || '' })
+                    .then(() => (section === 'pinned' ? drainPinned() : undefined));
+            }
+        }
         if (form.dataset.form === 'reauth') {
             const password = form.elements.password.value;
             form.elements.password.value = '';
@@ -806,9 +1131,57 @@ export function mountMemoryTab(container, { getRelationshipId = () => '' } = {})
                 check: String(item.relationshipId) === String(page.state.relationshipId),
                 run: () => {
                     gone.clear();
-                    void page.changeRelationship(item.relationshipId);
+                    resetDesktopData();
+                    void page.changeRelationship(item.relationshipId).then(async () => {
+                        await reloadAux();
+                        if (section === 'pinned') await drainPinned();
+                    });
                 },
             })), { below: true });
+        }
+        if (action === 'section') { await enterSection(target.dataset.section); return; }
+        if (action === 'pin') { await togglePin(target.dataset.mid); return; }
+        if (action === 'edit-inline') { await startInline(target.dataset.mid); return; }
+        if (action === 'save-inline') { await saveInline(); return; }
+        if (action === 'cancel-inline') { cancelInline(); return; }
+        if (action === 'forget-inline') { await forgetInline(target.dataset.mid, target); return; }
+        if (action === 'open-source') {
+            const entry = sources.get(target.dataset.mid);
+            const item = page.state.items.find((row) => idOf(row) === target.dataset.mid);
+            if (entry) await openMessage({ relationshipId: String(item?.relationshipId ?? page.state.relationshipId), chatIdentity: entry.chatIdentity, messageId: entry.messageId, mesId: entry.mesId });
+            return;
+        }
+        if (action === 'diary-day') { diary.select(target.dataset.day); return; }
+        if (action === 'diary-month') { await diary.shift(Number(target.dataset.delta)); return; }
+        if (action === 'diary-retry') { await diary.load(); return; }
+        if (action === 'diary-font') {
+            menuHandle?.close();
+            menuHandle = popMenu(target, DIARY_FONTS.map(([key, label]) => ({
+                label,
+                check: font === key,
+                run: () => {
+                    font = writeDiaryFont(key);
+                    if (font === 'hand') ensureHandwriting();
+                    paint(page.state);
+                },
+            })), { below: true });
+            return;
+        }
+        if (action === 'fav-segment') { favorites.setSegment(target.dataset.segment); return; }
+        if (action === 'fav-retry') { await favorites.load(); return; }
+        if (action === 'fav-more') { await favorites.more(); return; }
+        if (action === 'open-favorite') {
+            const row = favorites.state.favorites.find((item) => item.favoriteId === target.dataset.favoriteId);
+            if (row) await openMessage({ relationshipId: String(row.relationshipId), chatFile: row.chatFile,
+                body: row.body, role: row.role, messageAt: row.messageAt });
+            return;
+        }
+        if (action === 'remove-favorite' || action === 'cancel-reminder') {
+            try {
+                if (action === 'remove-favorite') await favorites.removeFavorite(target.dataset.favoriteId);
+                else await favorites.cancelReminder(target.dataset.reminderId);
+            } catch { showToast('没有完成，请重试。', { type: 'failure' }); }
+            return;
         }
         if (action === 'back') {
             if (desktopLayout()) { await closeDetail(); return; }
@@ -859,8 +1232,14 @@ export function mountMemoryTab(container, { getRelationshipId = () => '' } = {})
             if (stopped) return;
             gone.clear();
             pendingCollapse.clear();
+            resetDesktopData();
             const preferred = page.state.relationshipId || getRelationshipId() || '';
             await page.open(preferred);
+            if (SECTION_STATUS[section]) {
+                await page.filter({ status: SECTION_STATUS[section] });
+                if (section === 'pinned') await drainPinned();
+            }
+            await reloadAux();
         },
         destroy() {
             stopped = true;

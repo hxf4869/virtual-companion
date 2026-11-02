@@ -1,6 +1,6 @@
 /* UX-17：使用既有陪伴状态与动作。 */
 html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-inbox > .vc-screen:first-child { position:relative; inset:auto; height:100%; background:transparent; }
-html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-inbox .vc-inbox-heading.vc-navbar { position:static; padding:0; background:transparent; box-shadow:none; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-inbox .vc-inbox-heading.vc-navbar { position:static; padding:0; background:transparent; box-shadow: none; }
 html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-inbox .vc-inbox-heading.vc-navbar::before { display:none; }
 html[data-vc-layout="desktop"] body.vc-ui .vc-shell-page[data-page="inbox"]:has(.vc-desktop-inbox) > .vc-navbar { display:none; }
 html[data-vc-layout="desktop"] body.vc-ui .vc-shell-page[data-page="inbox"]:has(.vc-desktop-inbox) > .vc-shell-scroll { padding:0 24px 24px; }
@@ -14,15 +14,15 @@ html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-inbox .vc-inbox-layout > .
 html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-inbox .vc-group { margin:0 0 var(--vc-space-sm); }
 html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-inbox .vc-group > .vc-group-title { margin:0; padding:16px 0 8px; font-size:var(--vc-fs-headline); font-weight:600; }
 html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-inbox .vc-segment { margin:0 0 var(--vc-space-sm); }
-html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-inbox .vc-inbox-activity section > .vc-group { background:transparent; border:0; padding:0; box-shadow:none; display:grid; gap:var(--vc-space-sm); }
-html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-inbox .vc-inbox-msg { background:var(--vc-raised); border:1px solid var(--vc-raised-edge); border-radius:var(--vc-radius-md); padding:16px; min-width:0; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-inbox .vc-inbox-activity section > .vc-group { background:transparent; border:0; padding:0; box-shadow: none; display:grid; gap:var(--vc-space-sm); }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-inbox .vc-inbox-msg { background:var(--vc-raised); border:1px solid var(--vc-raised-edge); border-radius: var(--vc-radius-md); padding:16px; min-width:0; }
 html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-inbox .vc-inbox-msg .vc-inbox-body { font-size:var(--vc-fs-input); line-height:var(--vc-lh-reading); }
 html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-inbox .vc-inbox-preferences .vc-cell { padding-inline:0; }
 html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-inbox .vc-proactive-modes { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:0; }
 html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-inbox .vc-proactive-modes .vc-group-title { grid-column:1/-1; }
 html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-inbox .vc-proactive-modes .vc-cell { justify-content:center; padding:0; min-height:44px; }
 html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-inbox .vc-proactive-modes .vc-grow { flex:none; }
-html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-inbox .vc-proactive-modes [aria-pressed="true"] { background:var(--vc-thumb); border-radius:var(--vc-radius-sm); color:var(--vc-ink); }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-inbox .vc-proactive-modes [aria-pressed="true"] { background:var(--vc-thumb); border-radius: var(--vc-radius-sm); color:var(--vc-ink); }
 html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-inbox .vc-inbox-follow-main { flex-direction:column; align-items:stretch; padding:var(--vc-space-xs) 0; }
 html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-inbox [data-save-policy] { display:inline-flex; align-items:center; justify-content:center; gap:var(--vc-space-xs); }
 html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-inbox [hidden] { display:none; }
@@ -68,11 +68,11 @@ html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-inbox .vc-empty > .vc-icon
 /* UX-22 QA P1-9：模式分段控件。轨道 rgba(118,118,128,.12)，白色滑块（深色 #636366）+ 阴影；高 32。
    滑块以伪元素内缩 2px，选中项文字仍在其上；不改 DOM，手机不受影响。 */
 html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-inbox .vc-proactive-modes { padding-bottom: 12px; }
-html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-inbox .vc-proactive-modes .vc-cell[aria-pressed] { position: relative; isolation: isolate; min-height: 32px; height: 32px; border-radius: 0; background: rgba(118,118,128,.12); }
-html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-inbox .vc-proactive-modes .vc-group-title + .vc-cell[aria-pressed] { border-radius: 10px 0 0 10px; }
-html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-inbox .vc-proactive-modes .vc-cell[aria-pressed]:last-child { border-radius: 0 10px 10px 0; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-inbox .vc-proactive-modes .vc-cell[aria-pressed] { position: relative; isolation: isolate; min-height: 32px; height: 32px; border-radius: 0; background: var(--vc-segment-fill); }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-inbox .vc-proactive-modes .vc-group-title + .vc-cell[aria-pressed] { border-radius: var(--vc-radius-control) 0 0 var(--vc-radius-control); }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-inbox .vc-proactive-modes .vc-cell[aria-pressed]:last-child { border-radius: 0 var(--vc-radius-control) var(--vc-radius-control) 0; }
 html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-inbox .vc-proactive-modes .vc-cell[aria-pressed="true"] { font-weight: 600; }
-html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-inbox .vc-proactive-modes .vc-cell[aria-pressed="true"]::before { display: block; content: ''; position: absolute; inset: 2px; height: auto; z-index: -1; border-radius: 8px; background: var(--vc-thumb); box-shadow: 0 2px 6px rgba(0,0,0,.12); }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-inbox .vc-proactive-modes .vc-cell[aria-pressed="true"]::before { display: block; content: ''; position: absolute; inset: 2px; height: auto; z-index: -1; border-radius: var(--vc-radius-tile); background: var(--vc-thumb); box-shadow: var(--vc-shadow-segment); }
 
 /* UX-22 QA P2-16：窄桌面（<1180）与双栏同构：标题栏固定，内容区自己滚动并向底部渐隐；
    滚动条不再穿过标题栏，也不被面板圆角裁切；渐隐区由内容区的底部内边距让出，最后一张卡完整可读。 */

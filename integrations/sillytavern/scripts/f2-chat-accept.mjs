@@ -642,6 +642,24 @@ export async function sceneF2ChatUi(ctx) {
             fail(error);
         }
 
+        console.log('[f2-chat-ui] 半截回复继续');
+        await page.setViewportSize({ width: 1440, height: 900 });
+        await theme(page, 'light');
+        const partial = await page.evaluate(() => {
+            const chat = SillyTavern.getContext().chat;
+            return { count: chat.length, text: chat.at(-1)?.mes || '' };
+        });
+        if (!partial.text) fail(new Error('停止后丢失了已生成的半截正文'));
+        await ctx.fixtureHttp.setOverride('vc03m-chat', { text: '继续后的合成结尾。', chunks: 3, delay: { firstMs: 150, perChunkMs: 150 } });
+        await page.locator('#vc-chat-gen button', { hasText: '继续' }).click();
+        await page.waitForFunction(() => document.body.dataset.generating === 'true');
+        await page.waitForFunction(() => document.body.dataset.generating !== 'true', null, { timeout: 30000 });
+        const continued = await page.evaluate(({count,text}) => {
+            const chat = SillyTavern.getContext().chat;
+            return chat.length === count && chat.at(-1)?.mes.startsWith(text) && chat.at(-1).mes.length > text.length;
+        }, partial);
+        if (!continued) fail(new Error('继续没有保留原文并追加到同一条回复'));
+
         console.log('[f2-chat-ui] 长按菜单');
         for (const mode of ['light', 'dark']) {
             await theme(page, mode);

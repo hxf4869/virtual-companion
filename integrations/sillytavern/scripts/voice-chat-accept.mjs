@@ -45,7 +45,8 @@ export async function sceneVoiceChat(ctx) {
         stage='native read aloud';await sendVoiceTurn(page,ctx,{text:'讲一段合成示例文字',reply:'这是一段用于朗读验收的合成文字。'.repeat(7)});
         const read=page.locator('#chat > .mes').last().locator('[data-vc-act="read"]');await read.waitFor({state:'visible'});
         const original=await page.evaluate(()=>SillyTavern.getContext().chat.at(-1).mes);
-        await page.locator('#chat > .mes').last().dispatchEvent('contextmenu');await page.getByRole('menuitem',{name:'朗读',exact:true}).click();await page.waitForFunction(()=>document.querySelector('#chat > .mes:last-child [data-vc-act="read"]')?.getAttribute('aria-pressed')==='true');
+        // UX-23 起桌面消息工具行悬停才可点，先像用户一样悬停到消息上。
+        await page.locator('#chat > .mes').last().hover();await read.click();await page.waitForFunction(()=>document.querySelector('#chat > .mes:last-child [data-vc-act="read"]')?.getAttribute('aria-pressed')==='true');
         assert.equal(await page.evaluate(()=>SillyTavern.getContext().chat.at(-1).mes),original,'read aloud retains original');
         assert.equal(await page.locator('#chat > .mes').last().locator('.vc-voice').count(),0,'text reply stays text');
         await voiceShots(page,ctx,'VO-11','read-aloud');

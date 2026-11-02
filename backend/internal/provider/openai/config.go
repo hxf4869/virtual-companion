@@ -14,7 +14,7 @@ import (
 const (
 	chatCompletionsPath      = "/v1/chat/completions"
 	defaultMaxTokens         = 8192
-	hardMaxTokens            = 262144
+	hardMaxTokens            = 393216
 	minTemperature           = 0.0
 	maxTemperature           = 2.0
 	defaultConnectTimeout    = 10 * time.Second

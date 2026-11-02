@@ -164,7 +164,7 @@ test('场景模块组成有序列表，入口不再 push 或维护实现表', as
     const ids = ACCEPT_SCENES.map((scene) => scene.id);
     assert.equal(new Set(ids).size, ids.length);
     const extra = [
-        'story-view-browser', 'w11-tool-meter', 'w10-inbox-notify', 'hl-proactive', 'voice-backend', 'voice-chat', 'voice-proactive', 'voice-input', 'voice-settings', 'voice-backup', 'story-outbound', 'story-play',
+        'story-view-browser', 'w11-tool-meter', 'w10-inbox-notify', 'hl-proactive', 'ux24-backend', 'voice-backend', 'voice-chat', 'voice-proactive', 'voice-input', 'voice-settings', 'voice-backup', 'story-outbound', 'story-play',
         'story-real', 'w15-ui', 'fe4a-ui', 'fe4b-ui', 'f3-settings', 'vc-ui-shell', 'vc-ui-walkthrough', 'f2-chat-ui', 'hl-reply', 'consent-ui', 'hl-persona', 'hl-stickers', 'mb0-spike', 'mb-shell', 'mb-engine', 'mb-chat', 'mb-pages', 'mb-call',
     ];
     assert.deepEqual(new Set(ids), new Set([...SCENES.map((scene) => scene.id), ...extra]));
@@ -183,6 +183,7 @@ test('场景模块组成有序列表，入口不再 push 或维护实现表', as
     assert.deepEqual(resolveSceneFilter('story-outbound', ACCEPT_SCENES), ['catalog-admin', 'story-outbound']);
     assert.deepEqual(resolveSceneFilter('ui03-browser', ACCEPT_SCENES), ['catalog-admin', 'ui03-browser']);
     assert.deepEqual(resolveSceneFilter('voice-backend', ACCEPT_SCENES), ['voice-backend']);
+    assert.deepEqual(resolveSceneFilter('ux24-backend', ACCEPT_SCENES), ['ux24-backend']);
     const outbound = ACCEPT_SCENES.find((scene) => scene.id === 'story-outbound');
     assert.deepEqual(outbound.needs, ['catalog', 'stack', 'browser']);
     const order = (id) => ids.indexOf(id);

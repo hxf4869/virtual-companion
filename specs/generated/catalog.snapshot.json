@@ -1142,8 +1142,8 @@
         "adr": "docs/decisions/0007-go-companion-runtime.md",
         "catalogId": "go-v1-api-scope",
         "counts": {
-          "DEFER": 15,
-          "KEEP": 113,
+          "DEFER": 12,
+          "KEEP": 124,
           "RETIRE": 42,
           "SIMPLIFY": 5
         },
@@ -1878,19 +1878,25 @@
           },
           {
             "currentH5Callers": [],
-            "decision": "DEFER",
+            "decision": "KEEP",
+            "keepBecause": [
+              "owner-instruction"
+            ],
             "method": "POST",
             "operationId": "createReminder",
             "path": "/api/v1/relationships/{relationshipId}/reminders",
-            "replacementOrImpact": "The user reminder page stays deferred and this route is not implemented. W11 creates a cancellable vc.reminder only through executeTool."
+            "replacementOrImpact": "UX-32 user reminder. Stored as an ACTIVE vc.reminder; at remindAt the proactive pass has the character mention it, whatever the proactive mode."
           },
           {
             "currentH5Callers": [],
-            "decision": "DEFER",
+            "decision": "KEEP",
+            "keepBecause": [
+              "owner-instruction"
+            ],
             "method": "GET",
             "operationId": "listReminders",
             "path": "/api/v1/relationships/{relationshipId}/reminders",
-            "replacementOrImpact": "The user reminder page stays deferred and this route is not implemented. Listing model-created reminders is not a separate operation."
+            "replacementOrImpact": "UX-32 list of the relationship's ACTIVE reminders, soonest first."
           },
           {
             "currentH5Callers": [],
@@ -1902,11 +1908,14 @@
           },
           {
             "currentH5Callers": [],
-            "decision": "DEFER",
+            "decision": "KEEP",
+            "keepBecause": [
+              "owner-instruction"
+            ],
             "method": "DELETE",
             "operationId": "deleteReminder",
             "path": "/api/v1/reminders/{reminderId}",
-            "replacementOrImpact": "The user reminder page stays deferred and this route is not implemented. Tool cancellation keeps the row as CANCELLED."
+            "replacementOrImpact": "UX-32 user cancel of a reminder by deleting the row. Tool cancellation keeps CANCELLED."
           },
           {
             "currentH5Callers": [],
@@ -1940,6 +1949,94 @@
             "operationId": "getCompanionState",
             "path": "/api/v1/relationships/{relationshipId}/companion-state",
             "replacementOrImpact": "Read today's stored mood, the decayed emotion line and busyUntil. Mood is idempotent per relationship and local day. Emotion is updated on companion memory recall, not by this read."
+          },
+          {
+            "currentH5Callers": [],
+            "decision": "KEEP",
+            "keepBecause": [
+              "owner-instruction"
+            ],
+            "method": "POST",
+            "operationId": "createReplySuggestions",
+            "path": "/api/v1/relationships/{relationshipId}/reply-suggestions",
+            "replacementOrImpact": "UX-28 up to three short reply chips from the background model at low temperature. Stores nothing, never enters memory, metered."
+          },
+          {
+            "currentH5Callers": [],
+            "decision": "KEEP",
+            "keepBecause": [
+              "owner-instruction"
+            ],
+            "method": "PUT",
+            "operationId": "pinMemory",
+            "path": "/api/v1/memories/{memoryId}/pin",
+            "replacementOrImpact": "UX-31 pin a memory; recall puts pinned memories first."
+          },
+          {
+            "currentH5Callers": [],
+            "decision": "KEEP",
+            "keepBecause": [
+              "owner-instruction"
+            ],
+            "method": "DELETE",
+            "operationId": "unpinMemory",
+            "path": "/api/v1/memories/{memoryId}/pin",
+            "replacementOrImpact": "UX-31 remove the pin."
+          },
+          {
+            "currentH5Callers": [],
+            "decision": "KEEP",
+            "keepBecause": [
+              "owner-instruction"
+            ],
+            "method": "POST",
+            "operationId": "createFavorite",
+            "path": "/api/v1/relationships/{relationshipId}/favorites",
+            "replacementOrImpact": "UX-32 save a message snapshot with its ST source position. Never fed to memory or prompts."
+          },
+          {
+            "currentH5Callers": [],
+            "decision": "KEEP",
+            "keepBecause": [
+              "owner-instruction"
+            ],
+            "method": "GET",
+            "operationId": "listFavorites",
+            "path": "/api/v1/relationships/{relationshipId}/favorites",
+            "replacementOrImpact": "UX-32 keyset page of favorites, newest first."
+          },
+          {
+            "currentH5Callers": [],
+            "decision": "KEEP",
+            "keepBecause": [
+              "owner-instruction"
+            ],
+            "method": "DELETE",
+            "operationId": "deleteFavorite",
+            "path": "/api/v1/favorites/{favoriteId}",
+            "replacementOrImpact": "UX-32 remove one favorite."
+          },
+          {
+            "currentH5Callers": [],
+            "decision": "KEEP",
+            "keepBecause": [
+              "owner-instruction"
+            ],
+            "method": "GET",
+            "operationId": "listDiary",
+            "path": "/api/v1/relationships/{relationshipId}/diary",
+            "replacementOrImpact": "UX-33 diary pages of a local month. Written nightly by the background model, one page per day, never enters memory."
+          },
+          {
+            "currentH5Callers": [],
+            "decision": "KEEP",
+            "keepBecause": [
+              "owner-instruction"
+            ],
+            "method": "GET",
+            "operationId": "getDiaryEntry",
+            "path": "/api/v1/diary/{entryId}",
+            "replacementOrImpact": "UX-33 one diary page."
           },
           {
             "currentH5Callers": [],
@@ -2968,7 +3065,7 @@
           }
         ]
       },
-      "sha256": "00d10de19f4436b984f08b3d0add729077893bd60f151f2036f20da7f9a2644d"
+      "sha256": "2231afadccc9dcb4685887fd85ce3bda21f4e670650db0ee823aa0bb27471ff6"
     },
     "memory-candidate-statuses.yaml": {
       "document": {

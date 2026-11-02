@@ -173,6 +173,7 @@ type Core struct {
 	AuthFlow   AuthFlowStore
 	Cancels    *jobs.Cancels
 	Proactive  ProactiveRunner
+	Suggester  ReplySuggester
 	Voice      *voice.Service
 }
 
@@ -230,6 +231,17 @@ func (s *Server) registerCore() {
 	s.mux.HandleFunc("GET /api/v1/relationships/{relationshipId}/proactive-policy", s.handleGetProactivePolicy)
 	s.mux.HandleFunc("PUT /api/v1/relationships/{relationshipId}/proactive-policy", s.handlePutProactivePolicy)
 	s.mux.HandleFunc("GET /api/v1/relationships/{relationshipId}/companion-state", s.handleGetCompanionState)
+	s.mux.HandleFunc("POST /api/v1/relationships/{relationshipId}/reply-suggestions", s.handleReplySuggestions)
+	s.mux.HandleFunc("PUT /api/v1/memories/{memoryId}/pin", s.handlePutMemoryPin)
+	s.mux.HandleFunc("DELETE /api/v1/memories/{memoryId}/pin", s.handleDeleteMemoryPin)
+	s.mux.HandleFunc("GET /api/v1/relationships/{relationshipId}/favorites", s.handleListFavorites)
+	s.mux.HandleFunc("POST /api/v1/relationships/{relationshipId}/favorites", s.handleCreateFavorite)
+	s.mux.HandleFunc("DELETE /api/v1/favorites/{favoriteId}", s.handleDeleteFavorite)
+	s.mux.HandleFunc("GET /api/v1/relationships/{relationshipId}/reminders", s.handleListReminders)
+	s.mux.HandleFunc("POST /api/v1/relationships/{relationshipId}/reminders", s.handleCreateReminder)
+	s.mux.HandleFunc("DELETE /api/v1/reminders/{reminderId}", s.handleDeleteReminder)
+	s.mux.HandleFunc("GET /api/v1/relationships/{relationshipId}/diary", s.handleListDiary)
+	s.mux.HandleFunc("GET /api/v1/diary/{entryId}", s.handleGetDiaryEntry)
 	s.mux.HandleFunc("POST /api/v1/relationships/{relationshipId}/proactive-run", s.handlePostProactiveRun)
 	s.mux.HandleFunc("GET /api/v1/relationships/{relationshipId}/follow-ups", s.handleListFollowUps)
 	s.mux.HandleFunc("GET /api/v1/follow-ups/{followUpId}", s.handleGetFollowUp)

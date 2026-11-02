@@ -8,7 +8,7 @@ html[data-vc-layout="desktop"] body.vc-ui .vc-settings-categories h1 { display: 
 html[data-vc-layout="desktop"] body.vc-ui .vc-settings-categories h2 { margin: 16px 12px 8px; font-size: var(--vc-fs-headline); font-weight: 600; }
 html[data-vc-layout="desktop"] body.vc-ui .vc-settings-categories > button { display: flex; align-items: center; gap: var(--vc-space-sm); min-height: 44px; width: 100%; padding: 6px 12px; color: var(--vc-ink); background: transparent; border: 0; border-radius: var(--vc-radius-sm); text-align: left; font-size: var(--vc-fs-body); }
 html[data-vc-layout="desktop"] body.vc-ui .vc-settings-categories > button[aria-current="page"] { color: var(--vc-accent-text); background: var(--vc-select-fill); }
-html[data-vc-layout="desktop"] body.vc-ui .vc-settings-categories .vc-tile { width: 28px; height: 28px; border-radius: 8px; flex: none; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-settings-categories .vc-tile { width: 28px; height: 28px; border-radius: var(--vc-radius-tile); flex: none; }
 html[data-vc-layout="desktop"] body.vc-ui .vc-settings-content { overflow: hidden; display: flex; flex-direction: column; }
 html[data-vc-layout="desktop"] body.vc-ui .vc-settings-header { flex: none; height: 64px; min-height: 64px; width: min(100%,808px); margin: 0 auto; padding: 0 24px; box-sizing: border-box; display: flex; align-items: center; gap: var(--vc-space-xs); }
 html[data-vc-layout="desktop"] body.vc-ui .vc-settings-header h1 { margin: 0; flex: 1; font-size: var(--vc-fs-title-1); font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -117,14 +117,14 @@ html[data-vc-layout="desktop"] body.vc-ui:has(.vc-settings-shell[data-drawer]) :
     padding: 0 var(--vc-drawer-pad) var(--vc-space-xl) !important; /* 压过 drawers.css padding */
     border: 1px solid var(--vc-rim) !important; border-radius: var(--vc-radius-xl) !important; /* 压过 drawers.css border / radius */
     background: var(--vc-glass-2) !important; background-image: none !important; /* 压过 drawers.css 的 canvas 底 */
-    box-shadow: inset 0 1px 0 var(--vc-hi), var(--vc-shadow-panel) !important; /* 压过 drawers.css box-shadow */
+    box-shadow: var(--vc-shadow-rim-panel) !important; /* 压过 drawers.css box-shadow */
     backdrop-filter: blur(var(--vc-blur-2)) saturate(180%) !important; /* 压过 drawers.css backdrop-filter */
   }
   &.vc-drawer-leave:not(.openDrawer) { opacity: 0 !important; pointer-events: none !important; } /* 切换分类时旧页立即让位，不与新页叠放 */
   > [data-vc-drawer-nav] {
     position: sticky; top: 0; z-index: 6; box-sizing: border-box; display: flex; align-items: center; gap: var(--vc-space-xs);
     width: auto; height: 64px; margin: 0 calc(-1 * var(--vc-drawer-pad)); padding: 0 var(--vc-drawer-pad);
-    background: var(--vc-glass-3); box-shadow: 0 .5px 0 var(--vc-separator); /* 不再叠一层模糊，常驻模糊表面预算 ≤4 */
+    background: var(--vc-glass-3); box-shadow: var(--vc-shadow-divider); /* 不再叠一层模糊，常驻模糊表面预算 ≤4 */
     .vc-nav-title { position: static; order: 0; flex: 1; transform: none; opacity: 1; text-align: left; font-size: var(--vc-fs-title-1); font-weight: 700; line-height: var(--vc-lh-title-1); }
     .vc-nav-spacer { display: none; }
     [data-vc-drawer-back] { order: -1; width: 40px; height: 40px; min-height: 40px; background: var(--vc-raised); box-shadow: none; }
@@ -164,7 +164,7 @@ html[data-vc-layout="desktop"] body.vc-ui:has(.vc-settings-shell[data-drawer]) :
   .inline-drawer .range-block { background: transparent !important; border-width: 0 0 .5px !important; border-radius: 0 !important; margin: 0 !important; padding-inline: 0 !important; } /* 内卡里的行不再各自成卡 */
 
   /* 控件：36 高、圆角 10、0.5px 描边；文本 ≤360，数字 160，选择 160–240，长文本整行 */
-  :is(input:not([type="range"], [type="checkbox"], [type="radio"], [type="file"], [type="color"], [type="button"], [type="submit"], .select2-search__field), select, textarea) { min-height: 36px; border: .5px solid var(--vc-raised-edge) !important; border-radius: 10px !important; background: var(--vc-raised) !important; color: var(--vc-ink) !important; box-shadow: none !important; font-size: var(--vc-fs-body) !important; padding: 0 12px; box-sizing: border-box; } /* 压过 vc-ui.css 的灰色 44 高控件 */
+  :is(input:not([type="range"], [type="checkbox"], [type="radio"], [type="file"], [type="color"], [type="button"], [type="submit"], .select2-search__field), select, textarea) { min-height: 36px; border: .5px solid var(--vc-raised-edge) !important; border-radius: var(--vc-radius-control) !important; background: var(--vc-raised) !important; color: var(--vc-ink) !important; box-shadow: none !important; font-size: var(--vc-fs-body) !important; padding: 0 12px; box-sizing: border-box; } /* 压过 vc-ui.css 的灰色 44 高控件 */
   textarea { width: 100%; height: auto; min-height: 80px; padding: 8px 12px; }
   .scrollableInner, .right_menu { background: transparent !important; min-height: 0 !important; } /* 压过 drawers.css 的 canvas 底与整屏最小高 */
   &:is(#Backgrounds) :is(#bg-header-fixed, #bg_tabs, .ui-widget-content, .ui-widget-header, .ui-tabs-nav) { background: transparent !important; } /* 压过 drawers.css 的 canvas 底 */
@@ -197,9 +197,9 @@ html[data-vc-layout="desktop"] body.vc-ui .vc-settings-content #vc-model-setting
 html[data-vc-layout="desktop"] body.vc-ui .vc-settings-content #vc-model-settings-root td.vcms-binding-select { display: flex; flex-direction: row; flex-wrap: wrap; align-items: center; gap: var(--vc-space-xs) var(--vc-space-sm); }
 html[data-vc-layout="desktop"] body.vc-ui .vc-settings-content #vc-model-settings-root .vcms-binding-select > select { flex: 0 1 240px; width: 240px; min-width: 160px; max-width: 100%; margin: 0; }
 /* 16.4 控件：底 --vc-raised（浅 .72 白 / 深 .08 白）、0.5px raised-edge、圆角 10。settings-pages.css 对模型页全部输入框用 !important 写了灰底 / 无描边 / 圆角 12，只能同级 !important 压过。 */
-html[data-vc-layout="desktop"] body.vc-ui .vc-settings-content #vc-model-settings-root :is(input:not([type="radio"], [type="checkbox"], [type="range"]), select, textarea) { background: var(--vc-raised) !important; border: .5px solid var(--vc-raised-edge) !important; border-radius: 10px !important; } /* 压过 settings-pages.css 的 --vc-fill / border:0 / radius !important */
+html[data-vc-layout="desktop"] body.vc-ui .vc-settings-content #vc-model-settings-root :is(input:not([type="radio"], [type="checkbox"], [type="range"]), select, textarea) { background: var(--vc-raised) !important; border: .5px solid var(--vc-raised-edge) !important; border-radius: var(--vc-radius-control) !important; } /* 压过 settings-pages.css 的 --vc-fill / border:0 / radius !important */
 html[data-vc-layout="desktop"] body.vc-ui .vc-settings-content #vc-model-settings-root .vcms-binding-select .vcms-check { min-height: 36px; gap: var(--vc-space-xs); font-size: var(--vc-fs-body); }
-html[data-vc-layout="desktop"] body.vc-ui .vc-settings-content #vc-model-settings-root .vcms-binding-select .vcms-check input { width: 18px; height: 18px; margin: 0; border-radius: 5px; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-settings-content #vc-model-settings-root .vcms-binding-select .vcms-check input { width: 18px; height: 18px; margin: 0; border-radius: var(--vc-radius-check); }
 html[data-vc-layout="desktop"] body.vc-ui .vc-settings-content #vc-model-settings-root td.vcms-binding-purpose { display: block; min-width: 0; }
 html[data-vc-layout="desktop"] body.vc-ui .vc-settings-content #vc-model-settings-root .vcms-binding-status { align-self: center; }
 

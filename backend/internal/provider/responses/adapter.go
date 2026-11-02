@@ -43,7 +43,7 @@ func New(cfg Config) (*Adapter, error) {
 	if cfg.MaxTokens == 0 {
 		cfg.MaxTokens = 8192
 	}
-	if cfg.MaxTokens < 1 || cfg.MaxTokens > 262144 {
+	if cfg.MaxTokens < 1 || cfg.MaxTokens > 393216 {
 		return nil, errors.New("provider max tokens is invalid")
 	}
 	endpoint, err := modelhttp.ResolveEndpoint(cfg.BaseURL, "OPENAI_RESPONSES", cfg.AllowLoopbackHTTP)

@@ -19,7 +19,7 @@ html[data-vc-layout="desktop"] body.vc-ui .vc-menu.vc-compose-menu hr { height: 
 html[data-vc-layout="desktop"] body.vc-ui #vc-quote-bar {
   display: flex; align-items: center; gap: var(--vc-space-xs);
   margin: 0 0 var(--vc-space-xs); padding: var(--vc-space-xs) var(--vc-space-xs) var(--vc-space-xs) var(--vc-space-sm);
-  border-radius: var(--vc-radius-md); background: var(--vc-raised); box-shadow: inset 0 0 0 .5px var(--vc-raised-edge);
+  border-radius: var(--vc-radius-md); background: var(--vc-raised); box-shadow: var(--vc-shadow-inset-edge);
   color: var(--vc-ink-2); font-size: var(--vc-fs-footnote); line-height: var(--vc-lh-footnote);
 }
 html[data-vc-layout="desktop"] body.vc-ui #vc-quote-bar::before { content: ""; align-self: stretch; flex: none; width: 2px; border-radius: var(--vc-radius-pill); background: var(--vc-accent); }

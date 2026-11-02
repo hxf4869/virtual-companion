@@ -10,7 +10,7 @@ document.documentElement.dataset.vcTheme=theme==='auto'?(matchMedia('(prefers-co
 for(const name of ['style','vc-ui','shell','chat-shell','chat-view','settings-pages','voice','instance','memory','inbox','story','drawers','account']){
  const link=document.createElement('link');link.rel='stylesheet';link.href=`${source}/${name}.css`;if(name==='shell')link.id='vc-shell-css';document.head.append(link);
 }
-if(loadDesktop){for(const file of ['base','chat','chat-react','rich','settings','characters','memory','inbox','story']){const link=document.createElement('link');link.rel='stylesheet';link.href=`${source}/desktop/${file}.css`;document.head.append(link);}}
+if(loadDesktop){for(const file of ['base','chat','chat-react','rich','settings','characters','memory','inbox','story']){const link=document.createElement('link');link.rel='stylesheet';link.media='(min-width: 744px)';link.href=`${source}/desktop/${file}.css`;document.head.append(link);}}
 const {icon}=await import(`${source}/ui/icons.js`);
 const {bindSegment,bindSwitch,bindRangeFills}=await import(`${source}/ui/controls.js`);
 const {confirmAlert,confirmDiscard}=await import(`${source}/ui/alert.js`);
@@ -55,6 +55,7 @@ registerShellTabs(registry);
 const shell=mountShell({getContext:()=>context,loadRelationships:()=>api.fetchRelationships(),loadInbox:async()=>[],loadNative:async()=>({})});
 let desktop;
 if(loadDesktop){
+ const {mountDesktopTheme}=await import(`${source}/desktop/theme.js`);mountDesktopTheme({shell,getContext:()=>context});
  const {mountAurora}=await import(`${source}/desktop/aurora.js`);desktop=mountAurora();
  const {bindSidebarLens,readReducedMotion}=await import(`${source}/desktop/transition.js`);document.documentElement.dataset.vcReducedMotion=String(readReducedMotion());bindSidebarLens(shell.querySelector('.vc-sidebar'));
 }

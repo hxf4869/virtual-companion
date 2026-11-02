@@ -69,6 +69,14 @@ test('转文字、录音状态和用户转写只用文本节点，不注入消�
     assert.equal(pending.getAttribute('role'), 'status');
 });
 
+test('独立 H5 语音条用 12 根波形并随播放器进度标记已播部分',()=>{
+    const document=installMiniDom();
+    const player={peek:()=>({currentTime:2,duration:4}),toggle:async(_id,{onState})=>onState(true)};
+    const bubble=createVoiceBubble({document,mobile:true,voice:{clipId:'1',status:'ready',durationMs:4000},player});
+    assert.equal(bubble.querySelectorAll('i').length,12);bubble.querySelector('.vc-voice-bar').dispatch('click');
+    assert.equal(bubble.querySelectorAll('.on').length,6);
+});
+
 test('通话输入与普通语音通过图标和可访问名称区分',()=>{
     const document=installMiniDom();
     const call=createVoiceBubble({document,text:'通话文字',input:{durationMs:1000,call:true}});

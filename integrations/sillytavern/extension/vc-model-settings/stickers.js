@@ -875,3 +875,17 @@ export async function installStickers(deps = {}) {
         console.warn(`[vc-stickers] ${error?.name || 'error'}`);
     }
 }
+
+// UX-26 表情面板读取贴纸清单：按标签去重，保持清单顺序；关闭贴纸时为空。
+export function listStickerPicks() {
+    if (catalogOverride ? catalogOverride.enabled === false : !readSettings().enabled) return [];
+    const seen = new Set();
+    const picks = [];
+    for (const asset of currentAssets() || []) {
+        if (!isSendableTag(asset?.tag) || seen.has(asset.tag)) continue;
+        if (asset.kind === 'kaomoji' ? !asset.text : !asset.src) continue;
+        seen.add(asset.tag);
+        picks.push({ tag: asset.tag, kind: asset.kind === 'kaomoji' ? 'kaomoji' : 'image', src: asset.src || '', text: asset.text || '' });
+    }
+    return picks;
+}

@@ -6,7 +6,7 @@ import * as api from '../extension/vc-model-settings/api.js';
 import { ADMIN_BRIDGE_ROUTES } from '../server-plugin/virtual-companion/lib/admin-bridge.js';
 import * as inboxRoutes from '../server-plugin/virtual-companion/lib/inbox-ui-routes.js';
 const { INBOX_UI_ROUTES } = inboxRoutes;
-import { createInboxPage, renderInboxChannel, renderInboxPage } from '../extension/vc-model-settings/inbox-page.js';
+import { createInboxPage, renderInboxChannel, renderInboxPage, readForm, inboxPolicyDirty } from '../extension/vc-model-settings/inbox-page.js';
 
 const SECRET = 'super-secret-value';
 const WEBHOOK = 'https://hooks.example.test/secret-path';
@@ -16,6 +16,17 @@ const GM = 'GM_ONLY_WATCH_TRUTH_92';
 const realFetch = globalThis.fetch;
 const realDocument = globalThis.document;
 const realStorage = globalThis.localStorage;
+
+test('陪伴页加载中离开：尚未渲染的表单不清空策略，也不产生未保存提示', () => {
+    const page = createInboxPage();
+    page.state.relationshipId = '11';
+    const draft = structuredClone(page.state.policyDraft);
+    page.applyForm(readForm({ querySelector: () => null, querySelectorAll: () => [] }));
+    assert.deepEqual(page.state.policyDraft, draft);
+    assert.equal(inboxPolicyDirty(page.state), false);
+    page.setPolicy({ dailyLimit: 3 });
+    assert.equal(inboxPolicyDirty(page.state), true, '真实编辑仍触发离开守卫');
+});
 let calls;
 let route;
 let storage;

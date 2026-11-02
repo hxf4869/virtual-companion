@@ -411,12 +411,29 @@ func operation(path string) string {
 				return "proactive_policy"
 			case strings.HasSuffix(path, "/companion-state"):
 				return "companion_state"
+			case strings.HasSuffix(path, "/reply-suggestions"):
+				return "reply_suggestions"
+			case strings.HasSuffix(path, "/favorites"):
+				return "favorites"
+			case strings.HasSuffix(path, "/reminders"):
+				return "reminders"
+			case strings.HasSuffix(path, "/diary"):
+				return "diary"
 			case strings.HasSuffix(path, "/proactive-run"):
 				return "proactive_run"
 			case strings.HasSuffix(path, "/follow-ups"):
 				return "follow_ups"
 			}
 			return "relationship"
+		}
+		if strings.HasPrefix(path, "/api/v1/favorites/") {
+			return "favorite"
+		}
+		if strings.HasPrefix(path, "/api/v1/reminders/") {
+			return "reminder"
+		}
+		if strings.HasPrefix(path, "/api/v1/diary/") {
+			return "diary_entry"
 		}
 		if strings.HasPrefix(path, "/api/v1/follow-ups/") {
 			if strings.HasSuffix(path, "/cancel") {
@@ -441,6 +458,9 @@ func operation(path string) string {
 		}
 		if strings.HasSuffix(path, "/memories") {
 			return "memories"
+		}
+		if strings.HasSuffix(path, "/pin") {
+			return "memory_pin"
 		}
 		if strings.HasSuffix(path, "/confirm") {
 			return "memory_confirm"

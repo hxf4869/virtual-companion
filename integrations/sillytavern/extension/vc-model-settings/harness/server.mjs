@@ -159,7 +159,7 @@ function validateProviderPut(state, providerId, body, res) {
         const dn = String(m.displayName ?? '').trim();
         if (!dn || dn.length > 100) return bad(res, 400, 'INVALID_REQUEST', 'invalid model display name'), false;
         const maxOut = Number(m.maxOutputTokens);
-        if (!Number.isInteger(maxOut) || maxOut < 1 || maxOut > 262144) return bad(res, 400, 'INVALID_REQUEST', 'invalid max output'), false;
+        if (!Number.isInteger(maxOut) || maxOut < 1 || maxOut > 393216) return bad(res, 400, 'INVALID_REQUEST', 'invalid max output'), false;
         if (m.contextWindowTokens !== undefined && (!Number.isInteger(m.contextWindowTokens) || m.contextWindowTokens < 1 || m.contextWindowTokens > 2000000)) {
             return bad(res, 400, 'INVALID_REQUEST', 'invalid context window'), false;
         }

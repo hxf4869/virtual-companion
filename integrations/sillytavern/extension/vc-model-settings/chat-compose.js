@@ -1,7 +1,9 @@
 // UX-23 桌面聊天的右键菜单、引用、「+」菜单、输入框高度、草稿与发送失败。
 // 只在 html[data-vc-layout="desktop"] 生效；手机的长按抬起、宿主选项菜单保持原样。
 // 所有动作转发宿主原生入口；不往 .mes_text 子树和 #chat 插节点。
+import { createFavorite, createReminder } from './api.js';
 import { commitHostDelete } from './chat-view.js';
+import { glyph } from './favorites-page.js';
 import { confirmAlert } from './ui/alert.js';
 import { icon } from './ui/icons.js';
 import { popMenu } from './ui/menu.js';
@@ -25,7 +27,17 @@ export const COPY = Object.freeze({
     deleteTitle: '删除这条消息？',
     deleteBody: '删除后无法恢复。',
     deleteFailed: '这条消息没有删掉',
+    favorite: '收藏',
+    favorited: '已收藏',
+    remind: '稍后提醒',
+    reminded: '好，到时候提醒你',
+    remindIn20: '20 分钟后',
+    remindTonight: '今晚 21:00',
+    remindTomorrow: '明天早上',
+    remindPick: '选择时间…',
+    actionFailed: '没有完成，请重试。',
 });
+export const REMIND_MAX = 30;
 const DRAFT_PREFIX = 'vc-draft:';
 const DRAFT_MS = 500;
 const COMPOSER_MAX_LINES = 6;
@@ -93,15 +105,44 @@ export function isCopiedToast(message) {
     return /^(copied!?|已复制)$/i.test(String(message ?? '').trim());
 }
 
-export function messageMenuPlan({ system = false, character = false, last = false, voice = false, busy = false } = {}) {
+export function messageMenuPlan({ system = false, character = false, last = false, voice = false, busy = false, bound = false } = {}) {
     const plan = [];
     if (!system) plan.push('quote');
     plan.push('copy');
     if (voice) plan.push('read');
+    if (bound && !system) plan.push('favorite', 'remind'); // 收藏与提醒需要已绑定的陪伴会话
     plan.push('-', 'edit');
     if (character && last && !busy) plan.push('regenerate');
     plan.push('-', 'remove');
     return plan;
+}
+
+const pad2 = (n) => String(n).padStart(2, '0');
+
+/** RFC3339，带本地时区偏移（后端要求 Z 或数值偏移）。 */
+export function rfc3339(date) {
+    const offset = -date.getTimezoneOffset();
+    const sign = offset >= 0 ? '+' : '-';
+    const abs = Math.abs(offset);
+    return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}T${pad2(date.getHours())}:${pad2(date.getMinutes())}:${pad2(date.getSeconds())}${sign}${pad2(Math.floor(abs / 60))}:${pad2(abs % 60)}`;
+}
+
+/** 20 分钟后 / 今晚 21:00（已过则明天 21:00）/ 明天早上 08:00。 */
+export function reminderChoices(now = new Date()) {
+    const at = (dayOffset, hour) => new Date(now.getFullYear(), now.getMonth(), now.getDate() + dayOffset, hour, 0, 0, 0);
+    const tonight = at(0, 21);
+    return [
+        { id: 'in20', label: COPY.remindIn20, at: new Date(now.getTime() + 20 * 60000) },
+        { id: 'tonight', label: COPY.remindTonight, at: tonight.getTime() > now.getTime() ? tonight : at(1, 21) },
+        { id: 'tomorrow', label: COPY.remindTomorrow, at: at(1, 8) },
+    ];
+}
+
+/** ST 的 send_date 格式不固定：能解析就给 ISO，解析不了就不带。 */
+export function messageInstant(value) {
+    if (value === undefined || value === null || value === '') return undefined;
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
 }
 
 export function composerHeight({ contentHeight = 0, lineHeight = 0, padding = 0, min = 0, lines = COMPOSER_MAX_LINES } = {}) {
@@ -270,7 +311,68 @@ export function mountChatCompose({ getContext, document: doc = document } = {}) 
         mes.querySelector('.mes_copy')?.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
     }
 
+    // ---- 收藏与稍后提醒（UX-32） ----
+    const relationshipOf = () => {
+        const id = context()?.chatMetadata?.vc_binding?.relationshipId;
+        return id === undefined || id === null || id === '' ? '' : String(id);
+    };
+    const bound = () => Boolean(relationshipOf() && chatId());
+    function actionFailed() { showToast(COPY.actionFailed, { type: 'failure' }); }
+    async function favoriteMessage(mes) {
+        const id = Number(mes.getAttribute('mesid'));
+        const body = messageText(mes).trim();
+        if (!body || !Number.isInteger(id) || !bound()) return;
+        const messageAt = messageInstant(context()?.chat?.[id]?.send_date);
+        try {
+            await createFavorite(relationshipOf(), {
+                chatFile: chatId().replace(/\.jsonl$/, ''),
+                mesId: id,
+                role: isUser(mes) ? 'user' : 'character',
+                ...(messageAt ? { messageAt } : {}),
+                body,
+            });
+            showToast(COPY.favorited);
+        } catch { actionFailed(); }
+    }
+    async function remindMessage(mes, at) {
+        const text = quoteSummary(messageText(mes), REMIND_MAX);
+        if (!text || !bound()) return;
+        try {
+            await createReminder(relationshipOf(), { text, remindAt: rfc3339(at) });
+            showToast(COPY.reminded);
+        } catch { actionFailed(); }
+    }
+    // 原生时间选择：隐形输入框放在菜单旁，选定后创建提醒。
+    function pickReminderTime(mes, rect) {
+        const input = doc.createElement('input');
+        input.type = 'datetime-local';
+        input.setAttribute('aria-label', COPY.remindPick);
+        input.min = `${rfc3339(new Date()).slice(0, 16)}`;
+        Object.assign(input.style, { position: 'fixed', left: `${rect?.left ?? 0}px`, top: `${rect?.top ?? 0}px`, width: '1px', height: '1px', opacity: '0', pointerEvents: 'none' });
+        doc.body.append(input);
+        const done = () => input.remove();
+        input.addEventListener('change', () => {
+            const at = new Date(input.value);
+            done();
+            if (!Number.isNaN(at.getTime())) void remindMessage(mes, at);
+        });
+        input.addEventListener('blur', () => setTimeout(done, 300));
+        input.focus();
+        try { input.showPicker?.(); } catch { input.click(); }
+    }
+    // 二级菜单：主菜单收起后在原位置右侧弹出时间选项。
+    function openRemindMenu(mes, rect) {
+        const anchor = anchorAt((rect?.right ?? 0) + 4, (rect?.top ?? 0) - 8);
+        const items = [
+            ...reminderChoices().map((choice) => ({ label: choice.label, run: () => { void remindMessage(mes, choice.at); } })),
+            { label: COPY.remindPick, run: () => pickReminderTime(mes, rect) },
+        ];
+        popMenu(anchor, items, { below: true }).menu.classList.add('vc-compose-menu');
+    }
+
     const ACTIONS = {
+        favorite: { label: COPY.favorite, glyph: 'star', run: (mes) => { void favoriteMessage(mes); } },
+        remind: { label: COPY.remind, icon: 'chevron-right', run: () => {} },
         quote: { label: COPY.quote, icon: 'quote', run: (mes) => { setQuote({ name: speakerName(mes), text: messageText(mes) }); box()?.focus(); } },
         copy: { label: COPY.copy, icon: 'copy', run: copyMessage },
         read: { label: COPY.read, icon: 'volume-2', run: (mes) => { void readReplyAloud(Number(mes.getAttribute('mesid')), mes.querySelector('[data-vc-act="read"]')); } },
@@ -294,8 +396,10 @@ export function mountChatCompose({ getContext, document: doc = document } = {}) 
     let lifted = null;
     let liftWatch = null;
     function unlift() {
+        const was = lifted;
         lifted?.classList.remove('vc-ctx-target');
         lifted = null;
+        if (was) doc.dispatchEvent(new CustomEvent('vc-menu-closed', { detail: { mes: was } })); // UX-26 回应条随菜单收起
         liftWatch?.disconnect();
         liftWatch = null;
     }
@@ -309,15 +413,28 @@ export function mountChatCompose({ getContext, document: doc = document } = {}) 
             last: list.at(-1) === mes,
             voice: companionVoice(mes),
             busy: generating(),
+            bound: bound(),
         });
-        const items = plan.map((id) => (id === '-' ? '-' : { ...ACTIONS[id], run: () => ACTIONS[id].run(mes) }));
+        let opened = null;
+        const items = plan.map((id, index) => {
+            if (id === '-') return '-';
+            if (id === 'remind') {
+                return { ...ACTIONS[id], run: () => openRemindMenu(mes, opened?.menu?.querySelector(`[data-i="${index}"]`)?.getBoundingClientRect()) };
+            }
+            return { ...ACTIONS[id], run: () => ACTIONS[id].run(mes) };
+        });
         const below = event.clientY < globalThis.innerHeight * 0.6;
         // popMenu 以锚点为界上下偏 8px；锚点放在指针上下 8px，菜单边缘正好贴在指针处。
         const anchor = anchorAt(event.clientX, below ? event.clientY - 8 : event.clientY + 8);
-        const opened = popMenu(anchor, items, { below });
+        opened = popMenu(anchor, items, { below });
         opened.menu.classList.add('vc-compose-menu');
+        items.forEach((item, index) => { // 精灵图里没有的图标用内联线性图标补上
+            const mark = item.glyph && opened.menu.querySelector(`[data-i="${index}"] .vc-menu-mark`);
+            if (mark) mark.innerHTML = glyph(item.glyph, 19);
+        });
         lifted = mes;
         mes.classList.add('vc-ctx-target');
+        doc.dispatchEvent(new CustomEvent('vc-menu-opened', { detail: { mes, close: opened.close } })); // UX-26 在菜单上方加回应条
         if (opened?.scrim && typeof MutationObserver === 'function') {
             let seenOn = false;
             liftWatch = new MutationObserver(() => {
@@ -513,6 +630,7 @@ function ensureCss(doc) {
     if (doc.getElementById?.('vc-desktop-chat-compose-css')) return;
     const link = doc.createElement('link');
     link.id = 'vc-desktop-chat-compose-css';
+    link.media = '(min-width: 744px)';
     link.setAttribute('rel', 'stylesheet');
     link.setAttribute('href', new URL('./desktop/chat-compose.css', import.meta.url).href);
     (doc.head || doc.documentElement).append(link);

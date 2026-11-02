@@ -318,6 +318,32 @@ export const fetchMemoryEvidence = (id) => request('GET', `/api/v1/memories/${en
 export const correctMemory = (id, { summary, expectedVersion }) => request('PATCH', `/api/v1/memories/${encodeURIComponent(id)}`, { summary, expectedVersion });
 export const forgetMemory = (id) => request('DELETE', `/api/v1/memories/${encodeURIComponent(id)}`);
 
+const relPath = (relationshipId, tail) => `/api/v1/relationships/${encodeURIComponent(relationshipId)}/${tail}`;
+/** UX-31 钉住 / 取消钉住，返回刷新后的记忆。 */
+export const pinMemory = (id) => request('PUT', `/api/v1/memories/${encodeURIComponent(id)}/pin`);
+export const unpinMemory = (id) => request('DELETE', `/api/v1/memories/${encodeURIComponent(id)}/pin`);
+/** UX-28 messages 为最近 ≤ 8 条 { role: 'user'|'character', text }，返回 { suggestions }。 */
+export const fetchReplySuggestions = (relationshipId, messages) => request('POST', relPath(relationshipId, 'reply-suggestions'), { messages });
+/** UX-32 收藏：{ chatFile, mesId, role, messageAt?, body }。分页游标为上一页 nextCursor。 */
+export const createFavorite = (relationshipId, values) => request('POST', relPath(relationshipId, 'favorites'), values);
+export function listFavorites(relationshipId, { after, limit } = {}) {
+    const query = new URLSearchParams();
+    if (after) query.set('after', String(after));
+    if (limit) query.set('limit', String(limit));
+    return request('GET', `${relPath(relationshipId, 'favorites')}?${query}`);
+}
+export const deleteFavorite = (id) => request('DELETE', `/api/v1/favorites/${encodeURIComponent(id)}`);
+/** UX-32 稍后提醒：{ text, remindAt(RFC3339 含时区), recurrence? }。 */
+export const createReminder = (relationshipId, values) => request('POST', relPath(relationshipId, 'reminders'), values);
+export const listReminders = (relationshipId) => request('GET', relPath(relationshipId, 'reminders'));
+export const deleteReminder = (id) => request('DELETE', `/api/v1/reminders/${encodeURIComponent(id)}`);
+/** UX-33 日记：month 为 YYYY-MM。 */
+export const fetchDiaryMonth = (relationshipId, month) => request('GET', `${relPath(relationshipId, 'diary')}?${new URLSearchParams({ month })}`);
+export const fetchDiaryEntry = (id) => request('GET', `/api/v1/diary/${encodeURIComponent(id)}`);
+/** UX-31 下一个新会话是否默认「新对话不记」：{ defaultIncognito }。 */
+export const getIncognitoPref = () => request('GET', '/api/v1/incognito-pref');
+export const setIncognitoPref = (defaultIncognito) => request('PUT', '/api/v1/incognito-pref', { defaultIncognito: Boolean(defaultIncognito) });
+
 const STORY_DECIMAL_ID = /^[1-9][0-9]{0,18}$/;
 const STORY_WORLD_VERSION = /^(0|[1-9][0-9]{0,18})$/;
 
