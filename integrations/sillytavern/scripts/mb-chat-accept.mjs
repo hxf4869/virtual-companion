@@ -30,7 +30,7 @@ export async function sceneMbChat(ctx) {
     const {chromium}=await import('playwright-core');
     const browser=await chromium.launch({headless:true,...(process.env.VC_W03_CHROMIUM_PATH?{executablePath:process.env.VC_W03_CHROMIUM_PATH}:{})});
     const reply=(text,chunks=5,perChunkMs=40)=>ctx.fixtureHttp.setOverride('vc03m-chat',{text,chunks,delay:{firstMs:50,perChunkMs}});
-    let page;
+    let page,nestedFile='';
     try {
         const bc=await browser.newContext({viewport:{width:390,height:844},isMobile:true,hasTouch:true,deviceScaleFactor:1});
         await bc.addCookies([{name:'vc_session',value:s.vcSession,url:ctx.w05.stBase},{name:'vc_csrf',value:s.vcCsrf,url:ctx.w05.stBase}]);
@@ -85,6 +85,15 @@ export async function sceneMbChat(ctx) {
         await page.locator('.vc-markdown',{hasText:'连续内容'}).first().waitFor();await page.getByRole('button',{name:'停止',exact:true}).click();
         await page.locator('.vc-chat-note',{hasText:'已停止'}).waitFor();
         console.log('[mb-chat] PASS 停止保留部分回复');
+        // A page remains in uni-app's stack while a new instance uses the single ST engine.
+        await input.fill('返回 A 后保留');await page.locator('.vc-identity').click();await page.getByRole('button',{name:'新建实例',exact:true}).click();await page.getByLabel('实例名称',{exact:true}).fill('MB4 嵌套实例');await page.getByRole('button',{name:'开始聊天',exact:true}).click();await page.waitForFunction(()=>document.querySelector('.vc-conversation')&&!document.querySelector('.vc-connection')&&globalThis.__vcEngine.chatId()!=='');
+        nestedFile=await page.evaluate(()=>globalThis.__vcEngine.chatId());if(nestedFile===file)throw Error('新实例未切换聊天');
+        await page.locator('.vc-conv-nav [aria-label="返回"]').click();await page.locator('.vc-subnav [aria-label="返回"]').click();await page.waitForFunction(expected=>globalThis.__vcEngine.chatId()===expected&&!document.querySelector('.vc-connection'),file);if(await input.inputValue()!=='返回 A 后保留')throw Error('恢复旧页丢失草稿');
+        const marker='测试：只写入恢复后的 A';await reply('测试回复：回到这边了。');await input.fill(marker);await page.getByRole('button',{name:'发送',exact:true}).click();await page.locator('.vc-markdown',{hasText:'回到这边了'}).waitFor();await page.waitForFunction(()=>!document.querySelector('.vc-typing'));
+        const readA=await st.call('POST','/api/chats/get',{avatar_url:avatar,file_name:file});const readB=await st.call('POST','/api/chats/get',{avatar_url:avatar,file_name:nestedFile});if(!readA.json.some(m=>m.is_user&&m.mes===marker)||readB.json.some(m=>m.mes===marker))throw Error('恢复旧页后消息写错会话');
+        await page.locator('.vc-markdown').first().click({button:'right'});await page.getByRole('menuitem',{name:'编辑',exact:true}).click();await page.locator('.vc-edit-sheet textarea').fill('```html\n<div>合成互动内容</div>\n```');await page.getByRole('button',{name:'保存',exact:true}).click();await page.getByRole('button',{name:/互动卡片/}).first().click();await page.locator('.vc-stview-bar').waitFor();
+        await page.evaluate(async({avatar,file})=>globalThis.__vcEngine.open(avatar,file),{avatar,file:nestedFile});await page.locator('.vc-stview-bar [aria-label="返回"]').click();await page.waitForFunction(expected=>globalThis.__vcEngine.chatId()===expected&&!document.querySelector('.vc-connection'),file);
+        console.log('[mb-chat] PASS 嵌套会话返回与酒馆视图返回重新绑定，消息只写入原会话');
         for(const width of [360,390,430,1440])for(const scheme of ['light','dark']) {
             await page.setViewportSize({width,height:width===1440?900:844});await page.emulateMedia({colorScheme:scheme});
             await page.screenshot({path:path.join(SHOTS,`conversation-${width}-${scheme}.png`)});
@@ -92,11 +101,11 @@ export async function sceneMbChat(ctx) {
             if(overflow)throw Error(`宽度 ${width} 横向溢出`);
         }
         if(errors.length)throw Error(`页面错误：${errors.join(' | ')}`);
-        fs.writeFileSync(path.join(SHOTS,'NOTES.md'),'# MB-4\n\n合成会话：发送与停止、引用、搜索、草稿回填、编辑删除；360/390/430/1440 浅深色截图。\n');
+        fs.writeFileSync(path.join(SHOTS,'NOTES.md'),'# MB-4\n\n合成会话：发送与停止、引用、搜索、草稿回填、编辑删除；新增嵌套实例与酒馆视图切换后返回，恢复原会话并确认消息没有写到另一实例；360/390/430/1440 浅深色截图。\n');
         await bc.close();
     } catch (e) {
         if(page) { await page.screenshot({path:path.join(SHOTS,'failure.png')}).catch(()=>{}); const state=await page.evaluate(()=>({url:location.hash,engine:document.documentElement.dataset.vcEngine,buttons:[...document.querySelectorAll('uni-button[aria-label]')].slice(0,12).map(b=>({role:b.getAttribute('role'),label:b.getAttribute('aria-label')}))})).catch(()=>({})); console.log('[mb-chat] failure state '+JSON.stringify(state)); }
         throw e;
-    } finally {await ctx.fixtureHttp.setOverride('vc03m-chat',null);await browser.close();}
+    } finally {await ctx.fixtureHttp.setOverride('vc03m-chat',null);await browser.close();if(nestedFile){const read=await st.call('POST','/api/chats/get',{avatar_url:avatar,file_name:nestedFile});if(read.status!==200)throw Error('读取嵌套夹具删除基线失败');const deleted=await st.call('POST','/api/chats/delete',{avatar_url:avatar,chatfile:`${nestedFile}.jsonl`,vc_f2:read.json[0].chat_metadata.vc_f2});if(deleted.status!==200)throw Error(`清理嵌套聊天失败 HTTP ${deleted.status}`);}}
 }
 export const mbChatScene={id:'mb-chat',title:'MB-4 H5 聊天：页面操作、草稿保留与多尺寸布局',needs:['catalog','stack','browser'],default:false,run:sceneMbChat};

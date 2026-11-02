@@ -1,8 +1,10 @@
 <template>
     <view>
         <VcFeedback /><VcReauth />
-        <Teleport v-if="incoming.view===viewId" to="body"><VcIncoming v-if="incoming.event" :key="incoming.event.eventId" /></Teleport>
-        <view v-if="engine.stView" class="vc-stview-bar"><button role="button" tabindex="0" class="vc-st-back vc-glass" aria-label="返回" @click="close"><VcIcon name="chevron-left" /><text>返回聊天</text></button></view>
+        <Teleport v-if="incoming.view===viewId" to="body">
+            <VcIncoming v-if="incoming.event" :key="incoming.event.eventId" />
+            <view v-if="engine.stView" class="vc-stview-bar"><button role="button" tabindex="0" class="vc-st-back vc-glass" aria-label="返回" @click="close"><VcIcon name="chevron-left" /><text>返回聊天</text></button></view>
+        </Teleport>
     </view>
 </template>
 <script>

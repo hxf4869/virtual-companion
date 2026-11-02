@@ -3,10 +3,10 @@ import assert from 'node:assert/strict';
 import { createChatSession } from '../src/chat/session.mjs';
 
 function fixture() {
-    const data = new Map(); const listeners = new Map(); let messages = []; let current = ''; let fail = false;
+    const data = new Map(); const listeners = new Map(); const chats=new Map();let messages = []; let current = '';let avatar=''; let fail = false;
     const storage = { getItem: (k) => data.get(k), setItem: (k,v) => data.set(k,v), removeItem: (k) => data.delete(k) };
-    const engine = { state: 'ready', start: async () => {}, open: async (_,f) => { current=f; }, chatId: () => current,
-        messages: () => messages, character: () => ({}), generating: () => false,
+    const engine = { state: 'ready', start: async () => {}, open: async (a,f) => { avatar=a;current=f;const key=`${a}/${f}`;if(!chats.has(key))chats.set(key,[]);messages=chats.get(key); }, chatId: () => current,
+        messages: () => messages, character: () => ({avatar}), generating: () => false,
         on: (key,fn) => { listeners.set(key,fn); return () => listeners.delete(key); },
         send: (text) => { if(fail) throw Error('offline'); messages.push({ id:messages.length,user:true,text }); return 0; },
         waitEnded: async () => { messages.push({ id:messages.length,user:false,text:'reply' }); }, stop: () => {},
@@ -21,6 +21,15 @@ test('发送被宿主接受才清草稿；失败保留原文与引用', async ()
     await f.session.send();
     assert.equal(f.state.draft,'你好'); assert.equal(f.state.quote.text,'旧话'); assert.equal(f.state.error,'send');
     assert.ok([...f.data.values()].includes('你好'));
+});
+test('隐藏对话不操作另一角色的同名聊天；恢复后保留草稿与引用',async()=>{
+ const f=fixture();await f.session.open({avatar:'a.png',file:'same',name:'A'});f.engine.messages().push({id:0,text:'A message'});f.session.sync();f.session.draft('A draft');f.state.quote={name:'A',text:'quoted'};
+ f.session.suspend();await f.engine.open('b.png','same');f.engine.messages().push({id:0,text:'B message'});f.listeners.get('token')();assert.equal(f.state.messages[0].text,'A message');assert.equal(await f.session.send(),false);
+ await f.session.resume();assert.equal(f.engine.character().avatar,'a.png');assert.equal(f.state.ready,true);assert.equal(f.state.draft,'A draft');assert.equal(f.state.quote.text,'quoted');assert.equal(f.state.messages[0].text,'A message');
+});
+test('宿主视图切到其他会话后，即使旧页面仍是 ready 也拒绝发送、生成和停止',async()=>{
+ const f=fixture();await f.session.open({avatar:'a.png',file:'same',name:'A'});f.session.draft('stay in A');await f.engine.open('b.png','same');let generated=0,stopped=0;f.engine.regenerate=async()=>{generated++;return 0;};f.engine.stop=()=>{stopped++;};
+ assert.equal(await f.session.send(),false);await f.session.generate();f.session.stop();assert.equal(f.engine.messages().length,0);assert.equal(generated,0);assert.equal(stopped,0);assert.equal(f.state.draft,'stay in A');
 });
 test('已发送文字不因模型失败而自动重发', async () => {
     const f=fixture(); await f.session.open({ avatar:'a.png',file:'f',name:'A' });

@@ -21,9 +21,9 @@
                 </template>
                 <button v-if="long(m)" role="button" tabindex="0" class="vc-plain-btn" :aria-expanded="Boolean(expanded[m.id])" @click="expanded[m.id] = !expanded[m.id]">{{ expanded[m.id] ? '收起' : '展开全文' }}</button>
                 <view v-if="m.swipes > 1" class="vc-candidates">
-                    <button role="button" tabindex="0" class="vc-plain-btn" aria-label="上一个候选" :disabled="busy || m.id !== lastId || m.swipe === 0" :aria-disabled="busy || m.id !== lastId || m.swipe === 0" @click="$emit('swipe', 'left')">‹</button>
+                    <button role="button" tabindex="0" class="vc-plain-btn" aria-label="上一个候选" :disabled="!ready || busy || m.id !== lastId || m.swipe === 0" :aria-disabled="!ready || busy || m.id !== lastId || m.swipe === 0" @click="$emit('swipe', 'left')">‹</button>
                     <text>{{ m.swipe + 1 }} / {{ m.swipes }}</text>
-                    <button role="button" tabindex="0" class="vc-plain-btn" aria-label="下一个候选" :disabled="busy || m.id !== lastId" :aria-disabled="busy || m.id !== lastId" @click="$emit('swipe', 'right')">›</button>
+                    <button role="button" tabindex="0" class="vc-plain-btn" aria-label="下一个候选" :disabled="!ready || busy || m.id !== lastId" :aria-disabled="!ready || busy || m.id !== lastId" @click="$emit('swipe', 'right')">›</button>
                 </view>
                 <view v-if="interrupted && m.id === lastId && !m.user" class="vc-message-meta"><text>{{ copy.unfinished }}</text><button role="button" tabindex="0" class="vc-plain-btn" @click="$emit('continue')">{{ copy.continue }}</button></view>
                 <text v-if="m.id === lastUser" class="vc-sent">{{ copy.sent }}</text>

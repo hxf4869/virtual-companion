@@ -30,7 +30,7 @@
             <view class="vc-composer vc-glass">
                 <button role="button" tabindex="0" class="vc-round" aria-label="更多" :aria-expanded="more" @click="more = !more"><VcIcon name="plus" /></button>
                 <textarea v-field-label class="vc-chat-input" :value="chat.draft" :disabled="voice.phase!=='idle'" :placeholder="copy.placeholder" :aria-label="copy.placeholder" auto-height :maxlength="-1" :adjust-position="false" @input="session.draft($event.detail.value)" @confirm="send" />
-                <button role="button" tabindex="0" v-if="chat.busy" class="vc-round vc-send" :aria-label="copy.stop" @click="session.stop()"><VcIcon name="square" size="var(--vc-icon-sm)" /></button>
+                <button role="button" tabindex="0" v-if="chat.busy" class="vc-round vc-send" :aria-label="copy.stop" :disabled="!chat.ready" :aria-disabled="!chat.ready" @click="session.stop()"><VcIcon name="square" size="var(--vc-icon-sm)" /></button>
                 <!-- H5 原生元素保留 PointerEvent；uni-button 的事件规范化不保留 pointerType / 指针捕获。 -->
                 <div role="button" tabindex="0" v-else-if="voiceAvailable && !chat.draft?.trim()" class="vc-round vc-microphone" :aria-label="voice.phase==='recording'?'结束录音':'开始录音'" :aria-pressed="voice.phase==='recording'" :aria-disabled="!chat.ready || voice.phase==='transcribing'" title="按住说话" @pointerdown="recordDown" @pointermove="recordMove" @pointerup="recordUp" @pointercancel="recordCancel" @click="recordClick" @keydown.enter.prevent="recordClick" @keydown.space.prevent="recordClick" @keydown.esc="recorder?.cancel()"><VcIcon :name="voice.phase==='recording'?'square':'mic'" /></div>
                 <button role="button" tabindex="0" v-else class="vc-round vc-send" :aria-label="copy.send" :disabled="!chat.ready || chat.error === 'save' || !chat.draft.trim()" :aria-disabled="!chat.ready || chat.error === 'save' || !chat.draft.trim()" @click="send"><VcIcon name="arrow-up" /></button>
@@ -69,30 +69,33 @@ import { confirmAlert, showToast } from '../../ui/feedback.mjs';
 
 export default {
     components: { VcAurora, VcAvatar, VcIcon, ChatMessage, VcOverlays, VcCall },
-    data: () => ({ copy: COPY, chat: {}, session: null, menu: null, more: false, editing: null, editText: '', selectedText: null, saving: false, image: '', atBottom: true, searching: false, query: '', matchIndex: 0,voice:{phase:'idle'},voiceAvailable:false,readAvailable:false,recorder:null,voicePolicy:null,callActive:false,callOpening:null }),
+    data: () => ({ copy: COPY,engine:engineState, chat: {}, session: null, menu: null, more: false, editing: null, editText: '', selectedText: null, saving: false, image: '', atBottom: true, searching: false, query: '', matchIndex: 0,voice:{phase:'idle'},voiceAvailable:false,readAvailable:false,recorder:null,voicePolicy:null,callActive:false,callOpening:null }),
     computed: {
         groups() { return groupMessages(this.chat.messages || []); },
         lastId() { return this.chat.messages?.at(-1)?.id ?? -1; },
         lastUser() { return this.chat.messages?.findLast(m=>m.user)?.id ?? -1; },
         matches() { return this.query ? (this.chat.messages || []).filter(m=>m.text.toLocaleLowerCase().includes(this.query.toLocaleLowerCase())).map(m=>m.id) : []; },
         status() { return this.chat.error === 'send' ? COPY.failed : this.chat.error === 'save' ? COPY.saveFailed : this.chat.error === 'reply' ? COPY.error : this.chat.error ? COPY.connectFailed : COPY.connecting; },
-        actions() { const a = [{id:'quote',label:COPY.quote,icon:'quote'},{id:'copy',label:COPY.copy,icon:'copy'},{id:'select',label:COPY.selectText,icon:'text-cursor'}]; if(this.readAvailable&&!this.menu?.user&&!this.chat.busy)a.push({id:'read',label:'朗读',icon:'volume-2'});if(!this.chat.busy) a.push({id:'edit',label:COPY.edit,icon:'pencil'}); if(!this.chat.busy && !this.menu?.user && this.menu?.id === this.lastId) a.push({id:'regenerate',label:COPY.regenerate,icon:'refresh-cw'}); return this.chat.busy ? a : [...a,{id:'remove',label:COPY.remove,icon:'trash-2'}]; },
+        actions() { const a = [{id:'quote',label:COPY.quote,icon:'quote'},{id:'copy',label:COPY.copy,icon:'copy'},{id:'select',label:COPY.selectText,icon:'text-cursor'}]; if(!this.chat.ready)return a;if(this.readAvailable&&!this.menu?.user&&!this.chat.busy)a.push({id:'read',label:'朗读',icon:'volume-2'});if(!this.chat.busy) a.push({id:'edit',label:COPY.edit,icon:'pencil'}); if(!this.chat.busy && !this.menu?.user && this.menu?.id === this.lastId) a.push({id:'regenerate',label:COPY.regenerate,icon:'refresh-cw'}); return this.chat.busy ? a : [...a,{id:'remove',label:COPY.remove,icon:'trash-2'}]; },
     },
-    watch: { query() { this.matchIndex = 0; this.jump(0); },'voice.phase'(phase){engineState.voiceInputActive=phase!=='idle';} },
+    watch: { query() { this.matchIndex = 0; this.jump(0); },'voice.phase'(phase){engineState.voiceInputActive=phase!=='idle';},'engine.stView'(on){if(!this.visible)return;if(on){this.session?.suspend();this.recorder?.cancel();}else void this.restore();} },
     onLoad(options) {
-        this.live = true;
+        this.live = true;this.visible=true;this.callId=options.call||'';
         this.session = createChatSession({ state: this.chat, engine: getEngine(), server: getServer(), changed: () => this.latest() });
         const target = { avatar: options.avatar || '', file: options.file || '', name: options.name || '' };
-        this.session.open(target).then(async()=>{ if(!this.live) return; const ch=getEngine().character(); const tint=await tintOf(avatarUrl(target.avatar)); if(!this.live) return; setCharacterTheme(ch?.theme, tint); this.latest(true);await this.setupVoice();const incoming=takeIncomingCall(options.call);if(this.live&&incoming&&this.voiceAvailable&&this.readAvailable){this.callOpening=incoming.callback?null:incoming;this.startCall();} });
+        this.session.open(target).then(()=>this.afterReady());
         this.resize = () => document.documentElement.style.setProperty('--vc-vh', `${window.visualViewport?.height || window.innerHeight}px`);
         window.visualViewport?.addEventListener('resize', this.resize); this.resize();
     },
-    onHide() { engineState.voiceInputActive=false;this.recorder?.cancel();if(this.$refs.callView)this.$refs.callView.close();else getEngine().stopVoice().catch(()=>{}); },
-    onUnload() { this.live=false; this.recorder?.dispose();this.session?.dispose(); setCharacterTheme(); window.visualViewport?.removeEventListener('resize', this.resize); document.documentElement.style.removeProperty('--vc-vh'); },
+    onShow(){this.resize?.();if(!this.visible){this.visible=true;void this.restore();}},
+    onHide() { this.visible=false;this.session?.suspend();engineState.voiceInputActive=false;this.recorder?.cancel();setCharacterTheme();document.documentElement.style.removeProperty('--vc-vh');if(this.$refs.callView)this.$refs.callView.close();else getEngine().stopVoice().catch(()=>{}); },
+    onUnload() { this.live=false; this.recorder?.dispose();this.session?.dispose();window.visualViewport?.removeEventListener('resize', this.resize); },
     methods: {
-        startCall(){const focused=document.activeElement;if(focused?.matches('input,textarea'))focused.blur();this.callActive=true;},
+        async restore(){if(!this.live||!this.visible||engineState.stView)return;await this.session.resume();await this.afterReady();},
+        async afterReady(){if(!this.live||!this.visible||!this.session.isCurrent())return;const ch=getEngine().character();const tint=await tintOf(avatarUrl(this.chat.target.avatar));if(!this.live||!this.visible||!this.session.isCurrent())return;setCharacterTheme(ch?.theme,tint);this.latest(true);await this.setupVoice();if(this.callId&&this.session.isCurrent()){const incoming=takeIncomingCall(this.callId);this.callId='';if(incoming&&this.voiceAvailable&&this.readAvailable){this.callOpening=incoming.callback?null:incoming;this.startCall();}}},
+        startCall(){if(!this.session.isCurrent())return;const focused=document.activeElement;if(focused?.matches('input,textarea'))focused.blur();this.callActive=true;},
         async setupVoice(){
-            const engine=getEngine(),policy=await engine.voicePolicy();if(!this.live)return;
+            this.recorder?.dispose();this.recorder=null;const engine=getEngine(),policy=await engine.voicePolicy();if(!this.live||!this.visible||!this.session.isCurrent())return;
             this.voicePolicy=policy;
             const companion=engine.binding().mode==='COMPANION';
             this.readAvailable=companion&&Boolean(policy?.available)&&policy.relationship.voiceFrequency!=='OFF';
@@ -113,10 +116,11 @@ export default {
         async send() { this.more=false; await this.session.send(); this.latest(true); },
         retry() { if(this.chat.error==='save') showStView(true); else if(this.chat.error==='send') this.send(); else if(this.chat.error==='reply') this.session.generate(); else this.session.open(this.chat.target); },
         generate(kind) { this.more=false; this.session.generate(kind); },
-        openCard(id) { showStView(true,{messageId:id}); },
-        async swipe(dir) { try { getEngine().swipe(dir); this.session.sync(); } catch { showToast(COPY.error,{error:true}); } },
+        openCard(id) { if(!this.session.isCurrent())return;showStView(true,{messageId:id}); },
+        async swipe(dir) { if(!this.session.isCurrent())return;try { getEngine().swipe(dir); this.session.sync(); } catch { showToast(COPY.error,{error:true}); } },
         jump(delta) { if(!this.matches.length) return; this.matchIndex=(this.matchIndex+delta+this.matches.length)%this.matches.length; this.$nextTick(()=>document.getElementById(`message-${this.matches[this.matchIndex]}`)?.scrollIntoView({block:'center'})); },
         async act(id) {
+            if(['read','edit','regenerate','remove'].includes(id)&&!this.session.isCurrent())return;
             const m=this.menu; this.menu=null;
             if(id==='quote') this.chat.quote={name:m.name,text:m.text};
             else if(id==='select') this.selectedText=m.text;
@@ -125,10 +129,11 @@ export default {
             else if(id==='read') { try {await getEngine().readAloud(m.id);} catch {showToast(COPY.error,{error:true});} }
             else if(id==='regenerate') this.generate('regenerate');
             else if(id==='remove' && await confirmAlert({title:COPY.deleteMessageTitle,message:COPY.deleteBody,action:COPY.remove})) {
+                if(!this.session.isCurrent())return;
                 try { await getEngine().remove(m.id); this.session.sync(); showToast(COPY.deleted); } catch { showToast(COPY.error,{error:true}); }
             }
         },
-        async saveEdit() { if(this.saving) return; this.saving=true; try { await getEngine().edit(this.editing.id,this.editText); this.editing=null; this.session.sync(); } catch { showToast(COPY.error,{error:true}); } finally { this.saving=false; } },
+        async saveEdit() { if(this.saving||!this.session.isCurrent()) return; this.saving=true; try { await getEngine().edit(this.editing.id,this.editText); this.editing=null; this.session.sync(); } catch { showToast(COPY.error,{error:true}); } finally { this.saving=false; } },
     },
 };
 </script>
