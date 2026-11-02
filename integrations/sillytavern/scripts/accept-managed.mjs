@@ -65,6 +65,7 @@ import { startW10Capture, stopW10Capture } from './w10-accept.mjs';
 import { LifecycleError } from './lib/accept-runtime.mjs';
 import { companiondPlan } from './lib/companiond-plan.mjs';
 import { ACCEPT_SCENES } from './managed-scenes.mjs';
+import { prepareVoiceRealArtifacts } from './voice-real-accept.mjs';
 
 const INTEG = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const REPO_ROOT = path.resolve(INTEG, '..', '..');
@@ -336,9 +337,9 @@ function goServiceSpec(secrets) {
     return {
         binary: path.join(RUN_DIR, 'companiond-accept'),
         env: {
-            VC_TTS_KOKORO_URL: secrets.needsVoice ? `${FIXTURE_BASE}/voice-fixture/kokoro/v1` : '',
-            VC_TTS_COSYVOICE_URL: secrets.needsVoice ? `${FIXTURE_BASE}/voice-fixture/cosyvoice/v1` : '',
-            VC_ASR_URL: secrets.needsASR ? `${FIXTURE_BASE}/voice-fixture/asr/v1` : '',
+            VC_TTS_KOKORO_URL: secrets.realVoice ? process.env.VC_W03_REAL_KOKORO_URL : secrets.needsVoice ? `${FIXTURE_BASE}/voice-fixture/kokoro/v1` : '',
+            VC_TTS_COSYVOICE_URL: secrets.realVoice ? process.env.VC_W03_REAL_COSYVOICE_URL : secrets.needsVoice ? `${FIXTURE_BASE}/voice-fixture/cosyvoice/v1` : '',
+            VC_ASR_URL: secrets.realVoice ? process.env.VC_W03_REAL_ASR_URL : secrets.needsASR ? `${FIXTURE_BASE}/voice-fixture/asr/v1` : '',
             VC_MODE: 'full',
             VC_VERSION: 'w03-accept',
             VC_LOG_LEVEL: 'info',
@@ -676,13 +677,19 @@ async function runFull() {
         const needs = sceneById(id)?.needs ?? [];
         return needs.includes('fixture') || needs.includes('catalog') || needs.includes('stack');
     });
+    if (selected.includes('voice-real') && ['VC_W03_REAL_KOKORO_URL', 'VC_W03_REAL_COSYVOICE_URL', 'VC_W03_REAL_ASR_URL'].some(key => !process.env[key]?.trim())) {
+        throw new Error('voice-real 需要显式配置三个 VC_W03_REAL_*_URL；默认语音场景仍使用夹具');
+    }
     const ts = new Date().toISOString().replace(/[:.]/g, '-');
-    const artifactsDir = path.join(ARTIFACTS_ROOT, `accept-${ts}`);
+    const artifactsDir = selected.includes('voice-real')
+        ? await prepareVoiceRealArtifacts(ARTIFACTS_ROOT, ts)
+        : path.join(ARTIFACTS_ROOT, `accept-${ts}`);
     fs.mkdirSync(artifactsDir, { recursive: true, mode: 0o700 });
 
     const secrets = {
         needsVoice: selected.some((id) => id.startsWith('voice-')),
-        needsASR: selected.includes('voice-input'),
+        needsASR: selected.includes('voice-input') || selected.includes('voice-real'),
+        realVoice: selected.includes('voice-real'),
         needsRights: selected.some((id) => id.startsWith('rights-')),
         needsMemory: selected.some(id => id.startsWith('memory-')),
         pgPassword: synthSecret(18),

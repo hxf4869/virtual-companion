@@ -203,3 +203,24 @@ test('dry-run 等价自检：fixture 随机端口单起 + 断言库自测', asyn
         await fixture.api.close();
     }
 });
+
+test('真实语音验收只保留最近五次产物，不删其他场景和未识别目录', async () => {
+    const fs = await import('node:fs/promises');
+    const os = await import('node:os');
+    const path = await import('node:path');
+    const { prepareVoiceRealArtifacts } = await import('../scripts/voice-real-accept.mjs');
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'vc-voice-artifacts-'));
+    const stamp = day => `2026-11-0${day}T00-00-00-000Z`;
+    try {
+        for (let day = 1; day <= 6; day++) await fs.mkdir(path.join(root, `voice-real-${stamp(day)}`));
+        await fs.mkdir(path.join(root, 'accept-unrelated'));
+        await fs.mkdir(path.join(root, 'voice-real-notes'));
+        const current = await prepareVoiceRealArtifacts(root, stamp(7));
+        assert.equal(current, path.join(root, `voice-real-${stamp(7)}`));
+        assert.deepEqual((await fs.readdir(root)).sort(), [
+            'accept-unrelated', 'voice-real-2026-11-03T00-00-00-000Z', 'voice-real-2026-11-04T00-00-00-000Z',
+            'voice-real-2026-11-05T00-00-00-000Z', 'voice-real-2026-11-06T00-00-00-000Z',
+            'voice-real-2026-11-07T00-00-00-000Z', 'voice-real-notes',
+        ]);
+    } finally { await fs.rm(root, { recursive: true, force: true }); }
+});

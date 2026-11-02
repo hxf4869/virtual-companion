@@ -995,3 +995,32 @@ test('UX-23 桌面气泡生成中：#vc-chat-gen 是「正在输入」气泡（U
         assert.equal(Boolean(line.querySelector('.vc-gen-bubble')), layout === 'desktop', layout);
     }
 });
+
+test('停止后立即续写，先等半截回复保存完成再进入宿主生成', async () => {
+    const document = installMiniDom();
+    document.documentElement.setAttribute('data-vc-layout', 'desktop');
+    const { chat } = stage(document, { ui: true });
+    chat.append(mes(document, { text: '尚未写完' }));
+    const message = { mes: '尚未写完', is_user: false };
+    let finishSave;
+    const saved = new Promise(resolve => { finishSave = resolve; });
+    const metadata = { vc_f2: { id: 'continue-source', revision: 1 } };
+    const context = { chat: [message], chatMetadata: metadata, characters: [], powerUserSettings: {},
+        async saveChat() { await saved; metadata.vc_f2.revision = 2; } };
+    const calls = [];
+    const native = document.createElement('a');
+    native.id = 'option_continue';
+    native.addEventListener('click', () => calls.push(metadata.vc_f2.revision));
+    document.body.append(native);
+    mountChatView({ getContext: () => context, document });
+    document.querySelector('#mes_stop').click();
+    const resume = document.querySelector('#vc-chat-gen')?.querySelector('button');
+    assert.equal(resume?.textContent, '继续');
+    try {
+        resume.click();
+        assert.deepEqual(calls, [], '保存未确认前不能带着旧修订号开始续写');
+        finishSave();
+        await new Promise(resolve => setImmediate(resolve));
+        assert.deepEqual(calls, [2]);
+    } finally { finishSave(); }
+});

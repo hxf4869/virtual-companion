@@ -97,11 +97,12 @@ async function summaryPartPasses(query, text, embedding, dated) {
     if (dated && isGenericSchedule(query) && score >= RELEVANCE.dateCosineFloor) return true;
     return score >= RELEVANCE.cosineFloor && lexicalOverlap(query, text) >= RELEVANCE.ftsFloor;
 }
-// A persona template dilutes one fact below the cosine floor. Score a content
-// line that shares a word with the question before scoring the whole file.
-function summarySegments(question, text) {
-    const lines = String(text).split(/\n/u).map(line => line.trim())
-        .filter(line => [...line].length >= 8 && sharedHanSpan(question, line, 4));
+// A persona template dilutes one fact below the cosine floor. Use the same
+// bounded line candidates as reranking for undated paraphrases. Dated queries
+// keep their existing selection: broadening it can admit an unrelated day.
+function summarySegments(question, text, dated) {
+    const candidates = dated ? String(text).split(/\n/u).map(line => line.trim()) : summaryUnits(text, 'line', 20, question);
+    const lines = candidates.filter(line => [...line].length >= 8 && sharedHanSpan(question, line, dated ? 4 : 2));
     return lines.length ? lines : [text];
 }
 // Independent questions are scored separately. One dated clause must not
@@ -121,7 +122,7 @@ export async function summaryPassesGate(query, text, embedding, dated, rerank) {
         }
     }
     for (const question of queryParts(query)) {
-        for (const segment of summarySegments(question, text)) {
+        for (const segment of summarySegments(question, text, dated)) {
             if (await summaryPartPasses(question, segment, embedding, dated)) return true;
         }
     }

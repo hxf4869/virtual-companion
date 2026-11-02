@@ -357,3 +357,26 @@ test('a fresh profile can list its empty scene directory before writing', async 
         assert.equal(step, 2);
     } finally { await fs.rm(dir, { recursive: true, force: true }); }
 });
+
+test('摘要 cosine 复用重排的相关分行，不因四字匹配缺失而稀释改写问', async () => {
+    const { summaryPassesGate } = await import('../memorycore-service/native-engine.mjs');
+    const topic = '当前话题：讨论读书计划，下一本书尚未决定。';
+    const persona = [...Array.from({ length: 24 }, (_, i) => `其他背景资料占位说明第${i}项`), topic].join('\n');
+    const embedding = { async embedBatch([query, text]) {
+        const score = query === '上次的阅读计划进展如何？' && text === topic ? .61 : .4;
+        return [new Float32Array([1, 0]), new Float32Array([score, Math.sqrt(1 - score * score)])];
+    } };
+    assert.equal(await summaryPassesGate('上次的阅读计划进展如何？', persona, embedding, false), true);
+    assert.equal(await summaryPassesGate('我的幸运颜色是什么？', persona, embedding, false), false);
+});
+
+test('日期问句保留既有摘要分段门槛，不能因两字重合新增放行', async () => {
+    const { summaryPassesGate } = await import('../memorycore-service/native-engine.mjs');
+    const line = '下一次安排：计划参加朋友的婚礼。';
+    const persona = [...Array.from({ length: 24 }, (_, i) => `其他背景资料占位说明第${i}项`), line].join('\n');
+    const embedding = { async embedBatch([, text]) {
+        const score = text === line ? .61 : .2;
+        return [new Float32Array([1, 0]), new Float32Array([score, Math.sqrt(1 - score * score)])];
+    } };
+    assert.equal(await summaryPassesGate('我下周五有什么安排？', persona, embedding, true), false);
+});

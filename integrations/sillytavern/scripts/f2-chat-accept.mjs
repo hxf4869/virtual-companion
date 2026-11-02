@@ -11,7 +11,7 @@ import { reauthForWrite } from './lib/reauth-write.mjs';
 import { openStCharacterChat } from './lib/open-st-chat.mjs';
 import { createShotBudget, keepSceneShot } from './lib/scene-shots.mjs';
 
-let shotBudget = createShotBudget();
+let shotBudget = { light: createShotBudget(), dark: createShotBudget() };
 
 const DEV = process.env.VC_W03_DEV_DIR
     || path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../dev-managed');
@@ -135,7 +135,8 @@ function importJson(st, card) {
 }
 
 async function shot(page, ctx, name) {
-    if (!keepSceneShot(shotBudget, name)) return;
+    const budget = name.endsWith('-dark.png') ? shotBudget.dark : shotBudget.light;
+    if (!keepSceneShot(budget, name)) return;
     fs.mkdirSync(SHOTS, { recursive: true });
     const primary = path.join(SHOTS, name);
     await page.screenshot({ path: primary });
@@ -258,7 +259,7 @@ async function compose(page) {
 }
 
 export async function sceneF2ChatUi(ctx) {
-    shotBudget = createShotBudget();
+    shotBudget = { light: createShotBudget(), dark: createShotBudget() };
     await bindForeground(ctx);
     ctx.w10.psql(ownerBudgetResetSql(ctx.w05.ownerId));
     const st = stClient(ctx);
@@ -683,7 +684,30 @@ export async function sceneF2ChatUi(ctx) {
         });
         if (!partial.text) fail(new Error('停止后丢失了已生成的半截正文'));
         await ctx.fixtureHttp.setOverride('vc03m-chat', { text: '继续后的合成结尾。', chunks: 3, delay: { firstMs: 150, perChunkMs: 150 } });
-        await page.locator('#vc-chat-gen button', { hasText: '继续' }).click();
+        // 真实模型复测发现：停止后的原生保存尚未完成时，续写会在召回中被新修订号取消。
+        let releaseSave;
+        const saveGate = new Promise(resolve => { releaseSave = resolve; });
+        const heldSaves = [];
+        const holdSave = route => {
+            const pending = saveGate.then(() => route.continue());
+            heldSaves.push(pending);
+            return pending;
+        };
+        await page.route('**/api/chats/save', holdSave);
+        try {
+            const saving = page.waitForRequest(request => request.method() === 'POST' && request.url().endsWith('/api/chats/save'));
+            await page.evaluate(() => { window.vcPendingStoppedSave = SillyTavern.getContext().saveChat(); });
+            await saving;
+            await page.locator('#vc-chat-gen button', { hasText: '继续' }).click();
+            const early = await page.evaluate(async () => (await import('/script.js')).isGenerating());
+            if (early) fail(new Error('半截回复保存未确认前已开始续写'));
+            ctx.results.continueWaitedForSave = true;
+        } finally {
+            releaseSave();
+            await Promise.all(heldSaves);
+            await page.unroute('**/api/chats/save', holdSave);
+        }
+        await page.evaluate(() => window.vcPendingStoppedSave);
         await page.waitForFunction(() => document.body.dataset.generating === 'true');
         await page.waitForFunction(() => document.body.dataset.generating !== 'true', null, { timeout: 30000 });
         const continued = await page.evaluate(({count,text}) => {

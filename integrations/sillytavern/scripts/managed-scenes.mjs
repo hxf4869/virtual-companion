@@ -13,6 +13,7 @@ import { w10InboxNotifyScene } from './w10-accept.mjs';
 import { ux24BackendScene } from './ux24-backend-accept.mjs';
 import { hlProactiveScene } from './hl-proactive-accept.mjs';
 import { voiceBackendScene } from './voice-backend-accept.mjs';
+import { voiceRealScene } from './voice-real-accept.mjs';
 import { voiceChatScene } from './voice-chat-accept.mjs';
 import { voiceProactiveScene } from './voice-proactive-accept.mjs';
 import { voiceInputScene } from './voice-input-accept.mjs';
@@ -68,6 +69,7 @@ export const ACCEPT_SCENES = [
     hlProactiveScene,
     ux24BackendScene,
     voiceBackendScene,
+    voiceRealScene,
     voiceChatScene,
     voiceProactiveScene,
     voiceInputScene,

@@ -1779,7 +1779,7 @@ function syncGenerating() {
         if (canContinue) {
             const label = document.createElement('span');
             label.textContent = '已停止 · ';
-            line.append(label, textButton('继续', () => continueGeneration()));
+            line.append(label, textButton('继续', continueGeneration));
         } else {
             line.textContent = '已停止';
         }
@@ -1798,14 +1798,22 @@ function syncGenerating() {
 }
 
 /** 停止后接着写：走宿主原生 continue（选项菜单里的「继续」）。 */
-function continueGeneration() {
-    const button = document.querySelector('#option_continue');
-    if (button) {
-        button.click();
-        return;
-    }
-    const generate = safeContext()?.generate;
-    if (typeof generate === 'function') generate('continue');
+async function continueGeneration(control) {
+    const context = safeContext();
+    const metadata = context?.chatMetadata;
+    const message = context?.chat?.at(-1);
+    control.disabled = true;
+    try {
+        // 停止会立即显示续写入口，但宿主仍可能在保存半截回复。
+        // 先排完 F2 保存队列，避免召回期间修订号更新把续写取消。
+        await context?.saveChat?.();
+        const current = safeContext();
+        if (current?.chatMetadata !== metadata || current?.chat?.at(-1) !== message) return;
+        const button = document.querySelector('#option_continue');
+        if (button) button.click();
+        else if (typeof current?.generate === 'function') current.generate('continue');
+    } catch { /* 原生 F2 保存会保留草稿并显示冲突，保存失败不开始续写。 */ }
+    finally { control.disabled = false; }
 }
 
 function noteFailure() {
