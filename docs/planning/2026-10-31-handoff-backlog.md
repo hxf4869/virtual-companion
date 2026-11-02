@@ -379,7 +379,7 @@ Owner 要求把模型设成 1M 上下文、384k 输出。上下文上限原本�
 
 | ID | P | 内容 | 验收要点 |
 |---|---|---|---|
-| MDL-1 | P1 | V281 放宽 `provider_model_output_check` 与 `go_admin_upsert_provider_model` 校验；Go openai / anthropic / responses 适配层与存储校验、OpenAPI 三处 `maximum`、前端与样板校验同步 | 迁移计数 + RLS 整组；Go 测试；`check.sh --quick`；本地真实环境改为 393,216 后真实对话可用 |
+| MDL-1 | P1 | V281 放宽 `provider_model_output_check` 与 `go_admin_upsert_provider_model` 校验；Go openai / anthropic / responses 适配层与存储校验、OpenAPI 三处 `maximum`、前端与样板校验同步 | 迁移计数 + RLS 整组；Go 测试；`check.sh --quick`。Owner 后续确认可保留 256K、不强制设成 384K；前端配置与出站验证在 MDL-2 完成 |
 
 ### UX-36 新对话记忆偏好接入修复（UX-31 必要收尾）
 
@@ -388,3 +388,13 @@ Owner 续接选择把「这次不记」改名为「新对话不记」，沿用�
 | ID | P | 内容 | 验收要点 |
 |---|---|---|---|
 | UX-36 | P1 | V282 仅修改 ST 新建对话时读取已有账户 incognito 默认值；已有绑定不变，不新增接口、字段或表。同步文案「新对话不记」 | SQL/RLS 覆盖开启/关闭、新旧绑定及 owner 隔离；真实新对话读回；现有对话不翻转 |
+
+### MDL-2 真实模型协议与可配置推理、工具预算（2026-11-02 Owner）
+
+Owner 确认：兼容 OpenAI Chat Completions 的 `{success:true,data:{...}}` 响应；最大输出沿用模型前端配置，256K 可用、不强制改成 384K；思考档位按模型声明显示，区分模型默认与不思考；陪伴工具回合的总输出跟随模型配置，后续请求扣除已用输出，超时沿用部署配置，保留最多八步和停止按钮。
+
+| ID | P | 内容 | 验收要点 |
+|---|---|---|---|
+| MDL-2 | P1 | 在现有 Chat 解析入口兼容单层成功信封；Go 流式允许 choices 与 usage 同帧；桌面与 H5 补齐不思考/最高和可用档位声明，DeepSeek Chat 按独立 thinking 开关发送；移除插件与 SQL 工具执行的 8,192 tokens / 两分钟封顶（一个 V284 迁移） | 失败信封不执行工具；工具原始结果与 DeepSeek reasoning_content 同轮续接；大输出预算递减、部署超时及八步/取消回归；模型默认/档位/上下文/输出的 H5 保存读回；Go、ST、mobile、SQL/RLS 与受影响受管场景；390/1440 浅深截图 |
+
+实施顺序：先写协议/预算回归并修复解析与 V284，再补齐两端设置与参数映射，最后运行现有检查、H5 构建和相关受管场景。H5 保存模型或用途后须刷新同一个既有投影控制器，下一次发送不携带旧版本。仅在 `mb-mobile` 完成并推送；不合并 main、不部署、不改线上模型配置。必要验证通过且上述验收齐备即停止。

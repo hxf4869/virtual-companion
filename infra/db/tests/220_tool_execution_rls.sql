@@ -318,6 +318,7 @@ SELECT pg_temp.w11_apply(
     NULL::text, NULL::text, NULL::integer, NULL::integer, NULL::integer,
     'SUCCEEDED', NULL::text, 'query_scheduled_follow_ups');
 SELECT pg_temp.w11_query_ok();
+
 COMMIT;
 RESET ROLE;
 
@@ -693,3 +694,20 @@ BEGIN
     END IF;
 END $do$;
 SELECT pg_temp.w11_counts(15, 3);
+
+-- MDL-2 configured budgets remain metadata, with positive bounds.
+BEGIN;
+SELECT pg_temp.w11_owner(22001, 'mdl2bounds');
+SET LOCAL ROLE vc_api;
+SELECT pg_temp.w11_apply(
+    'large-model-budget',
+    jsonb_build_object('tool', 'query_scheduled_follow_ups', 'arguments', '{}'::jsonb, 'assistant', false, 'forbidden', false),
+    'TOOL_TURN', 'synthetic-model', 1, 300000, 262144,
+    'SUCCEEDED', NULL::text, 'query_scheduled_follow_ups');
+SELECT pg_temp.w11_apply(
+    'negative-model-budget',
+    jsonb_build_object('tool', 'query_scheduled_follow_ups', 'arguments', '{}'::jsonb, 'assistant', false, 'forbidden', false),
+    'TOOL_TURN', 'synthetic-model', 1, 300000, 0,
+    'FAILED', 'INVALID_BOUNDS', 'query_scheduled_follow_ups');
+ROLLBACK;
+RESET ROLE;

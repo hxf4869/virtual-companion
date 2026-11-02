@@ -220,8 +220,9 @@ export function buildResponsesRequest({ body, model, continuationItems = [] }) {
     // ST 推理等级 → reasoning.effort，按 ST 原生 OpenAI 语义映射（public/scripts/openai.js
     // getReasoningEffort）：'auto' = 不显式指定（不发送）、'min'→'minimal'、'max'→'xhigh'，
     // low/medium/high/none 原样；Go 钉住的扩展值（^[a-z0-9_-]{1,32}$）原样透传由上游判定。
-    const effortRaw = has(override.reasoningEffort) ? override.reasoningEffort : body.reasoning_effort;
-    const effort = mapReasoningEffort(effortRaw);
+    const effort = has(override.reasoningEffort)
+        ? override.reasoningEffort
+        : mapReasoningEffort(body.reasoning_effort);
     if (has(effort)) {
         requestBody.reasoning = { effort };
     }

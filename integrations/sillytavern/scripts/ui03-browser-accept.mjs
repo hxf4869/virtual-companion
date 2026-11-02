@@ -6,9 +6,11 @@ import { pinVcUi } from './vc-ui-pin.mjs';
 import { log, rt } from './lib/accept-runtime.mjs';
 import { trackPageErrors } from './lib/page-errors.mjs';
 import { reauthForWrite } from './lib/reauth-write.mjs';
-import { providerCatalogSpec, readFixtureCapture } from './lib/accept-scene-helpers.mjs';
+import { providerCatalogSpec, bindForeground, readFixtureCapture } from './lib/accept-scene-helpers.mjs';
 
 export async function sceneUi03Browser(ctx) {
+    // 明确起点，保证后续三次 UI 绑定均为真实变更，不依赖前一场景留下的用途。
+    await bindForeground(ctx, 'vc03m-tiny', 'tiny', 'vc03m-chat');
     // 真实浏览器 UI03 验收（默认不在 --filter，主会话串联时执行）：
     //   注入合成 Go 会话 cookie → 打开 ST → 真实 DOM 全流程：
     //   1) 模型页编辑保存 → 服务端 revision+1 → 界面读回一致；

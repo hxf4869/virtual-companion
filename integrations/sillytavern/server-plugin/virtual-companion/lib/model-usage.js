@@ -69,9 +69,10 @@ export function readUsageTokens(usage) {
 /** 顶层 usage，或 {success,data} 信封内的 usage。没有用量对象时返回 undefined。 */
 export function readProviderUsage(json) {
     if (!json || typeof json !== 'object') return undefined;
+    if ('success' in json && json.success !== true) return undefined;
     const direct = readUsageTokens(json.usage);
     if (direct) return direct;
-    if (json.data && typeof json.data === 'object') return readUsageTokens(json.data.usage);
+    if (json.success === true && json.data && typeof json.data === 'object') return readUsageTokens(json.data.usage);
     return undefined;
 }
 

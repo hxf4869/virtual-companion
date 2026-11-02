@@ -105,6 +105,20 @@ function makeHost({ protocol = 'OPENAI_CHAT_COMPLETIONS', purposes, providers } 
     };
 }
 
+test('不思考切回模型默认：原生下拉已为 auto 时也清除旧的 none', async () => {
+    resetDom();
+    els['#openai_reasoning_effort'].value = 'auto';
+    const cat = catalog('OPENAI_CHAT_COMPLETIONS');
+    cat.providers[0].models[0].generationParams.reasoningEffort = 'none';
+    const host = makeHost(cat);
+    const controller = createProjectionController(host);
+    await controller.init();
+    assert.equal(host.getContext().chatCompletionSettings.reasoning_effort, 'none');
+    delete cat.providers[0].models[0].generationParams.reasoningEffort;
+    await controller.refresh();
+    assert.equal(host.getContext().chatCompletionSettings.reasoning_effort, 'auto');
+});
+
 test('决策映射：三协议 mainApi 均 openai（#main_api 无 claude 选项，Anthropic 走族内 source=claude）', () => {
     const custom = resolveForegroundProjection(catalog('OPENAI_CHAT_COMPLETIONS').purposes, catalog('OPENAI_CHAT_COMPLETIONS').providers);
     assert.equal(custom.mainApi, 'openai');

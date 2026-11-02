@@ -32,6 +32,7 @@ test('供应商信封里的 usage 可结算，且不带回正文', () => {
         { inputTokens: 10, outputTokens: 2, cachedInputTokens: 8 },
     );
     assert.equal(readProviderUsage({ success: true, data: { choices: [] } }), undefined);
+    assert.equal(readProviderUsage({ success: false, data: { usage: { prompt_tokens: 1, completion_tokens: 2 } } }), undefined);
     const packed = JSON.stringify(readProviderUsage({
         success: true,
         data: { usage: { prompt_tokens: 1, completion_tokens: 0 }, choices: [{ message: { content: 'secret-body' } }] },

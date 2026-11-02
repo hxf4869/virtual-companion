@@ -177,6 +177,22 @@ test('Responses 映射：Go generationParams 覆盖原生采样值；tool_choice
     assert.deepEqual(requestBody.tool_choice, { type: 'function', name: 'get_time' });
 });
 
+test('Responses 模型声明的 max 原样发送，不降为原生 max 的 xhigh', () => {
+    const { requestBody } = buildResponsesRequest({ body: baseBody({ reasoning_effort: 'high' }), model: baseModel({ generationParams: { reasoningEffort: 'max' } }) });
+    assert.deepEqual(requestBody.reasoning, { effort: 'max' });
+});
+
+test('原生 Chat 消费标准响应与单层成功信封，失败信封拒绝', () => {
+    const bridge = createGenerateBridge({ config: {}, continuationStore: new ToolContinuationStore(), counter });
+    const request = { vcManaged: { protocol: 'OPENAI_CHAT_COMPLETIONS' } };
+    const completion = { choices: [{ message: { content: '合成回复' } }], usage: { prompt_tokens: 1, completion_tokens: 2 } };
+    assert.equal(bridge.normalizeOutboundResponse(completion, request), completion);
+    assert.equal(bridge.normalizeOutboundResponse({ success: true, data: completion }, request), completion);
+    assert.throws(() => bridge.normalizeOutboundResponse({ success: false, data: completion }, request), { code: 'VC_UPSTREAM_ERROR' });
+    const native = { success: true, data: completion };
+    assert.equal(bridge.normalizeOutboundResponse(native, {}), native);
+});
+
 test('Responses 映射：ST 推理等级按原生 OpenAI 语义映射（auto 不发送、min→minimal、max→xhigh、扩展值透传）', () => {
     const effortOf = (reasoning_effort) => buildResponsesRequest({ body: baseBody({ reasoning_effort }), model: baseModel() }).requestBody.reasoning;
     assert.equal(effortOf('auto'), undefined, "ST 默认 'auto' 表示不显式指定，不能原样发给上游");

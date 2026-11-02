@@ -37,6 +37,7 @@ test('切换角色的策略尚未返回时不能把旧策略写到新角色', as
 test('用途保存完成后仍保留请求期间新选模型的未保存状态', async () => {
     const view = component('../src/settings/ModelSettings.vue', { ...feedback, VcIcon: {}, PROTOCOLS: [], newModelDraft() {} });
     const pending = deferred(); let sent;
+    let refreshed = 0; view.refreshProjection = async () => { refreshed += 1; };
     view.call = async (_, purpose, body) => { sent = { purpose, body }; return pending.promise; };
     const binding = { purpose: 'FOREGROUND_CHAT', choice: 'provider::A', original: '', revision: 3 };
     const saving = view.saveBinding(binding);
@@ -46,4 +47,5 @@ test('用途保存完成后仍保留请求期间新选模型的未保存状态',
     assert.equal(binding.choice, 'provider::B');
     assert.notEqual(binding.choice, binding.original);
     assert.equal(binding.revision, 4);
+    assert.equal(refreshed, 1, '保存绑定后刷新同一个酒馆引擎的模型投影');
 });

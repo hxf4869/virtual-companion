@@ -28,6 +28,7 @@ import {
     isLegalReasoningLevel,
     extraReasoningLevels,
     reasoningLevelLabel,
+    reasoningLevelPresets,
     CAPABILITY_FIELDS,
     TOOL_CALLS_UNVERIFIED_NOTE,
     TOOL_CALLS_VERIFY_ACTION,
@@ -218,14 +219,19 @@ test('清除密钥必须停用；新供应商无密钥只能停用草稿', () =>
 // ---------- 推理等级（V140 小写约束） ----------
 
 test('推理等级内部值为小写，V140 合法性校验', () => {
-    assert.deepEqual(REASONING_LEVELS, ['low', 'medium', 'high']);
+    assert.deepEqual(REASONING_LEVELS, ['none', 'low', 'medium', 'high', 'max']);
     assert.equal(isLegalReasoningLevel('low'), true);
     assert.equal(isLegalReasoningLevel('minimal'), true);
     assert.equal(isLegalReasoningLevel('LOW'), false);
     assert.equal(isLegalReasoningLevel('a'.repeat(33)), false);
     assert.equal(isLegalReasoningLevel('has space'), false);
     assert.equal(reasoningLevelLabel('low'), '低');
+    assert.equal(reasoningLevelLabel('none'), '不思考');
+    assert.equal(reasoningLevelLabel('max'), '最高');
     assert.equal(reasoningLevelLabel('minimal'), 'minimal');
+    assert.deepEqual(reasoningLevelPresets({ modelId: 'deepseek-v4-pro' }), ['none', 'low', 'high', 'max']);
+    assert.deepEqual(reasoningLevelPresets({ modelId: 'relay/deepseek-v4.1-flash-1017' }), ['none', 'low', 'high', 'max']);
+    assert.deepEqual(reasoningLevelPresets({ modelId: 'other-model' }), REASONING_LEVELS);
 });
 
 test('服务端额外合法等级被保留，不静默丢弃', () => {

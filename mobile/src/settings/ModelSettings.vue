@@ -20,7 +20,13 @@
     <label class="vc-field"><text>上下文上限</text><input v-field-label type="number" v-model="m.contextWindowTokens" :aria-label="`上下文上限 ${i+1}`" /></label>
     <label class="vc-field"><text>最大输出</text><input v-field-label type="number" v-model="m.maxOutputTokens" :aria-label="`最大输出 ${i+1}`" /></label>
     <view class="vc-field"><text>启用</text><button role="switch" tabindex="0" class="vc-toggle" :aria-checked="m.state === 'ENABLED'" :aria-label="`启用模型 ${i+1}`" @click="m.state=m.state==='ENABLED'?'DISABLED':'ENABLED'"></button></view>
-    <details class="vc-model-advanced"><summary>高级</summary><label class="vc-field"><text>Temperature</text><input v-field-label type="number" v-model="m.generationParams.temperature" @input="m.editedSubs.add('generationParams')" /></label><label class="vc-field"><text>Top P</text><input v-field-label type="number" v-model="m.generationParams.topP" @input="m.editedSubs.add('generationParams')" /></label><label class="vc-field"><text>推理强度</text><select v-model="m.generationParams.reasoningEffort" @change="m.editedSubs.add('generationParams')"><option value="">自动</option><option value="low">低</option><option value="medium">中</option><option value="high">高</option></select></label></details>
+    <details class="vc-model-advanced"><summary>高级</summary>
+     <template v-if="draft.protocol !== 'ANTHROPIC_MESSAGES'">
+      <view class="vc-field is-column"><text>可用思考档位</text><view class="vc-model-levels" role="group" :aria-label="`可用思考档位 ${i+1}`"><button v-for="lv in reasoningPresets(m)" :key="lv" role="checkbox" class="vc-model-level" :aria-checked="m.reasoningLevels.includes(lv)" :aria-label="`${reasoningLabel(lv)} ${i+1}`" @click="toggleReasoning(m,lv)">{{ reasoningLabel(lv) }}</button></view></view>
+      <label class="vc-field"><text>思考深度</text><select v-model="m.generationParams.reasoningEffort" :aria-label="`思考深度 ${i+1}`" @change="m.editedSubs.add('generationParams')"><option value="">模型默认</option><option v-for="lv in m.reasoningLevels" :key="lv" :value="lv">{{ reasoningLabel(lv) }}</option></select></label>
+     </template>
+     <label class="vc-field"><text>Temperature</text><input v-field-label type="number" v-model="m.generationParams.temperature" :aria-label="`Temperature ${i+1}`" @input="m.editedSubs.add('generationParams')" /></label><label class="vc-field"><text>Top P</text><input v-field-label type="number" v-model="m.generationParams.topP" :aria-label="`Top P ${i+1}`" @input="m.editedSubs.add('generationParams')" /></label>
+    </details>
    </view></view>
    <button role="button" tabindex="0" class="vc-plain-btn" @click="draft.models.push(newModel())">添加模型</button>
    <button v-if="error" role="button" tabindex="0" class="vc-plain-btn" @click="latest">加载最新</button>
@@ -29,20 +35,23 @@
 </template>
 <script>
 import VcIcon from '../components/VcIcon.vue';import {getEngine} from '../engine/index.mjs';import {writeAction,errorText} from '../ui/actions.mjs';import {confirmAlert,showToast} from '../ui/feedback.mjs';
-import {PROTOCOLS,PURPOSES,providerDraftFromApi,newProviderDraft,newModelDraft,buildProviderPut,buildBindingOptions,validateProviderForm,validateModelForm,validateCredentialPlan} from '../../../integrations/sillytavern/extension/vc-model-settings/model-logic.js';
+import {PROTOCOLS,PURPOSES,providerDraftFromApi,newProviderDraft,newModelDraft,buildProviderPut,buildBindingOptions,validateProviderForm,validateModelForm,validateCredentialPlan,reasoningLevelLabel,reasoningLevelPresets} from '../../../integrations/sillytavern/extension/vc-model-settings/model-logic.js';
 export default {
  components:{VcIcon},data:()=>({providers:[],bindings:[],draft:null,baseline:'',loading:true,busy:false,error:'',protocols:PROTOCOLS}),
  computed:{options(){return buildBindingOptions(this.providers);}},mounted(){this.load();},beforeUnmount(){if(this.draft)this.draft.credential='';},
  methods:{
   call(method,...args){return getEngine().call('api',method,...args);},label(id){if(id==='EMBEDDING')return '向量检索';return PURPOSES.find(x=>x.id===id)?.label || id;},newModel:newModelDraft,
+  refreshProjection(){return getEngine().call('models','refreshModelProjection');},
+  reasoningLabel(value){return reasoningLevelLabel(value);},reasoningPresets(model){return reasoningLevelPresets(model);},
+  toggleReasoning(model,level){const levels=model.reasoningLevels;model.reasoningLevels=levels.includes(level)?levels.filter(x=>x!==level):[...levels,level];model.editedSubs.add('reasoningLevels');if(model.generationParams.reasoningEffort&&!model.reasoningLevels.includes(model.generationParams.reasoningEffort)){model.generationParams.reasoningEffort='';model.editedSubs.add('generationParams');}},
   async load(){this.loading=true;this.error='';try{const [p,b]=await Promise.all([this.call('fetchProviders'),this.call('fetchModelPurposes')]);this.providers=p;this.bindings=b.map(x=>({...x,choice:x.providerId&&x.profileKey?`${x.providerId}::${x.profileKey}`:'',original:x.providerId&&x.profileKey?`${x.providerId}::${x.profileKey}`:''}));}catch(e){this.error=errorText(e);}finally{this.loading=false;}},
   edit(p){this.draft=providerDraftFromApi(p);this.baseline=JSON.stringify(buildProviderPut(this.draft));this.error='';},
   add(){const d=newProviderDraft();d.providerId=`vc-${crypto.randomUUID().slice(0,8)}`;d.models=[newModelDraft()];this.draft=d;this.baseline=JSON.stringify(buildProviderPut(d));},
   async canLeave(){const dirty=this.draft&&JSON.stringify(buildProviderPut(this.draft))!==this.baseline || this.bindings.some(b=>b.choice!==b.original);if(!dirty)return true;return confirmAlert({title:'放弃更改？',message:'关闭后本次输入将丢失。',cancel:'继续编辑',action:'放弃'});},
   async closeProvider(){if(!await this.canLeave())return;this.draft.credential='';this.draft=null;this.error='';},
-  async save(){if(this.busy)return;const validation=Object.values(validateProviderForm(this.draft,{isNew:this.draft.revision===0}).errors);if(validation.length){this.error=validation.join('；');return;}const models=this.draft.models.flatMap(m=>Object.values(validateModelForm(m)));if(models.length){this.error=models.join('；');return;}const key=Object.values(validateCredentialPlan(this.draft,{isNew:this.draft.revision===0,credentialConfigured:this.draft.credentialConfigured}));if(key.length){this.error=key.join('；');return;}this.busy=true;this.error='';try{const id=this.draft.providerId;const payload=buildProviderPut(this.draft);await writeAction(()=>this.call('saveProvider',id,payload));this.draft.credential='';this.draft=null;await this.load();showToast('已保存');}catch(e){this.error=errorText(e);}finally{this.busy=false;}},
+  async save(){if(this.busy)return;const validation=Object.values(validateProviderForm(this.draft,{isNew:this.draft.revision===0}).errors);if(validation.length){this.error=validation.join('；');return;}const models=this.draft.models.flatMap(m=>Object.values(validateModelForm(m)));if(models.length){this.error=models.join('；');return;}const key=Object.values(validateCredentialPlan(this.draft,{isNew:this.draft.revision===0,credentialConfigured:this.draft.credentialConfigured}));if(key.length){this.error=key.join('；');return;}this.busy=true;this.error='';try{const id=this.draft.providerId;const payload=buildProviderPut(this.draft);await writeAction(()=>this.call('saveProvider',id,payload));this.draft.credential='';await this.refreshProjection();this.draft=null;await this.load();showToast('已保存');}catch(e){this.error=errorText(e);}finally{this.busy=false;}},
   async latest(){if(!await this.canLeave())return;const id=this.draft.providerId;await this.load();const p=this.providers.find(x=>x.providerId===id);if(p)this.edit(p);},
-  async saveBinding(b){if(this.busy)return;this.busy=true;this.error='';const choice=b.choice;const [providerId,profileKey]=(choice||'').split('::');try{const r=await writeAction(()=>this.call('saveModelPurpose',b.purpose,{providerId:providerId||null,profileKey:profileKey||null,state:providerId?'ENABLED':'PENDING_CONFIGURATION',expectedRevision:b.revision}));b.revision=r.revision;b.original=choice;showToast('已保存');}catch(e){this.error=errorText(e);}finally{this.busy=false;}},
+  async saveBinding(b){if(this.busy)return;this.busy=true;this.error='';const choice=b.choice;const [providerId,profileKey]=(choice||'').split('::');try{const r=await writeAction(()=>this.call('saveModelPurpose',b.purpose,{providerId:providerId||null,profileKey:profileKey||null,state:providerId?'ENABLED':'PENDING_CONFIGURATION',expectedRevision:b.revision}));b.revision=r.revision;b.original=choice;await this.refreshProjection();showToast('已保存');}catch(e){this.error=errorText(e);}finally{this.busy=false;}},
  },
 };
 </script>
@@ -51,4 +60,7 @@ export default {
 .vc-purpose-row + .vc-purpose-row { border-top: 0.5px solid var(--vc-separator); }
 .vc-purpose-row select { max-width: 58%; }
 .vc-model-advanced { padding: var(--vc-space-sm) var(--vc-space-md); font-size: var(--vc-fs-subhead); }
+.vc-model-levels { display: flex; flex-wrap: wrap; gap: var(--vc-space-xs); }
+.vc-model-level { min-height: var(--vc-touch); margin: 0; padding: 0 var(--vc-space-sm); border: 1px solid var(--vc-separator); border-radius: var(--vc-radius-sm); font-size: var(--vc-fs-subhead); background: var(--vc-fill); color: var(--vc-ink); }
+.vc-model-level[aria-checked="true"] { color: var(--vc-accent-text); border-color: var(--vc-accent); }
 </style>

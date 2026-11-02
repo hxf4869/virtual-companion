@@ -99,6 +99,9 @@ function mountVcUi() {
     }
 }
 
+let projection;
+export function refreshModelProjection() { return projection.refresh(); }
+
 export async function init() {
     if (!claimExtensionInit()) return;
     mountVcUi();
@@ -152,7 +155,7 @@ export async function init() {
 
     // 前台投影：Go FOREGROUND_CHAT 绑定 → ST 原生 chatCompletionSettings。
     // 初始化即刷新一次；页面保存目录成功后经 onCatalogSaved 再刷新。
-    const projection = createProjectionController({
+    projection = createProjectionController({
         getContext: () => getContext(),
         fetchPurposes: () => fetchModelPurposes(),
         fetchProviders: () => fetchProviders(),

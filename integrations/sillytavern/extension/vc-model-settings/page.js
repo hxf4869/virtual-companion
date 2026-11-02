@@ -1225,19 +1225,19 @@ export function mountModelSettings() {
                 <div class="vcms-advanced-body">
                     <h4 class="vcms-subsection-title">推理</h4>
                     <div class="${desktopView() ? 'vc-desk-field' : 'vcms-field'}">
-                        <span class="vcms-field-label">声明可用推理等级</span>
+                        <span class="vcms-field-label">可用思考档位</span>
                         <div class="vcms-checks">
-                            ${logic.REASONING_LEVELS.map((lv) => `
+                            ${logic.reasoningLevelPresets(m).map((lv) => `
                             <label class="vcms-check"><input type="checkbox" data-bind="model.reasoningLevels" value="${lv}" ${m.reasoningLevels.includes(lv) ? 'checked' : ''}>${logic.reasoningLevelLabel(lv)}</label>`).join('')}
-                            ${logic.extraReasoningLevels(m.reasoningLevels).map((lv) => `
+                            ${logic.extraReasoningLevels(m.reasoningLevels, logic.reasoningLevelPresets(m)).map((lv) => `
                             <label class="vcms-check" title="已保存的等级，继续保留"><input type="checkbox" checked disabled>${esc(lv)}</label>`).join('')}
                         </div>
                         <p class="vcms-muted">等级按当前协议映射为对应参数；未知映射保持待配置，不硬发统一字段。</p>
                     </div>
                     <div class="${desktopView() ? 'vc-desk-field' : 'vcms-field'}">
-                        <label for="vcms-m-effort">默认推理等级</label>
+                        <label for="vcms-m-effort">思考深度</label>
                         <select id="vcms-m-effort" data-bind="model.generationParams.reasoningEffort">
-                            <option value="" ${!m.generationParams.reasoningEffort ? 'selected' : ''}>未设置</option>
+                            <option value="" ${!m.generationParams.reasoningEffort ? 'selected' : ''}>模型默认</option>
                             ${m.reasoningLevels.map((lv) => `<option value="${esc(lv)}" ${m.generationParams.reasoningEffort === lv ? 'selected' : ''}>${esc(logic.reasoningLevelLabel(lv))}</option>`).join('')}
                         </select>
                         ${err('reasoningEffort')}

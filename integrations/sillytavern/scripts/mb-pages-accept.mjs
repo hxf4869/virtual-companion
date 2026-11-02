@@ -1,6 +1,7 @@
 // MB-5：原生 H5 一级页与设置读写。使用受管账号，不触及 Owner 的数据。
 import fs from 'node:fs';import path from 'node:path';import crypto from 'node:crypto';import assert from 'node:assert/strict';import {fileURLToPath} from 'node:url';
 import {createStClient} from './managed-lib.mjs';import {completeStOnboarding} from './lib/st-onboarding.mjs';import {reauthForWrite} from './lib/reauth-write.mjs';
+import {bindForeground} from './lib/accept-scene-helpers.mjs';
 const SHOTS=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../../../.review-queue/MB-5');
 export async function sceneMbPages(ctx) {
  fs.mkdirSync(SHOTS,{recursive:true});await reauthForWrite(ctx);
@@ -35,6 +36,41 @@ export async function sceneMbPages(ctx) {
   let requireReauth=true;await bc.route('**/api/v1/admin/providers/*',async route=>{if(requireReauth&&route.request().method()==='PUT'){requireReauth=false;await route.fulfill({status:403,contentType:'application/json',body:JSON.stringify({code:'ACCESS_DENIED',message:'Reauthentication required'})});}else await route.continue();});
   await page.getByRole('button',{name:'保存',exact:true}).click();const verification=page.getByRole('dialog',{name:'重新验证身份'});await verification.getByLabel('密码',{exact:true}).fill(ctx.secrets.password);await verification.getByRole('button',{name:'验证并继续',exact:true}).click();await verification.waitFor({state:'hidden'});
   await page.getByRole('button',{name:/手机模型设置/}).waitFor();const current=(await ctx.admin.listProviders()).json.find(p=>p.providerId===provider.providerId);assert.equal(current.displayName,'手机模型设置');assert.deepEqual(current.models.map(m=>m.generationParams),provider.models.map(m=>m.generationParams));assert.equal(current.credentialConfigured,provider.credentialConfigured);console.log('[mb-pages] PASS 模型保存读回且不清凭据或未编辑参数');
+  const purpose=page.getByLabel('用途 前台聊天',{exact:true});await purpose.selectOption(`${provider.providerId}::${current.models[0].profileKey}`);const purposeSave=page.locator('.vc-purpose-row').filter({has:purpose}).getByRole('button',{name:'保存',exact:true});if(await purposeSave.count())await purposeSave.click();
+  // MDL-2：真实表单保存大窗口/输出和模型支持的思考档位，再经原生出站核对。
+  for(const effort of ['none','','low','high','max']) {
+   await page.getByRole('button',{name:/手机模型设置/}).click();
+   await page.getByLabel('模型标识 1',{exact:true}).fill('relay/deepseek-v4.1-flash-1017');
+   await page.getByLabel('上下文上限 1',{exact:true}).fill('1000000');await page.getByLabel('最大输出 1',{exact:true}).fill('262144');
+   await page.locator('.vc-model-advanced summary').first().click();
+   assert.equal(await page.getByRole('checkbox',{name:'中 1',exact:true}).count(),0);
+   for(const label of ['不思考','低','高','最高']) {const option=page.getByRole('checkbox',{name:`${label} 1`,exact:true});if(await option.getAttribute('aria-checked')!=='true')await option.click();}
+   await page.getByLabel('思考深度 1',{exact:true}).selectOption(effort);
+   await page.getByRole('button',{name:'保存',exact:true}).click();await page.getByRole('button',{name:/手机模型设置/}).waitFor();
+   await page.waitForFunction(effort=>{const o=document.querySelector('#vc-engine')?.contentWindow?.SillyTavern?.getContext()?.chatCompletionSettings;return o?.custom_model==='relay/deepseek-v4.1-flash-1017'&&o.openai_max_context===1000000&&o.openai_max_tokens===262144&&o.reasoning_effort===(effort||'auto');},effort);
+   const saved=(await ctx.admin.listProviders()).json.find(p=>p.providerId===provider.providerId).models[0];
+   assert.equal(saved.contextWindowTokens,1000000);assert.equal(saved.maxOutputTokens,262144);assert.equal(saved.generationParams.reasoningEffort||'',effort);
+   const snap=await bindForeground(ctx,provider.providerId,saved.profileKey,saved.modelId);
+   const since=(await ctx.fixtureHttp.captures({})).at(-1)?.seq||0;
+   await ctx.fixtureHttp.setOverride(saved.modelId,{chatEnvelope:true,text:'合成模型配置已生效。'});
+   try {
+    const generated=await ctx.st.generate({chat_completion_source:'custom',model:saved.modelId,custom_url:snap.marker,messages:[{role:'user',content:'合成配置验收'}],max_tokens:262144,stream:false});
+    assert.equal(generated.status,200);assert.equal(generated.json?.choices?.[0]?.message?.content,'合成模型配置已生效。');
+    const sent=(await ctx.fixtureHttp.captures({since,protocol:'chat'})).at(-1)?.body;
+    assert.equal(sent.max_tokens,262144);assert.equal(sent.reasoning_effort,effort&&effort!=='none'?effort:undefined);
+    assert.deepEqual(sent.thinking,effort?{type:effort==='none'?'disabled':'enabled'}:undefined);
+   }finally{await ctx.fixtureHttp.setOverride(saved.modelId,null);}
+  }
+  const modelShots=path.resolve(SHOTS,'../MDL-2');fs.mkdirSync(modelShots,{recursive:true});
+  for(const width of [390,1440])for(const mode of ['light','dark']) {
+   await page.setViewportSize({width,height:width===390?844:1000});
+   await page.locator('.vc-subnav [aria-label="返回"]').click();await page.getByRole('button',{name:'外观',exact:true}).click();await page.getByLabel('外观模式',{exact:true}).selectOption(mode);
+   await page.locator('.vc-subnav [aria-label="返回"]').click();await page.getByRole('button',{name:'模型',exact:true}).click();await page.getByRole('button',{name:/手机模型设置/}).click();await page.locator('.vc-model-advanced summary').first().click();
+   await page.getByLabel('思考深度 1',{exact:true}).scrollIntoViewIfNeeded();await page.screenshot({path:path.join(modelShots,`model-${width}-${mode}.png`)});
+   await page.getByRole('button',{name:'返回模型',exact:true}).click();
+  }
+  fs.writeFileSync(path.join(modelShots,'NOTES.md'),'# MDL-2\n\n模型设置支持已声明的思考档位，DeepSeek 不提供无独立效果的“中”。已验证 1M 上下文、256K 输出和默认/不思考/低/高/最高保存读回，并由合成原生请求捕获核对；成功信封转为标准回复。截图仅使用合成模型，密钥输入为空。\n');
+  console.log('[mb-pages] PASS 模型上下文/输出与五种思考配置保存读回、原生出站和成功信封');
   await page.locator('.vc-subnav [aria-label="返回"]').click();await page.getByRole('button',{name:'语音',exact:true}).click();await page.getByLabel('语音频率',{exact:true}).selectOption('LOW');
   const voiceSaved=page.waitForResponse(r=>r.url().endsWith('/api/v1/voice/settings')&&r.request().method()==='PUT');
   await page.getByRole('button',{name:'保存',exact:true}).click();assert.equal((await voiceSaved).status(),200);await page.getByRole('button',{name:'保存',exact:true}).waitFor();const voice=(await ctx.admin.call('GET','/api/v1/voice/settings')).json;assert.equal(voice.voiceFrequency,'LOW');

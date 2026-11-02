@@ -26,6 +26,7 @@ import {
 import { prepareToolPolicy, runBoundedToolLoop, stripUnmeteredRequestFields } from './tool-loop.js';
 import { reserveSend, armUsageHold, settleArmedResponse, abandonOutbound, usageFetchInstalled, readUsageTokens, settleUsage, cancelUsage } from './model-usage.js';
 import { absorbStreamAbort } from './stream-abort.js';
+import { applyChatReasoning, unwrapChatCompletion } from './chat-completions.js';
 
 export const BRIDGE_SYMBOL = Symbol.for('virtual-companion.bridge');
 const PURPOSES_ALLOWED = new Set(['FOREGROUND_CHAT']);
@@ -544,6 +545,7 @@ export function createGenerateBridge({ config, continuationStore, counter, now =
                 if (typeof effort === 'string' && effort !== '' && finalBody.reasoning_effort !== effort) {
                     finalBody.reasoning_effort = effort;
                 }
+                applyChatReasoning(finalBody, managed.model);
             }
             stripUnmeteredRequestFields(finalBody);
             if (managed.ownerAccountId && managed.providerId && managed.modelId) {
@@ -583,6 +585,7 @@ export function createGenerateBridge({ config, continuationStore, counter, now =
         interceptGenerate,
         finalOutboundGuard,
         settleOutboundResponse: settleArmedResponse,
+        normalizeOutboundResponse: (json, request) => request?.vcManaged?.protocol === 'OPENAI_CHAT_COMPLETIONS' ? unwrapChatCompletion(json) : json,
         absorbStreamAbort,
         abandonOutbound,
     };

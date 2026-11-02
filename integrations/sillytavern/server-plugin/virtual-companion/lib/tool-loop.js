@@ -12,10 +12,9 @@ import { buildResponsesRequest, extractRoundFromOutput, applyToolOutputs } from 
 import { isStorySession } from './story-guard.js';
 import { log } from './log.js';
 import { absorbStreamAbort } from './stream-abort.js';
+import { applyChatReasoning, unwrapChatCompletion } from './chat-completions.js';
 
 export const MAX_TOOL_STEPS = 8;
-export const MAX_TOOL_TIMEOUT_MS = 120_000;
-export const MAX_TOOL_TOKENS = 8192;
 export const COMPANION_TOOL_NAMES = new Set(['query_scheduled_follow_ups', 'manage_reminder']);
 
 const OWNER_FIELDS = new Set(['relationshipId', 'ownerAccountId', 'ownerId', 'ownerUserId', 'accountId', 'userId']);
@@ -248,7 +247,7 @@ function extractCalls(protocol, json) {
             ? call.function.arguments
             : JSON.stringify(call.function?.arguments ?? {}),
     }));
-    return { text: textOf(message.content), calls };
+    return { text: textOf(message.content), calls, reasoningContent: message.reasoning_content };
 }
 
 function providerBody(protocol, body, messages, model, outputCap) {
@@ -279,6 +278,7 @@ function providerBody(protocol, body, messages, model, outputCap) {
     if (body.top_p != null && body.top_p !== '') outbound.top_p = body.top_p;
     if (body.reasoning_effort != null && body.reasoning_effort !== '') outbound.reasoning_effort = body.reasoning_effort;
     if (body.tool_choice != null) outbound.tool_choice = body.tool_choice;
+    applyChatReasoning(outbound, model);
     return outbound;
 }
 
@@ -385,8 +385,8 @@ export async function runBoundedToolLoop({ config, request, response, body, reso
     const protocol = resolved.provider.protocol;
     const model = resolved.model;
     const outputCap = resolveOutputTokens(requestedOutput(body), model.maxOutputTokens);
-    const tokenLimit = Math.min(MAX_TOOL_TOKENS, Math.max(1, Math.trunc(Number(outputCap))));
-    const turnMs = Math.min(MAX_TOOL_TIMEOUT_MS, Math.max(1, Number(config.timeoutMs) || 1));
+    const totalTokenLimit = Math.max(1, Math.trunc(Number(outputCap)));
+    const turnMs = Math.max(1, Number(config.timeoutMs) || 1);
     const deadline = now() + turnMs;
     const remainingMs = () => Math.max(1, deadline - now());
     const chatIdentity = readChatIdentity(body);
@@ -413,7 +413,8 @@ export async function runBoundedToolLoop({ config, request, response, body, reso
     try {
     while (sends < MAX_TOOL_STEPS) {
         if (client.gone()) await stopped(null, 'NOT_SENT');
-        if (sends > 0 && completionSum + tokenLimit > MAX_TOOL_TOKENS) return stop(TOKEN_STOP);
+        const tokenLimit = totalTokenLimit - completionSum;
+        if (tokenLimit < 1) return stop(TOKEN_STOP);
         const outbound = providerBody(protocol, body, messages, model, tokenLimit);
         await refreshMemorySlot({ config, request, response, finalBody: outbound, signal: stepSignal() });
         const budget = checkContextBudget({ model, finalBody: outbound, outputTokens: tokenLimit, counter });
@@ -462,6 +463,13 @@ export async function runBoundedToolLoop({ config, request, response, body, reso
         try {
             json = await upstream.json();
         } catch { /* 没有可解析的用量 */ }
+        if (protocol === 'OPENAI_CHAT_COMPLETIONS') {
+            try { json = unwrapChatCompletion(json); }
+            catch (error) {
+                await cancelQuiet(config, reservation, 'UNKNOWN');
+                throw error;
+            }
+        }
         const usage = readUsageTokens(json?.usage);
         if (!json || !usage) {
             await cancelQuiet(config, reservation, 'UNKNOWN');
@@ -567,6 +575,7 @@ export async function runBoundedToolLoop({ config, request, response, body, reso
         messages.push({
             role: 'assistant',
             content: extracted.text || '',
+            ...(typeof extracted.reasoningContent === 'string' ? { reasoning_content: extracted.reasoningContent } : {}),
             tool_calls: extracted.calls.map((call) => ({
                 id: call.id,
                 type: 'function',

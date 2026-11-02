@@ -278,6 +278,7 @@ export function buildPlan(model, body, headerDirective, ctlOverride) {
         reasoning,
         tool,
         usage,
+        chatEnvelope: merged.chatEnvelope === true,
         error: merged.error ?? null,
         delay: merged.delay ?? null,
         chunks: merged.chunks ?? 3,
@@ -344,6 +345,7 @@ function renderChatNonStream(plan, res) {
     const id = `chatcmpl-vc03m-${plan.seq}`;
     const created = Math.floor(Date.now() / 1000);
     const message = { role: 'assistant', content: plan.text || null };
+    if (typeof plan.reasoning?.text === 'string') message.reasoning_content = plan.reasoning.text;
     if (plan.tool) message.tool_calls = [{
         id: plan.tool.callId || `call-vc03m-${plan.seq}`,
         type: 'function',
@@ -351,11 +353,12 @@ function renderChatNonStream(plan, res) {
     }];
     const usage = openAiChatUsage(plan);
     res.writeHead(200, { 'content-type': 'application/json' });
-    res.end(JSON.stringify({
+    const completion = {
         id, object: 'chat.completion', created, model: plan.model,
         choices: [{ index: 0, message, finish_reason: plan.tool ? 'tool_calls' : 'stop' }],
         usage,
-    }));
+    };
+    res.end(JSON.stringify(plan.chatEnvelope ? { success: true, data: completion } : completion));
 }
 
 async function renderChatStream(plan, res) {

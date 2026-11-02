@@ -717,8 +717,9 @@ paths:
         caller-supplied owner or relationship, is HTTP 200 with status FAILED
         and does not create a successful reminder or follow-up change.
         Assistant prose is not stored. Step, timeout and token bounds are
-        recorded; an integer outside step 1..8, timeoutMs 1..120000 or
-        tokenLimit 1..8192 is stored and fails with INVALID_BOUNDS.
+        recorded; an integer outside step 1..8 or a non-positive timeoutMs
+        or tokenLimit is stored and fails with INVALID_BOUNDS. The caller
+        enforces the configured model output budget and deployment timeout.
       security:
         - cookieAuth: []
       parameters:
@@ -11418,15 +11419,15 @@ components:
         timeoutMs:
           type: integer
           description: >-
-            Optional timeout bound in milliseconds. 1..120000 is accepted.
-            An integer outside that band is stored and fails with
-            INVALID_BOUNDS. A non-integer is HTTP 400.
+            Optional positive timeout bound in milliseconds, taken from the
+            deployment configuration. A non-positive integer is stored and
+            fails with INVALID_BOUNDS. A non-integer is HTTP 400.
         tokenLimit:
           type: integer
           description: >-
-            Optional token bound. 1..8192 is accepted. An integer outside
-            that band is stored and fails with INVALID_BOUNDS. A non-integer
-            is HTTP 400.
+            Optional positive output-token bound, taken from the remaining
+            model output budget for this turn. A non-positive integer is
+            stored and fails with INVALID_BOUNDS. A non-integer is HTTP 400.
     ToolExecuteResult:
       type: object
       additionalProperties: false

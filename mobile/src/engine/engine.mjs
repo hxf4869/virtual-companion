@@ -260,7 +260,7 @@ export function createEngine({ doc = globalThis.document, src = '/', onState } =
         },
         async call(module, method, ...args) {
             await api.ready();
-            const files = { api: 'api.js', inbox: 'inbox-page.js', instances: 'instance-page.js', drawers: 'drawers.js', story: 'story-page.js', voice: 'voice-chat.js', audio: 'voice.js', voiceInput: 'voice-input.js', pipeline:'reply-pipeline.js', shell: 'chat-shell.js' };
+            const files = { api: 'api.js', models: 'index.js', inbox: 'inbox-page.js', instances: 'instance-page.js', drawers: 'drawers.js', story: 'story-page.js', voice: 'voice-chat.js', audio: 'voice.js', voiceInput: 'voice-input.js', pipeline:'reply-pipeline.js', shell: 'chat-shell.js' };
             if (!files[module]) throw new Error('unknown module');
             const mod = await win().eval(`import('/scripts/extensions/third-party/vc-model-settings/${files[module]}')`);
             return mod[method](...args);

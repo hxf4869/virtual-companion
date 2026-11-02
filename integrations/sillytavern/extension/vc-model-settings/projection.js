@@ -558,10 +558,11 @@ export function createProjectionController(host) {
                 if (decision.pinned.topP !== undefined) {
                     setField('#top_p_openai', decision.pinned.topP, 'input');
                 }
-                if (decision.pinned.reasoningEffort !== undefined) {
-                    const plan = reasoningEffortWritePlan(decision.pinned.reasoningEffort);
+                if (decision.source === 'custom') {
+                    const plan = reasoningEffortWritePlan(decision.pinned.reasoningEffort ?? 'auto');
                     if (plan?.kind === 'native-option') {
                         setField(plan.selector, plan.value, plan.eventName);
+                        oai.reasoning_effort = plan.value;
                     } else if (plan && String(oai.reasoning_effort ?? '') !== plan.value) {
                         // 扩展等级不在原生六档内：直写活引用（幂等），不 trigger 原生 select；
                         // saveSettingsDebounced 在本函数尾部统一调用。
