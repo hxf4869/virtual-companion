@@ -170,3 +170,27 @@ test('原生完整保存消费已覆盖的 metadata 定时器，保存后的新�
     assert.equal(scheduled, later, '捕获快照之后的新 metadata 修改不能被旧保存的完成回调取消');
     assert.equal(host.isChatSaving, false);
 });
+
+
+test('原生metadata后台冲突由F2留稿处理，其余异常仍传播', async () => {
+    const { applySpecToText } = await import('../scripts/lib/patcher.mjs');
+    const spec = JSON.parse(fs.readFileSync(new URL('../patches/st-f2-extensions.json', import.meta.url)));
+    const original = fs.readFileSync(new URL('../upstream/SillyTavern/public/scripts/extensions.js', import.meta.url), 'utf8');
+    const source = applySpecToText(original, spec).output;
+    const start = source.indexOf('export function saveMetadataDebounced() {');
+    const actual = source.slice(start, source.indexOf('\n}\n', start) + 2);
+    let scheduled, rejectedDraft;
+    const client = createF2Client({ onConflict: draft => { rejectedDraft = draft; } });
+    client.loaded('native', { vc_f2: token() });
+    const ctx = { characterId: 0, groupId: undefined, saveMetadata: () => client.save('native', document(token(), '合成修订草稿'), {
+        live: true, send: async () => new Response(JSON.stringify({ code: 'VC_REVISION_CONFLICT' }), { status: 409 }),
+    }) };
+    const host = vm.createContext({ getContext: () => ctx, saveMetadataTimeout: null, debounce_timeout: { relaxed: 1000 },
+        cancelDebouncedMetadataSave() {}, setTimeout(fn) { scheduled = fn; return 1; }, console: { debug() {}, warn() {} } });
+    const enqueue = vm.runInContext(actual.replace('export ', '') + '; saveMetadataDebounced', host);
+    enqueue(); await assert.doesNotReject(() => scheduled());
+    assert.ok(rejectedDraft.includes('合成修订草稿'), '已处理的F2冲突仍必须保留完整草稿');
+    const other = new Error('synthetic unrelated failure');
+    ctx.saveMetadata = async () => { throw other; };
+    enqueue(); await assert.rejects(() => scheduled(), error => error === other);
+});
