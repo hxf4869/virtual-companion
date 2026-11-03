@@ -15,10 +15,11 @@ import { transitionContent } from './transition.js';
 import { NOTIFY_KEY, notifySupported, requestNotifyPermission, systemNotifyEnabled } from './notify.js';
 import { mountAppearance } from './appearance.js';
 const categories = [['account','账户','user-round','gray'],['model','模型','cpu','blue'],['voice','语音','mic','orange'],['notifications','通知','bell','pink'],['appearance','外观','monitor','purple'],['data','账户与数据','shield','green']];
-export function mountSettingsShell(container, { getContext = () => ({}) } = {}) {
+export function mountSettingsShell(container, { getContext = () => ({}), onBudgetChange, onCatalogSaved } = {}) {
     const root = document.createElement('section'); root.className = 'vc-settings-shell';
     container.replaceChildren(root);
-    const model = mountModelSettings(); let account; let current = '', voice = null, detailHidden = false;
+    const model = mountModelSettings({ onBudgetChange }); let account; let current = '', voice = null, detailHidden = false;
+    const unregisterCatalog = onCatalogSaved ? model.onCatalogSaved(onCatalogSaved) : null;
     let unmountOverview = () => {};
     let unmountAppearance = () => {};
     let unmountDrawerEntry = () => {}, voiceHeader;
@@ -50,17 +51,20 @@ export function mountSettingsShell(container, { getContext = () => ({}) } = {}) 
     function mountOverview(body, kind) {
         let disposed = false, pending = false;
         let enabled = notifySupported() && Notification.permission === 'granted' && systemNotifyEnabled();
-        const name = String(getContext().name1 || '').trim() || '账户';
-        const persona = document.querySelector('#user_avatar_block .avatar-container.selected')?.getAttribute('data-avatar-id');
-        const props = () => ({ sprite: iconSpriteUrl(), kind, ...(kind === 'account' ? {
+        const props = () => { const context = getContext(), name = String(context.name1 || '').trim() || '账户';
+            const persona = context.userAvatar ?? document.querySelector('#user_avatar_block .avatar-container.selected')?.getAttribute('data-avatar-id');
+            return { sprite: iconSpriteUrl(), kind, ...(kind === 'account' ? {
             name, avatar: persona ? `/thumbnail?type=persona&file=${encodeURIComponent(persona)}` : undefined,
-            onOpen(screen, trigger) { (account ??= mountDataRights()).open(trigger); document.querySelector(`[data-vc-account-go="${screen}"]`)?.click(); },
+            onOpen(screen, trigger) { (account ??= mountDataRights()).open(trigger, screen); },
         } : kind === 'data' ? { onOpen(trigger) { (account ??= mountDataRights()).open(trigger); } } : {
             supported: notifySupported(), enabled, pending, onToggle,
             onInbox() { window.dispatchEvent(new CustomEvent('vc-shell-navigate', { detail: { destination: 'inbox' } })); },
-        }) });
+        }) }; };
         const view = mountSettingsOverviewView(body, props());
-        unmountOverview = () => { disposed = true; view.unmount(); };
+        const context = getContext(), changed = () => { if (!disposed) view.update(props()); };
+        const event = context.eventTypes?.PERSONA_CHANGED;
+        if (event) context.eventSource?.on(event, changed);
+        unmountOverview = () => { disposed = true; if (event) context.eventSource?.removeListener(event, changed); view.unmount(); };
         async function onToggle(on) {
             enabled = on;
             try { localStorage.setItem(NOTIFY_KEY, on ? 'on' : 'off'); } catch { /* 隐私模式下仅本次有效 */ }
@@ -72,16 +76,22 @@ export function mountSettingsShell(container, { getContext = () => ({}) } = {}) 
             if (!enabled) showToast('浏览器没有允许通知，可在浏览器的网站设置里打开');
         }
     }
+    let confirmingLeave = false;
     async function requestLeave() {
+        if (confirmingLeave) return false;
         if (current === 'model') return model.requestLeave();
         if (voice?.working()) return false;
-        if (voice?.isDirty()) return confirmDiscard({opener:document.activeElement});
+        if (voice?.isDirty()) {
+            confirmingLeave = true;
+            try { return await confirmDiscard({opener:document.activeElement}); }
+            finally { confirmingLeave = false; }
+        }
         return true;
     }
     async function select(key, { initial = false } = {}) {
         if (key === current && !initial) return;
         if (!initial && !await requestLeave()) return;
-        if (current === 'model') { model.close(); restoreModel(); }
+        if (current === 'model') { model.detach(); restoreModel(); }
         unmountOverview();
         unmountOverview = () => {};
         unmountAppearance();
@@ -116,17 +126,12 @@ export function mountSettingsShell(container, { getContext = () => ({}) } = {}) 
     document.addEventListener('click',event=>{
         if(root.dataset.drawer&&event.target.closest?.('[data-vc-drawer-back]')){delete root.dataset.drawer;current='';}
     },{capture:true,signal:ac.signal});
-    const shell=container.closest('#vc-shell');
-    shell?.addEventListener('click',async event=>{
-        const target=event.target.closest('[data-nav],[data-settings-done]');
-        if(!target || root.closest('#vc-shell')?.dataset.settings!=='page')return;
-        if(!voice?.isDirty() && !voice?.working() && !(current==='model'&&(model.isDirty()||model.isBusy())))return;
-        event.preventDefault();event.stopImmediatePropagation();if(await requestLeave()){voice?.destroy();voice=null;current='';target.click();}
-    },{capture:true,signal:ac.signal});
     return { root, model, select, requestLeave,
+        isDirty: () => current === 'model' ? model.isDirty() : Boolean(voice?.isDirty()),
+        isBusy: () => current === 'model' ? model.isBusy() : Boolean(voice?.working()),
         resume(){ if (current === 'model') { frame.content.append(model.root); model.open(); } else if (!current) void select('account', { initial: true }); },
-        close(){ if (current === 'model') { model.close(); restoreModel(); } if (root.dataset.drawer) { leaveDrawer(); current = ''; } },
-        destroy(){ac.abort();account?.destroy();unmountOverview();voice?.destroy();unmountAppearance();unmountDrawerEntry();leaveDrawer();if(current==='model')model.detach();restoreModel();frame.unmount();root.remove();} };
+        close(){ if (current === 'model') { model.detach(); restoreModel(); } if (voice) { voice.destroy(); voice = null; current = ''; } if (root.dataset.drawer) { leaveDrawer(); current = ''; } },
+        destroy(){ac.abort();unregisterCatalog?.();account?.destroy();unmountOverview();voice?.destroy();unmountAppearance();unmountDrawerEntry();leaveDrawer();if(current==='model')model.detach();restoreModel();frame.unmount();root.remove();} };
 }
 async function mountVoice(content,body,setHeader) {
     let settings, engines, baseline='', working=false, loaded=false, destroyed=false, fields=null, values={}, saveStyle={};

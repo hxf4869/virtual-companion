@@ -143,7 +143,8 @@ export async function mountConsentGate(options = {}) {
     if (!doc?.body || !doc.createElement) return null;
     const existing = doc.querySelector('#vc-consent');
     if (existing) return existing;
-    await waitOutOnboarding(doc);
+    if (options.ready) await options.ready;
+    else await waitOutOnboarding(doc);
     const list = options.listConsents || listConsents;
     let records = null;
     try {

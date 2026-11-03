@@ -28,13 +28,15 @@ let stHeadersProvider = () => ({});
 
 // 页面生命周期内持有的会话上下文快照；null = 尚未取得（写请求就地失败，不发出去）。
 let sessionContext = null;
+let pageIdentity = null;
 
 /**
  * 由 ST 宿主入口（index.js）注入原生 getRequestHeaders；
  * harness / 独立页面注入测试桩。未注入时仅发送 Go 双提交令牌。
  */
-export function setStHeadersProvider(fn) {
+export function setStHeadersProvider(fn, { identity } = {}) {
     stHeadersProvider = typeof fn === 'function' ? fn : () => ({});
+    pageIdentity = identity ? Object.freeze({ accountId: identity.accountId, sessionId: identity.sessionId }) : null;
 }
 
 function readCookie(name) {
@@ -183,6 +185,10 @@ export async function captureSessionContext() {
             status: 200,
             code: 'VC_SESSION_CONTEXT_INVALID',
         });
+    }
+    if (pageIdentity && (pageIdentity.accountId !== accountId || pageIdentity.sessionId !== sessionId)) {
+        sessionContext = null;
+        throw new ApiError('context-changed', '登录状态已变化，请重新打开页面。', { status: 409, code: 'ACCOUNT_CONTEXT_CHANGED' });
     }
     sessionContext = { accountId, sessionId };
     return { accountId, sessionId };

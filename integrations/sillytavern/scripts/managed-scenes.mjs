@@ -36,7 +36,7 @@ import { hlStickersScene } from './hl-stickers-accept.mjs';
 import { desktopAppearanceScene } from './desktop-appearance-accept.mjs';
 import { desktopShellScene } from './desktop-shell-accept.mjs';
 import { desktopModelsScene } from './desktop-models-accept.mjs';
-import { desktopSettingsScene } from './desktop-settings-accept.mjs';
+import { desktopSettingsScene, desktopProductSettingsScene } from './desktop-settings-accept.mjs';
 import { desktopOverlaysScene } from './desktop-overlays-accept.mjs';
 import { desktopPagesScene } from './desktop-pages-accept.mjs';
 import { nativeStartupScene, independentDesktopScene } from './desktop-startup-accept.mjs';
@@ -104,6 +104,7 @@ export const ACCEPT_SCENES = [
     desktopShellScene,
     desktopModelsScene,
     desktopSettingsScene,
+    desktopProductSettingsScene,
     desktopOverlaysScene,
     desktopPagesScene,
     nativeStartupScene,

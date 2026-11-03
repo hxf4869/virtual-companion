@@ -6,9 +6,9 @@ import { desktopLayout } from './presentation.js';
 import { mountDesktopTheme } from './theme.js';
 
 // 跟随真实宿主的断点和聊天事件；手机不创建桌面节点。
-export function mountDesktopShell({ shell, getContext, beforeSearch }) {
+export function mountDesktopShell({ shell, getContext, getThemeContext = getContext, beforeSearch }) {
     const doc = shell.ownerDocument;
-    const theme = mountDesktopTheme({ shell, getContext, document: doc });
+    const theme = mountDesktopTheme({ shell, getContext: getThemeContext, document: doc });
     doc.documentElement.dataset.vcReducedMotion = String(readReducedMotion());
     let aurora, panel, releaseLens, releaseLights;
     function sync() {

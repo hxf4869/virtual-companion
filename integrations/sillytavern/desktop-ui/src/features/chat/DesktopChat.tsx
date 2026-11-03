@@ -13,6 +13,7 @@ export interface DesktopChatProps {
     canSend: boolean;
     busy: boolean;
     notice: string;
+    noticeAction?: string;
     conflict: boolean;
     enterToSend: boolean;
     error: string;
@@ -90,7 +91,7 @@ export function DesktopChat(p: DesktopChatProps) {
         </div>
         <div ref={floating} className="vc-chat-floating" />
         {(p.notice || typing) && <div id="vc-chat-gen" className="vc-glass" role={p.notice && p.notice !== '已停止' ? 'alert' : 'status'} data-vc-typing={typing && !p.notice ? '' : undefined}>
-            {p.notice ? <><span>{p.notice}</span>{!p.busy && p.notice !== '已停止' && <Button type="button" className="vc-link" onClick={p.onNoticeRetry}>{p.conflict ? '查看最新' : '重试'}</Button>}
+            {p.notice ? <><span>{p.notice}</span>{!p.busy && p.notice !== '已停止' && <Button type="button" className="vc-link" onClick={p.onNoticeRetry}>{p.conflict ? '查看最新' : p.noticeAction || '重试'}</Button>}
                 {p.conflict && <Button type="button" className="vc-link" onClick={p.onCopyDraft}>复制</Button>}</>
                 : <>{p.avatar && <img className="vc-gen-avatar" src={p.avatar} alt="" />}<span className="vc-gen-bubble"><span className="vc-gen-dots" aria-hidden="true" /><span>正在输入</span></span></>}
         </div>}

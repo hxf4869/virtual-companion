@@ -130,6 +130,13 @@ export async function createChatEngine({ client, context, settings, decision, pr
 
     return { settings, story, memory, cards,
         bindContext() { bindEngineContext(context, settings, environment); cards?.bindContext?.(); },
+        updateCatalog(nextDecision, nextModels) {
+            decision = nextDecision;
+            models.splice(0, models.length, ...nextModels);
+            environment.model = decision.modelId || '';
+            projectModelSettings(settings, decision, buildScope(characterKeyOf(context), chatKeyOf(context.chatId), state.runId));
+            bindEngineContext(context, settings, environment);
+        },
         async userMessage(input) {
             bindEngineContext(context, settings, environment);
             const bias = getBiasStrings(input, 'normal');

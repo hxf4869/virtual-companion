@@ -15,16 +15,21 @@ import { mountDesktopFollow, posKey, readStoredNumber } from '../../chat-scroll.
 import { mountDesktopChatView } from '../build/index.js';
 import { mountDesktopShell } from '../host.js';
 import { mountSettingsShell } from '../settings-shell.js';
+import { mountModelSettings, observeGenerateBudget } from '../../page.js';
+import { mountConsentGate } from '../../consent.js';
 import { EventEmitter } from './engine/events.js';
 import { event_types } from './engine/st/events.js';
 
-const client = createDesktopClient();
+let modelSettings, budget, catalogSavedWhilePreparing = false;
+const client = createDesktopClient({ onGenerateResponse: response => observeGenerateBudget(response, signal => modelSettings.applyBudget(signal)) });
 const eventSource = new EventEmitter([event_types.APP_INITIALIZED, event_types.APP_READY]);
 const context = { characters: [], chat: [], chatMetadata: {}, characterId: undefined, chatId: '', name1: '', name2: '',
     extensionPrompts: {}, eventSource, eventTypes: event_types };
 const getContext = () => context;
 const drafts = new Map();
-let runtime, view, shell, currentRow, currentRecords, charactersReady, read = 0, activated = 0, readAbort;
+let runtime, view, shell, currentRow, currentRecords, retryRow, charactersReady, read = 0, committedRead = 0, activated = 0, readAbort, activeAbort;
+const getSettingsContext = () => chat.status === 'error' ? { ...context, chatMetadata: {}, chatId: '', characterId: undefined } : currentRecords ? { ...context, chatMetadata: currentRecords[0].chat_metadata,
+    chatId: currentRow.file, characterId: context.characters.findIndex(card => card.avatar === currentRow.avatar) } : { ...context };
 const draftId = key => JSON.stringify([client.identity.accountId, ...JSON.parse(key)]);
 const draftOf = (key, migrate = false) => {
     if (drafts.has(key)) return drafts.get(key);
@@ -48,9 +53,12 @@ const chat = { messages: [], status: 'empty', draft: '', sprite: iconSpriteUrl()
     onEmoji(anchor) { actions.emoji(anchor); },
     tools(index, message) { return actions.tools(index, message); },
     onStop() { void runtime?.stop(); },
-    onRetry() { if (currentRow) return openConversation(currentRow, { latest: true }).then(opened => { if (opened) document.querySelector('#send_textarea')?.focus(); }); },
+    onRetry() { const row = retryRow || currentRow; if (row) return shell.openConversation(row, null, { latest: true }).then(opened => { if (opened) document.querySelector('#send_textarea')?.focus(); }); },
     onNoticeRetry() {
         if (!runtime || chat.notice === '登录状态或聊天已变化，请重新打开页面。') { location.reload(); return; }
+        if (chat.conflict) return chat.onRetry();
+        if (chat.settingsRequired) { void shell.openSettings('model'); return; }
+        if (chat.catalogBlocked) { void runtime.refreshCatalog(); return; }
         if (chat.conflict || !chat.canSend) return chat.onRetry();
         else void runtime.retry();
     },
@@ -66,38 +74,50 @@ const chatKey = row => JSON.stringify([row.avatar, row.file]);
 async function activateCurrent(ticket, latest) {
     if (!runtime || !currentRecords || activated === ticket) return;
     activated = ticket;
-    const row = currentRow, records = currentRecords, signal = readAbort.signal;
+    const row = currentRow, records = currentRecords, signal = activeAbort.signal;
     await charactersReady;
-    if (ticket !== read) return;
+    if (ticket !== committedRead) return;
     try { await runtime.activate(row, records, { signal, latest }); }
     catch (error) {
-        if (ticket !== read || signal.aborted) return;
+        if (ticket !== committedRead || signal.aborted) return;
         chat.canSend = false; chat.notice = error.status === 401 || error.status === 409
             ? '登录状态或聊天已变化，请重新打开页面。' : '聊天没有加载出来，请重试。'; paint();
     }
 }
 
-async function openConversation(row, { latest = false } = {}) {
+async function openConversation(row, { latest = false, beforeCommit } = {}) {
     if (!row?.avatar || !row?.file) return false;
-    actions.changed(); chat.historyAll = false;
-    currentRow = row;
+    actions.changed(); retryRow = null;
     readAbort?.abort(); readAbort = new AbortController();
-    void runtime?.stop();
-    currentRecords = null;
+    const controller = readAbort, stopping = runtime?.stop();
     const ticket = ++read;
-    chat.conversation = chatKey(row); chat.historyAll = readStoredNumber(posKey(draftId(chat.conversation))) !== null; chat.draft = draftOf(chat.conversation, true) || ''; shell?.refreshConversationDrafts();
+    const acceptResult = async () => {
+        if (ticket !== read || controller.signal.aborted) return false;
+        if (beforeCommit && !await beforeCommit()) {
+            if (ticket === read) { chat.status = currentRecords ? 'ready' : 'empty'; paint(); runtime?.refreshView(); }
+            return false;
+        }
+        return ticket === read && !controller.signal.aborted;
+    };
     chat.status = 'loading'; chat.error = ''; chat.notice = ''; chat.conflict = false; chat.canSend = false; chat.busy = false; paint();
     try {
-        const records = await client.readChat(row, { signal: readAbort.signal });
+        const records = await client.readChat(row, { signal: controller.signal });
+        await stopping;
         if (ticket !== read) return false;
         if (!Array.isArray(records) || !records[0]?.chat_metadata) throw new Error('聊天没有加载出来');
+        if (!await acceptResult()) return false;
+        activeAbort?.abort(); activeAbort = controller; readAbort = null;
+        currentRow = row; committedRead = ticket;
         currentRecords = records;
+        chat.conversation = chatKey(row); chat.historyAll = readStoredNumber(posKey(draftId(chat.conversation))) !== null;
+        chat.draft = draftOf(chat.conversation, true) || ''; shell?.refreshConversationDrafts();
         Object.assign(chat, { messages: records.slice(1), status: 'ready', avatar: avatarUrl(row.avatar) });
         paint();
         void activateCurrent(ticket, latest);
         return true;
     } catch (error) {
-        if (ticket !== read) return false;
+        if (!await acceptResult()) return false;
+        retryRow = row;
         chat.status = 'error'; chat.error = error.status === 401 || error.status === 409
             ? '登录状态或聊天已变化，请重新打开页面。' : '聊天没有加载出来，请重试。';
         paint(); return true;
@@ -132,9 +152,12 @@ function lazyPage(load, mount) {
 async function start() {
     enableVcUi();
     await client.initialize();
-    setStHeadersProvider(client.headers);
+    setStHeadersProvider(client.headers, { identity: client.identity });
     const session = await captureSessionContext();
     if (session.accountId !== client.identity.accountId || session.sessionId !== client.identity.sessionId) throw new Error('登录状态已变化，请重新打开页面。');
+    const onBudgetChange = value => { budget = value; runtime?.setBudget(value); };
+    modelSettings = mountModelSettings({ onBudgetChange });
+    void mountConsentGate({ ready: Promise.resolve() });
     registerShellTabs({
         characters: lazyPage(() => import('../../instance-page.js'), (module, container, args) => module.mountCharactersTab(container, {
             ...args, getContext, getCards: () => module.cardsFromContext(context), getBindings: () => module.bindingsFromContext(context),
@@ -146,16 +169,17 @@ async function start() {
         inbox: lazyPage(() => import('../../inbox-page.js'), (module, container, args) => module.mountInboxTab(container, args)),
         story: lazyPage(() => import('../../story-page.js'), (module, container, args) => module.mountStoryTab(container, args)),
     });
-    shell = mountShell({ getContext, storage: { getItem(key) { return key === 'vc-ui' ? 'on' : localStorage.getItem(key); }, setItem: (key, value) => localStorage.setItem(key, value) },
+    shell = mountShell({ independent: true, getContext, storage: { getItem(key) { return key === 'vc-ui' ? 'on' : localStorage.getItem(key); }, setItem: (key, value) => localStorage.setItem(key, value) },
         getConversationDraft: row => row.avatar && row.file ? draftOf(chatKey(row)) : '',
         loadChatSnapshots: async () => chatSnapshotsFromRecent(await client.recent()), openConversation,
-        mountDesktopSettings: container => mountSettingsShell(container, { getContext }),
+        mountDesktopSettings: container => mountSettingsShell(container, { getContext: getSettingsContext, onBudgetChange,
+            onCatalogSaved() { if (runtime) void runtime.refreshCatalog(); else catalogSavedWhilePreparing = true; } }),
         mountChatSurface(container) {
             const host = document.createElement('div'); host.className = 'vc-desktop-chat-root'; container.append(host);
             view = mountDesktopChatView(host, chat);
         },
     });
-    mountDesktopShell({ shell, getContext, beforeSearch: async () => {
+    mountDesktopShell({ shell, getContext, getThemeContext: getSettingsContext, beforeSearch: async () => {
         if (!chat.historyAll) { chat.historyAll = true; paint(); await new Promise(resolve => requestAnimationFrame(resolve)); }
     } });
     document.querySelector('#vc-desktop-startup')?.remove();
@@ -163,20 +187,28 @@ async function start() {
     charactersReady = client.characters().then(characters => {
         context.characters = characters;
     }).catch(() => { document.documentElement.dataset.vcCharacters = 'error'; });
+    void client.settings().then(packet => {
+        if (context.chatId) return;
+        const settings = JSON.parse(packet.settings);
+        context.name1 = settings.username || ''; context.userAvatar = settings.user_avatar || '';
+        return eventSource.emit(event_types.PERSONA_CHANGED, context.userAvatar);
+    }).catch(() => {});
     // 不 await 聊天准备：导航、历史和设置拥有各自生命周期。
     void import('./runtime.js').then(module => module.prepareChatRuntime({ client, context, choosePersona, readInput: () => chat.draft,
         paint, onConflict(snapshot, error) { showF2Draft(snapshot, error, { latest: () => chat.onNoticeRetry(), copy: () => chat.onCopyDraft() }); },
-        onChange(state) { if (state.key !== chat.conversation || chat.status !== 'ready') return; Object.assign(chat, state); paint(); },
+        onChange(state) { if (state.key !== chat.conversation || chat.status !== 'ready') return; Object.assign(chat, state); chat.noticeAction = state.settingsRequired ? '模型设置' : ''; paint(); },
         onTakeDraft(key, input) { if (draftOf(key) === input) setDraft(key, ''); },
         onRestoreDraft(key, input) {
             if (input) setDraft(key, mergeInput(draftOf(key), input));
         },
     })).then(async value => {
         runtime = value;
+        runtime.setBudget(budget);
+        if (catalogSavedWhilePreparing) { catalogSavedWhilePreparing = false; await runtime.refreshCatalog(); }
         chat.renderMessage = runtime.renderMessage; chat.mountCardActions = runtime.mountCardActions; chat.renderMedia = runtime.renderMedia; chat.mountVoiceInput = runtime.mountVoiceInput; paint();
         document.documentElement.dataset.vcRuntime = 'prepared';
         await eventSource.emit(event_types.APP_INITIALIZED); await eventSource.emit(event_types.APP_READY);
-        void activateCurrent(read, false);
+        void activateCurrent(committedRead, false);
     }).catch(() => { document.documentElement.dataset.vcRuntime = 'error'; chat.notice = '聊天没有加载出来，请重试。'; paint(); });
 }
 void start().catch(error => {

@@ -60,7 +60,9 @@ for(const key of Object.keys(mounts))registry[key]=(container,args)=>{
  const result=(async()=>{const module=await viewModule(key);if(module)return module.mount({container,args,source,params,context});const mod=await import(`${source}/${files[key]}.js`);return mod[mounts[key]](container,args);})();pendingMounts.push(result);return {refresh(){void result.then(handle=>handle?.refresh?.());},destroy(){void result.then(handle=>handle?.destroy?.());}};
 };
 registerShellTabs(registry);
-const shell=mountShell({navigationTitles:view==='components'?{characters:'组件'}:{},getContext:()=>context,loadRelationships:()=>api.fetchRelationships(),loadInbox:async()=>window.VC_PREVIEW_INBOX||[],loadNative:async()=>({})});
+const settingsFactory=view==='settings'&&!source.startsWith('/baseline/')&&innerWidth>=744?(await import(`${source}/desktop/settings-shell.js`)).mountSettingsShell:null;
+const shell=mountShell({navigationTitles:view==='components'?{characters:'组件'}:{},getContext:()=>context,loadRelationships:()=>api.fetchRelationships(),loadInbox:async()=>window.VC_PREVIEW_INBOX||[],loadNative:async()=>({}),
+ mountDesktopSettings:settingsFactory?container=>(window.VC_SETTINGS_PREVIEW=settingsFactory(container,{getContext:()=>context})):undefined});
 let desktop;
 if(loadDesktop){
  const {mountDesktopTheme}=await import(`${source}/desktop/theme.js`);mountDesktopTheme({shell,getContext:()=>context});
@@ -83,7 +85,7 @@ if(view==='voice'){
 }
 if(view==='settings'){
  const voice=await import(`${source}/voice-settings.js`);if(params.get('state')==='loading')void voice.refreshVoiceAvailability();else await voice.refreshVoiceAvailability();window.dispatchEvent(new CustomEvent('vc-shell-navigate',{detail:{destination:'settings'}}));
- const module=await viewModule('settings');if(module)await module.mount({container:shell.querySelector('.vc-shell-settings .vc-shell-scroll'),source,params,context,model});
+ const module=await viewModule('settings');if(module)await module.mount({container:shell.querySelector('.vc-shell-settings .vc-shell-scroll'),source,params,context,model,settingsController:window.VC_SETTINGS_PREVIEW});
 }
 document.addEventListener('click',async e=>{
  const button=e.target.closest('[data-demo]');if(!button)return;

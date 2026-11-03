@@ -67,7 +67,7 @@ function deepClone(obj) {
     return structuredClone(obj);
 }
 
-export function mountModelSettings() {
+export function mountModelSettings({ onBudgetChange } = {}) {
     if (mounted) return mounted;
     const root = document.createElement('div');
     root.id = ROOT_ID;
@@ -156,7 +156,9 @@ export function mountModelSettings() {
         // 容器销毁仅卸载视图、失效迟到请求和敏感输入；草稿留在原控制器，不弹出新的离开确认。
         detach: close,
         onCatalogSaved(cb) {
-            if (typeof cb === 'function') catalogSavedCallbacks.push(cb);
+            if (typeof cb !== 'function') return;
+            catalogSavedCallbacks.push(cb);
+            return () => { const index = catalogSavedCallbacks.indexOf(cb); if (index >= 0) catalogSavedCallbacks.splice(index, 1); };
         },
         applyBudget(payload) {
             state.budget = logic.interpretUsageBudget(payload);
@@ -484,12 +486,13 @@ export function mountModelSettings() {
         if (!dirty.length) return;
         state.bindingsSaving = true;
         render();
-        let failed = 0;
+        let failed = 0, succeeded = 0;
         for (const [purpose, b] of dirty) {
             b.error = null;
             try {
                 await api.saveModelPurpose(purpose, logic.buildBindingPut(b));
                 b.dirty = false;
+                succeeded += 1;
             } catch (err) {
                 failed += 1;
                 if (err instanceof api.ApiError && err.kind === 'conflict-revision') {
@@ -525,7 +528,7 @@ export function mountModelSettings() {
         }
         if (!failed) toast('用途绑定已保存。', 'success');
         render();
-        if (!failed) notifyCatalogSaved(); // 绑定已更新 → 前台投影刷新
+        if (succeeded) notifyCatalogSaved(); // 已成功写入的绑定立即失效旧投影；失败项仍保留草稿。
     }
 
     // ---------- 打开 / 关闭 ----------
@@ -615,6 +618,7 @@ export function mountModelSettings() {
     }
 
     function syncSendGate() {
+        if (onBudgetChange) { onBudgetChange(state.budget); return; }
         installSendGate();
         const send = document.querySelector('#send_but');
         if (!send) return;

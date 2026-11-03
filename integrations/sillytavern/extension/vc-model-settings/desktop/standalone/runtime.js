@@ -9,9 +9,8 @@ import { installDesktopMedia } from './media.js';
 import { initializeCards } from './cards/index.js';
 
 export async function prepareChatRuntime({ client, context, choosePersona, readInput, onChange, onTakeDraft, onRestoreDraft, onConflict, paint = () => {} }) {
-    const [purposes, providers, packet] = await Promise.all([fetchModelPurposes(), fetchProviders(), client.request('/api/settings/get', {})]);
+    const [purposes, providers, packet] = await Promise.all([fetchModelPurposes(), fetchProviders(), client.settings()]);
     const decision = resolveForegroundProjection(purposes, providers);
-    if (!decision.eligible) throw new Error('请先配置聊天模型。');
     const settings = runtimeSettings(JSON.parse(packet.settings));
     const scope = buildScope(characterKeyOf(context), chatKeyOf(context.chatId), 0);
     projectModelSettings(settings, decision, scope);
@@ -21,6 +20,23 @@ export async function prepareChatRuntime({ client, context, choosePersona, readI
         initializeCards: args => initializeCards({ ...args, packet }) });
     const session = createDesktopSession({ client, context, engine, prepareSourceIdentities, readResponse: readGenerationResponse,
         choosePersona, onChange, onTakeDraft, onRestoreDraft, onConflict });
+    session.setCatalogStatus(decision.eligible, decision.eligible ? '' : '请先配置聊天模型。', !decision.eligible);
+    let catalogRead = 0;
+    async function refreshCatalog() {
+        const ticket = ++catalogRead;
+        session.setCatalogStatus(false);
+        try {
+            const [purposes, providers] = await Promise.all([fetchModelPurposes(), fetchProviders()]);
+            const next = resolveForegroundProjection(purposes, providers);
+            await session.whenIdle();
+            if (ticket !== catalogRead) return;
+            engine.updateCatalog(next, providers.flatMap(provider => provider.models.map(model => ({ id: model.modelId, ...model }))));
+            session.setCatalogStatus(next.eligible, next.eligible ? '' : '请先配置聊天模型。', !next.eligible);
+        } catch (error) {
+            if (ticket === catalogRead) session.setCatalogStatus(false, error.kind === 'context-changed' || error.status === 401
+                ? '登录状态或聊天已变化，请重新打开页面。' : '模型配置没有加载出来，请重试。');
+        }
+    }
     const media = installDesktopMedia({ context, session, paint });
-    return Object.assign(session, media, { renderMessage: engine.cards.renderMessage, mountCardActions: engine.cards.mountCardActions });
+    return Object.assign(session, media, { refreshCatalog, renderMessage: engine.cards.renderMessage, mountCardActions: engine.cards.mountCardActions });
 }

@@ -1,8 +1,9 @@
 // 独立桌面的 ST 数据边界。页面身份只从已认证 HTML 捕获，绝不在写前刷新为另一身份。
-export function createDesktopClient({ fetchImpl = globalThis.fetch, document: doc = globalThis.document } = {}) {
+export function createDesktopClient({ fetchImpl = globalThis.fetch, document: doc = globalThis.document, onGenerateResponse } = {}) {
     const identity = Object.freeze({ accountId: doc.querySelector('meta[name="vc-account-id"]')?.content || '',
         sessionId: doc.querySelector('meta[name="vc-session-id"]')?.content || '' });
     let token = '';
+    let initialSettings;
     const headers = () => ({ 'Content-Type': 'application/json', 'X-CSRF-Token': token,
         'X-VC-Expected-Account-ID': identity.accountId, 'X-VC-Expected-Session-ID': identity.sessionId });
     const raw = (url, body, { signal } = {}) => fetchImpl(url, { method: 'POST', credentials: 'same-origin', cache: 'no-store',
@@ -19,7 +20,8 @@ export function createDesktopClient({ fetchImpl = globalThis.fetch, document: do
     const post = async (url, body, options) => checked(await raw(url, body, options));
     const request = async (url, body, options) => (await post(url, body, options)).json();
     return { identity, headers, request, raw, post,
-        generate: (packet, options) => post(packet.url, packet.body, options),
+        settings() { return initialSettings ||= request('/api/settings/get', {}).catch(error => { initialSettings = null; throw error; }); },
+        async generate(packet, options) { const response = await raw(packet.url, packet.body, options); onGenerateResponse?.(response); return checked(response); },
         async initialize() {
             if (!/^[1-9][0-9]*$/.test(identity.accountId) || !/^[1-9][0-9]*$/.test(identity.sessionId)) throw new Error('请重新打开页面。');
             const response = await fetchImpl('/csrf-token', { credentials: 'same-origin', cache: 'no-store' });

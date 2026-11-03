@@ -679,7 +679,7 @@ export function mountShell(options = {}) {
         releaseMotion(pages);
         syncKeyboard();
         releaseCoveredSettings();
-        if (chrome.nav === 'tabbar' && desktopSettings && root.dataset.settings === 'page') closeSettings({ immediate: true });
+        if (!options.independent && chrome.nav === 'tabbar' && desktopSettings && root.dataset.settings === 'page') closeSettings({ immediate: true });
         syncSidebarCurrent();
         paintConversations();
     }
@@ -722,9 +722,13 @@ export function mountShell(options = {}) {
     function selectDestination(nav, opener, { legacy = true } = {}) {
         const index = DESTINATIONS.findIndex((item) => item.nav === nav);
         if (index < 0) return;
+        if (root.dataset.settings === 'page') {
+            const closed = closeSettings();
+            if (closed?.then) return closed.then(ok => ok ? selectDestination(nav, opener, { legacy }) : false);
+            if (!closed) return false;
+        }
         const previous = root.dataset.destination || '';
         if (previous && previous !== nav) listHeld = false;
-        if (root.dataset.settings === 'page') closeSettings();
         root.dataset.destination = nav;
         globalThis.dispatchEvent?.(new Event('vc-shell-destination'));
         tabbar.style.setProperty('--vc-tab', String(index));
@@ -812,7 +816,8 @@ export function mountShell(options = {}) {
         setTimeout(stopPush, 900);
     }
 
-    function openChatColumn(row, fromButton) {
+    async function openChatColumn(row, fromButton) {
+        if (await selectDestination('chat', null, { legacy: false }) === false) return false;
         const nextId = row?.relationshipId == null || row.relationshipId === '' ? '' : String(row.relationshipId);
         if (nextId !== listHeldFor) {
             listHeld = false;
@@ -823,20 +828,22 @@ export function mountShell(options = {}) {
         if (phone) {
             paintIdentity(row);
             showChat(row, fromButton);
-            return;
+            return true;
         }
         // 桌面：会话列表头像到标题栏头像的共享元素过渡（不支持或减少动效时同步直接更新）。
-        return sharedTransition(() => {
+        await sharedTransition(() => {
             paintIdentity(row);
             chatPane.classList.remove('is-push', 'is-pop');
             root.dataset.chat = 'open';
             releaseMotion(chatPane);
             releaseMotion(pages);
-            selectDestination('chat', null, { legacy: false });
+            applyChrome();
         }, { from: fromButton?.querySelector?.('[data-fly-from]'), to: () => whoAvatar.querySelector?.('[data-fly-target]'), name: 'vc-shared' }).then(() => refreshInbox());
+        return true;
     }
 
-    async function openFromInstance(instance, opener) {
+    async function openFromInstance(instance, opener, { latest = false } = {}) {
+        if (root.dataset.settings === 'page' && !await closeSettings()) return false;
         const id = instance?.relationshipId == null ? '' : String(instance.relationshipId);
         const row = (id && rowById.get(id)) || {
             relationshipId: id,
@@ -848,11 +855,10 @@ export function mountShell(options = {}) {
             characterRef: instance?.characterRef,
         };
         if (!row.relationshipId && !row.file && !Number.isInteger(row.characterIndex)) return false;
-        const ok = await openConversation(row);
+        const ok = await openConversation(row, { latest, beforeCommit: () => root.dataset.settings === 'page' ? closeSettings() : true });
         if (!ok) return false;
         // 打开会话返回时对话栏已展开（桌面过渡把更新推迟到下一帧，这里等它完成）。
-        await openChatColumn(row, opener);
-        return true;
+        return await openChatColumn(row, opener);
     }
 
     function fillIcon(host, name) {
@@ -939,13 +945,19 @@ export function mountShell(options = {}) {
     }
 
     function syncSideAvatar() {
-        const name = String(getContext()?.name1 || '').trim();
-        const persona = doc.querySelector?.('#user_avatar_block .avatar-container.selected')?.getAttribute?.('data-avatar-id');
+        const context = getContext(), name = String(context?.name1 || '').trim();
+        const persona = context?.userAvatar ?? doc.querySelector?.('#user_avatar_block .avatar-container.selected')?.getAttribute?.('data-avatar-id');
         sidebarState.avatar = { src: persona ? `/thumbnail?type=persona&file=${encodeURIComponent(persona)}` : undefined,
             fallback: [...name][0] || '' };
     }
 
     function closeSettings({ immediate = false } = {}) {
+        if (root.dataset.settings === 'page' && (desktopSettings?.isDirty?.() || desktopSettings?.isBusy?.())) {
+            return desktopSettings.requestLeave().then(ok => ok ? finishCloseSettings(immediate) : false);
+        }
+        return finishCloseSettings(immediate);
+    }
+    function finishCloseSettings(immediate) {
         desktopSettings?.close();
         const handle = sheetHandle;
         sheetHandle = null;
@@ -955,16 +967,18 @@ export function mountShell(options = {}) {
         }
         delete root.dataset.settings;
         syncSidebarCurrent();
+        return true;
     }
 
     function releaseCoveredSettings() {
+        if (options.independent) return;
         if (chromeForWidth(globalThis.innerWidth).nav === 'tabbar') return;
         if (!coveringPageOpen()) return;
         closeSettings({ immediate: true });
     }
 
     function openSettings(opener) {
-        if (chromeForWidth(globalThis.innerWidth).nav !== 'tabbar' && options.mountDesktopSettings) {
+        if ((options.independent || chromeForWidth(globalThis.innerWidth).nav !== 'tabbar') && options.mountDesktopSettings) {
             desktopSettings ??= options.mountDesktopSettings(settingsScroll);
             desktopSettings.resume();
             root.dataset.settings = 'page';
@@ -1123,13 +1137,12 @@ export function mountShell(options = {}) {
             return;
         }
         root.dataset.openState = 'pending';
-        void openConversation(row).then((ok) => {
+        void openFromInstance(row, node).then((ok) => {
             if (!ok) {
                 root.dataset.openState = 'miss';
                 return;
             }
             root.dataset.openState = 'open';
-            openChatColumn(row, node);
         }).catch(() => {
             root.dataset.openState = 'error';
         });
@@ -1138,6 +1151,9 @@ export function mountShell(options = {}) {
     const events = getContext();
     if (events.eventSource?.on && events.eventTypes?.CHAT_CHANGED) {
         events.eventSource.on(events.eventTypes.CHAT_CHANGED, schedule);
+    }
+    if (events.eventSource?.on && events.eventTypes?.PERSONA_CHANGED) {
+        events.eventSource.on(events.eventTypes.PERSONA_CHANGED, () => { syncSideAvatar(); sidebarView.update(sidebarState); });
     }
     globalThis.addEventListener?.('resize', applyChrome);
     globalThis.visualViewport?.addEventListener?.('resize', syncKeyboard);
@@ -1233,6 +1249,7 @@ export function mountShell(options = {}) {
         if (desktopConversationTime(snap.time)) row.timeMs = Date.parse(snap.time) || snap.time;
         paintConversations();
     };
-    root.openConversation = (instance, opener) => openFromInstance(instance, opener);
+    root.openConversation = (instance, opener, options) => openFromInstance(instance, opener, options);
+    root.openSettings = async (category, opener) => { openSettings(opener); if (category && desktopSettings) await desktopSettings.select(category); };
     return root;
 }

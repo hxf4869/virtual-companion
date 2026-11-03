@@ -110,6 +110,10 @@ test('F2保存409保留输入与拒绝快照、阻止盲重试；显式读取最
     assert.ok((await f.session.copyRejected()).includes('合成冲突草稿'));
     assert.equal(await f.session.retry(), false); assert.equal(f.sent.length, 1);
     assert.equal(f.states.at(-1).conflict, true);
+    const conflictNotice=f.states.at(-1).notice;
+    f.session.setCatalogStatus(false,'请先配置聊天模型。',true);f.session.setBudget({insufficient:true});
+    assert.equal(f.states.at(-1).notice,conflictNotice);assert.equal(f.states.at(-1).settingsRequired,false,'模型设置不能抢走已有F2冲突的恢复动作');
+    f.session.setCatalogStatus(true);f.session.setBudget(null);
     conflict = false; await f.open('synthetic-a', { latest: true });
     assert.ok(f.restored.some(([, text]) => text.includes('合成冲突草稿')));
     assert.equal(await f.session.send('合成重新发送'), true);
@@ -230,4 +234,30 @@ test('生成中迟到的旧语音状态沿既有元数据端口随最终F2提交
     finish.resolve(); await pending;
     assert.deepEqual(f.sent.at(-1).chat[3].extra.vc_voice, {clipId:'1',status:'ready',durationMs:1000});
     assert.equal(f.generations, 2); assert.ok(f.states.at(-1).canSend);
+});
+
+
+test('目录不可用和预算不足由唯一Session阻止所有生成，保留历史与输入；恢复后不重建会话', async () => {
+    const f = fixture(); f.session.setCatalogStatus(false,'请先配置聊天模型。',true); await f.open('synthetic-no-model');
+    const messages = f.context.chat;
+    assert.equal(f.states.at(-1).canSend,false); assert.equal(f.states.at(-1).settingsRequired,true);
+    assert.equal(await f.session.send('保留合成输入'),false); assert.equal(await f.session.continue(),false);
+    assert.equal(f.taken.length,0); assert.equal(f.generations,0);
+    f.session.setCatalogStatus(true); f.session.setBudget({known:true,insufficient:true});
+    assert.equal(await f.session.send('仍保留输入'),false); assert.equal(f.generations,0);
+    f.session.setBudget({known:false,insufficient:false});
+    assert.equal(f.context.chat,messages); assert.equal(await f.session.send('合成恢复发送'),true); assert.equal(f.generations,1);
+});
+
+test('目录刷新等待整个生成和最终保存完成，而不是只等提示词计算结束', async () => {
+    const began = deferred(), finished = deferred(); let waiting = true;
+    const f = fixture({readResponse: async () => { began.resolve(); await finished.promise;
+        return {text:'合成完整回复',state:{reasoning:''},swipes:[],toolCalls:[],finishReason:'stop'}; }});
+    await f.open('synthetic-catalog-idle'); const sending = f.session.send('合成输入'); await began.promise;
+    const idle = f.session.whenIdle().then(() => {waiting=false;});
+    f.session.setCatalogStatus(false); await new Promise(resolve => setImmediate(resolve));
+    assert.equal(waiting,true); assert.equal(await f.session.send('刷新期间不发送'),false); assert.equal(f.generations,1);
+    finished.resolve(); await sending; await idle;
+    assert.equal(f.sent.at(-1).chat.at(-1).mes,'合成完整回复'); assert.equal(waiting,false);
+    f.session.setCatalogStatus(true); assert.equal(f.states.at(-1).canSend,true);
 });

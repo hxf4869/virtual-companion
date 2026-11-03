@@ -4,11 +4,13 @@ import { createInstanceBinding } from '../../instance-binding.js';
 import { resolveSTBinding, reconcileSTSources } from '../../api.js';
 import { toggleReaction, addNudge, dropNudge, reactionNudge, runPat } from '../../chat-react.js';
 import { createPersonaSelection } from './personas.js';
+import { BUDGET_COPY } from '../../model-logic.js';
 
 export function createDesktopSession({ client, context, engine, prepareSourceIdentities, readResponse,
     choosePersona, onChange = () => {}, onTakeDraft = () => {}, onRestoreDraft = () => {}, onConflict = () => {},
     resolveBinding = resolveSTBinding, reconcileSources = reconcileSTSources }) {
     let current, job, epoch = 0, savingSettled = false, opening = Promise.resolve();
+    let budget, catalogReady = true, catalogNotice = '', catalogNeedsSettings = false, lastOperation = Promise.resolve();
     const rejected = new Map(), patState = {};
     const f2 = createF2Client();
     const getContext = () => context;
@@ -28,9 +30,11 @@ export function createDesktopSession({ client, context, engine, prepareSourceIde
         mode: context.chatMetadata.vc_binding?.mode || 'COMPANION' });
     const binding = createInstanceBinding({ resolveBinding, getSource: source });
     const publish = target => {
-        if (target !== current || target.signal?.aborted) return;
+        if (!target || target !== current || target.signal?.aborted) return;
         onChange({ key: target.key, messages: target.messages, busy: Boolean(job && job.target === target),
-            canSend: target.ready && !target.blocked && !job, notice: target.notice || '', conflict: target.blocked,
+            canSend: target.ready && !target.blocked && !job && catalogReady && !budget?.insufficient,
+            notice: target.blocked ? target.notice : budget?.insufficient ? BUDGET_COPY : target.notice || catalogNotice,
+            conflict: target.blocked, catalogBlocked: !catalogReady, settingsRequired: !target.blocked && (catalogNeedsSettings || Boolean(budget?.insufficient)),
             enterToSend: engine.settings.power_user.send_on_enter !== -1 });
     };
     function reject(target, error, snapshot, sourceConflict = false) {
@@ -144,7 +148,7 @@ export function createDesktopSession({ client, context, engine, prepareSourceIde
     }
     function send(input, { retry = false, type = 'normal', voiceInput, draftInput = input } = {}) {
         const target = current;
-        if (!target?.ready || target.signal?.aborted || target.blocked || job || (type === 'normal' && !retry && !input.trim())) return Promise.resolve(false);
+        if (!target?.ready || target.signal?.aborted || target.blocked || job || !catalogReady || budget?.insufficient || (type === 'normal' && !retry && !input.trim())) return Promise.resolve(false);
         const previous = target.messages.at(-1);
         if (type !== 'normal' && (!previous || previous.is_user || previous.is_system)) return Promise.resolve(false);
         const active = { target, controller: new AbortController(), promise: null };
@@ -280,6 +284,7 @@ export function createDesktopSession({ client, context, engine, prepareSourceIde
                 publish(target);
             }
         })();
+        lastOperation = active.promise;
         return active.promise;
     }
     function mutate(index, expected, change, refresh = [index]) {
@@ -299,6 +304,7 @@ export function createDesktopSession({ client, context, engine, prepareSourceIde
                 return false;
             } finally { if (job === active) job = null; publish(target); }
         })();
+        lastOperation = active.promise;
         return active.promise;
     }
     const api = { activate(row, records, options = {}) {
@@ -306,6 +312,12 @@ export function createDesktopSession({ client, context, engine, prepareSourceIde
         const pending = previous.catch(() => {}).then(() => open(row, records, options, ticket));
         opening = pending; return pending;
     }, send, stop,
+        refreshView() { publish(current); },
+        setBudget(value) { budget = value; publish(current); },
+        setCatalogStatus(ready, notice = '', needsSettings = false) { catalogReady = ready; catalogNotice = notice; catalogNeedsSettings = needsSettings; publish(current); },
+        async whenIdle() {
+            while (true) { const operation = lastOperation; await operation; if (operation === lastOperation) return; }
+        },
         regenerate: () => send('', { type: 'regenerate' }),
         continue: () => send('', { type: 'continue' }),
         edit(index, text, expected = current?.messages[index]) {

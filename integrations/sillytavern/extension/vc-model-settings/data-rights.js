@@ -509,7 +509,7 @@ export function mountDataRights() {
     }
     render();
     const controller = {
-        open(returnFocus = document.activeElement) {
+        open(returnFocus = document.activeElement, screen = 'home') {
             if (busy || destroyed)
                 return;
             opener = returnFocus || opener;
@@ -530,7 +530,7 @@ export function mountDataRights() {
             trustedDevices = [];
             accountId = '';
             opened = true;
-            render();
+            setAccountScreen(screen);
             if (state.vc)
                 void fetchVoiceUsage().then(usage => { if (current(epoch)) {
                     state.voiceStorage = formatVoiceStorage(usage.storageBytes);

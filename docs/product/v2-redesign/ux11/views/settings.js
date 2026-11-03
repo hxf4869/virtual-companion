@@ -31,7 +31,7 @@ function installDrawerContent(name,iconFn){
     const style=document.createElement('style');style.dataset.sampleHost='';style.textContent=HOST_BASE;document.head.append(style);
     node.innerHTML=DRAWER_HTML[id]();node.hidden=true;
 }
-export async function mount({container,source,params,context}) {
+export async function mount({container,source,params,context,settingsController}) {
     if(source.startsWith('/baseline/')||innerWidth<744)return;
     const {setThemeMode}=await import(`${source}/ui/theme.js`);setThemeMode(params.get('theme')||'light');
     const {mountSettingsShell}=await import(`${source}/desktop/settings-shell.js`);
@@ -39,7 +39,7 @@ export async function mount({container,source,params,context}) {
         const {icon}=await import(`${source}/ui/icons.js`);installDrawerContent(params.get('drawer')||'ai',icon);
         const {mountDrawerPages}=await import(`${source}/drawers.js`);mountDrawerPages(document);
     }
-    const settings=mountSettingsShell(container,{getContext:()=>context});window.VC_SETTINGS_PREVIEW=settings;
+    const settings=settingsController||mountSettingsShell(container,{getContext:()=>context});window.VC_SETTINGS_PREVIEW=settings;
     const screen=params.get('screen')||'model';await settings.select(['provider','profile'].includes(screen)?'model':screen==='drawer'?DRAWER_PANEL[params.get('drawer')||'ai']:screen,{initial:true});
     if(['model','provider','profile'].includes(screen)) {
         const end=Date.now()+(params.get('state')==='loading'?100:5000);while(settings.model._state.phase==='loading'&&Date.now()<end)await new Promise(r=>setTimeout(r,20));

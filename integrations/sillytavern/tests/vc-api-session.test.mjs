@@ -23,6 +23,7 @@ import {
     reauth,
     saveModelPurpose,
     saveProvider,
+    setStHeadersProvider,
 } from '../extension/vc-model-settings/api.js';
 
 const BIG_ACCOUNT_ID = '9007199254740993'; // 2^53+1：Number() 往返会变成 9007199254740992
@@ -159,4 +160,18 @@ test('会话身份形状异常（数字 accountId 违反字符串契约）→ �
     router = () => ({ status: 200, body: { ok: true } });
     await saveProvider('p1', { expectedRevision: 1 });
     assert.equal(calls.at(-1).headers['X-VC-Expected-Account-ID'], BIG_ACCOUNT_ID, '旧快照应原样保持');
+});
+
+
+test('独立桌面固定初始身份：显式重载不能采用另一个会话，失配后写请求就地拒绝；原生默认仍允许显式重载', async () => {
+    const identity = {accountId:BIG_ACCOUNT_ID,sessionId:SESSION_ID};
+    setStHeadersProvider(() => ({'X-VC-Expected-Account-ID':identity.accountId,'X-VC-Expected-Session-ID':identity.sessionId}), {identity});
+    router = () => ({status:200,body:identity}); await captureSessionContext();
+    router = () => ({status:200,body:{accountId:'9007199254740995',sessionId:'43'}});
+    await assert.rejects(captureSessionContext, error => error.kind === 'context-changed' && error.code === 'ACCOUNT_CONTEXT_CHANGED');
+    const before = calls.length;
+    await assert.rejects(() => saveProvider('p1',{expectedRevision:1}), error => error.code === 'VC_SESSION_CONTEXT_MISSING');
+    assert.equal(calls.length,before);
+    setStHeadersProvider(() => ({}));
+    assert.deepEqual(await captureSessionContext(), {accountId:'9007199254740995',sessionId:'43'});
 });

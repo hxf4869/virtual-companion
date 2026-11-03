@@ -1,108 +1,121 @@
 /* UX-19。仅桌面、新设置壳；手机与未挂载壳的生产页面保持原样。 */
 /* Base UI 的原生表单镜像不参与绘制；可见原生按钮继续承担焦点与键盘操作。
    clip 隐藏的 fixed input 仍会改变玻璃合成与字形栅格化，因此明确不生成绘制盒。 */
-html[data-vc-layout="desktop"] body.vc-ui [data-vc-appearance] input[aria-hidden="true"] { display: none; }
-html[data-vc-layout="desktop"] body.vc-ui #vc-shell:has(.vc-settings-shell) .vc-shell-settings { overflow: visible; }
-html[data-vc-layout="desktop"] body.vc-ui #vc-shell:has(.vc-settings-shell) .vc-shell-settings > .vc-navbar { display: none; }
-html[data-vc-layout="desktop"] body.vc-ui #vc-shell:has(.vc-settings-shell) .vc-shell-settings > .vc-shell-scroll { height: 100%; padding: 0; overflow: visible; }
-html[data-vc-layout="desktop"] body.vc-ui .vc-settings-shell { height: 100%; min-width: 0; display: grid; grid-template-columns: 240px minmax(0,1fr); gap: var(--vc-space-sm); }
-html[data-vc-layout="desktop"] body.vc-ui .vc-settings-categories { padding: 0 12px 12px; overflow-y: auto; }
-html[data-vc-layout="desktop"] body.vc-ui .vc-settings-categories h1 { display: flex; align-items: center; height: 64px; margin: 0 12px; font-size: var(--vc-fs-title-1); font-weight: 700; }
-html[data-vc-layout="desktop"] body.vc-ui .vc-settings-categories h2 { margin: 16px 12px 8px; font-size: var(--vc-fs-headline); font-weight: 600; }
-html[data-vc-layout="desktop"] body.vc-ui .vc-settings-categories > button { display: flex; align-items: center; gap: var(--vc-space-sm); min-height: 44px; width: 100%; padding: 6px 12px; color: var(--vc-ink); background: transparent; border: 0; border-radius: var(--vc-radius-sm); text-align: left; font-size: var(--vc-fs-body); }
-html[data-vc-layout="desktop"] body.vc-ui .vc-settings-categories > button[aria-current="page"] { color: var(--vc-accent-text); background: var(--vc-select-fill); }
-html[data-vc-layout="desktop"] body.vc-ui .vc-settings-categories .vc-tile { width: 28px; height: 28px; border-radius: var(--vc-radius-tile); flex: none; }
-html[data-vc-layout="desktop"] body.vc-ui .vc-settings-content { overflow: hidden; display: flex; flex-direction: column; }
-html[data-vc-layout="desktop"] body.vc-ui .vc-settings-header { flex: none; height: 64px; min-height: 64px; width: min(100%,808px); margin: 0 auto; padding: 0 24px; box-sizing: border-box; display: flex; align-items: center; gap: var(--vc-space-xs); }
-html[data-vc-layout="desktop"] body.vc-ui .vc-settings-header h1 { margin: 0; flex: 1; font-size: var(--vc-fs-title-1); font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-html[data-vc-layout="desktop"] body.vc-ui .vc-settings-body { flex: 1; min-height: 0; width: min(100%,808px); padding: 0 24px 24px; box-sizing: border-box; overflow: auto; margin: 0 auto; }
-html[data-vc-layout="desktop"] body.vc-ui .vc-settings-voice { display: grid; gap: var(--vc-space-sm); }
-html[data-vc-layout="desktop"] body.vc-ui .vc-settings-voice .vc-cell,
-html[data-vc-layout="desktop"] body.vc-ui .vc-sheet:has([data-voice-settings]) .vc-cell { display: grid; grid-template-columns: 200px minmax(0,1fr); gap: var(--vc-space-xs); align-items: center; }
-html[data-vc-layout="desktop"] body.vc-ui .vc-settings-voice .vc-cell:has(.vc-value) { grid-template-columns: 200px auto minmax(0,1fr); }
-html[data-vc-layout="desktop"] body.vc-ui :is(.vc-settings-voice,.vc-sheet:has([data-voice-settings])) .vc-cell > :first-child { white-space: nowrap; }
-html[data-vc-layout="desktop"] body.vc-ui :is(.vc-settings-voice,.vc-sheet:has([data-voice-settings])) input[type="number"] { width: 160px; }
-html[data-vc-layout="desktop"] body.vc-ui :is(.vc-settings-voice,.vc-sheet:has([data-voice-settings])) select { width: min(100%,240px); min-width: 160px; }
-html[data-vc-layout="desktop"] body.vc-ui :is(.vc-settings-voice,.vc-sheet:has([data-voice-settings])) .vc-voice-setting-text { display: block; }
-html[data-vc-layout="desktop"] body.vc-ui :is(.vc-settings-voice,.vc-sheet:has([data-voice-settings])) textarea { display: block; width: 100%; height: auto; min-height: 80px; padding: 8px 12px; }
-html[data-vc-layout="desktop"] body.vc-ui .vc-settings-voice details { padding: 4px 16px; border-radius: var(--vc-radius-md); background: var(--vc-raised); border: .5px solid var(--vc-raised-edge); }
-html[data-vc-layout="desktop"] body.vc-ui .vc-settings-voice summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; font-size: var(--vc-fs-headline); font-weight: 600; }
-html[data-vc-layout="desktop"] body.vc-ui .vc-settings-voice summary::before { content: '›'; display: inline-block; margin-right: var(--vc-space-xs); transition: transform var(--vc-dur-standard) var(--vc-spring); }
-html[data-vc-layout="desktop"] body.vc-ui .vc-settings-voice details[open] summary::before { transform: rotate(90deg); }
-html[data-vc-layout="desktop"] body.vc-ui .vc-settings-voice details .vc-group { padding: 0; background: transparent; border: 0; }
-html[data-vc-layout="desktop"] body.vc-ui .vc-settings-category-control { display: none; }
-html[data-vc-layout="desktop"] body.vc-ui .vc-settings-body .vc-segment { width: 100%; margin: 0; }
-html[data-vc-layout="desktop"] body.vc-ui .vc-settings-content #vc-model-settings-root { position: static; z-index: auto; color-scheme: inherit; width: 100%; min-width: 0; height: 100%; font-family: var(--vc-font); font-size: var(--vc-fs-body); }
-html[data-vc-layout="desktop"] body.vc-ui .vc-settings-content #vc-model-settings-root .vcms-overlay:not([hidden]) { position: static; inset: auto; height: 100%; padding: 0; background: transparent; overflow: hidden; }
-html[data-vc-layout="desktop"] body.vc-ui .vc-settings-content #vc-model-settings-root .vcms-panel { display: flex; flex-direction: column; height: 100%; width: min(100%,808px); min-width: 0; min-height: 0; margin: 0 auto; background: transparent; box-shadow: none; border: 0; }
-html[data-vc-layout="desktop"] body.vc-ui .vc-settings-content #vc-model-settings-root .vcms-header { position: static; height: 64px; min-height: 64px; padding: 0 24px; gap: var(--vc-space-xs); background: transparent; box-shadow: none; z-index: auto; }
-html[data-vc-layout="desktop"] body.vc-ui .vc-settings-content #vc-model-settings-root .vcms-header .vc-nav-title { position: static; transform: none; width: auto; max-width: none; flex: 1; min-width: 0; text-align: left; font-size: var(--vc-fs-title-1); font-weight: 700; }
-html[data-vc-layout="desktop"] body.vc-ui .vc-settings-content #vc-model-settings-root .vcms-header .vc-nav-spacer { display: none; }
-html[data-vc-layout="desktop"] body.vc-ui .vc-settings-content #vc-model-settings-root .vcms-panel[data-vc-screen="home"] [data-action="vc-back"] { display: none; }
-html[data-vc-layout="desktop"] body.vc-ui .vc-settings-content #vc-model-settings-root .vcms-body { display: block; height: auto; flex: 1; min-height: 0; overflow: auto; padding: 0 24px 24px; }
-html[data-vc-layout="desktop"] body.vc-ui .vc-settings-content #vc-model-settings-root :is(.vcms-layout,.vcms-main,.vcms-tabpanes,.vcms-providers) { display: block; width: 100%; min-width: 0; max-width: none; padding: 0; border: 0; background: transparent; }
-html[data-vc-layout="desktop"] body.vc-ui .vc-settings-content #vc-model-settings-root .vcms-provider-list { width: 100%; background: var(--vc-raised); border: .5px solid var(--vc-raised-edge); border-radius: var(--vc-radius-md); box-sizing: border-box; }
-html[data-vc-layout="desktop"] body.vc-ui .vc-settings-content #vc-model-settings-root :is(.vcms-providers-title,.vcms-desktop-group-title,.vcms-usage-head,.vcms-section-title) { font-size: var(--vc-fs-headline); font-weight: 600; color: var(--vc-ink); margin: 16px 16px 8px; }
-html[data-vc-layout="desktop"] body.vc-ui .vc-settings-content #vc-model-settings-root .vcms-usage { background: var(--vc-raised); border: .5px solid var(--vc-raised-edge); padding: 4px 16px; border-radius: var(--vc-radius-md); box-sizing: border-box; }
-html[data-vc-layout="desktop"] body.vc-ui .vc-settings-content #vc-model-settings-root .vc-desk-field { display: grid; grid-template-columns: 200px minmax(0,1fr); min-height: 44px; align-items: center; gap: var(--vc-space-xs); margin: 0; padding: 4px 16px; box-sizing: border-box; background: var(--vc-raised); }
-html[data-vc-layout="desktop"] body.vc-ui .vc-settings-content #vc-model-settings-root .vc-desk-field > :is(label,.vcms-field-label) { white-space: nowrap; }
-html[data-vc-layout="desktop"] body.vc-ui .vc-settings-content #vc-model-settings-root .vc-desk-field > :is(.vcms-error,[role="alert"],p) { grid-column: 2; }
-html[data-vc-layout="desktop"] body.vc-ui .vc-settings-content #vc-model-settings-root .vc-desk-field :is(input,select) { max-width: 360px; min-height: 36px; height: 36px; padding: 0 12px; }
-html[data-vc-layout="desktop"] body.vc-ui .vc-settings-content #vc-model-settings-root .vc-desk-field select { width: min(100%,240px); min-width: 160px; }
-html[data-vc-layout="desktop"] body.vc-ui .vc-settings-content #vc-model-settings-root .vc-desk-field input[type="number"] { width: 160px; }
-html[data-vc-layout="desktop"] body.vc-ui .vc-settings-content #vc-model-settings-root :is(.vcms-bindings-intro,.vcms-bindings-panel) { padding: 0; background: transparent; border: 0; }
-html[data-vc-layout="desktop"] body.vc-ui .vc-settings-content #vc-model-settings-root .vcms-cap-options { max-width: 360px; margin: 0; }
-html[data-vc-layout="desktop"] body.vc-ui .vc-settings-content #vc-model-settings-root .vcms-cap-options .vcms-cap-option { background: transparent; color: var(--vc-ink); border: 0; border-radius: var(--vc-radius-sm); font-size: var(--vc-fs-body); min-width: 0; padding: 0; }
-html[data-vc-layout="desktop"] body.vc-ui .vc-settings-content #vc-model-settings-root .vcms-cap-row { display: grid; grid-template-columns: 200px minmax(0,1fr); gap: var(--vc-space-xs); align-items: center; min-height: 44px; padding: 4px 16px; background: var(--vc-raised); }
-html[data-vc-layout="desktop"] body.vc-ui .vc-settings-content #vc-model-settings-root .vcms-cap-grid { display: block; }
-html[data-vc-layout="desktop"] body.vc-ui .vc-settings-content #vc-model-settings-root .vcms-used-by { color: var(--vc-ink-2); font-size: var(--vc-fs-body); }
-html[data-vc-layout="desktop"] body.vc-ui .vc-settings-content #vc-model-settings-root .vcms-internal { margin-top: var(--vc-space-sm); padding: 4px 0; border-radius: var(--vc-radius-md); background: var(--vc-raised); }
-html[data-vc-layout="desktop"] body.vc-ui .vc-settings-content #vc-model-settings-root summary { min-height: 44px; padding: 0 16px; display: flex; align-items: center; cursor: pointer; font-weight: 600; }
-html[data-vc-layout="desktop"] body.vc-ui .vc-settings-content #vc-model-settings-root summary::marker { content: ''; }
-html[data-vc-layout="desktop"] body.vc-ui .vc-settings-content #vc-model-settings-root details[open] > summary .vc-icon { transform: rotate(90deg); }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) [data-vc-appearance] input[aria-hidden="true"] { display: none; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) #vc-shell:has(.vc-settings-shell) .vc-shell-settings { overflow: visible; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) #vc-shell:has(.vc-settings-shell) .vc-shell-settings > .vc-navbar { display: none; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) #vc-shell:has(.vc-settings-shell) .vc-shell-settings > .vc-shell-scroll { height: 100%; padding: 0; overflow: visible; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-settings-shell { height: 100%; min-width: 0; display: grid; grid-template-columns: 240px minmax(0,1fr); gap: var(--vc-space-sm); }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-settings-categories { padding: 0 12px 12px; overflow-y: auto; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-settings-categories h1 { display: flex; align-items: center; height: 64px; margin: 0 12px; font-size: var(--vc-fs-title-1); font-weight: 700; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-settings-categories h2 { margin: 16px 12px 8px; font-size: var(--vc-fs-headline); font-weight: 600; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-settings-categories > button { display: flex; align-items: center; gap: var(--vc-space-sm); min-height: 44px; width: 100%; padding: 6px 12px; color: var(--vc-ink); background: transparent; border: 0; border-radius: var(--vc-radius-sm); text-align: left; font-size: var(--vc-fs-body); }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-settings-categories > button[aria-current="page"] { color: var(--vc-accent-text); background: var(--vc-select-fill); }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-settings-categories .vc-tile { width: 28px; height: 28px; border-radius: var(--vc-radius-tile); flex: none; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-settings-content { overflow: hidden; display: flex; flex-direction: column; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-settings-header { flex: none; height: 64px; min-height: 64px; width: min(100%,808px); margin: 0 auto; padding: 0 24px; box-sizing: border-box; display: flex; align-items: center; gap: var(--vc-space-xs); }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-settings-header h1 { margin: 0; flex: 1; font-size: var(--vc-fs-title-1); font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-settings-body { flex: 1; min-height: 0; width: min(100%,808px); padding: 0 24px 24px; box-sizing: border-box; overflow: auto; margin: 0 auto; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-settings-voice { display: grid; gap: var(--vc-space-sm); }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-settings-voice .vc-cell,
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-sheet:has([data-voice-settings]) .vc-cell { display: grid; grid-template-columns: 200px minmax(0,1fr); gap: var(--vc-space-xs); align-items: center; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-settings-voice .vc-cell:has(.vc-value) { grid-template-columns: 200px auto minmax(0,1fr); }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) :is(.vc-settings-voice,.vc-sheet:has([data-voice-settings])) .vc-cell > :first-child { white-space: nowrap; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) :is(.vc-settings-voice,.vc-sheet:has([data-voice-settings])) input[type="number"] { width: 160px; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) :is(.vc-settings-voice,.vc-sheet:has([data-voice-settings])) select { width: min(100%,240px); min-width: 160px; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) :is(.vc-settings-voice,.vc-sheet:has([data-voice-settings])) .vc-voice-setting-text { display: block; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) :is(.vc-settings-voice,.vc-sheet:has([data-voice-settings])) textarea { display: block; width: 100%; height: auto; min-height: 80px; padding: 8px 12px; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-settings-voice details { padding: 4px 16px; border-radius: var(--vc-radius-md); background: var(--vc-raised); border: .5px solid var(--vc-raised-edge); }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-settings-voice summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; font-size: var(--vc-fs-headline); font-weight: 600; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-settings-voice summary::before { content: '›'; display: inline-block; margin-right: var(--vc-space-xs); transition: transform var(--vc-dur-standard) var(--vc-spring); }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-settings-voice details[open] summary::before { transform: rotate(90deg); }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-settings-voice details .vc-group { padding: 0; background: transparent; border: 0; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-settings-category-control { display: none; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-settings-body .vc-segment { width: 100%; margin: 0; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-settings-content #vc-model-settings-root { position: static; z-index: auto; color-scheme: inherit; width: 100%; min-width: 0; height: 100%; font-family: var(--vc-font); font-size: var(--vc-fs-body); }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-settings-content #vc-model-settings-root .vcms-overlay:not([hidden]) { position: static; inset: auto; height: 100%; padding: 0; background: transparent; overflow: hidden; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-settings-content #vc-model-settings-root .vcms-panel { display: flex; flex-direction: column; height: 100%; width: min(100%,808px); min-width: 0; min-height: 0; margin: 0 auto; background: transparent; box-shadow: none; border: 0; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-settings-content #vc-model-settings-root .vcms-header { position: static; height: 64px; min-height: 64px; padding: 0 24px; gap: var(--vc-space-xs); background: transparent; box-shadow: none; z-index: auto; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-settings-content #vc-model-settings-root .vcms-header .vc-nav-title { position: static; transform: none; width: auto; max-width: none; flex: 1; min-width: 0; text-align: left; font-size: var(--vc-fs-title-1); font-weight: 700; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-settings-content #vc-model-settings-root .vcms-header .vc-nav-spacer { display: none; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-settings-content #vc-model-settings-root .vcms-panel[data-vc-screen="home"] [data-action="vc-back"] { display: none; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-settings-content #vc-model-settings-root .vcms-body { display: block; height: auto; flex: 1; min-height: 0; overflow: auto; padding: 0 24px 24px; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-settings-content #vc-model-settings-root :is(.vcms-layout,.vcms-main,.vcms-tabpanes,.vcms-providers) { display: block; width: 100%; min-width: 0; max-width: none; padding: 0; border: 0; background: transparent; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-settings-content #vc-model-settings-root .vcms-provider-list { width: 100%; background: var(--vc-raised); border: .5px solid var(--vc-raised-edge); border-radius: var(--vc-radius-md); box-sizing: border-box; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-settings-content #vc-model-settings-root :is(.vcms-providers-title,.vcms-desktop-group-title,.vcms-usage-head,.vcms-section-title) { font-size: var(--vc-fs-headline); font-weight: 600; color: var(--vc-ink); margin: 16px 16px 8px; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-settings-content #vc-model-settings-root .vcms-usage { background: var(--vc-raised); border: .5px solid var(--vc-raised-edge); padding: 4px 16px; border-radius: var(--vc-radius-md); box-sizing: border-box; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-settings-content #vc-model-settings-root .vc-desk-field { display: grid; grid-template-columns: 200px minmax(0,1fr); min-height: 44px; align-items: center; gap: var(--vc-space-xs); margin: 0; padding: 4px 16px; box-sizing: border-box; background: var(--vc-raised); }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-settings-content #vc-model-settings-root .vc-desk-field > :is(label,.vcms-field-label) { white-space: nowrap; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-settings-content #vc-model-settings-root .vc-desk-field > :is(.vcms-error,[role="alert"],p) { grid-column: 2; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-settings-content #vc-model-settings-root .vc-desk-field :is(input,select) { max-width: 360px; min-height: 36px; height: 36px; padding: 0 12px; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-settings-content #vc-model-settings-root .vc-desk-field select { width: min(100%,240px); min-width: 160px; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-settings-content #vc-model-settings-root .vc-desk-field input[type="number"] { width: 160px; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-settings-content #vc-model-settings-root :is(.vcms-bindings-intro,.vcms-bindings-panel) { padding: 0; background: transparent; border: 0; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-settings-content #vc-model-settings-root .vcms-cap-options { max-width: 360px; margin: 0; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-settings-content #vc-model-settings-root .vcms-cap-options .vcms-cap-option { background: transparent; color: var(--vc-ink); border: 0; border-radius: var(--vc-radius-sm); font-size: var(--vc-fs-body); min-width: 0; padding: 0; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-settings-content #vc-model-settings-root .vcms-cap-row { display: grid; grid-template-columns: 200px minmax(0,1fr); gap: var(--vc-space-xs); align-items: center; min-height: 44px; padding: 4px 16px; background: var(--vc-raised); }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-settings-content #vc-model-settings-root .vcms-cap-grid { display: block; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-settings-content #vc-model-settings-root .vcms-used-by { color: var(--vc-ink-2); font-size: var(--vc-fs-body); }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-settings-content #vc-model-settings-root .vcms-internal { margin-top: var(--vc-space-sm); padding: 4px 0; border-radius: var(--vc-radius-md); background: var(--vc-raised); }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-settings-content #vc-model-settings-root summary { min-height: 44px; padding: 0 16px; display: flex; align-items: center; cursor: pointer; font-weight: 600; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-settings-content #vc-model-settings-root summary::marker { content: ''; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-settings-content #vc-model-settings-root details[open] > summary .vc-icon { transform: rotate(90deg); }
 @media(max-width:1023px) {
-  html[data-vc-layout="desktop"] body.vc-ui .vc-settings-shell { grid-template-columns: minmax(0,1fr); }
-  html[data-vc-layout="desktop"] body.vc-ui .vc-settings-categories { display: none; }
-  html[data-vc-layout="desktop"] body.vc-ui .vc-settings-category-control { display: contents; }
+  :is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-settings-shell { grid-template-columns: minmax(0,1fr); }
+  :is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-settings-categories { display: none; }
+  :is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-settings-category-control { display: contents; }
+}
+@media(max-width:743px) {
+  body[data-vc-standalone].vc-ui .vc-settings-shell .vc-settings-voice .vc-cell { grid-template-columns: minmax(0,1fr) minmax(0,1fr); }
+  body[data-vc-standalone].vc-ui .vc-settings-shell .vc-settings-content #vc-model-settings-root :is(.vc-desk-field,.vcms-caprow) { grid-template-columns: minmax(0,1fr); }
+  body[data-vc-standalone].vc-ui .vc-settings-shell .vc-settings-content #vc-model-settings-root .vc-desk-field > :is(.vcms-error,[role="alert"],p) { grid-column: 1; }
+  body[data-vc-standalone].vc-ui .vc-settings-shell .vc-settings-content #vc-model-settings-root .vc-desk-field:has([data-action="toggle-provider-state"]) { grid-template-columns: minmax(0,1fr) auto; }
+  body[data-vc-standalone].vc-ui .vc-settings-shell .vc-settings-content #vc-model-settings-root .vcms-protocol-name { white-space: normal; overflow-wrap: anywhere; }
+  body[data-vc-standalone].vc-ui .vc-settings-shell .vc-settings-voice .vc-cell:has(.vc-value) { grid-template-columns: minmax(0,1fr) auto auto; }
+  body[data-vc-standalone].vc-ui .vc-settings-shell .vc-settings-voice .vc-cell :is(input[type="number"],select),
+  body[data-vc-standalone].vc-ui .vc-settings-shell .vc-settings-content #vc-model-settings-root .vc-desk-field :is(input,select) { width: 100%; min-width: 0; max-width: 100%; }
+  body[data-vc-standalone].vc-ui .vc-settings-shell .vc-settings-voice .vc-cell > :first-child,
+  body[data-vc-standalone].vc-ui .vc-settings-shell .vc-settings-content #vc-model-settings-root .vc-desk-field > :is(label,.vcms-field-label) { white-space: normal; }
+  body[data-vc-standalone].vc-ui .vc-settings-shell [data-vc-appearance] .vc-desk-field:has(.vc-switch) { display: flex; align-items: center; justify-content: space-between; gap: var(--vc-space-xs); min-height: 44px; }
 }
 
-html[data-vc-layout="desktop"] body.vc-ui #vc-shell:has(.vc-settings-shell) .vc-shell-settings { background: transparent; }
-html[data-vc-layout="desktop"] body.vc-ui .vc-settings-content #vc-model-settings-root .vcms-desktop-grid { display: block; border-radius: var(--vc-radius-md); overflow: hidden; margin: 0 0 var(--vc-space-sm); }
-html[data-vc-layout="desktop"] body.vc-ui .vc-settings-content #vc-model-settings-root .vcms-body { width: 100%; box-sizing: border-box; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) #vc-shell:has(.vc-settings-shell) .vc-shell-settings { background: transparent; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-settings-content #vc-model-settings-root .vcms-desktop-grid { display: block; border-radius: var(--vc-radius-md); overflow: hidden; margin: 0 0 var(--vc-space-sm); }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-settings-content #vc-model-settings-root .vcms-body { width: 100%; box-sizing: border-box; }
 
-html[data-vc-layout="desktop"] body.vc-ui .vc-settings-shell [hidden] { display: none; }
-html[data-vc-layout="desktop"] body.vc-ui .vc-settings-voice .vc-cell:has(.vc-value) > .vc-switch { grid-column: 2; grid-row: 1; }
-html[data-vc-layout="desktop"] body.vc-ui .vc-settings-voice .vc-cell:has(.vc-value) > .vc-value { grid-column: 3; grid-row: 1; }
-html[data-vc-layout="desktop"] body.vc-ui .vc-settings-content #vc-model-settings-root .vcms-providers-title { display: block; }
-html[data-vc-layout="desktop"] body.vc-ui .vc-settings-content #vc-model-settings-root .vcms-desktop-section { background: var(--vc-raised); padding: 4px 16px; margin: 0 0 var(--vc-space-sm); border: .5px solid var(--vc-raised-edge); border-radius: var(--vc-radius-md); }
-html[data-vc-layout="desktop"] body.vc-ui .vc-settings-content #vc-model-settings-root .vcms-desktop-section .vc-desk-field { padding: 4px 0; background: transparent; border-bottom: .5px solid var(--vc-raised-edge); }
-html[data-vc-layout="desktop"] body.vc-ui .vc-settings-content #vc-model-settings-root .vcms-desktop-section .vcms-section-title { margin: 16px 0 8px; }
-html[data-vc-layout="desktop"] body.vc-ui .vc-settings-content #vc-model-settings-root .vcms-panel[data-vc-screen="model"] .vcms-desktop-section:not(:has(.vcms-model-form)) { display: none; }
-html[data-vc-layout="desktop"] body.vc-ui .vc-settings-content #vc-model-settings-root .vcms-bindings-table .vcms-binding-select select { width: 100%; max-width: 240px; }
-html[data-vc-layout="desktop"] body.vc-ui .vc-settings-content #vc-model-settings-root .vcms-bindings-table th:first-child { width: 200px; }
-html[data-vc-layout="desktop"] body.vc-ui .vc-settings-content #vc-model-settings-root .vcms-bindings-table th:nth-child(2) { width: auto; }
-html[data-vc-layout="desktop"] body.vc-ui .vc-settings-content #vc-model-settings-root .vcms-bindings-table th:nth-child(3) { width: 88px; }
-html[data-vc-layout="desktop"] body.vc-ui .vc-settings-content #vc-model-settings-root .vcms-capgrid { display: block; }
-html[data-vc-layout="desktop"] body.vc-ui .vc-settings-content #vc-model-settings-root .vcms-caprow { display: grid; grid-template-columns: 200px minmax(0,1fr); align-items: center; min-height: 44px; gap: var(--vc-space-xs); }
-html[data-vc-layout="desktop"] body.vc-ui .vc-settings-content #vc-model-settings-root .vcms-caprow .vcms-capchoices { min-width: 0; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-settings-shell [hidden] { display: none; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-settings-voice .vc-cell:has(.vc-value) > .vc-switch { grid-column: 2; grid-row: 1; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-settings-voice .vc-cell:has(.vc-value) > .vc-value { grid-column: 3; grid-row: 1; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-settings-content #vc-model-settings-root .vcms-providers-title { display: block; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-settings-content #vc-model-settings-root .vcms-desktop-section { background: var(--vc-raised); padding: 4px 16px; margin: 0 0 var(--vc-space-sm); border: .5px solid var(--vc-raised-edge); border-radius: var(--vc-radius-md); }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-settings-content #vc-model-settings-root .vcms-desktop-section .vc-desk-field { padding: 4px 0; background: transparent; border-bottom: .5px solid var(--vc-raised-edge); }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-settings-content #vc-model-settings-root .vcms-desktop-section .vcms-section-title { margin: 16px 0 8px; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-settings-content #vc-model-settings-root .vcms-panel[data-vc-screen="model"] .vcms-desktop-section:not(:has(.vcms-model-form)) { display: none; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-settings-content #vc-model-settings-root .vcms-bindings-table .vcms-binding-select select { width: 100%; max-width: 240px; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-settings-content #vc-model-settings-root .vcms-bindings-table th:first-child { width: 200px; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-settings-content #vc-model-settings-root .vcms-bindings-table th:nth-child(2) { width: auto; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-settings-content #vc-model-settings-root .vcms-bindings-table th:nth-child(3) { width: 88px; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-settings-content #vc-model-settings-root .vcms-capgrid { display: block; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-settings-content #vc-model-settings-root .vcms-caprow { display: grid; grid-template-columns: 200px minmax(0,1fr); align-items: center; min-height: 44px; gap: var(--vc-space-xs); }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-settings-content #vc-model-settings-root .vcms-caprow .vcms-capchoices { min-width: 0; }
 
-html[data-vc-layout="desktop"] body.vc-ui .vc-settings-content #vc-model-settings-root .vcms-grid3 { display: block; }
-html[data-vc-layout="desktop"] body.vc-ui .vc-settings-content #vc-model-settings-root .vcms-seg.vc-segment { display: flex; margin: 0; width: 100%; border: 0; }
-html[data-vc-layout="desktop"] body.vc-ui .vc-settings-content #vc-model-settings-root .vcms-seg.vc-segment .vcms-seg-btn { padding: 0; min-width: 0; min-height: 0; height: 28px; background: transparent; color: var(--vc-ink); border: 0; font-size: var(--vc-fs-footnote); }
-html[data-vc-layout="desktop"] body.vc-ui .vc-settings-content #vc-model-settings-root .vcms-mono { font-family: var(--vc-font); }
-html[data-vc-layout="desktop"] body.vc-ui .vc-settings-header .vc-btn-fill .vc-icon { width: 16px; height: 16px; animation: vc-settings-spin calc(var(--vc-dur-standard) * 2) linear infinite; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-settings-content #vc-model-settings-root .vcms-grid3 { display: block; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-settings-content #vc-model-settings-root .vcms-seg.vc-segment { display: flex; margin: 0; width: 100%; border: 0; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-settings-content #vc-model-settings-root .vcms-seg.vc-segment .vcms-seg-btn { padding: 0; min-width: 0; min-height: 0; height: 28px; background: transparent; color: var(--vc-ink); border: 0; font-size: var(--vc-fs-footnote); }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-settings-content #vc-model-settings-root .vcms-mono { font-family: var(--vc-font); }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-settings-header .vc-btn-fill .vc-icon { width: 16px; height: 16px; animation: vc-settings-spin calc(var(--vc-dur-standard) * 2) linear infinite; }
 @keyframes vc-settings-spin { to { transform: rotate(360deg); } }
 
-html[data-vc-layout="desktop"] body.vc-ui .vc-settings-content #vc-model-settings-root .vcms-providers { overflow: visible; }
-html[data-vc-layout="desktop"] body.vc-ui .vc-settings-content #vc-model-settings-root .vcms-provider-list { flex-direction: column; gap: 0; overflow: hidden; padding: 0; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-settings-content #vc-model-settings-root .vcms-providers { overflow: visible; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-settings-content #vc-model-settings-root .vcms-provider-list { flex-direction: column; gap: 0; overflow: hidden; padding: 0; }
 
-html[data-vc-layout="desktop"] body.vc-ui .vc-settings-content #vc-model-settings-root .vcms-btn { height: 40px; min-height: 40px; min-width: 88px; max-width: 176px; width: max-content; padding: 0 20px; border-radius: var(--vc-radius-pill); font-size: var(--vc-fs-body); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-settings-content #vc-model-settings-root .vcms-btn { height: 40px; min-height: 40px; min-width: 88px; max-width: 176px; width: max-content; padding: 0 20px; border-radius: var(--vc-radius-pill); font-size: var(--vc-fs-body); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* UX-22 R4：账户页头像行（R9） */
-html[data-vc-layout="desktop"] body.vc-ui .vc-settings-profile .vc-settings-profile-head { display: flex; align-items: center; gap: var(--vc-space-sm); min-height: 72px; padding: var(--vc-space-xs) 0; }
-html[data-vc-layout="desktop"] body.vc-ui .vc-settings-profile .vc-settings-profile-head [data-who-avatar] { width: 56px; height: 56px; font-size: var(--vc-fs-title-2); font-weight: 600; background: var(--vc-select-fill); color: var(--vc-accent-text); }
-html[data-vc-layout="desktop"] body.vc-ui .vc-settings-profile .vc-settings-profile-head strong { font-size: var(--vc-fs-headline); font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-html[data-vc-layout="desktop"] body.vc-ui .vc-settings-profile > button.vc-cell { display: flex; align-items: center; width: 100%; border: 0; background: transparent; color: var(--vc-ink); text-align: left; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-settings-profile .vc-settings-profile-head { display: flex; align-items: center; gap: var(--vc-space-sm); min-height: 72px; padding: var(--vc-space-xs) 0; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-settings-profile .vc-settings-profile-head [data-who-avatar] { width: 56px; height: 56px; font-size: var(--vc-fs-title-2); font-weight: 600; background: var(--vc-select-fill); color: var(--vc-accent-text); }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-settings-profile .vc-settings-profile-head strong { font-size: var(--vc-fs-headline); font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-settings-profile > button.vc-cell { display: flex; align-items: center; width: 100%; border: 0; background: transparent; color: var(--vc-ink); text-align: left; }
 
 /* UX-22 R4：九个酒馆抽屉在设置内容区原位打开。只按九个内容根 id 选择，不写 .drawer-content 通配。
    `.vc-settings-shell[data-drawer]` 由桌面设置壳在打开抽屉时标记；其他入口打开的抽屉保持原整页样式。 */
@@ -186,25 +199,25 @@ html[data-vc-layout="desktop"] body.vc-ui:has(.vc-settings-shell[data-drawer]) :
    · 内容区与其他设置页同为面板玻璃：分组、表格外层统一用 --vc-raised（第 16.1 节内卡），不再是不透明白 / 黑。
    · `.vcms-layout` 在 `.vcms-body` 里取了 100% 高度，内容更高时下一块（本机模型）压在用途表最后一行上；改为随内容。
    · 用途表三列（用途 / 模型配置 + 启用 / 状态）同一行内垂直居中，选择框与复选框按 16.4。 */
-html[data-vc-layout="desktop"] body.vc-ui .vc-settings-content #vc-model-settings-root .vcms-layout { height: auto; }
-html[data-vc-layout="desktop"] body.vc-ui .vc-settings-content #vc-model-settings-root :is(.vcms-local .vc-group, .vcms-usage-cards.vc-group) { background: var(--vc-raised); border: .5px solid var(--vc-raised-edge); }
-html[data-vc-layout="desktop"] body.vc-ui .vc-settings-content #vc-model-settings-root .vcms-table-wrap { background: transparent; border-radius: 0; overflow: visible; }
-html[data-vc-layout="desktop"] body.vc-ui .vc-settings-content #vc-model-settings-root .vcms-bindings-table { display: block; min-width: 0; }
-html[data-vc-layout="desktop"] body.vc-ui .vc-settings-content #vc-model-settings-root .vcms-bindings-table :is(thead, tbody) { display: block; }
-html[data-vc-layout="desktop"] body.vc-ui .vc-settings-content #vc-model-settings-root .vcms-bindings-table tr { display: grid; grid-template-columns: 200px minmax(0, 1fr) 96px; align-items: center; column-gap: var(--vc-space-xs); }
-html[data-vc-layout="desktop"] body.vc-ui .vc-settings-content #vc-model-settings-root .vcms-bindings-table :is(th, td) { display: block; width: auto; min-width: 0; padding: 4px 0; border-bottom: 0; box-sizing: border-box; background: transparent; }
-html[data-vc-layout="desktop"] body.vc-ui .vc-settings-content #vc-model-settings-root .vcms-bindings-table tbody tr { min-height: 52px; border-bottom: .5px solid var(--vc-raised-edge); }
-html[data-vc-layout="desktop"] body.vc-ui .vc-settings-content #vc-model-settings-root .vcms-bindings-table tbody tr:last-child { border-bottom: 0; }
-html[data-vc-layout="desktop"] body.vc-ui .vc-settings-content #vc-model-settings-root .vcms-bindings-table th { font-size: var(--vc-fs-footnote); color: var(--vc-ink-2); }
-html[data-vc-layout="desktop"] body.vc-ui .vc-settings-content #vc-model-settings-root .vcms-bindings-table :is(th, td):nth-child(n+4) { display: none; }
-html[data-vc-layout="desktop"] body.vc-ui .vc-settings-content #vc-model-settings-root td.vcms-binding-select { display: flex; flex-direction: row; flex-wrap: wrap; align-items: center; gap: var(--vc-space-xs) var(--vc-space-sm); }
-html[data-vc-layout="desktop"] body.vc-ui .vc-settings-content #vc-model-settings-root .vcms-binding-select > select { flex: 0 1 240px; width: 240px; min-width: 160px; max-width: 100%; margin: 0; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-settings-content #vc-model-settings-root .vcms-layout { height: auto; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-settings-content #vc-model-settings-root :is(.vcms-local .vc-group, .vcms-usage-cards.vc-group) { background: var(--vc-raised); border: .5px solid var(--vc-raised-edge); }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-settings-content #vc-model-settings-root .vcms-table-wrap { background: transparent; border-radius: 0; overflow: visible; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-settings-content #vc-model-settings-root .vcms-bindings-table { display: block; min-width: 0; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-settings-content #vc-model-settings-root .vcms-bindings-table :is(thead, tbody) { display: block; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-settings-content #vc-model-settings-root .vcms-bindings-table tr { display: grid; grid-template-columns: 200px minmax(0, 1fr) 96px; align-items: center; column-gap: var(--vc-space-xs); }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-settings-content #vc-model-settings-root .vcms-bindings-table :is(th, td) { display: block; width: auto; min-width: 0; padding: 4px 0; border-bottom: 0; box-sizing: border-box; background: transparent; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-settings-content #vc-model-settings-root .vcms-bindings-table tbody tr { min-height: 52px; border-bottom: .5px solid var(--vc-raised-edge); }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-settings-content #vc-model-settings-root .vcms-bindings-table tbody tr:last-child { border-bottom: 0; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-settings-content #vc-model-settings-root .vcms-bindings-table th { font-size: var(--vc-fs-footnote); color: var(--vc-ink-2); }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-settings-content #vc-model-settings-root .vcms-bindings-table :is(th, td):nth-child(n+4) { display: none; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-settings-content #vc-model-settings-root td.vcms-binding-select { display: flex; flex-direction: row; flex-wrap: wrap; align-items: center; gap: var(--vc-space-xs) var(--vc-space-sm); }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-settings-content #vc-model-settings-root .vcms-binding-select > select { flex: 0 1 240px; width: 240px; min-width: 160px; max-width: 100%; margin: 0; }
 /* 16.4 控件：底 --vc-raised（浅 .72 白 / 深 .08 白）、0.5px raised-edge、圆角 10。settings-pages.css 对模型页全部输入框用 !important 写了灰底 / 无描边 / 圆角 12，只能同级 !important 压过。 */
-html[data-vc-layout="desktop"] body.vc-ui .vc-settings-content #vc-model-settings-root :is(input:not([type="radio"], [type="checkbox"], [type="range"]), select, textarea) { background: var(--vc-raised) !important; border: .5px solid var(--vc-raised-edge) !important; border-radius: var(--vc-radius-control) !important; } /* 压过 settings-pages.css 的 --vc-fill / border:0 / radius !important */
-html[data-vc-layout="desktop"] body.vc-ui .vc-settings-content #vc-model-settings-root .vcms-binding-select .vcms-check { min-height: 36px; gap: var(--vc-space-xs); font-size: var(--vc-fs-body); }
-html[data-vc-layout="desktop"] body.vc-ui .vc-settings-content #vc-model-settings-root .vcms-binding-select .vcms-check input { width: 18px; height: 18px; margin: 0; border-radius: var(--vc-radius-check); }
-html[data-vc-layout="desktop"] body.vc-ui .vc-settings-content #vc-model-settings-root td.vcms-binding-purpose { display: block; min-width: 0; }
-html[data-vc-layout="desktop"] body.vc-ui .vc-settings-content #vc-model-settings-root .vcms-binding-status { align-self: center; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-settings-content #vc-model-settings-root :is(input:not([type="radio"], [type="checkbox"], [type="range"]), select, textarea) { background: var(--vc-raised) !important; border: .5px solid var(--vc-raised-edge) !important; border-radius: var(--vc-radius-control) !important; } /* 压过 settings-pages.css 的 --vc-fill / border:0 / radius !important */
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-settings-content #vc-model-settings-root .vcms-binding-select .vcms-check { min-height: 36px; gap: var(--vc-space-xs); font-size: var(--vc-fs-body); }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-settings-content #vc-model-settings-root .vcms-binding-select .vcms-check input { width: 18px; height: 18px; margin: 0; border-radius: var(--vc-radius-check); }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-settings-content #vc-model-settings-root td.vcms-binding-purpose { display: block; min-width: 0; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-settings-content #vc-model-settings-root .vcms-binding-status { align-self: center; }
 
 /* UX-22 QA P2-10 / P2-11 / P2-12：酒馆抽屉补丁（同上，只作用于设置内容区里的九个抽屉）。 */
 html[data-vc-layout="desktop"] body.vc-ui:has(.vc-settings-shell[data-drawer]) :is(#left-nav-panel, #rm_api_block, #AdvancedFormatting, #WorldInfo, #user-settings-block, #Backgrounds, #rm_extensions_block, #PersonaManagement, #right-nav-panel).vc-drawer-page {
@@ -221,4 +234,4 @@ html[data-vc-layout="desktop"] body.vc-ui:has(.vc-settings-shell[data-drawer]) :
 }
 
 /* UX-22 QA P2-14：分组自带 16px 内边距，标题不再叠加 16px 外距（本机模型 / 用量与用途表同一左缘）。 */
-html[data-vc-layout="desktop"] body.vc-ui .vc-settings-content #vc-model-settings-root :is(.vcms-local .vcms-desktop-group-title, .vcms-usage > .vcms-usage-head, .vcms-usage > .vcms-usage-note) { margin-inline: 0; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-settings-content #vc-model-settings-root :is(.vcms-local .vcms-desktop-group-title, .vcms-usage > .vcms-usage-head, .vcms-usage > .vcms-usage-note) { margin-inline: 0; }
