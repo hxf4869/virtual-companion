@@ -34,6 +34,23 @@ test('所有原生资源由Go会话准入；伪造身份头和旧ST cookie均无
     for (const { options } of h.requests) assert.equal(options.headers.Cookie, 'vc_session=synthetic');
 });
 
+test('独立桌面入口绑定原账号/会话并直接返回自有HTML；完整原生入口仍保留', async () => {
+    const h = harness();
+    const desktop = await h.call('/desktop/');
+    assert.equal(desktop.res.statusCode, 200);
+    assert.equal(desktop.next, false);
+    assert.equal(desktop.req.session.vcAccountId, '42');
+    assert.equal(desktop.req.session.vcSessionId, '7');
+    assert.match(desktop.res.payload, /name="vc-account-id" content="42"/);
+    assert.match(desktop.res.payload, /desktop\/standalone\/app.js/);
+    assert.doesNotMatch(desktop.res.payload, /<iframe|src=["']\/?script\.js|id="preloader"/);
+    assert.equal((await harness({ status: 401 }).call('/desktop/')).res.headers.Location, '/auth/');
+    assert.equal((await harness({ identity: { ...active, nextStep: 'TOTP_REQUIRED' } }).call('/desktop/')).res.headers.Location, '/auth/');
+    assert.equal((await harness({ identity: { ...active, deletionPending: true } }).call('/desktop/')).res.statusCode, 409);
+    assert.equal((await h.call('/desktop')).res.headers.Location, '/desktop/');
+    assert.match((await h.call('/')).res.payload, /id="preloader"/);
+});
+
 test('完整TOTP/改密与明确handle映射均不可缺少；Go故障不放行', async () => {
     for (const identity of [{ ...active, authenticatorEnabled: false }, { ...active, passwordMustChange: true }, { ...active, accountId: '99' }]) {
         const r = await harness({ identity }).call('/characters/a.png');

@@ -50,3 +50,10 @@ DR-5候选：角色列表/详情与实例弹窗、人设编辑在`features/chara
 每批截图覆盖写一套after，before/reference不可覆盖。DR-6的ready参照固定补取完成及panel.refresh，原始诊断帧保留；公共壳层聊天对照复用该真实生产基线。刷新保留高亮已获Owner确认，4张建议回复帧另用accepted-selection，其余92张仍严格对原before；批准参照由冻结旧实现取得原皮肤的选中态，候选不补写选中。历史回放配对DR-7冻结的stickers.js与旧Sheet接口。DR-3历史语音截图只回放固定Git旧角色背景，交互前解除路由，角色生产页单独严格验证。不通过改文案、遮罩或阈值解决不同样板条件。
 
 完整宿主走查仍使用`accept-managed.mjs --filter vc-ui-walkthrough`，需已安装的Chrome与隔离栈，覆盖360/390/768/1024/1280/1440明暗。走查产物从当前受管入口的`ctx.artifactsDir`取得位置，在同级`walkthrough-latest/`覆盖保留一套；不会写入另一worktree的运行目录。真实provider、TTS、通知、手工浏览器缩放及手机软键盘不由这些合成场景证明。
+
+
+NF 电脑端替换使用同一工程与构建，不新建应用。开发入口 `/desktop/` 由原 host-auth 绑定账号/会话，直接返回自有 HTML；
+`extension/vc-model-settings/desktop/standalone/` 接入原 API、React 视图、主题和页面控制器，不导入完整 ST 启动入口。
+NF-01 只接通导航、历史和设置容器；发送与复杂卡验收分别在 NF-02–04，不将可编辑草稿当作可发送。
+受管 `accept-managed.mjs --filter nf-desktop` 延迟真实聊天准备模块，操作导航/设置/历史并检查实际请求与 iframe。
+唯一计划和后续范围见 `docs/planning/2026-11-02-desktop-frontend-refactor-plan.md` §11；根入口保留到 NF-10。

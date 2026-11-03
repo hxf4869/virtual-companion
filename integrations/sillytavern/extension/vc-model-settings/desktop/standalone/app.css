@@ -1,0 +1,15 @@
+/* ST 基础页面不参与独立入口。这里只补文档/数据槽位的布局；材质、颜色、密度沿用原皮肤。 */
+html, body { margin: 0; width: 100%; height: 100%; }
+body.vc-ui { font-family: var(--vc-font); color: var(--vc-ink); }
+body.vc-ui button, body.vc-ui textarea { font: inherit; }
+body[data-vc-standalone] *, body[data-vc-standalone] *::before, body[data-vc-standalone] *::after { box-sizing: border-box; }
+body.vc-ui [hidden] { display: none !important; }
+#vc-desktop-startup { padding: var(--vc-space-xl); }
+.vc-desktop-chat-root, .vc-desktop-conversation { display: flex; flex: 1; flex-direction: column; align-self: stretch; width: 100%; height: 100%; min-width: 0; min-height: 0; }
+body[data-vc-standalone] #chat { flex: 1; min-height: 0; overflow-y: auto; }
+body[data-vc-standalone] .mes_text { white-space: pre-wrap; overflow-wrap: anywhere; }
+body[data-vc-standalone] #form_sheld { align-self: center; width: min(100%, calc(var(--vc-read) + 48px)); padding: 8px var(--vc-page-pad) 16px; }
+body[data-vc-standalone] #send_form { display: flex; position: relative; }
+body[data-vc-standalone] #send_textarea { flex: 1; width: 100%; height: auto; min-height: 56px; padding: 12px 56px 12px 16px; resize: none; border-radius: var(--vc-radius-pill); }
+body[data-vc-standalone] #send_but { position: absolute; right: 8px; bottom: 8px; display: grid; place-items: center; width: 36px; height: 36px; padding: 0; border: 0; border-radius: var(--vc-radius-pill); color: var(--vc-on-accent); background: var(--vc-accent); }
+body[data-vc-standalone] #send_but:disabled { opacity: .4; }

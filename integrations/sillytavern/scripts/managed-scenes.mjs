@@ -39,7 +39,7 @@ import { desktopModelsScene } from './desktop-models-accept.mjs';
 import { desktopSettingsScene } from './desktop-settings-accept.mjs';
 import { desktopOverlaysScene } from './desktop-overlays-accept.mjs';
 import { desktopPagesScene } from './desktop-pages-accept.mjs';
-import { nativeStartupScene } from './desktop-startup-accept.mjs';
+import { nativeStartupScene, independentDesktopScene } from './desktop-startup-accept.mjs';
 
 export const ACCEPT_SCENES = [
     memoryRealModelScene,
@@ -103,4 +103,5 @@ export const ACCEPT_SCENES = [
     desktopOverlaysScene,
     desktopPagesScene,
     nativeStartupScene,
+    independentDesktopScene,
 ];

@@ -1615,7 +1615,7 @@ N-00～N-08（对应评审发现 F-01～F-08）为在途修复，逐项状态与
 唯一计划：`docs/planning/2026-11-02-desktop-frontend-refactor-plan.md` §11；Backlog J。一个隔离 worktree/写入 owner，按序持续推进。
 
 - [x] NF-00（2026-11-03）：React 基线 `09690d26`，隔离分支 `codex/desktop-independent-frontend`；唯一计划 §11、功能/接口/DOM 迁移表、Backlog J 和架构条款已落地。固定24条合成历史：cold UI 2510ms/可发送 4682ms，warm UI 2384ms/可发送 4271ms；nf-startup+catalog-admin 2/2通过、生成请求0，原工作树未提交改动保留。
-- [ ] NF-01：独立 `/desktop/` 入口。
+- [x] NF-01（2026-11-03）：同源 `/desktop/` 直接启动自有 React/页面/历史/设置，原身份/CSRF保护保留；真实延迟聊天准备模块后操作与草稿通过，完整ST请求/iframe/生成均0。几何回归RED→GREEN、390/1440明暗图及独立视觉复核通过；标准check.sh 45s与受管2/2通过。发送和复杂卡继续NF02–04，尚未切根入口。
 - [ ] NF-02：聊天计算、世界书/宏/正则/提示词与必要钩子。
 - [ ] NF-03：普通聊天纵切、三协议与 F2/CAS 异常恢复。
 - [ ] NF-04：复杂卡第一阶段技术门槛。

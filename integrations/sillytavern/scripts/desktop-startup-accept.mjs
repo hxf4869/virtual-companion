@@ -88,3 +88,75 @@ async function sceneNativeStartup(ctx) {
 }
 
 export const nativeStartupScene = { id: 'nf-startup', title: 'NF-00 固定合成历史下原生桌面冷/热启动基线', needs: ['catalog', 'stack', 'browser'], default: false, run: sceneNativeStartup };
+
+async function sceneIndependentDesktop(ctx) {
+    const fixture = await seedDesktopBenchmark(ctx);
+    const { chromium } = await import('playwright-core');
+    const browser = await chromium.launch({ headless: true, ...(process.env.VC_W03_CHROMIUM_PATH ? { executablePath: process.env.VC_W03_CHROMIUM_PATH } : {}) });
+    let releaseRuntime;
+    const gate = new Promise(resolve => { releaseRuntime = resolve; });
+    try {
+        const context = await desktopBenchmarkContext(browser, ctx);
+        let runtimeRequests = 0;
+        await context.route('**/desktop/standalone/runtime.js', async route => { runtimeRequests++; await gate; await route.continue(); });
+        const page = await context.newPage(); page.setDefaultTimeout(20000);
+        const requests = [], errors = [];
+        page.on('request', request => requests.push(new URL(request.url()).pathname));
+        page.on('pageerror', () => errors.push('uncaught-page-error'));
+        await page.goto(`${ctx.w05.stBase}/desktop/`, { waitUntil: 'domcontentloaded' });
+        await page.waitForFunction(() => document.documentElement.dataset.vcApp === 'ready');
+        await page.locator('#vc-shell .vc-sidebar [data-nav="characters"]').click();
+        await page.locator('.vc-characters input[type="search"], .vc-characters .vc-search input').first().fill('NF');
+        const uiMs = await page.evaluate(() => Math.round(performance.now()));
+        assert.equal(runtimeRequests, 1, '真实聊天准备模块仍在等待');
+        assert.equal(await page.locator('html').getAttribute('data-vc-runtime'), null);
+        await page.locator('#vc-shell .vc-sidebar [data-settings]').click();
+        await page.locator('.vc-settings-categories [data-category="appearance"]').click();
+        await page.getByRole('heading', { name: '外观', exact: true, level: 1 }).waitFor();
+        await page.locator('.vc-settings-categories [data-category="model"]').click();
+        await page.locator('.vcms-root').waitFor({ state: 'visible' });
+        await page.locator('#vc-shell .vc-sidebar [data-nav="chat"]').click();
+        const opening = await page.evaluate(() => performance.now());
+        const row = page.locator('[data-convo-list] [data-relationship-id]').first();
+        await row.click();
+        await page.waitForFunction(() => document.querySelectorAll('#chat > .mes').length === 24);
+        assert.equal(await page.locator('#send_but').isDisabled(), true, 'NF-01 不把尚未接通的发送宣称就绪');
+        await page.locator('#send_textarea').fill('合成桌面草稿');
+        const historyMs = await page.evaluate(() => Math.round(performance.now()));
+        assert.equal(await page.locator('iframe').count(), 0);
+        const geometry = await page.evaluate(() => ({
+            body: document.querySelector('.vc-shell-chat-body').getBoundingClientRect().width,
+            root: document.querySelector('.vc-desktop-chat-root').getBoundingClientRect().width,
+            composer: document.querySelector('#form_sheld').getBoundingClientRect().width,
+        }));
+        assert.ok(Math.abs(geometry.body - geometry.root) <= 1, `消息根应铺满对话面板 ${JSON.stringify(geometry)}`);
+        assert.ok(geometry.composer >= Math.min(geometry.body, 768) - 2, '输入区沿用既有阅读宽度');
+        for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
+            await page.setViewportSize(viewport);
+            for (const scheme of ['light', 'dark']) {
+                await page.evaluate(async mode => (await import('/scripts/extensions/third-party/vc-model-settings/ui/theme.js')).setThemeMode(mode), scheme);
+                await page.evaluate(async () => { await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))); await Promise.all(document.getAnimations().filter(animation => animation.playState === 'running' && animation.effect?.getComputedTiming().iterations !== Infinity).map(animation => animation.finished.catch(() => {}))); });
+                await page.screenshot({ path: path.join(ctx.artifactsDir, `nf-desktop-${viewport.width}-${scheme}.png`) });
+            }
+        }
+        await page.setViewportSize({ width: 1440, height: 900 });
+        await page.locator('#vc-shell .vc-sidebar [data-nav="characters"]').click();
+        await page.locator('#vc-shell .vc-sidebar [data-nav="chat"]').click();
+        assert.equal(await page.locator('#send_textarea').inputValue(), '合成桌面草稿');
+        const forbidden = requests.filter(url => ['/', '/index.html', '/script.js', '/scripts/extensions.js', '/scripts/st-context.js'].includes(url)
+            || /\/(?:JS-Slash-Runner|ST-Prompt-Template)\/dist\//.test(url));
+        assert.deepEqual(forbidden, [], '桌面不能请求完整宿主/启动器');
+        assert.equal(requests.filter(url => url.endsWith('/generate')).length, 0);
+        assert.deepEqual(errors, [], '自有页面无未捕获错误');
+        releaseRuntime();
+        await page.waitForFunction(() => document.documentElement.dataset.vcRuntime === 'prepared');
+        const result = { uiMs, historyMs, openMs: Math.round(historyMs - opening), sendMs: null,
+            delayedRuntime: true, nativeRequests: forbidden.length, modelRequests: 0, messages: fixture.chat.length - 1,
+            resources: [...new Set(requests)],
+            note: 'NF-01 验证导航/读取/设置独立；发送与复杂卡仍待 NF-02–04，不声称完成。' };
+        fs.writeFileSync(path.join(ctx.artifactsDir, 'nf-desktop.json'), JSON.stringify(result, null, 2) + '\n');
+        return result;
+    } finally { releaseRuntime(); await browser.close(); }
+}
+
+export const independentDesktopScene = { id: 'nf-desktop', title: 'NF-01 独立桌面：聊天延迟、导航/设置/历史与网络边界', needs: ['catalog', 'stack', 'browser'], default: false, run: sceneIndependentDesktop };

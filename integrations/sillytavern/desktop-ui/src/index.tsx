@@ -1,4 +1,5 @@
 import { VoiceBubble, type VoiceBubbleProps } from './features/story/VoiceBubble';
+import { DesktopChat, type DesktopChatProps } from './features/chat/DesktopChat';
 import { Stickers, StickerEntry, type StickersProps } from './features/story/Stickers';
 import { Lightbox, type LightboxProps } from './features/story/Lightbox';
 import { Story, type StoryProps } from './features/story/Story';
@@ -41,6 +42,13 @@ export { voiceFormValues } from './features/settings/VoiceForm';
 export type { AppearanceProps } from './features/appearance/types';
 export type { SidebarProps } from './components/Sidebar';
 export type { ModelPageProps } from './features/models/ModelPage';
+
+export function mountDesktopChatView(container: HTMLElement, props: DesktopChatProps) {
+    const root = createRoot(container);
+    const update = (next: DesktopChatProps) => flushSync(() => root.render(<DesktopChat {...next} />));
+    update(props);
+    return { update, unmount: () => root.unmount() };
+}
 
 export function mountVoiceBubbleView(container: HTMLElement, props: VoiceBubbleProps) {
     const root = createRoot(container); flushSync(() => root.render(<VoiceBubble {...props} />));

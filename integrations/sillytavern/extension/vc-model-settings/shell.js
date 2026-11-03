@@ -519,6 +519,8 @@ export function mountShell(options = {}) {
     const loadRelationships = options.loadRelationships || fetchRelationships;
     const loadInbox = options.loadInbox || loadInboxEvents;
     const loadNative = options.loadNative || defaultLoadNative;
+    const readChatSnapshots = options.loadChatSnapshots || (() => loadRecentChatSnapshots(loadNative));
+    const openConversation = options.openConversation || (row => openInstanceChat(row, { getContext, loadNative }));
 
     const root = doc.createElement('div');
     root.id = 'vc-shell';
@@ -846,7 +848,7 @@ export function mountShell(options = {}) {
             characterRef: instance?.characterRef,
         };
         if (!row.relationshipId && !row.file && !Number.isInteger(row.characterIndex)) return false;
-        const ok = await openInstanceChat(row, { getContext, loadNative });
+        const ok = await openConversation(row);
         if (!ok) return false;
         // 打开会话返回时对话栏已展开（桌面过渡把更新推迟到下一帧，这里等它完成）。
         await openChatColumn(row, opener);
@@ -890,7 +892,7 @@ export function mountShell(options = {}) {
             let discovered = [];
             let chatsComplete = false;
             try {
-                discovered = await loadRecentChatSnapshots(loadNative);
+                discovered = await readChatSnapshots();
                 if (token !== reloadToken) return;
                 chatsComplete = true;
             } catch {
@@ -1121,7 +1123,7 @@ export function mountShell(options = {}) {
             return;
         }
         root.dataset.openState = 'pending';
-        void openInstanceChat(row, { getContext, loadNative }).then((ok) => {
+        void openConversation(row).then((ok) => {
             if (!ok) {
                 root.dataset.openState = 'miss';
                 return;
@@ -1148,7 +1150,9 @@ export function mountShell(options = {}) {
         observer.observe(panel, { attributes: true, attributeFilter: ['class'] });
     }
 
-    if (!placeSheld() && typeof MutationObserver === 'function') {
+    if (typeof options.mountChatSurface === 'function') {
+        options.mountChatSurface(chatBody);
+    } else if (!placeSheld() && typeof MutationObserver === 'function') {
         const observer = new MutationObserver(() => {
             if (placeSheld()) observer.disconnect();
         });

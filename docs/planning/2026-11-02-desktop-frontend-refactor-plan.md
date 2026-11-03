@@ -457,3 +457,20 @@ MVU InitVar/Request/Response/Cleanup 与按钮不可删。
 index.js 218–221、239–241 再追加记忆/陪伴/剧情身份。剧情模式清除日常记忆和陪伴提示，保留既有 IN_PROMPT/IN_CHAT 位置。
 
 NF-00 收尾：TypeScript/Vite 构建、ST 离线整组 1033/1033（0 FAIL/0 SKIP）、受管 catalog-admin+nf-startup 2/2、`git diff --check` 通过。受管 ST/Go/provider/MemoryCore 与专属 PG/MinIO 容器及临时卷已按原入口退出清理；未部署、未调用真实服务。
+
+
+### 11.7 NF-01 独立入口候选（2026-11-03）
+
+- `/desktop/` 由原 host-auth 在线核验 Go 身份/TOTP/删除态、登记同一 profile 并绑定 ST 会话，返回自有 HTML；
+  HTML 捕获账号/会话，独立 client 获取原 ST CSRF，Go bridge 继续沿用原双提交和身份快照。无新数据接口或业务存储。
+- 同一 React/Vite bundle 增加自有 DesktopChat；消息与输入由 React 管理，页面控制器仍复用原组件/主题/服务。
+  shell 新增实际被桌面消费的历史/打开/渲染槽位，原生消费者的默认路径保持。无 iframe、无原生 `script.js`、完整扩展启动器或 ST context 请求。
+- 真正延迟 `standalone/runtime.js`：角色搜索、模型/外观设置、24条历史打开、草稿往返均可操作。
+  真实网络资源列表保存在受管结果 nf-desktop.json 的 resources 字段；禁止入口计数0、iframe0、模型生成请求0。
+- 这是 NF-01 的候选范围：发送 disabled（不把可输入当可发送），复杂卡/完整聊天操作/深层业务适配继续按 NF-02–08。
+  `/` 与手机分支未变，不宣称已替换默认入口或完成整个电脑端。
+- 几何回归先 RED：消息根274px/面板846px；补独立文档所需 width/box-sizing 后 GREEN，输入区沿用既有阅读宽度。
+  首轮窄窗截图含 viewtransition 中间帧，改为等待实际有限动画结束，未改皮肤或放宽阈值。
+- TypeScript/Vite、设计检测、标准 `bash scripts/check.sh` 全部通过（45s）；受管 catalog-admin+nf-desktop 2/2通过。
+  390/1440浅深4图留在 `.review-queue/NF-01/`，一次只读独立视觉复核 disposition=ship，仅覆盖所示状态。
+  初始标题重名选择器失败已修正为level 1，原断言保留；未删测试/skip、未调用真实服务或部署。

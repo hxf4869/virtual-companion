@@ -37,6 +37,7 @@ export function parseAccountHandles(raw) {
 
 export function createHostAuth({ config, getUser, accountVersion, indexHtml, fetchImpl = fetch,
     sourceBridge, accountData,
+    desktopHtml = () => fs.readFileSync(new URL('../desktop/index.html', import.meta.url), 'utf8'),
     authDir = fileURLToPath(new URL('../auth/', import.meta.url)) }) {
     async function proxyAuth(req, res, suffix) {
         if (!AUTH_API.some(([method, pattern]) => req.method === method && pattern.test(suffix))) return fail(res, 404, 'NOT_FOUND_OR_FORBIDDEN', '未找到此入口');
@@ -64,6 +65,8 @@ export function createHostAuth({ config, getUser, accountVersion, indexHtml, fet
                 return await sourceBridge(req, res);
             }
             if (req.method === 'GET' && req.path === '/index.html') return res.redirect(303, '/');
+            if (req.method === 'GET' && ['/desktop', '/desktop/index.html'].includes(req.path)) return res.redirect(303, '/desktop/');
+            const pageEntry = req.method === 'GET' && ['/', '/desktop/'].includes(req.path);
             if (req.method === 'GET' && ['/auth', '/login'].includes(req.path)) return res.redirect(303, '/auth/');
             if (req.method === 'GET' && ASSETS.has(req.path)) {
                 const file = ASSETS.get(req.path);
@@ -81,7 +84,7 @@ export function createHostAuth({ config, getUser, accountVersion, indexHtml, fet
                 redirect: 'error', signal: AbortSignal.timeout(config.timeoutMs),
             });
             if (!response.ok) {
-                if (response.status === 401 && req.method === 'GET' && req.path === '/') return res.redirect(303, '/auth/');
+                if (response.status === 401 && pageEntry) return res.redirect(303, '/auth/');
                 return fail(res, response.status === 401 ? 401 : 503, 'AUTHENTICATION_REQUIRED', '请重新登录');
             }
             const identity = await response.json();
@@ -89,14 +92,14 @@ export function createHostAuth({ config, getUser, accountVersion, indexHtml, fet
             if (identity.deletionPending) return fail(res, 409, 'ACCOUNT_DELETION_PENDING', '账号删除处理中，聊天已暂停。');
             if (identity.nextStep !== 'ACTIVE' || identity.authenticatorEnabled !== true || identity.passwordMustChange !== false || !handle
                 || !/^[1-9][0-9]*$/.test(identity.sessionId)) {
-                if (req.method === 'GET' && req.path === '/') return res.redirect(303, '/auth/');
+                if (pageEntry) return res.redirect(303, '/auth/');
                 return fail(res, 403, 'ACCESS_DENIED', '请完成登录与身份验证');
             }
             if (identity.stDataConfigured !== true) return fail(res, 503, 'VC_DATA_NOT_CONFIGURED', '聊天数据服务尚未配置');
             const user = await getUser(handle);
             if (!user?.enabled || user.handle !== handle) return fail(res, 403, 'ACCESS_DENIED', '此账号尚未绑定可用的聊天空间');
             const mismatch = req.session?.vcAccountId !== identity.accountId || req.session?.vcSessionId !== identity.sessionId || req.session?.handle !== handle;
-            const canBind = req.method === 'GET' && (['/', '/auth/access'].includes(req.path) || req.path === '/csrf-token' && !req.session?.vcSessionId);
+            const canBind = pageEntry || req.method === 'GET' && (req.path === '/auth/access' || req.path === '/csrf-token' && !req.session?.vcSessionId);
             if (mismatch && !canBind) return fail(res, 409, 'ACCOUNT_CONTEXT_CHANGED', '登录状态已变化，请重新打开聊天');
             if (canBind) {
                 const registered = await fetchImpl(`${config.goBaseUrl}/api/v1/service/st/profile`, {
@@ -116,13 +119,13 @@ export function createHostAuth({ config, getUser, accountVersion, indexHtml, fet
             if (accountData && !await accountData.enter(identity.accountId, handle, res)) return fail(res, 409, 'ACCOUNT_DELETION_PENDING', '账号删除处理中，聊天已暂停。');
             res.setHeader('Cache-Control', 'no-store'); res.setHeader('Vary', 'Cookie');
             if (req.method === 'GET' && req.path === '/auth/access') return res.json({ allowed: true });
-            if (req.method === 'GET' && req.path === '/') {
+            if (pageEntry) {
                 // 只输出非凭据十进制 ID；getRequestHeaders 在模块初始化时捕获，旧页不能冒用新 cookie。
                 const meta = `<meta name="vc-account-id" content="${identity.accountId}"><meta name="vc-session-id" content="${identity.sessionId}">`;
                 res.setHeader('Cache-Control', 'no-store'); res.setHeader('Vary', 'Cookie');
                 res.setHeader('Content-Type', 'text/html; charset=utf-8');
-                return res.end(indexHtml().replace('<head>', `<head>${meta}`)
-                    .replace('<div id="preloader"></div>', STARTUP_HTML));
+                if (req.path === '/desktop/') return res.end(desktopHtml().replace('<head>', `<head>${meta}`));
+                return res.end(indexHtml().replace('<head>', `<head>${meta}`).replace('<div id="preloader"></div>', STARTUP_HTML));
             }
             next();
         } catch { fail(res, 503, 'VC_AUTH_UNAVAILABLE', '登录服务暂不可用，请稍后重试'); }
