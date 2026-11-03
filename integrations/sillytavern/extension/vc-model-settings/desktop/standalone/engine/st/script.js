@@ -510,3 +510,18 @@ export function getBiasStrings(textareaText, type) {
 export const depth_prompt_depth_default = 4;
 
 export const depth_prompt_role_default = 'system';
+
+export function removeMacros(str) {
+    return (str ?? '').replace(/\{\{[\s\S]*?\}\}/gm, '').trim();
+}
+
+// createRawPrompt 的受控Chat Completion分支；不包含文本补全/指令模板路径。
+export function createRawPrompt(prompt, systemPrompt = '', prefill = '') {
+    if (typeof prompt === 'string') prompt = [{ role: 'user', content: prompt.trim() }];
+    else if (!prompt.length && !systemPrompt) throw new Error('No messages provided');
+    prefill = substituteParams(prefill ?? '');
+    for (const message of prompt) message.content = substituteParams(message.content ?? '');
+    if (systemPrompt) prompt.unshift({ role: 'system', content: substituteParams(systemPrompt).trim() });
+    if (prefill) prompt.push({ role: 'assistant', content: prefill });
+    return prompt;
+}

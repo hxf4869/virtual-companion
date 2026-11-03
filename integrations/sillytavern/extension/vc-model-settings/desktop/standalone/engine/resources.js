@@ -1,3 +1,7 @@
+export function isDataURL(str) {
+    const regex = /^data:([a-z]+\/[a-z0-9-+.]+(;[a-z-]+=[a-z0-9-]+)*;?)?(base64)?,([a-z0-9!$&',()*+;=\-_%.~:@/?#]+)?$/i;
+    return typeof str === 'string' && regex.test(str);
+}
 // AGPL-3.0-only. SillyTavern 7e8663cd9 / utils.js, chats.js
 // 浏览器资源读取/测量端口；不依赖原生页面或控件。
 import { quietConsole } from './diagnostics.js';
@@ -114,10 +118,7 @@ function getAudioDurationFromDataURL(dataUrl) {
         };
     });
 }
-function isDataURL(str) {
-    const regex = /^data:([a-z]+\/[a-z0-9-+.]+(;[a-z-]+=[a-z0-9-]+)*;?)?(base64)?,([a-z0-9!$&',()*+;=\-_%.~:@/?#]+)?$/i;
-    return typeof str === 'string' && regex.test(str);
-}
+
 async function getFileAttachment(url) {
     try {
         const result = await fetch(url, {

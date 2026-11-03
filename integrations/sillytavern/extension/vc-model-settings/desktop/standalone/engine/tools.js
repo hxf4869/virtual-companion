@@ -127,6 +127,7 @@ class ToolDefinition {
     }
 }
 export class ToolManager {
+static RECURSE_LIMIT = 5;
 static #tools = new Map();
 static get tools() {
         return Array.from(this.#tools.values());
@@ -260,4 +261,243 @@ static canPerformToolCalls(type, settings = null, model = null) {
         const isSupported = ToolManager.isToolCallingSupported(settings, model);
         return isSupported && !noToolCallTypes.includes(type);
     }
+static #INPUT_DELTA_KEY = '__input_json_delta';
+static parseToolCalls(toolCalls, parsed, toolSignatures = {}, settings = null, model = null) {
+        if (!this.isToolCallingSupported(settings, model)) {
+            return;
+        }
+        if (Array.isArray(parsed?.choices)) {
+            for (const choice of parsed.choices) {
+                const choiceIndex = (typeof choice.index === 'number') ? choice.index : null;
+                const choiceDelta = choice.delta;
+
+                if (choiceIndex === null || !choiceDelta) {
+                    continue;
+                }
+
+                const toolCallDeltas = choiceDelta?.tool_calls;
+
+                if (!Array.isArray(toolCallDeltas)) {
+                    continue;
+                }
+
+                if (!Array.isArray(toolCalls[choiceIndex])) {
+                    toolCalls[choiceIndex] = [];
+                }
+
+                for (const toolCallDelta of toolCallDeltas) {
+                    const toolCallIndex = toolCallDelta?.index >= 0 ? toolCallDelta.index : toolCallDeltas.indexOf(toolCallDelta);
+
+                    if (isNaN(toolCallIndex)) {
+                        continue;
+                    }
+
+                    if (toolCalls[choiceIndex][toolCallIndex] === undefined) {
+                        toolCalls[choiceIndex][toolCallIndex] = {};
+                    }
+
+                    const targetToolCall = toolCalls[choiceIndex][toolCallIndex];
+
+                    ToolManager.#applyToolCallDelta(targetToolCall, toolCallDelta);
+
+                    // Transfer thought signature if available
+                    if (Object.hasOwn(toolSignatures, targetToolCall.id)) {
+                        targetToolCall.signature = toolSignatures[targetToolCall.id];
+                    }
+                }
+            }
+        }
+        const cohereToolEvents = ['message-start', 'tool-call-start', 'tool-call-delta', 'tool-call-end'];
+        if (cohereToolEvents.includes(parsed?.type) && typeof parsed?.delta?.message === 'object') {
+            const choiceIndex = 0;
+            const toolCallIndex = parsed?.index ?? 0;
+
+            if (!Array.isArray(toolCalls[choiceIndex])) {
+                toolCalls[choiceIndex] = [];
+            }
+
+            if (toolCalls[choiceIndex][toolCallIndex] === undefined) {
+                toolCalls[choiceIndex][toolCallIndex] = {};
+            }
+
+            const targetToolCall = toolCalls[choiceIndex][toolCallIndex];
+            ToolManager.#applyToolCallDelta(targetToolCall, parsed.delta.message);
+        }
+        if (typeof parsed?.content_block === 'object') {
+            const choiceIndex = 0;
+            const toolCallIndex = parsed?.index ?? 0;
+
+            if (parsed?.content_block?.type === 'tool_use') {
+                if (!Array.isArray(toolCalls[choiceIndex])) {
+                    toolCalls[choiceIndex] = [];
+                }
+                if (toolCalls[choiceIndex][toolCallIndex] === undefined) {
+                    toolCalls[choiceIndex][toolCallIndex] = {};
+                }
+                const targetToolCall = toolCalls[choiceIndex][toolCallIndex];
+                ToolManager.#applyToolCallDelta(targetToolCall, parsed.content_block);
+            }
+        }
+        if (typeof parsed?.delta === 'object') {
+            const choiceIndex = 0;
+            const toolCallIndex = parsed?.index ?? 0;
+            const targetToolCall = toolCalls[choiceIndex]?.[toolCallIndex];
+            if (targetToolCall) {
+                if (parsed?.delta?.type === 'input_json_delta') {
+                    const jsonDelta = parsed?.delta?.partial_json;
+                    if (!targetToolCall[this.#INPUT_DELTA_KEY]) {
+                        targetToolCall[this.#INPUT_DELTA_KEY] = '';
+                    }
+                    targetToolCall[this.#INPUT_DELTA_KEY] += jsonDelta;
+                }
+            }
+        }
+        if (parsed?.type === 'content_block_stop') {
+            const choiceIndex = 0;
+            const toolCallIndex = parsed?.index ?? 0;
+            const targetToolCall = toolCalls[choiceIndex]?.[toolCallIndex];
+            if (targetToolCall) {
+                const jsonDeltaString = targetToolCall[this.#INPUT_DELTA_KEY];
+                if (jsonDeltaString) {
+                    try {
+                        const jsonDelta = { input: JSON.parse(jsonDeltaString) };
+                        delete targetToolCall[this.#INPUT_DELTA_KEY];
+                        ToolManager.#applyToolCallDelta(targetToolCall, jsonDelta);
+                    } catch (error) {
+                        console.warn('[ToolManager] Failed to apply input JSON delta:', error);
+                    }
+                }
+            }
+        }
+        if (Array.isArray(parsed?.candidates)) {
+            for (let choiceIndex = 0; choiceIndex < parsed.candidates.length; choiceIndex++) {
+                const candidate = parsed.candidates[choiceIndex];
+                if (Array.isArray(candidate?.content?.parts)) {
+                    for (let partIndex = 0; partIndex < candidate.content.parts.length; partIndex++) {
+                        const part = candidate.content.parts[partIndex];
+                        if (part.functionCall) {
+                            if (!Array.isArray(toolCalls[choiceIndex])) {
+                                toolCalls[choiceIndex] = [];
+                            }
+                            const toolCallIndex = toolCalls[choiceIndex].length;
+                            if (toolCalls[choiceIndex][toolCallIndex] === undefined) {
+                                toolCalls[choiceIndex][toolCallIndex] = {};
+                            }
+                            const targetToolCall = toolCalls[choiceIndex][toolCallIndex];
+                            if (part.thoughtSignature) {
+                                targetToolCall.thoughtSignature = part.thoughtSignature;
+                            }
+                            ToolManager.#applyToolCallDelta(targetToolCall, part.functionCall);
+                        }
+                    }
+                }
+            }
+        }
+    }
+static #applyToolCallDelta(target, delta) {
+        for (const key in delta) {
+            if (!Object.prototype.hasOwnProperty.call(delta, key)) continue;
+            if (key === '__proto__' || key === 'constructor') continue;
+
+            const deltaValue = delta[key];
+            const targetValue = target[key];
+
+            if (deltaValue === null || deltaValue === undefined) {
+                // Don't reset the value if it already exists
+                if (targetValue) {
+                    continue;
+                }
+                target[key] = deltaValue;
+                continue;
+            }
+
+            if (typeof deltaValue === 'string') {
+                // `id`, `name`, `type` are sent in full by some providers on every
+                // streaming chunk; concatenating them would duplicate the value.
+                if (key === 'id' || key === 'name' || key === 'type') {
+                    if (!targetValue) {
+                        target[key] = deltaValue;
+                    }
+                } else if (typeof targetValue === 'string') {
+                    // Concatenate strings
+                    target[key] = targetValue + deltaValue;
+                } else {
+                    target[key] = deltaValue;
+                }
+            } else if (typeof deltaValue === 'object' && !Array.isArray(deltaValue)) {
+                if (typeof targetValue !== 'object' || targetValue === null || Array.isArray(targetValue)) {
+                    target[key] = {};
+                }
+                // Recursively apply deltas to nested objects
+                ToolManager.#applyToolCallDelta(target[key], deltaValue);
+            } else {
+                // Assign other types directly
+                target[key] = deltaValue;
+            }
+        }
+    }
+static #getToolCallsFromData(data) {
+        const getRandomId = () => Math.random().toString(36).substring(2);
+        const isClaudeToolCall = c => Array.isArray(c) ? c.filter(x => x).every(isClaudeToolCall) : c?.input && c?.name && c?.id;
+        const isGoogleToolCall = c => Array.isArray(c) ? c.filter(x => x).every(isGoogleToolCall) : c?.name && c?.args;
+        const convertClaudeToolCall = c => ({ id: c.id, function: { name: c.name, arguments: c.input } });
+        const convertGoogleToolCall = (c, signature = null) => ({ id: getRandomId(), function: { name: c.name, arguments: c.args }, signature });
+
+        // Parsed tool calls from streaming data
+        if (Array.isArray(data) && data.length > 0 && Array.isArray(data[0])) {
+            if (isClaudeToolCall(data[0])) {
+                return data[0].filter(x => x).map(convertClaudeToolCall);
+            }
+
+            if (isGoogleToolCall(data[0])) {
+                return data[0].filter(x => x).map((c) => convertGoogleToolCall(c, c.thoughtSignature));
+            }
+
+            if (typeof data[0]?.[0]?.tool_calls === 'object') {
+                return Array.isArray(data[0]?.[0]?.tool_calls) ? data[0][0].tool_calls : [data[0][0].tool_calls];
+            }
+
+            return data[0];
+        }
+
+        // Google AI Studio tool calls
+        if (Array.isArray(data?.responseContent?.parts)) {
+            return data.responseContent.parts.filter(p => p.functionCall).map(p => convertGoogleToolCall(p.functionCall, p.thoughtSignature));
+        }
+
+        // Parsed tool calls from non-streaming data
+        if (Array.isArray(data?.choices)) {
+            // Find a choice with 0-index
+            const choice = data.choices.find(choice => choice.index === 0);
+
+            if (choice && typeof choice.message === 'object' && Array.isArray(choice.message.tool_calls)) {
+                // Add OpenRouter signatures
+                if (Array.isArray(choice.message.reasoning_details)) {
+                    for (const toolCall of choice.message.tool_calls) {
+                        const reasoningDetail = choice.message.reasoning_details.find(rd => rd.id === toolCall.id);
+                        if (reasoningDetail && reasoningDetail.type === 'reasoning.encrypted' && reasoningDetail.data) {
+                            toolCall.signature = reasoningDetail.data;
+                        }
+                    }
+                }
+
+                return choice.message.tool_calls;
+            }
+        }
+
+        // Claude tool calls to OpenAI tool calls
+        if (Array.isArray(data?.content)) {
+            const content = data.content.filter(c => c.type === 'tool_use').map(convertClaudeToolCall);
+
+            if (content) {
+                return content;
+            }
+        }
+
+        // Cohere tool calls
+        if (typeof data?.message?.tool_calls === 'object') {
+            return Array.isArray(data?.message?.tool_calls) ? data.message.tool_calls : [data.message.tool_calls];
+        }
+    }
+static toolCallsFrom(data) { return this.#getToolCallsFromData(data) || []; }
 }

@@ -29,7 +29,7 @@ export function bindEngineContext(context, settings, environment) {
     textgenerationwebui_banned_in_macros = [];
 }
 export const getContext = () => macroContext;
-export const readInput = () => current.input;
+export const readInput = () => current.readInput();
 export const readFirstDisplayedMessageId = () => current.firstDisplayedMessageId;
 export const getCurrentChatId = () => current.context.chatId;
 export const getGeneratingModel = () => current.model;

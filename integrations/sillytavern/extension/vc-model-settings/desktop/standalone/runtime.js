@@ -2,8 +2,11 @@
 import { fetchModelPurposes, fetchProviders } from '../../api.js';
 import { resolveForegroundProjection, buildScope, characterKeyOf, chatKeyOf } from '../../projection.js';
 import { createChatEngine, runtimeSettings, projectModelSettings } from './engine/runtime.js';
+import { createDesktopSession } from './session.js';
+import { readGenerationResponse } from './engine/response.js';
+import { prepareSourceIdentities } from '/scripts/vc-runtime/source-identity.js';
 
-export async function prepareChatRuntime({ client, context }) {
+export async function prepareChatRuntime({ client, context, choosePersona, readInput, onChange, onTakeDraft, onRestoreDraft, onConflict }) {
     const [purposes, providers, packet] = await Promise.all([fetchModelPurposes(), fetchProviders(), client.request('/api/settings/get', {})]);
     const decision = resolveForegroundProjection(purposes, providers);
     if (!decision.eligible) throw new Error('请先配置聊天模型。');
@@ -12,5 +15,7 @@ export async function prepareChatRuntime({ client, context }) {
     projectModelSettings(settings, decision, scope);
     const presets = Object.fromEntries(packet.openai_setting_names.map((name, index) => [name, JSON.parse(packet.openai_settings[index])]));
     const models = providers.flatMap(provider => provider.models.map(model => ({ id: model.modelId, ...model })));
-    return createChatEngine({ client, context, settings, decision, presets, models });
+    const engine = await createChatEngine({ client, context, settings, decision, presets, models, readInput });
+    return createDesktopSession({ client, context, engine, prepareSourceIdentities, readResponse: readGenerationResponse,
+        choosePersona, onChange, onTakeDraft, onRestoreDraft, onConflict });
 }

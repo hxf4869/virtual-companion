@@ -152,6 +152,7 @@ export const F2_CONFLICT_COPY = '这段对话已在另一处更新。你的输�
 let f2Draft = null;
 let f2Opener = null;
 let f2UserInput = '';
+const panelActions = new WeakMap();
 
 /** Rejected snapshot stays in this module closure. It is not written into the DOM. */
 export function readF2Draft() {
@@ -227,7 +228,7 @@ function readSendBox() {
     return typeof document === 'undefined' ? null : document.querySelector('#send_textarea');
 }
 
-function mergeInput(current, text) {
+export function mergeInput(current, text) {
     if (!text) return current;
     if (!current) return text;
     if (current === text || current.endsWith(`\n${text}`)) return current;
@@ -311,6 +312,13 @@ function ensureF2Styles() {
 }
 
 function closeF2Panel(panel, { focusInput = false } = {}) {
+    const actions = panelActions.get(panel);
+    if (actions) {
+        panel.close(); actions.keep?.();
+        if (focusInput) focusSendBox(readSendBox());
+        else f2Opener?.focus?.();
+        return;
+    }
     const existing = String(readSendBox()?.value ?? '');
     panel.close();
     showRecall(Boolean(f2UserInput));
@@ -360,7 +368,7 @@ async function viewLatest(panel) {
 }
 
 /** Keep the rejected snapshot only in the page; never log it or upload it. */
-export function showF2Draft(serialized) {
+export function showF2Draft(serialized, _error, actions) {
     if (typeof document === 'undefined') return;
     f2Draft = typeof serialized === 'string' ? serialized : '';
     f2UserInput = extractUnsavedUserInput(f2Draft);
@@ -386,7 +394,11 @@ export function showF2Draft(serialized) {
         latest.type = 'button';
         latest.setAttribute('data-action', 'view-latest');
         latest.textContent = '查看最新';
-        latest.addEventListener('click', () => { void viewLatest(panel); });
+        latest.addEventListener('click', () => {
+            const actions = panelActions.get(panel);
+            if (actions) { panel.close(); void actions.latest(); }
+            else void viewLatest(panel);
+        });
         const keep = document.createElement('button');
         keep.type = 'button';
         keep.setAttribute('data-action', 'keep-draft');
@@ -396,7 +408,11 @@ export function showF2Draft(serialized) {
         copy.type = 'button';
         copy.setAttribute('data-action', 'copy-input');
         copy.textContent = '复制';
-        copy.addEventListener('click', () => { void copyUserInput(); });
+        copy.addEventListener('click', () => {
+            const actions = panelActions.get(panel);
+            if (actions) void actions.copy();
+            else void copyUserInput();
+        });
         actions.append(latest, keep, copy);
         wrap.append(heading, note, actions);
         panel.append(wrap);
@@ -406,6 +422,7 @@ export function showF2Draft(serialized) {
         });
         document.body.append(panel);
     }
+    if (actions) panelActions.set(panel, actions); else panelActions.delete(panel);
     showRecall(false);
     presentConflict(panel);
     if (!panel.open) panel.showModal();

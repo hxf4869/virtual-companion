@@ -261,6 +261,21 @@ test('messages x-api-key 方案：同值匹配通过', async () => {
     assert.equal(cap.auth.matched, true);
 });
 
+test('messages 显式thinking：JSON块和thinking_delta在文本之前，保留原有usage与结束事件', async () => {
+    const body = { model: 'vc03m-chat', messages: [], max_tokens: 64,
+        vc_fixture: { text: '合成正文', reasoning: { text: '合成推理' }, chunks: 2 } };
+    const json = await (await post('/v1/messages', { ...body, stream: false })).json();
+    assert.deepEqual(json.content.map(block => block.type), ['thinking', 'text']);
+    assert.equal(json.content[0].thinking, '合成推理');
+    const events = await readSSE(await post('/v1/messages', { ...body, stream: true }));
+    const thinking = events.filter(event => event.data?.delta?.type === 'thinking_delta').map(event => event.data.delta.thinking).join('');
+    assert.equal(thinking, '合成推理');
+    assert.equal(collectAnthropicStream(events).content, '合成正文');
+    const firstText = events.findIndex(event => event.data?.delta?.type === 'text_delta');
+    assert.ok(firstText > events.findIndex(event => event.data?.delta?.type === 'thinking_delta'));
+    assert.equal(events.at(-1).data.type, 'message_stop');
+});
+
 // ---------------------------------------------------------------------------
 // __ctl 覆盖与捕获清理
 // ---------------------------------------------------------------------------

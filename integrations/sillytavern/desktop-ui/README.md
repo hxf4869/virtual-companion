@@ -64,3 +64,7 @@ PromptManager、预算与 Chat Completion 请求计算。状态、tokenizer、�
 项目记忆、陪伴、剧情与模型投影继续使用原模块；卡片运行模块和发送/保存 owner 分别按 NF-04、NF-03 接线。
 `accept-managed.mjs --filter nf-prompts` 在真实发送前截住原生请求，与独立计算的最终 JSON、变量、世界书状态、
 历史窗口及事件时序逐项对照；覆盖 Chat、Responses、Claude 和旧宏引擎，只用合成输入，不调用模型。
+
+NF-03 的 `standalone/session.js` 管理打开、输入、取消和F2保存；React拥有消息与输入，重用原流式解析与回复清理。
+`accept-managed.mjs --filter nf-chat` 用真实合成provider验证三协议的流式/非流式、原quiet规划、刷新、停止、断流、
+CAS冲突和草稿。F2冲突弹层沿原视觉，以动作回调接独立会话；原生手机宿主继续使用默认动作。

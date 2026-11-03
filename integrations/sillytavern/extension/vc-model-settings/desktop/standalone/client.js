@@ -5,18 +5,21 @@ export function createDesktopClient({ fetchImpl = globalThis.fetch, document: do
     let token = '';
     const headers = () => ({ 'Content-Type': 'application/json', 'X-CSRF-Token': token,
         'X-VC-Expected-Account-ID': identity.accountId, 'X-VC-Expected-Session-ID': identity.sessionId });
-    async function request(url, body, { signal } = {}) {
-        const response = await fetchImpl(url, { method: 'POST', credentials: 'same-origin', cache: 'no-store',
-            headers: headers(), body: JSON.stringify(body), signal });
+    const raw = (url, body, { signal } = {}) => fetchImpl(url, { method: 'POST', credentials: 'same-origin', cache: 'no-store',
+        headers: headers(), body: typeof body === 'string' ? body : JSON.stringify(body), signal });
+    async function checked(response) {
         if (!response.ok) {
             const error = new Error('请求没有完成，请重试。');
             error.status = response.status;
             error.details = await response.json().catch(() => null);
             throw error;
         }
-        return response.json();
+        return response;
     }
-    return { identity, headers, request,
+    const post = async (url, body, options) => checked(await raw(url, body, options));
+    const request = async (url, body, options) => (await post(url, body, options)).json();
+    return { identity, headers, request, raw, post,
+        generate: (packet, options) => post(packet.url, packet.body, options),
         async initialize() {
             if (!/^[1-9][0-9]*$/.test(identity.accountId) || !/^[1-9][0-9]*$/.test(identity.sessionId)) throw new Error('请重新打开页面。');
             const response = await fetchImpl('/csrf-token', { credentials: 'same-origin', cache: 'no-store' });

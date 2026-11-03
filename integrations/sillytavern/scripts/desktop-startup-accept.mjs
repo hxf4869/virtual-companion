@@ -143,7 +143,7 @@ async function sceneIndependentDesktop(ctx) {
         await page.locator('.vcms-root').waitFor({ state: 'visible' });
         await page.locator('#vc-shell .vc-sidebar [data-nav="chat"]').click();
         const opening = await page.evaluate(() => performance.now());
-        const row = page.locator('[data-convo-list] [data-relationship-id]').first();
+        const row = page.locator(`[data-convo-list] [data-relationship-id="${fixture.chat[0].chat_metadata.vc_binding.relationshipId}"]`);
         await row.click();
         await page.waitForFunction(() => document.querySelectorAll('#chat > .mes').length === 24);
         assert.equal(await page.locator('#send_but').isDisabled(), true, 'NF-01 不把尚未接通的发送宣称就绪');

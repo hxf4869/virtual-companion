@@ -86,6 +86,8 @@ async function scenePromptParity(ctx) {
                     const script = await import('/script.js');
                     const { power_user } = await import('/scripts/power-user.js');
                     const world = await import('/scripts/world-info.js');
+                    const { cancelDebouncedMetadataSave } = await import('/scripts/extensions.js');
+                    const tokenizers = await import('/scripts/tokenizers.js');
                     const { moment } = await import('/lib.js');
                     const context = SillyTavern.getContext();
                     moment.now = () => Date.parse('2026-11-03T00:00:00.000Z');
@@ -108,6 +110,10 @@ async function scenePromptParity(ctx) {
                     // 复用原设置入口设置递归，不使用临时DOM值来替代计算输入。
                     const worldSettings = { ...world.getWorldInfoSettings(), world_info_recursive: true };
                     world.setWorldInfoSettings(worldSettings, { world_names: [book] });
+                    // 纯计算的外部输入保持固定；清除原生UI待保存项，并预热实际tokenizer。
+                    // 各计算检查点取消新排入的UI元数据计时器，真实F2写入由nf-chat/f2-chat-ui验。
+                    await tokenizers.countTokensOpenAIAsync({ role: 'user', content: 'NF tokenizer warmup' }, true);
+                    cancelDebouncedMetadataSave();
                     await script.saveChat();
                     const saved = await fetch('/api/settings/get', { method: 'POST', headers: script.getRequestHeaders(), body: '{}' }).then(response => response.json());
                     const raw = JSON.parse(saved.settings);
@@ -117,7 +123,7 @@ async function scenePromptParity(ctx) {
                     const watched = ['GENERATION_STARTED', 'GENERATION_AFTER_COMMANDS', 'WORLDINFO_ENTRIES_LOADED', 'WORLDINFO_SCAN_DONE',
                         'WORLD_INFO_ACTIVATED', 'GENERATE_BEFORE_COMBINE_PROMPTS', 'GENERATE_AFTER_COMBINE_PROMPTS',
                         'CHAT_COMPLETION_PROMPT_READY', 'GENERATE_AFTER_DATA', 'CHAT_COMPLETION_SETTINGS_READY'];
-                    for (const key of watched) context.eventSource.on(context.eventTypes[key], () => traces.push(key));
+                    for (const key of watched) context.eventSource.on(context.eventTypes[key], () => { cancelDebouncedMetadataSave(); traces.push(key); });
                     globalThis.nfTrace = traces;
                     return JSON.parse(JSON.stringify({ context: { characters: context.characters, characterId: context.characterId,
                         chat: context.chat, chatMetadata: context.chatMetadata, chatId: context.chatId, groupId: context.groupId,

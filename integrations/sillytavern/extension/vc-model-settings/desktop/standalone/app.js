@@ -5,6 +5,10 @@ import { mountShell, registerShellTabs } from '../../shell.js';
 import { chatSnapshotsFromRecent, avatarUrl } from '../../conversations.js';
 import { enableVcUi } from '../../ui/theme.js';
 import { iconSpriteUrl } from '../../ui/icons.js';
+import { openSheet } from '../../ui/sheet.js';
+import { showToast } from '../../ui/toast.js';
+import { readDraft, writeDraft } from '../../chat-compose.js';
+import { mergeInput, showF2Draft } from '../../f2-client.js';
 import { mountDesktopChatView } from '../build/index.js';
 import { mountDesktopShell } from '../host.js';
 import { mountSettingsShell } from '../settings-shell.js';
@@ -17,30 +21,63 @@ const context = { characters: [], chat: [], chatMetadata: {}, characterId: undef
     extensionPrompts: {}, eventSource, eventTypes: event_types };
 const getContext = () => context;
 const drafts = new Map();
-let runtime, view, shell, currentRow, read = 0, readAbort;
-const chat = { messages: [], status: 'empty', draft: '', sprite: iconSpriteUrl(), avatar: '', canSend: false, error: '', conversation: '',
-    onDraft(value) { chat.draft = value; drafts.set(chat.conversation, value); paint(); },
-    onSend() { if (typeof runtime?.generate === 'function') void runtime.generate(); },
-    onRetry() { if (currentRow) void shell.openConversation(currentRow); },
+let runtime, view, shell, currentRow, currentRecords, charactersReady, read = 0, activated = 0, readAbort;
+const draftId = key => JSON.stringify([client.identity.accountId, ...JSON.parse(key)]);
+const draftOf = key => drafts.has(key) ? drafts.get(key) : readDraft(draftId(key));
+function setDraft(key, value) {
+    drafts.set(key, value); writeDraft(draftId(key), value);
+    if (chat.conversation === key) { chat.draft = value; paint(); }
+}
+const chat = { messages: [], status: 'empty', draft: '', sprite: iconSpriteUrl(), avatar: '', canSend: false, busy: false,
+    notice: '', conflict: false, enterToSend: true, error: '', conversation: '',
+    onDraft(value) { setDraft(chat.conversation, value); },
+    onSend() { void runtime?.send(chat.draft); },
+    onStop() { void runtime?.stop(); },
+    onRetry() { if (currentRow) return openConversation(currentRow, { latest: true }).then(opened => { if (opened) document.querySelector('#send_textarea')?.focus(); }); },
+    onNoticeRetry() {
+        if (!runtime || chat.notice === '登录状态或聊天已变化，请重新打开页面。') { location.reload(); return; }
+        if (chat.conflict || !chat.canSend) return chat.onRetry();
+        else void runtime.retry();
+    },
+    async onCopyDraft() {
+        try { const text = await runtime?.copyRejected(); if (text) { await navigator.clipboard.writeText(text); showToast('已复制'); } }
+        catch { showToast('没有完成，请重试。', { type: 'failure' }); }
+    },
 };
-function paint() { view?.update(chat); }
+function paint() { document.body.dataset.generating = String(chat.busy); view?.update(chat); }
 const chatKey = row => JSON.stringify([row.avatar, row.file]);
 
-async function openConversation(row) {
+async function activateCurrent(ticket, latest) {
+    if (!runtime || !currentRecords || activated === ticket) return;
+    activated = ticket;
+    const row = currentRow, records = currentRecords, signal = readAbort.signal;
+    await charactersReady;
+    if (ticket !== read) return;
+    try { await runtime.activate(row, records, { signal, latest }); }
+    catch (error) {
+        if (ticket !== read || signal.aborted) return;
+        chat.canSend = false; chat.notice = error.status === 401 || error.status === 409
+            ? '登录状态或聊天已变化，请重新打开页面。' : '聊天没有加载出来，请重试。'; paint();
+    }
+}
+
+async function openConversation(row, { latest = false } = {}) {
     if (!row?.avatar || !row?.file) return false;
     currentRow = row;
     readAbort?.abort(); readAbort = new AbortController();
+    void runtime?.stop();
+    currentRecords = null;
     const ticket = ++read;
-    chat.conversation = chatKey(row); chat.draft = drafts.get(chat.conversation) || '';
-    chat.status = 'loading'; chat.error = ''; paint();
+    chat.conversation = chatKey(row); chat.draft = draftOf(chat.conversation) || '';
+    chat.status = 'loading'; chat.error = ''; chat.notice = ''; chat.conflict = false; chat.canSend = false; chat.busy = false; paint();
     try {
         const records = await client.readChat(row, { signal: readAbort.signal });
         if (ticket !== read) return false;
         if (!Array.isArray(records) || !records[0]?.chat_metadata) throw new Error('聊天没有加载出来');
-        Object.assign(context, { chatMetadata: records[0].chat_metadata, chat: records.slice(1), chatId: row.file,
-            characterId: context.characters.findIndex(card => card.avatar === row.avatar), name1: records[0].user_name || '', name2: records[0].character_name || '' });
-        Object.assign(chat, { messages: context.chat, status: 'ready', avatar: avatarUrl(row.avatar) });
-        paint(); eventSource.emit(context.eventTypes.CHAT_CHANGED);
+        currentRecords = records;
+        Object.assign(chat, { messages: records.slice(1), status: 'ready', avatar: avatarUrl(row.avatar) });
+        paint();
+        void activateCurrent(ticket, latest);
         return true;
     } catch (error) {
         if (ticket !== read) return false;
@@ -48,6 +85,20 @@ async function openConversation(row) {
             ? '登录状态或聊天已变化，请重新打开页面。' : '聊天没有加载出来，请重试。';
         paint(); return true;
     }
+}
+
+function choosePersona(options, { signal }) {
+    return new Promise(resolve => {
+        let selected = '';
+        const body = document.createElement('div'); body.className = 'vc-column';
+        const sheet = openSheet({ title: '人设', body, onDone() { signal?.removeEventListener('abort', abort); resolve(selected); } });
+        const abort = () => sheet.dismiss();
+        signal?.addEventListener('abort', abort, { once: true });
+        for (const option of options) {
+            const button = document.createElement('button'); button.type = 'button'; button.className = 'vc-btn'; button.textContent = option.name;
+            button.addEventListener('click', () => { selected = option.avatar; void sheet.close(); }); body.append(button);
+        }
+    });
 }
 
 // 页面控制器按需加载；仅在各自空槽位内渲染，不依赖聊天运行模块就绪。
@@ -89,15 +140,23 @@ async function start() {
     mountDesktopShell({ shell, getContext });
     document.querySelector('#vc-desktop-startup')?.remove();
     document.documentElement.dataset.vcApp = 'ready';
-    void client.characters().then(characters => {
+    charactersReady = client.characters().then(characters => {
         context.characters = characters;
-        eventSource.emit(context.eventTypes.CHAT_CHANGED);
     }).catch(() => { document.documentElement.dataset.vcCharacters = 'error'; });
     // 不 await 聊天准备：导航、历史和设置拥有各自生命周期。
-    void import('./runtime.js').then(module => module.prepareChatRuntime({ client, context })).then(value => {
-        runtime = value; chat.canSend = typeof runtime.generate === 'function'; paint();
+    void import('./runtime.js').then(module => module.prepareChatRuntime({ client, context, choosePersona, readInput: () => chat.draft,
+        onConflict(snapshot, error) { showF2Draft(snapshot, error, { latest: () => chat.onNoticeRetry(), copy: () => chat.onCopyDraft() }); },
+        onChange(state) { if (state.key !== chat.conversation || chat.status !== 'ready') return; Object.assign(chat, state); paint(); },
+        onTakeDraft(key, input) { if (draftOf(key) === input) setDraft(key, ''); },
+        onRestoreDraft(key, input) {
+            if (input) setDraft(key, mergeInput(draftOf(key), input));
+        },
+    })).then(async value => {
+        runtime = value;
         document.documentElement.dataset.vcRuntime = 'prepared';
-    }).catch(() => { document.documentElement.dataset.vcRuntime = 'error'; });
+        await eventSource.emit(event_types.APP_INITIALIZED); await eventSource.emit(event_types.APP_READY);
+        void activateCurrent(read, false);
+    }).catch(() => { document.documentElement.dataset.vcRuntime = 'error'; chat.notice = '聊天没有加载出来，请重试。'; paint(); });
 }
 void start().catch(error => {
     const node = document.querySelector('#vc-desktop-startup');

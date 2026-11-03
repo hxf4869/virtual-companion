@@ -501,3 +501,32 @@ NF-00 收尾：TypeScript/Vite 构建、ST 离线整组 1033/1033（0 FAIL/0 SKI
 - 稳定候选验证：TypeScript/Vite与离线1036/1036、零fail/skip；受管catalog-admin+nf-desktop+nf-prompts 3/3，
   4组最终请求/状态/事件完全一致，模型出站0。结果在 `dev-managed/artifacts/accept-2026-11-03T05-34-34-117Z/results.json`。
   初期缺省常量导出、状态标记和原生连接/代理确认边界均已修正后复验；未删测试或放宽等价断言。
+
+### 11.9 NF-03 普通聊天纵切（2026-11-03）
+
+- `standalone/session.js` 为桌面唯一生成/聊天写入owner；先保存用户消息并取得F2 ACK，再准备和发送。打开会话串行收尾旧生成，
+  UI历史读取仍独立；旧读请求的AbortSignal同时限定回调归属，迟到ACK不改变新会话。所有JSONL写入复用 `createF2Client`、
+  `prepareSourceIdentities` 与原ST保存接口；Go不写聊天文件，不另建生成服务。原模型绑定、预算和记忆来源复核继续经受控出站端点。
+- 流式分帧、文本/reasoning、工具delta及回复清理使用锁定ST纯算法。普通Claude保持Anthropic事件，工具循环包装的Claude按实际
+  choices形状读取；原ST流可能保留text/plain响应头，使用本次生成stream标记判定。DONE/finish/EOF/错误分别处理，停止或断流保留
+  部分回复且标为非记忆证据。原有可选reply planner仍走同一受控quiet调用，配置保存本身不调用模型。
+- 原生聊天头的user_name/character_name是占位值。当前称呼取实际用户设置/人设，角色名取当前卡；按原头像存在性、聊天锁定、
+  连接顺序、默认人设、自动锁定和临时描述规则选择。多连接选择复用既有Sheet；迟到选择不应用。
+- 发送先收取输入，原始草稿在F2确认前由本轮owner保留；失败与最新版本合并使用原F2 mergeInput。输入宏通过显式UI读取端口，
+  bias在原发送位置求值一次，重试不重复追加用户消息。复用vc-draft存储，以账号/角色头像/聊天文件限定桌面作用域，避免同名文件
+  草稿混用；旧原生键未删除，其迁移与列表草稿展示在NF-05收尾、根入口切换前验。保存冲突继续用原项目弹层与三个动作，
+  只注入独立的查看最新/复制回调，不加载原生ST页面。原生消费者沿原默认动作，单独回归。
+- 桌面消息、输入、等待、失败和停止由React管理，沿用原类名/皮肤；data-generating由实际会话状态驱动。发送/停止使用不同节点身份，
+  同一鼠标双击的第二击不会误触停止；正常单击与键盘停止保留。媒体和完整聊天操作继续NF-05，真实复杂卡运行继续NF-04。
+- 定向恢复场景实际覆盖：HTTP错误与重试、在途ACK期间新草稿、provider真实取消、断流部分保存、另一消费者先保存后的409、
+  显式读取最新、同名文件不同角色切换与刷新草稿。三协议流式/非流式、Claude工具循环与原quiet规划共9组通过；
+  catalog-admin、nf-desktop、nf-prompts、nf-chat 4/4通过，结果为 `dev-managed/artifacts/accept-2026-11-03T07-51-16-410Z/results.json`。
+  共享原生F2完整场景单独通过（`accept-2026-11-03T07-12-32-001Z`，60.9s）。仅使用合成provider，无真实费用或通知。
+- 两个真实界面回归先失败后修复：窄窗resize丢失底部定位；缺少原生dialog基础规则导致关闭的冲突层仍拦截点击。
+  分别增加pinned resize行为与独立文档的关闭dialog基础规则，未修改既有皮肤。390/1440明暗4图在 `.review-queue/NF-03/`，
+  只读独立复核 disposition=ship；静态复核只证明所示布局，发送、滚动和弹层由真实浏览器行为断言覆盖。
+- 原生提示词对照显式预热实际tokenizer，并在计算检查点调用原公开取消metadata debounce接口，避免UI计时器改变固定输入；
+  保留最终请求/全部source状态逐项等价断言，真实保存与冲突另由nf-chat和原生F2场景覆盖。
+- 标准check的约束、TypeScript/Vite与Go检查通过；ST默认高并发的既有80ms预留超时用例在进入预留前超时，
+  单文件复验通过，同一整组限制4个worker后1043/1043通过（0 fail/skip，25.2s）。未改超时、测试或断言。
+  `git diff --check`通过；受管私有进程/容器/临时卷按原入口清理。复杂卡、媒体、完整设置与其余页面仍按后续批次验收。

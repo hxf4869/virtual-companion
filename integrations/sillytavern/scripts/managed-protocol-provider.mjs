@@ -52,7 +52,7 @@ export const FIXTURE_MODELS = [
 /**
  * modelId → 默认剧本。字段即标准化 plan 的输入：
  *   text            文本回复（按 chunks 分片流出）
- *   reasoning       Responses 的 reasoning item（encrypted_content 形态）
+ *   reasoning       Responses reasoning item / Anthropic thinking（只在显式配置时发出）
  *   tool            工具调用（argumentsPieces 为多轮 arguments 分片）
  *   usage           固定用量（缺省 {prompt:21, completion:13}）
  *   error           可控错误 {status, message?, retryAfterMs?}
@@ -508,6 +508,7 @@ async function renderResponsesStream(plan, res) {
 
 function anthropicBlocks(plan, seq) {
     const blocks = [];
+    if (plan.reasoning?.text) blocks.push({ type: 'thinking', thinking: plan.reasoning.text, signature: `synthetic-signature-${seq}` });
     if (plan.text) blocks.push({ type: 'text', text: plan.text });
     if (plan.tool) {
         blocks.push({
@@ -551,6 +552,15 @@ async function renderAnthropicStream(plan, res) {
             },
         });
         let index = 0;
+        if (plan.reasoning?.text) {
+            yield () => ev('content_block_start', { index, content_block: { type: 'thinking', thinking: '' } });
+            for (const piece of splitText(plan.reasoning.text, plan.chunks)) {
+                yield () => ev('content_block_delta', { index, delta: { type: 'thinking_delta', thinking: piece } });
+            }
+            yield () => ev('content_block_delta', { index, delta: { type: 'signature_delta', signature: `synthetic-signature-${plan.seq}` } });
+            yield () => ev('content_block_stop', { index });
+            index += 1;
+        }
         if (plan.text) {
             yield () => ev('content_block_start', { index, content_block: { type: 'text', text: '' } });
             for (const piece of splitText(plan.text, plan.chunks)) {
