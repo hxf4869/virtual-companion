@@ -5,6 +5,7 @@ import { createChatEngine, runtimeSettings, projectModelSettings } from './engin
 import { createDesktopSession } from './session.js';
 import { readGenerationResponse } from './engine/response.js';
 import { prepareSourceIdentities } from '/scripts/vc-runtime/source-identity.js';
+import { initializeCards } from './cards/index.js';
 
 export async function prepareChatRuntime({ client, context, choosePersona, readInput, onChange, onTakeDraft, onRestoreDraft, onConflict }) {
     const [purposes, providers, packet] = await Promise.all([fetchModelPurposes(), fetchProviders(), client.request('/api/settings/get', {})]);
@@ -15,7 +16,9 @@ export async function prepareChatRuntime({ client, context, choosePersona, readI
     projectModelSettings(settings, decision, scope);
     const presets = Object.fromEntries(packet.openai_setting_names.map((name, index) => [name, JSON.parse(packet.openai_settings[index])]));
     const models = providers.flatMap(provider => provider.models.map(model => ({ id: model.modelId, ...model })));
-    const engine = await createChatEngine({ client, context, settings, decision, presets, models, readInput });
-    return createDesktopSession({ client, context, engine, prepareSourceIdentities, readResponse: readGenerationResponse,
+    const engine = await createChatEngine({ client, context, settings, decision, presets, models, readInput,
+        initializeCards: args => initializeCards({ ...args, packet }) });
+    const session = createDesktopSession({ client, context, engine, prepareSourceIdentities, readResponse: readGenerationResponse,
         choosePersona, onChange, onTakeDraft, onRestoreDraft, onConflict });
+    return Object.assign(session, { renderMessage: engine.cards.renderMessage, mountCardActions: engine.cards.mountCardActions });
 }

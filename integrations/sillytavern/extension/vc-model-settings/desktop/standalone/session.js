@@ -13,6 +13,8 @@ export function createDesktopSession({ client, context, engine, prepareSourceIde
     const getContext = () => context;
     const guard = createSourceGuard(getContext, { onSettled() {
         if (current?.ready && !job) void save(current).catch(() => {});
+    }, onConflict(serialized, error, source) {
+        if (current?.metadata === source.metadata) reject(current, error, serialized, true);
     } });
     globalThis[Symbol.for('virtual-companion.f2-source')] = guard;
     f2.setSourcePreparer(records => prepareSourceIdentities(records, { settled: savingSettled,
@@ -30,10 +32,10 @@ export function createDesktopSession({ client, context, engine, prepareSourceIde
             canSend: target.ready && !target.blocked && !job, notice: target.notice || '', conflict: target.blocked,
             enterToSend: engine.settings.power_user.send_on_enter !== -1 });
     };
-    function reject(target, error, snapshot) {
+    function reject(target, error, snapshot, sourceConflict = false) {
         target.blocked = true;
         target.notice = F2_CONFLICT_COPY;
-        rejected.set(target.path, { snapshot, draft: target.pendingInput });
+        rejected.set(target.path, { snapshot, draft: target.pendingInput, sourceConflict });
         publish(target);
         if (target === current && !target.signal?.aborted) onConflict(snapshot, error);
         return error;
@@ -57,9 +59,13 @@ export function createDesktopSession({ client, context, engine, prepareSourceIde
         context.settingsDirty = false;
     }
     context.getCurrentChatId = () => context.chatId;
-    context.saveChat = context.saveChatConditional = context.saveMetadata = () => save(current);
+    context.saveChat = () => save(current);
+    context.saveChatConditional = context.saveMetadata = () => {
+        context.metadataDirty = true;
+        return job || !current?.ready || !guard.isSettled() ? Promise.resolve() : save(current);
+    };
     // 生成中的变量变化随最终回复提交；不在memory快照和出站之间另启元数据保存。
-    context.saveMetadataDebounced = () => { context.metadataDirty = true; if (current?.ready && !job) void save(current).catch(() => {}); };
+    context.saveMetadataDebounced = () => { context.metadataDirty = true; if (current?.ready && !job && guard.isSettled()) void save(current).catch(() => {}); };
     context.saveSettingsDebounced = () => { context.settingsDirty = true; if (!job) void saveSettings().catch(() => {}); };
 
     async function stop() {
@@ -73,6 +79,8 @@ export function createDesktopSession({ client, context, engine, prepareSourceIde
     }
     async function open(row, records, { signal, latest = false } = {}, ticket) {
         await stop();
+        await engine.cards?.settle();
+        await engine.cards?.closeScripts();
         signal?.throwIfAborted();
         if (ticket !== epoch) return false;
         f2.leave();
@@ -119,8 +127,11 @@ export function createDesktopSession({ client, context, engine, prepareSourceIde
             if (context.metadataDirty) await save(target, { settled: guard.isSettled() });
             await saveSettings();
             signal?.throwIfAborted(); if (ticket !== epoch) return false;
+            await engine.cards?.open({ signal });
             await context.eventSource.emit(context.eventTypes.CHAT_CHANGED, row.file);
             await context.eventSource.emit(context.eventTypes.CHAT_LOADED, { detail: { id: index, character: card } });
+            await engine.cards?.surface.refresh(target.messages.map((_, index) => index));
+            if (context.metadataDirty) await save(target, { settled: guard.isSettled() });
             target.ready = true; publish(target); return true;
         } catch (error) {
             if (ticket === epoch && !signal?.aborted) {
@@ -186,6 +197,7 @@ export function createDesktopSession({ client, context, engine, prepareSourceIde
                 assistant.swipes.push(...result.swipes);
                 await context.eventSource.emit(context.eventTypes.MESSAGE_RECEIVED, target.messages.length - 1, 'normal');
                 await context.eventSource.emit(context.eventTypes.CHARACTER_MESSAGE_RENDERED, target.messages.length - 1, 'normal');
+                await engine.cards?.surface.refresh([target.messages.length - 1]);
                 assistant.swipes[0] = assistant.mes;
                 assistant.swipe_info[0] = { send_date: assistant.send_date, gen_started: assistant.gen_started,
                     gen_finished: assistant.gen_finished, extra: structuredClone(assistant.extra) };
@@ -230,6 +242,7 @@ export function createDesktopSession({ client, context, engine, prepareSourceIde
         retry: () => send('', { retry: true }), async copyRejected() {
             const target = current, entry = rejected.get(target?.path);
             if (!entry) return '';
+            if (entry.sourceConflict) return entry.snapshot;
             if (entry.draft) return entry.draft;
             const latest = await client.readChat(target.row);
             if (target !== current || target.signal?.aborted) return '';

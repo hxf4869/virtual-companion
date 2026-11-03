@@ -23,6 +23,43 @@ export function nextFollow(state, event) {
     return state;
 }
 
+/** 独立桌面的跟随端口；沿用上面的用户滚动规则，异步HTML/iframe增长不改变阅读状态。 */
+export function mountDesktopFollow(chat) {
+    const doc = chat.ownerDocument, view = doc.defaultView, ac = new view.AbortController();
+    let state = 'follow', lastTop = chat.scrollTop, lastInput = -1e9, dragging = false, frame = 0;
+    const schedule = () => {
+        if (frame) return;
+        frame = view.requestAnimationFrame(() => {
+            frame = 0;
+            if (state === 'follow') { chat.scrollTop = chat.scrollHeight; lastTop = chat.scrollTop; }
+        });
+    };
+    const markInput = () => { lastInput = view.performance.now(); };
+    const listen = (target, name, fn, options = {}) => target.addEventListener(name, fn, { ...options, signal: ac.signal });
+    listen(chat, 'wheel', markInput, { passive: true }); listen(chat, 'touchmove', markInput, { passive: true });
+    listen(chat, 'pointerdown', event => { if (event.target === chat) { dragging = true; markInput(); } });
+    listen(chat, 'pointermove', () => { if (dragging) markInput(); });
+    listen(chat, 'pointerup', () => { dragging = false; }); listen(chat, 'pointercancel', () => { dragging = false; });
+    const keys = new Set(['PageUp', 'PageDown', 'Home', 'End', 'ArrowUp', 'ArrowDown', ' ']);
+    listen(doc, 'keydown', event => {
+        if (keys.has(event.key) && !event.metaKey && !event.ctrlKey && !event.altKey
+            && !['TEXTAREA', 'INPUT'].includes(event.target?.tagName) && !event.target?.isContentEditable) markInput();
+    }, { capture: true });
+    listen(chat, 'scroll', () => {
+        const top = chat.scrollTop;
+        if (view.performance.now() - lastInput < 250) state = nextFollow(state, { type: 'user-scroll', up: top < lastTop,
+            gap: chat.scrollHeight - top - chat.clientHeight });
+        lastTop = top;
+    });
+    listen(view, 'resize', schedule);
+    const resize = new view.ResizeObserver(schedule);
+    const observe = () => { resize.disconnect(); resize.observe(chat); for (const node of chat.children) resize.observe(node); schedule(); };
+    const mutation = new view.MutationObserver(observe);
+    mutation.observe(chat, { childList: true, subtree: true, characterData: true }); observe();
+    return { open() { state = 'follow'; lastInput = -1e9; schedule(); }, sent() { state = nextFollow(state, { type: 'send' }); schedule(); },
+        update: schedule, destroy() { ac.abort(); resize.disconnect(); mutation.disconnect(); view.cancelAnimationFrame(frame); } };
+}
+
 export const latestVisible = (gap) => Number(gap) > LATEST_PX;
 
 export function badgeText(count) {

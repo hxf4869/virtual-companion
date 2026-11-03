@@ -66,8 +66,8 @@ async function confirmHostPopup(page) {
 }
 
 async function openComplex(page, fileName) {
-    let settled = false;
-    const done = openStCharacterChat(page, { avatar: fileName, switchMenu: false }).finally(() => { settled = true; });
+    let settled = false, failure;
+    const done = openStCharacterChat(page, { avatar: fileName, switchMenu: false }).then(() => { settled = true; }, error => { settled = true; failure = error; });
     const deadline = Date.now() + 25000;
     while (!settled && Date.now() < deadline) {
         await confirmHostPopup(page);
@@ -75,6 +75,7 @@ async function openComplex(page, fileName) {
     }
     if (!settled) throw new Error('复杂卡打开超时');
     await done;
+    if (failure) throw failure;
     await revealShellChat(page);
 }
 
@@ -263,6 +264,15 @@ export async function sceneF2ChatUi(ctx) {
     await bindForeground(ctx);
     ctx.w10.psql(ownerBudgetResetSql(ctx.w05.ownerId));
     const st = stClient(ctx);
+    // 明确本场合成输入，避免继承nf-prompts的setvar预设/全局世界书和其他场景的EJS模式。
+    const fixtureSettings = JSON.parse((await st.call('POST', '/api/settings/get', {})).json.settings);
+    const mainPrompt = fixtureSettings.oai_settings?.prompts?.find(prompt => prompt.identifier === 'main');
+    if (mainPrompt) mainPrompt.content = '合成验收：{{char}} 与 {{user}}交流。';
+    fixtureSettings.world_info_settings ||= {}; fixtureSettings.world_info_settings.world_info ||= {};
+    fixtureSettings.world_info_settings.world_info.globalSelect = [];
+    fixtureSettings.extension_settings ||= {}; fixtureSettings.extension_settings.EjsTemplate ||= {};
+    Object.assign(fixtureSettings.extension_settings.EjsTemplate, { compile_workers: false, sandbox: false });
+    if ((await st.call('POST', '/api/settings/save', fixtureSettings)).status !== 200) throw new Error('F2合成设置未保存');
     const cardName = `F2 聊天 ${crypto.randomUUID().slice(0, 8)}`;
     const imported = await importJson(st, {
         name: cardName,
@@ -325,6 +335,12 @@ export async function sceneF2ChatUi(ctx) {
         console.log('[f2-chat-ui] 打开宿主');
         await page.goto(ctx.w05.stBase);
         await nativeReady(page);
+        await page.waitForFunction(() => typeof globalThis.EjsTemplate?.compileTemplate === 'function');
+        const nativeWorker = await page.evaluate(async () => {
+            const compiled = await EjsTemplate.compileTemplate('<%= value + 1 %>');
+            return await compiled({ value: 1 });
+        });
+        if (nativeWorker !== '2') fail(new Error('原生EJS worker编译协议不符'));
         await openChat(page, avatar, file);
         await page.waitForFunction(() => document.body.classList.contains('vc-ui') && document.querySelector('#vc-chat-poster'));
         const placed = await page.evaluate(() => {
@@ -400,6 +416,10 @@ export async function sceneF2ChatUi(ctx) {
             await tab.evaluate(() => window.SillyTavern.getContext().saveChat());
         }
         for (const tab of [conflict, other]) await openChat(tab, avatar, file);
+        const baselines = await Promise.all([conflict, other].map(tab => tab.evaluate(() => {
+            const token = SillyTavern.getContext().chatMetadata.vc_f2; return [token.id, token.revision];
+        })));
+        if (JSON.stringify(baselines[0]) !== JSON.stringify(baselines[1])) fail(new Error('冲突场景两页初始版本未对齐'));
         await conflict.evaluate(async () => {
             const context = window.SillyTavern.getContext();
             const row = context.chat.find((item) => item && item.is_user === false);

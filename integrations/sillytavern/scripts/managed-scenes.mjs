@@ -42,6 +42,7 @@ import { desktopPagesScene } from './desktop-pages-accept.mjs';
 import { nativeStartupScene, independentDesktopScene } from './desktop-startup-accept.mjs';
 import { desktopPromptScene } from './desktop-prompt-accept.mjs';
 import { desktopChatScene } from './desktop-chat-accept.mjs';
+import { desktopCardScene } from './desktop-card-accept.mjs';
 
 export const ACCEPT_SCENES = [
     memoryRealModelScene,
@@ -108,4 +109,5 @@ export const ACCEPT_SCENES = [
     independentDesktopScene,
     desktopPromptScene,
     desktopChatScene,
+    desktopCardScene,
 ];

@@ -555,7 +555,7 @@ export function createNativeF2IO({ getRequestHeaders, fetchImpl = fetch, client 
 /** Used by the actual Helper and MVU callbacks, before reading and after every
  * awaited updater. Revision, metadata object, target message and swipe all
  * belong to the captured source; none may be relabelled with a newer source. */
-export function createSourceGuard(getContext, { onSettled = () => {} } = {}) {
+export function createSourceGuard(getContext, { onSettled = () => {}, onConflict = (serialized, error) => showF2Draft(serialized, error) } = {}) {
     const pending = new Set();
     const failed = new WeakSet();
     function begin(messageId) {
@@ -599,7 +599,7 @@ export function createSourceGuard(getContext, { onSettled = () => {} } = {}) {
             || JSON.stringify(c.chat[snapshot.index]?.variables) !== snapshot.variables
             || JSON.stringify(c.chatMetadata?.variables) !== snapshot.chatVariables) {
             const error = new F2ConflictError('VC_STALE_SOURCE');
-            showF2Draft(JSON.stringify({ source: JSON.parse(snapshot.draft), ...(result ? { result } : {}) }), error);
+            onConflict(JSON.stringify({ source: JSON.parse(snapshot.draft), ...(result ? { result } : {}) }), error, snapshot);
             throw error;
         }
     }

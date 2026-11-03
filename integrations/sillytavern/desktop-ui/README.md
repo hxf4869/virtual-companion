@@ -68,3 +68,8 @@ PromptManager、预算与 Chat Completion 请求计算。状态、tokenizer、�
 NF-03 的 `standalone/session.js` 管理打开、输入、取消和F2保存；React拥有消息与输入，重用原流式解析与回复清理。
 `accept-managed.mjs --filter nf-chat` 用真实合成provider验证三协议的流式/非流式、原quiet规划、刷新、停止、断流、
 CAS冲突和草稿。F2冲突弹层沿原视觉，以动作回调接独立会话；原生手机宿主继续使用默认动作。
+
+NF-04 的 `standalone/cards/` 给原EJS、Helper叶子与MVU提供上下文、F2、原角色/预设/设置和独占渲染槽位。
+受管装配生成EJS显式入口与MVU桌面派生物，原算法/许可与原生路径保留；卡片iframe仅包含卡片内容或脚本。
+`accept-managed.mjs --filter nf-cards` 验InitVar→世界书/EJS→生成→MVU→面板→F2/刷新、下一轮变量、编辑重处理、历史重演、
+六类变量存储及worker/sandbox；完整媒体和消息操作继续NF-05，产品/酒馆设置继续NF-06–07。

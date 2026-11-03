@@ -530,3 +530,39 @@ NF-00 收尾：TypeScript/Vite 构建、ST 离线整组 1033/1033（0 FAIL/0 SKI
 - 标准check的约束、TypeScript/Vite与Go检查通过；ST默认高并发的既有80ms预留超时用例在进入预留前超时，
   单文件复验通过，同一整组限制4个worker后1043/1043通过（0 fail/skip，25.2s）。未改超时、测试或断言。
   `git diff --check`通过；受管私有进程/容器/临时卷按原入口清理。复杂卡、媒体、完整设置与其余页面仍按后续批次验收。
+
+### 11.10 NF-04 卡片运行与第一阶段门槛
+
+- EJS复用锁定原bundle和原handler/evaluate/variables/worldinfo闭包；装配时只改宿主导入与显式初始化，
+  不运行其设置页、命令或编辑器启动。保留原worker/sandbox、全局→初始→聊天→当前swipe浅覆盖、permanent渲染和保存语义。
+  EJS最终请求监听须先于项目memory/companion/story监听，不能把它放在注入之后。
+- Helper复用当前卡片实际消费的变量、事件、脚本按钮、消息及世界书API实现，状态/持久化与消息渲染改接现有会话owner。
+  变量更新前后仍捕获并复核F2来源；消息variables[swipe]、chat、character、global独立。React消息叶子不包含children，
+  卡片运行模块独占该叶子的HTML/iframe生命周期；不复制原生消息树，也不加载原生设置控件。
+  本批约3.6k行主要是原叶子源码：variables/message/worldbook对应初始化、更新/重演和存储；event/script/global/util对应原MVU入口、
+  按钮与等待；predefine/尺寸/清理脚本对应真实iframe及既有配置；format/Markdown/AccountStorage/klona对应原正则显示、净化、
+  外部媒体策略和变量克隆。新端口仅衔接这些消费者，不搬原生UI或新增通用兼容层。
+- MVU继续运行现有锁定自托管脚本及生命周期补丁，不重写变量解析器或伪造Mvu对象。卡片iframe只加载卡片HTML/脚本，
+  与完整ST页面隔离。以现有complex-card合成卡和受管场景验证InitVar→世界书/EJS→生成→MVU→面板→保存/刷新，
+  再验下一轮EJS、编辑重处理与历史回放；门槛通过后继续NF-05。
+- EJS在锁定bundle导入时还会注册SlashCommand对象。派生入口保留两个原回调，改为显式导出；设置API直接更新原存储键，
+  不依赖原控件。worker仍用原EJS库和compileTemplate消息协议，补齐上游发布树缺失的资源，同时放到原生调用路径，
+  避免同一设置在手机/原生宿主失效。受管原生场景实际编译并执行得到2，桌面真实请求启用worker+sandbox后仍正确读取变量。
+- MVU `registerAsUniqueScript` 原来从 `#tavern_helper div[data-script-id]` 取有效实例。桌面派生物只将此输入改为真实脚本登记表，
+  保留按注册集合过滤和最后有效实例选主；不强制should_enable。原生MVU路径和原生命周期补丁保留。
+  Helper旧源码中的变量/事件/消息/世界书转换与iframe前导脚本保留；klona沿现有锁定2.0.6并附原MIT许可，无新增生产依赖。
+- 六类变量实际保存并刷新验证：message/chat走F2，character/script走原角色卡，preset走原预设，global走原设置。
+  脚本data/button/info仍回写所属原结构，配置写入排队且捕获原目标，不增加业务存储。旧异步消息变量结果仍由原source guard拒绝，
+  回调带捕获的metadata归属；过期旧操作不能把新会话标成冲突，回归先RED再GREEN。切换前等待卡片渲染、配置写入和pagehide清理。
+- 真实合成链：InitVar10→首轮15→刷新保持15→下一轮EJS条件生效且变量17→编辑后原按钮重处理19/false→下一轮EJS读取false→
+  编辑旧楼层并按原“重演楼层”算法得到25→保存/刷新仍25。重处理/重演无额外模型请求；不以常量Mvu或模拟变量面板代替。
+- React给卡片内容和操作栏各自提供无children槽位；修复直接挂到React父节点导致按钮在重绘时丢失的问题。
+  原Markdown/净化算法及p/list/table基础规则迁入；异步内容撑高会使原简化pinned标记误脱离，几何回归先RED，
+  改复用原nextFollow用户输入规则并观察真实尺寸。普通/复杂卡1440与390明暗均GREEN；真实wheel向上阅读后增长和停止不抢位置。
+  `.review-queue/NF-04/` 保留8图，两次只读视觉复核均ship；MVU原有短暂加载提示可遮住部分标题，不据静态图宣称覆盖所有交互。
+- 标准 `bash scripts/check.sh` 全部通过（38s，ST1044/1044，0 fail/skip）；受管catalog-admin+f2-chat-ui+nf-chat+nf-cards 4/4通过，普通聊天9组、
+  复杂链、六作用域、原生worker与原生F2均通过；结果 `dev-managed/artifacts/accept-2026-11-03T09-42-33-284Z/results.json`。
+  原生共享场景明确合成预设/世界书和EJS模式，避免继承提示词对照场景的setvar副作用；增加两页初始版本一致断言。
+  入口延迟与4组新旧提示词另在 `accept-2026-11-03T09-59-03-766Z` 复验3/3通过，模型出站0。
+  一次原生超时因观察中的Promise未及时接拒绝而跳过退出清理，已修复场景观察逻辑并定向回收仅属本轮的进程/容器/临时卷。
+  所有失败保留原断言，未删测试/skip、未调用真实模型或通知、未部署。完整媒体/聊天操作和扩展设置继续NF-05–07；根入口尚未切换。

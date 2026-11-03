@@ -1,0 +1,24 @@
+{
+  "id": "mvu-desktop-runtime",
+  "reason": "NF-04: use the real desktop script registry instead of native Helper DOM for the unique-script preference; keep original filtering/last-owner algorithm and native F2 lifecycle patch.",
+  "upstream": {
+    "component": "mvu",
+    "commit": "d03b7dc8a6ebf9bd611c7e2dc91f3b35462deebc"
+  },
+  "removal_condition": "Upstream offers a script registry port and managed complex-card chain passes without this patch.",
+  "target": "user/files/mvu-bundle-d03b7dc8.js",
+  "expected_input_sha256": "efee060d84fa365ab1d93f72a5e4921017c326fa4615e25f229d74b21529a9db",
+  "expected_output_sha256": "51244a164e4f5a1cddd98f9c2c2d081dfa162af38d1b76c332d5945ee7cf420c",
+  "replacements": [
+    {
+      "from": "_($('#tavern_helper').find('div[data-script-id]').toArray()).map(e=>String($(e).attr('data-script-id')))",
+      "to": "_(window.parent.TavernHelper.getActiveScriptIds())",
+      "count": 1
+    },
+    {
+      "from": "/*! For license information please see bundle.js.LICENSE.txt */",
+      "to": "/*! For license information please see mvu-desktop.js.LICENSE.txt */",
+      "count": 1
+    }
+  ]
+}

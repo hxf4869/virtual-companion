@@ -1,0 +1,134 @@
+{
+  "id": "ejs-desktop-runtime",
+  "reason": "NF-04: reuse locked EJS calculation/rendering handlers with desktop ports and explicit headless initialization; do not boot native UI/commands/editor.",
+  "upstream": {
+    "component": "ejs-template",
+    "commit": "d6f520d149aba146305b0b781ddd691d449c28d2"
+  },
+  "removal_condition": "Replace only when upstream exposes an equivalent headless entry and the managed complex-card chain passes.",
+  "target": "dist/index.js",
+  "expected_input_sha256": "9a4d1a3228a90a235b1b4111e5698c9fb7ac31b3f9828023d5dc582d9ee01ca5",
+  "expected_output_sha256": "ad712c0ff89f5b0d96805bd04e8420a9784cf92030fd517a8c5c3f69532ea9c5",
+  "replacements": [
+    {
+      "from": "import*as __WEBPACK_EXTERNAL_MODULE__script_js_588e7203__ from\"../../../../../script.js\";",
+      "to": "import*as __WEBPACK_EXTERNAL_MODULE__script_js_588e7203__ from\"/scripts/extensions/third-party/vc-model-settings/desktop/standalone/cards/ejs-host.js\";",
+      "count": 1
+    },
+    {
+      "from": "import*as __WEBPACK_EXTERNAL_MODULE__slash_commands_js_f5742a84__ from\"../../../../slash-commands.js\";",
+      "to": "import*as __WEBPACK_EXTERNAL_MODULE__slash_commands_js_f5742a84__ from\"/scripts/extensions/third-party/vc-model-settings/desktop/standalone/cards/ejs-host.js\";",
+      "count": 1
+    },
+    {
+      "from": "import*as __WEBPACK_EXTERNAL_MODULE__world_info_js_83198f57__ from\"../../../../world-info.js\";",
+      "to": "import*as __WEBPACK_EXTERNAL_MODULE__world_info_js_83198f57__ from\"/scripts/extensions/third-party/vc-model-settings/desktop/standalone/cards/ejs-host.js\";",
+      "count": 1
+    },
+    {
+      "from": "import*as __WEBPACK_EXTERNAL_MODULE__power_user_js_3c7cfb8b__ from\"../../../../power-user.js\";",
+      "to": "import*as __WEBPACK_EXTERNAL_MODULE__power_user_js_3c7cfb8b__ from\"/scripts/extensions/third-party/vc-model-settings/desktop/standalone/cards/ejs-host.js\";",
+      "count": 1
+    },
+    {
+      "from": "import*as __WEBPACK_EXTERNAL_MODULE__utils_js_d605cabe__ from\"../../../../utils.js\";",
+      "to": "import*as __WEBPACK_EXTERNAL_MODULE__utils_js_d605cabe__ from\"/scripts/extensions/third-party/vc-model-settings/desktop/standalone/cards/ejs-host.js\";",
+      "count": 1
+    },
+    {
+      "from": "import*as __WEBPACK_EXTERNAL_MODULE__group_chats_js_678c16bd__ from\"../../../../group-chats.js\";",
+      "to": "import*as __WEBPACK_EXTERNAL_MODULE__group_chats_js_678c16bd__ from\"/scripts/extensions/third-party/vc-model-settings/desktop/standalone/cards/ejs-host.js\";",
+      "count": 1
+    },
+    {
+      "from": "import*as __WEBPACK_EXTERNAL_MODULE__extensions_js_e625da88__ from\"../../../../extensions.js\";",
+      "to": "import*as __WEBPACK_EXTERNAL_MODULE__extensions_js_e625da88__ from\"/scripts/extensions/third-party/vc-model-settings/desktop/standalone/cards/ejs-host.js\";",
+      "count": 1
+    },
+    {
+      "from": "import*as __WEBPACK_EXTERNAL_MODULE__regex_engine_js_683beba0__ from\"../../../regex/engine.js\";",
+      "to": "import*as __WEBPACK_EXTERNAL_MODULE__regex_engine_js_683beba0__ from\"/scripts/extensions/third-party/vc-model-settings/desktop/standalone/cards/ejs-host.js\";",
+      "count": 1
+    },
+    {
+      "from": "import*as __WEBPACK_EXTERNAL_MODULE__openai_js_bf183548__ from\"../../../../openai.js\";",
+      "to": "import*as __WEBPACK_EXTERNAL_MODULE__openai_js_bf183548__ from\"/scripts/extensions/third-party/vc-model-settings/desktop/standalone/cards/ejs-host.js\";",
+      "count": 1
+    },
+    {
+      "from": "import*as __WEBPACK_EXTERNAL_MODULE__tokenizers_js_d5863f55__ from\"../../../../tokenizers.js\";",
+      "to": "import*as __WEBPACK_EXTERNAL_MODULE__tokenizers_js_d5863f55__ from\"/scripts/extensions/third-party/vc-model-settings/desktop/standalone/cards/ejs-host.js\";",
+      "count": 1
+    },
+    {
+      "from": "import*as __WEBPACK_EXTERNAL_MODULE__reasoning_js_8d5a64cc__ from\"../../../../reasoning.js\";",
+      "to": "import*as __WEBPACK_EXTERNAL_MODULE__reasoning_js_8d5a64cc__ from\"/scripts/extensions/third-party/vc-model-settings/desktop/standalone/cards/ejs-host.js\";",
+      "count": 1
+    },
+    {
+      "from": "import*as __WEBPACK_EXTERNAL_MODULE__slash_commands_SlashCommand_js_1b0d5616__ from\"../../../../slash-commands/SlashCommand.js\";",
+      "to": "import*as __WEBPACK_EXTERNAL_MODULE__slash_commands_SlashCommand_js_1b0d5616__ from\"/scripts/extensions/third-party/vc-model-settings/desktop/standalone/cards/ejs-host.js\";",
+      "count": 1
+    },
+    {
+      "from": "import*as __WEBPACK_EXTERNAL_MODULE__slash_commands_SlashCommandArgument_js_a42b9371__ from\"../../../../slash-commands/SlashCommandArgument.js\";",
+      "to": "import*as __WEBPACK_EXTERNAL_MODULE__slash_commands_SlashCommandArgument_js_a42b9371__ from\"/scripts/extensions/third-party/vc-model-settings/desktop/standalone/cards/ejs-host.js\";",
+      "count": 1
+    },
+    {
+      "from": "import*as __WEBPACK_EXTERNAL_MODULE__slash_commands_SlashCommandParser_js_42c8b851__ from\"../../../../slash-commands/SlashCommandParser.js\";",
+      "to": "import*as __WEBPACK_EXTERNAL_MODULE__slash_commands_SlashCommandParser_js_42c8b851__ from\"/scripts/extensions/third-party/vc-model-settings/desktop/standalone/cards/ejs-host.js\";",
+      "count": 1
+    },
+    {
+      "from": "import*as __WEBPACK_EXTERNAL_MODULE__events_js_a6991826__ from\"../../../../events.js\";",
+      "to": "import*as __WEBPACK_EXTERNAL_MODULE__events_js_a6991826__ from\"/scripts/extensions/third-party/vc-model-settings/desktop/standalone/cards/ejs-host.js\";",
+      "count": 1
+    },
+    {
+      "from": "import*as __WEBPACK_EXTERNAL_MODULE__popup_js_755810aa__ from\"../../../../popup.js\";",
+      "to": "import*as __WEBPACK_EXTERNAL_MODULE__popup_js_755810aa__ from\"/scripts/extensions/third-party/vc-model-settings/desktop/standalone/cards/ejs-host.js\";",
+      "count": 1
+    },
+    {
+      "from": "setFeatures:e=>{!function(){let e=arguments.length>0&&void 0!==arguments[0]?arguments[0]:{};for(const[t,n]of Object.entries(x))void 0!==e[n.name]&&(w[n.name]=e[n.name],b.extension_settings.EjsTemplate[n.name]=e[n.name],I(t,e[n.name]))}(e)}",
+      "to": "setFeatures:e=>{for(const entry of Object.values(x)){if(e[entry.name]!==undefined){w[entry.name]=e[entry.name];b.extension_settings.EjsTemplate[entry.name]=e[entry.name];}}l.saveSettingsDebounced();}",
+      "count": 1
+    },
+    {
+      "from": "resetFeatures:()=>E(!0)",
+      "to": "resetFeatures:()=>{for(const entry of Object.values(x)){w[entry.name]=entry.value;b.extension_settings.EjsTemplate[entry.name]=entry.value;}l.saveSettingsDebounced();}",
+      "count": 1
+    },
+    {
+      "from": "ov.SlashCommandParser.addCommandObject(rv.SlashCommand.fromProps({name:\"ejs\",callback:async(e,t)=>{wh.isDryRun=!1;const n=JSON.parse(e.ctx||\"{}\");e.block&&(t=\"<%= \".concat(t,\" %>\"));const i=await tg(-1,function(e){for(var t=1;t<arguments.length;t++){var n=null!=arguments[t]?arguments[t]:{};t%2?sv(Object(n),!0).forEach((function(t){uv(e,t,n[t])})):Object.getOwnPropertyDescriptors?Object.defineProperties(e,Object.getOwnPropertyDescriptors(n)):sv(Object(n)).forEach((function(t){Object.defineProperty(e,t,Object.getOwnPropertyDescriptor(n,t))}))}return e}({runType:\"command\",runID:-1,isDryRun:!1},n));w.debug_enabled&&console.debug(\"execute template code: \".concat(t));try{return await eg(t,i,{logging:!1})}catch(e){throw e instanceof SyntaxError&&(e.message+=dg(t)),console.error(e),e}finally{await Oh()}},namedArgumentList:[av.SlashCommandNamedArgument.fromProps({name:\"ctx\",description:\"Execute context, eg. {a : 1, b: 2}\",typeList:[av.ARGUMENT_TYPE.DICTIONARY],isRequired:!1}),av.SlashCommandNamedArgument.fromProps({name:\"block\",description:\"Treat as a whole code block, eg. <%= code %>\",typeList:[av.ARGUMENT_TYPE.DICTIONARY],isRequired:!1})],unnamedArgumentList:[av.SlashCommandArgument.fromProps({description:\"code\",typeList:[av.ARGUMENT_TYPE.STRING],isRequired:!0})],helpString:\"Execute template code\",returns:\"string\"})),ov.SlashCommandParser.addCommandObject(rv.SlashCommand.fromProps({name:\"ejs-refresh\",callback:async(e,t)=>(await Xg((0,l.getCurrentChatId)(),!0),\"\"),helpString:\"Preload world info\"}));",
+      "to": "const desktopCommands={\"ejs\":async(e,t)=>{wh.isDryRun=!1;const n=JSON.parse(e.ctx||\"{}\");e.block&&(t=\"<%= \".concat(t,\" %>\"));const i=await tg(-1,function(e){for(var t=1;t<arguments.length;t++){var n=null!=arguments[t]?arguments[t]:{};t%2?sv(Object(n),!0).forEach((function(t){uv(e,t,n[t])})):Object.getOwnPropertyDescriptors?Object.defineProperties(e,Object.getOwnPropertyDescriptors(n)):sv(Object(n)).forEach((function(t){Object.defineProperty(e,t,Object.getOwnPropertyDescriptor(n,t))}))}return e}({runType:\"command\",runID:-1,isDryRun:!1},n));w.debug_enabled&&console.debug(\"execute template code: \".concat(t));try{return await eg(t,i,{logging:!1})}catch(e){throw e instanceof SyntaxError&&(e.message+=dg(t)),console.error(e),e}finally{await Oh()}},\"ejs-refresh\":async(e,t)=>(await Xg((0,l.getCurrentChatId)(),!0),\"\")};",
+      "count": 1
+    },
+    {
+      "from": "/scripts/extensions/third-party/ST-Prompt-Template/dist/ejs.workers.js",
+      "to": "/scripts/extensions/third-party/vc-model-settings/desktop/standalone/cards/ejs-worker.js",
+      "count": 1
+    },
+    {
+      "from": "$((async()=>{await kv()}))",
+      "to": "initializeDesktop=async function(){const stored=b.extension_settings.EjsTemplate??={};for(const entry of Object.values(x)){w[entry.name]=stored[entry.name]??entry.value;} l.eventSource.makeLast(l.event_types.CHAT_CHANGED,Xg),l.eventSource.on(l.event_types.GENERATION_AFTER_COMMANDS,Yg),l.eventSource.on(l.event_types.WORLDINFO_UPDATED,Hg),l.eventSource.on(l.event_types.GENERATION_AFTER_COMMANDS,Vg),l.eventSource.on(l.event_types.GENERATE_AFTER_DATA,Jg),l.eventSource.on(l.event_types.CHAT_COMPLETION_SETTINGS_READY,qg),nv.forEach((e=>l.eventSource.on(e,Kg))),l.eventSource.on(l.event_types.WORLDINFO_ENTRIES_LOADED,Wg),iv.forEach((e=>l.eventSource.on(e,Qg))),l.eventSource.makeFirst(l.event_types.CHARACTER_MESSAGE_RENDERED,Kg),l.eventSource.on(\"js_generation_before_end\",ev),l.eventSource.on(l.event_types.MESSAGE_SWIPE_DELETED,tv);await dv();return {settings:w,render:Kg,preload:Xg,z:c,commands:desktopCommands};}",
+      "count": 1
+    },
+    {
+      "from": "div.mes[mesid",
+      "to": ".mes[mesid",
+      "count": 2
+    },
+    {
+      "from": "import*as __WEBPACK_EXTERNAL_MODULE__libs_faker_mjs_f3becd00__ from\"../libs/faker.mjs\";",
+      "to": "let initializeDesktop;import * as  __WEBPACK_EXTERNAL_MODULE__libs_faker_mjs_f3becd00__ from\"../libs/faker.mjs\";",
+      "count": 1
+    },
+    {
+      "from": "//# sourceMappingURL=index.js.map",
+      "to": "export { initializeDesktop };\n// Headless entry, 2026-11-03. Original EJS algorithms and packaged dependencies retained; no UI/editor/native boot. AGPL-3.0-only.",
+      "count": 1
+    }
+  ]
+}

@@ -2,7 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { sha256File, readJson } from './util.mjs';
-import { ST_DIR, EXT_DIR, USER_DIR, PATCH_SPEC, MVU_PATCH_SPEC, VENDOR_LOCK, UPSTREAM_LOCK } from './paths.mjs';
+import { INTEG, ST_DIR, EXT_DIR, USER_DIR, PATCH_SPEC, MVU_PATCH_SPEC, EJS_DESKTOP_PATCH_SPEC, MVU_DESKTOP_PATCH_SPEC, VENDOR_LOCK, UPSTREAM_LOCK } from './paths.mjs';
 
 export const VENDOR_SERVE_ROOT = path.join(EXT_DIR, 'JS-Slash-Runner', 'lib', 'vendor');
 export const PATCHED_DIST = path.join(EXT_DIR, 'JS-Slash-Runner', 'dist', 'index.js');
@@ -41,6 +41,12 @@ export function verifyNativeRuntime(userDir = USER_DIR) {
     }
     const mvu = path.join(userDir, 'user/files/mvu-bundle-d03b7dc8.js');
     if (!fs.existsSync(mvu) || sha256File(mvu) !== readJson(MVU_PATCH_SPEC).expected_output_sha256) problems.push('mvu-bundle');
+    const ejsDesktop = path.join(ext, 'ST-Prompt-Template/dist/desktop.js');
+    if (!fs.existsSync(ejsDesktop) || sha256File(ejsDesktop) !== readJson(EJS_DESKTOP_PATCH_SPEC).expected_output_sha256) problems.push('ejs-desktop');
+    const ejsWorker = path.join(ext, 'ST-Prompt-Template/dist/ejs.workers.js');
+    if (!fs.existsSync(ejsWorker) || sha256File(ejsWorker) !== sha256File(path.join(INTEG, 'extension/vc-model-settings/desktop/standalone/cards/ejs-worker.js'))) problems.push('ejs-worker');
+    const mvuDesktop = path.join(ext, 'JS-Slash-Runner/lib/mvu-desktop.js');
+    if (!fs.existsSync(mvuDesktop) || sha256File(mvuDesktop) !== readJson(MVU_DESKTOP_PATCH_SPEC).expected_output_sha256) problems.push('mvu-desktop');
     const vendor = verifyVendorTree(path.join(ext, 'JS-Slash-Runner/lib/vendor'));
     problems.push(...vendor.missing.map((p) => `vendor missing ${p}`), ...vendor.mismatched.map((p) => `vendor mismatch ${p}`));
     return { ok: problems.length === 0, problems };

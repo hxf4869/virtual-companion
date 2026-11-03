@@ -9,6 +9,7 @@ import { openSheet } from '../../ui/sheet.js';
 import { showToast } from '../../ui/toast.js';
 import { readDraft, writeDraft } from '../../chat-compose.js';
 import { mergeInput, showF2Draft } from '../../f2-client.js';
+import { mountDesktopFollow } from '../../chat-scroll.js';
 import { mountDesktopChatView } from '../build/index.js';
 import { mountDesktopShell } from '../host.js';
 import { mountSettingsShell } from '../settings-shell.js';
@@ -29,6 +30,7 @@ function setDraft(key, value) {
     if (chat.conversation === key) { chat.draft = value; paint(); }
 }
 const chat = { messages: [], status: 'empty', draft: '', sprite: iconSpriteUrl(), avatar: '', canSend: false, busy: false,
+    mountFollow: mountDesktopFollow,
     notice: '', conflict: false, enterToSend: true, error: '', conversation: '',
     onDraft(value) { setDraft(chat.conversation, value); },
     onSend() { void runtime?.send(chat.draft); },
@@ -153,6 +155,7 @@ async function start() {
         },
     })).then(async value => {
         runtime = value;
+        chat.renderMessage = runtime.renderMessage; chat.mountCardActions = runtime.mountCardActions; paint();
         document.documentElement.dataset.vcRuntime = 'prepared';
         await eventSource.emit(event_types.APP_INITIALIZED); await eventSource.emit(event_types.APP_READY);
         void activateCurrent(read, false);

@@ -63,7 +63,7 @@ export function projectModelSettings(settings, decision, scope) {
     if (decision.pinned.reasoningEffort !== undefined) oai.reasoning_effort = decision.pinned.reasoningEffort;
 }
 
-export async function createChatEngine({ client, context, settings, decision, presets, models, extensions = [], readInput = () => '' }) {
+export async function createChatEngine({ client, context, settings, decision, presets, models, extensions = [], readInput = () => '', initializeCards }) {
     const getContext = () => context;
     const state = { runId: 0 };
     const toast = { error: message => showToast(String(message), { type: 'failure' }), warning: message => showToast(String(message)) };
@@ -89,6 +89,8 @@ export async function createChatEngine({ client, context, settings, decision, pr
         initialized = true;
     }
     await loadBundledManifest({ getContext });
+    // 锁定EJS的SETTINGS_READY处理必须在项目记忆/陪伴/剧情注入之前登记。
+    const cards = await initializeCards?.({ client, context, settings, presets, models });
     const memory = createMemoryInjection({ getContext, recall: recallSTMemory, ensureBinding: async () => {
         const metadata = context.chatMetadata;
         if (metadata.vc_binding?.relationshipId && metadata.vc_binding?.conversationId) return metadata.vc_binding;
@@ -126,8 +128,8 @@ export async function createChatEngine({ client, context, settings, decision, pr
                 readPresetExtensionField: ({ path }) => lodash.get(preset.extensions, path) }) });
     }
 
-    return { settings, story, memory,
-        bindContext() { bindEngineContext(context, settings, environment); },
+    return { settings, story, memory, cards,
+        bindContext() { bindEngineContext(context, settings, environment); cards?.bindContext?.(); },
         async userMessage(input) {
             bindEngineContext(context, settings, environment);
             const bias = getBiasStrings(input, 'normal');

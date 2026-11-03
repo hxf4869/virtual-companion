@@ -10,6 +10,19 @@ const window = new Window({ url: 'http://localhost' });
 globalThis.localStorage = window.localStorage;
 test.after(() => window.happyDOM.close());
 
+test('旧卡异步变量结果过期：拒绝原操作，不能把新会话标成保存冲突', async () => {
+    const f = fixture();
+    await f.session.activate({ avatar: 'synthetic.png', file: 'A' }, f.records('A'));
+    const guard = globalThis[Symbol.for('virtual-companion.f2-source')];
+    const source = guard.capture(0), finish = guard.begin(0);
+    await f.session.activate({ avatar: 'synthetic.png', file: 'B' }, f.records('B'));
+    assert.throws(() => guard.assert(source, { rejected: true }), error => error.code === 'VC_STALE_SOURCE');
+    finish(false);
+    assert.equal(f.states.at(-1).canSend, true);
+    assert.equal(f.states.at(-1).conflict, false);
+    assert.equal(f.context.chatMetadata.vc_f2.id, 'B');
+});
+
 const deferred = () => { let resolve; const promise = new Promise(done => { resolve = done; }); return { promise, resolve }; };
 function fixture({ save, prepare, readResponse } = {}) {
     const card = { avatar: 'synthetic.png', name: '合成角色', data: { extensions: { vc_character_ref: 'synthetic-ref' } } };

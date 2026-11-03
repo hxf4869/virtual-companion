@@ -25,7 +25,7 @@ export async function openDesktopFixture(page, base, fixture, messages = 24) {
     await page.waitForFunction(count => document.querySelectorAll('#chat > .mes').length === count, messages);
 }
 
-async function captureWindows(page, ctx) {
+export async function captureWindows(page, ctx, prefix = 'nf-chat') {
     for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
         await page.setViewportSize(viewport);
         for (const scheme of ['light', 'dark']) {
@@ -33,6 +33,7 @@ async function captureWindows(page, ctx) {
             await page.evaluate(async () => { await document.fonts.ready; await Promise.all(document.getAnimations()
                 .filter(animation => animation.playState === 'running' && animation.effect?.getComputedTiming().iterations !== Infinity)
                 .map(animation => animation.finished.catch(() => {}))); });
+            await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
             const geometry = await page.evaluate(() => ({ width: innerWidth, scrollWidth: document.body.scrollWidth,
                 input: document.querySelector('#send_textarea').getBoundingClientRect().toJSON(),
                 last: document.querySelector('#chat>.mes:last-child').getBoundingClientRect().toJSON(),
@@ -42,7 +43,7 @@ async function captureWindows(page, ctx) {
             assert.ok(geometry.last.bottom <= geometry.input.top + 1 && geometry.last.top >= 0,
                 `保持底部时窗口调整后仍应看到最新回复 ${JSON.stringify({ last: geometry.last.bottom, input: geometry.input.top, width: geometry.width })}`);
             assert.ok(geometry.send.width >= 36 && geometry.send.height >= 36);
-            await page.screenshot({ path: path.join(ctx.artifactsDir, `nf-chat-${viewport.width}-${scheme}.png`) });
+            await page.screenshot({ path: path.join(ctx.artifactsDir, `${prefix}-${viewport.width}-${scheme}.png`) });
         }
     }
     await page.setViewportSize({ width: 1440, height: 900 });
@@ -95,7 +96,12 @@ async function recoveryChecks({ ctx, st, page, fixture, other, reply }) {
     await send('NF03 合成停止输入');
     await page.waitForFunction(count => document.querySelector('#mes_stop') && document.querySelectorAll('#chat>.mes').length === count
         && document.querySelector('#chat>.mes:last-child')?.getAttribute('is_user') === 'false', stopCount);
-    await input.fill('NF03 停止时保留的草稿'); await page.locator('#mes_stop').click(); await notice('已停止');
+    await input.fill('NF03 停止时保留的草稿');
+    await page.locator('#chat').hover(); await page.mouse.wheel(0, -600);
+    await page.waitForFunction(() => { const chat = document.querySelector('#chat'); return chat.scrollHeight - chat.scrollTop - chat.clientHeight > 300; });
+    const readingTop = await page.locator('#chat').evaluate(chat => chat.scrollTop);
+    await page.locator('#mes_stop').click(); await notice('已停止');
+    assert.ok(Math.abs(await page.locator('#chat').evaluate(chat => chat.scrollTop) - readingTop) < 2, '异步消息增长/停止不能夺走用户已脱离底部的阅读位置');
     let saved = await read(fixture);
     assert.equal(saved.at(-1).extra.finish_reason, 'cancelled'); assert.equal(saved.at(-1).extra.no_memory, true);
     assert.equal(await input.inputValue(), 'NF03 停止时保留的草稿');
@@ -169,6 +175,8 @@ async function sceneDesktopChat(ctx) {
             const packet = (await st.call('POST', '/api/settings/get', {})).json;
             const settings = JSON.parse(packet.settings);
             settings.oai_settings ||= {}; settings.extension_settings ||= {};
+            settings.extension_settings.EjsTemplate ||= {};
+            Object.assign(settings.extension_settings.EjsTemplate, { compile_workers: false, sandbox: false });
             settings.power_user ||= {}; settings.power_user.send_on_enter = 0;
             Object.assign(settings.oai_settings, { stream_openai: row.stream, function_calling: row.tools || false, show_thoughts: true });
             settings.extension_settings.vc_reply_planner = row.planner || false;

@@ -18,6 +18,8 @@ export const UPSTREAM_LOCK = path.join(INTEG, 'upstream.lock.json');
 export const VENDOR_LOCK = path.join(INTEG, 'vendor.lock.json');
 export const PATCH_SPEC = path.join(INTEG, 'patches', 'helper-selfhost-runtime-assets.json');
 export const MVU_PATCH_SPEC = path.join(INTEG, 'patches', 'mvu-current-message-lifecycle.json');
+export const EJS_DESKTOP_PATCH_SPEC = path.join(INTEG, 'patches', 'ejs-desktop-runtime.json');
+export const MVU_DESKTOP_PATCH_SPEC = path.join(INTEG, 'patches', 'mvu-desktop-runtime.json');
 
 export const DEV = path.resolve(process.env.VC_ST_DEV_DIR || path.join(INTEG, 'dev'));
 export const DATA_ROOT = path.join(DEV, 'data');
