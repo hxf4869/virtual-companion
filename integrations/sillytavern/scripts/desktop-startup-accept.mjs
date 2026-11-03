@@ -49,6 +49,32 @@ export async function desktopBenchmarkContext(browser, ctx) {
     return context;
 }
 
+export async function confirmSyntheticNativeProxy(page) {
+    const dialog = page.locator('dialog[open].popup').first();
+    await dialog.waitFor({ state: 'visible', timeout: 15000 });
+    const marker = await page.evaluate(() => window.SillyTavern.getContext().chatCompletionSettings.reverse_proxy);
+    assert.ok(String(marker).startsWith('vc-go://model-purposes/FOREGROUND_CHAT?provider=vc03m-claude'), '只确认受管合成 Claude 标记');
+    assert.ok((await dialog.innerText()).includes(marker), '代理确认必须确指当前受管标记');
+    await dialog.locator('.popup-button-ok').click();
+    await dialog.waitFor({ state: 'hidden' });
+}
+
+export async function ensureNativeConnection(page) {
+    await page.waitForFunction(() => {
+        const settings = window.SillyTavern?.getContext?.().chatCompletionSettings;
+        return [settings?.custom_url, settings?.reverse_proxy].some(value => String(value || '').startsWith('vc-go://'));
+    });
+    // 调原生连接动作检查受管本地 provider，不伪造 online_status、不发生成请求。
+    await page.evaluate(async () => {
+        if ((await import('/script.js')).online_status === 'no_connection') document.querySelector('#api_button_openai').click();
+    });
+    await page.waitForFunction(async () => (await import('/script.js')).online_status !== 'no_connection'
+        || document.querySelector('dialog[open].popup'));
+    const dialog = page.locator('dialog[open].popup').first();
+    if (await dialog.count()) await confirmSyntheticNativeProxy(page);
+    await page.waitForFunction(async () => (await import('/script.js')).online_status !== 'no_connection');
+}
+
 async function sceneNativeStartup(ctx) {
     const fixture = await seedDesktopBenchmark(ctx);
     const { chromium } = await import('playwright-core');
@@ -71,8 +97,8 @@ async function sceneNativeStartup(ctx) {
             await page.waitForFunction(() => document.querySelectorAll('#chat > .mes').length === 24);
             const historyMs = await page.evaluate(() => Math.round(performance.now()));
             await page.locator('#vc-shell .vc-sidebar [data-nav="chat"]').click();
-            await page.waitForFunction(() => !document.querySelector('#send_form')?.classList.contains('no-connection')
-                && Boolean(window.SillyTavern?.getContext?.().chatMetadata?.vc_binding?.relationshipId));
+            await ensureNativeConnection(page);
+            await page.waitForFunction(() => Boolean(window.SillyTavern?.getContext?.().chatMetadata?.vc_binding?.relationshipId));
             await page.locator('#send_textarea').fill('合成草稿');
             assert.equal(await page.locator('#send_textarea').inputValue(), '合成草稿');
             const sendMs = await page.evaluate(() => Math.round(performance.now()));
@@ -149,7 +175,23 @@ async function sceneIndependentDesktop(ctx) {
         assert.equal(requests.filter(url => url.endsWith('/generate')).length, 0);
         assert.deepEqual(errors, [], '自有页面无未捕获错误');
         releaseRuntime();
-        await page.waitForFunction(() => document.documentElement.dataset.vcRuntime === 'prepared');
+        await page.waitForFunction(() => ['prepared', 'error'].includes(document.documentElement.dataset.vcRuntime));
+        if (await page.locator('html').getAttribute('data-vc-runtime') === 'error') {
+            // 仅失败时重建相同合成输入以得到具体异常；不输出任何凭据或正文。
+            await page.evaluate(async fixture => {
+                const base = '/scripts/extensions/third-party/vc-model-settings/desktop/standalone/';
+                const { createDesktopClient } = await import(base + 'client.js');
+                const { prepareChatRuntime } = await import(base + 'runtime.js');
+                const { EventEmitter } = await import(base + 'engine/events.js');
+                const { event_types } = await import(base + 'engine/st/events.js');
+                const client = createDesktopClient(); await client.initialize();
+                const characters = await client.characters(), records = await client.readChat(fixture);
+                await prepareChatRuntime({ client, context: { characters, characterId: characters.findIndex(row => row.avatar === fixture.avatar),
+                    chat: records.slice(1), chatMetadata: records[0].chat_metadata, chatId: fixture.file, name1: records[0].user_name,
+                    name2: records[0].character_name, extensionPrompts: {}, eventSource: new EventEmitter(), eventTypes: event_types } });
+                throw new Error('聊天准备首次初始化失败');
+            }, { avatar: fixture.avatar, file: fixture.file });
+        }
         const result = { uiMs, historyMs, openMs: Math.round(historyMs - opening), sendMs: null,
             delayedRuntime: true, nativeRequests: forbidden.length, modelRequests: 0, messages: fixture.chat.length - 1,
             resources: [...new Set(requests)],

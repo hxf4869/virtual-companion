@@ -1614,9 +1614,9 @@ N-00～N-08（对应评审发现 F-01～F-08）为在途修复，逐项状态与
 
 唯一计划：`docs/planning/2026-11-02-desktop-frontend-refactor-plan.md` §11；Backlog J。一个隔离 worktree/写入 owner，按序持续推进。
 
-- [x] NF-00（2026-11-03）：React 基线 `09690d26`，隔离分支 `codex/desktop-independent-frontend`；唯一计划 §11、功能/接口/DOM 迁移表、Backlog J 和架构条款已落地。固定24条合成历史：cold UI 2510ms/可发送 4682ms，warm UI 2384ms/可发送 4271ms；nf-startup+catalog-admin 2/2通过、生成请求0，原工作树未提交改动保留。
+- [x] NF-00（2026-11-03）：React 基线 `09690d26`，隔离分支 `codex/desktop-independent-frontend`；唯一计划 §11、功能/接口/DOM 迁移表、Backlog J 和架构条款已落地。NF-02 修正为实际连接状态后重测固定24条合成历史：cold UI 2922ms/可发送 3990ms，warm UI 2357ms/可发送 3205ms；nf-startup通过、生成请求0，原工作树未提交改动保留。
 - [x] NF-01（2026-11-03）：同源 `/desktop/` 直接启动自有 React/页面/历史/设置，原身份/CSRF保护保留；真实延迟聊天准备模块后操作与草稿通过，完整ST请求/iframe/生成均0。几何回归RED→GREEN、390/1440明暗图及独立视觉复核通过；标准check.sh 45s与受管2/2通过。发送和复杂卡继续NF02–04，尚未切根入口。
-- [ ] NF-02：聊天计算、世界书/宏/正则/提示词与必要钩子。
+- [x] NF-02（2026-11-03）：定向抽离锁定ST角色字段、世界书/递归/定时效果、两代宏、正则、预设/预算/工具和最终请求计算，无完整ST启动/DOM依赖；复用原记忆/陪伴/剧情顺序。三协议+旧宏4组最终JSON/状态/事件逐项等价；记忆外部输入严格录制回放，真实召回/F2仍归NF-03。TypeScript/Vite和离线1036/1036、受管catalog-admin+nf-desktop+nf-prompts 3/3通过，模型出站0；复杂卡未标通过。
 - [ ] NF-03：普通聊天纵切、三协议与 F2/CAS 异常恢复。
 - [ ] NF-04：复杂卡第一阶段技术门槛。
 - [ ] NF-05：聊天操作与媒体。

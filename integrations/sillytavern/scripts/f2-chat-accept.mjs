@@ -36,7 +36,7 @@ async function launchBrowser() {
     });
 }
 
-async function nativeReady(page) {
+export async function nativeReady(page) {
     await page.waitForFunction(() => Boolean(window.SillyTavern?.getContext?.()?.eventSource));
     await page.waitForSelector('#send_textarea', { state: 'attached' });
     await page.waitForFunction(async () => (await import('/script.js')).settingsReady || document.querySelector('dialog[open] .onboarding'));

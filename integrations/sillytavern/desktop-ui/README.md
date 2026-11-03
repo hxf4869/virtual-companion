@@ -1,6 +1,6 @@
 # 桌面自有界面
 
-React + TypeScript + Vite。现有 ST 宿主、消息树、输入节点、角色卡脚本和生成链保持独立。
+React + TypeScript + Vite。NF 桌面沿用本工程，逐批接管启动、消息、输入与设置；仍有消费者的原生宿主路径保留。
 
 - 首次使用运行 `npm ci --prefix integrations/sillytavern --include=dev`。
 - `npm --prefix integrations/sillytavern run check:desktop`：类型检查。
@@ -57,3 +57,10 @@ NF 电脑端替换使用同一工程与构建，不新建应用。开发入口 `
 NF-01 只接通导航、历史和设置容器；发送与复杂卡验收分别在 NF-02–04，不将可编辑草稿当作可发送。
 受管 `accept-managed.mjs --filter nf-desktop` 延迟真实聊天准备模块，操作导航/设置/历史并检查实际请求与 iframe。
 唯一计划和后续范围见 `docs/planning/2026-11-02-desktop-frontend-refactor-plan.md` §11；根入口保留到 NF-10。
+
+NF-02 的 `desktop/standalone/engine/` 定向保留锁定 ST 的角色字段、世界书扫描/递归/定时效果、两代宏、正则、
+PromptManager、预算与 Chat Completion 请求计算。状态、tokenizer、世界书读取、事件与媒体资源显式注入；不导入
+`/script.js`、原生设置控件或扩展自动启动。`st/lib.js` 仅复用同源纯第三方库，原 AGPL 许可随源码保留。
+项目记忆、陪伴、剧情与模型投影继续使用原模块；卡片运行模块和发送/保存 owner 分别按 NF-04、NF-03 接线。
+`accept-managed.mjs --filter nf-prompts` 在真实发送前截住原生请求，与独立计算的最终 JSON、变量、世界书状态、
+历史窗口及事件时序逐项对照；覆盖 Chat、Responses、Claude 和旧宏引擎，只用合成输入，不调用模型。

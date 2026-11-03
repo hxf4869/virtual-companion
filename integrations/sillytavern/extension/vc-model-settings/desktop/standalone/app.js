@@ -8,16 +8,13 @@ import { iconSpriteUrl } from '../../ui/icons.js';
 import { mountDesktopChatView } from '../build/index.js';
 import { mountDesktopShell } from '../host.js';
 import { mountSettingsShell } from '../settings-shell.js';
+import { EventEmitter } from './engine/events.js';
+import { event_types } from './engine/st/events.js';
 
 const client = createDesktopClient();
-const listeners = new Map();
-const eventSource = {
-    on(type, fn) { if (!listeners.has(type)) listeners.set(type, new Set()); listeners.get(type).add(fn); },
-    removeListener(type, fn) { listeners.get(type)?.delete(fn); },
-    emit(type, ...args) { for (const fn of listeners.get(type) || []) fn(...args); },
-};
+const eventSource = new EventEmitter([event_types.APP_INITIALIZED, event_types.APP_READY]);
 const context = { characters: [], chat: [], chatMetadata: {}, characterId: undefined, chatId: '', name1: '', name2: '',
-    eventSource, eventTypes: { CHAT_CHANGED: 'chat-changed', MESSAGE_RECEIVED: 'message-received' } };
+    extensionPrompts: {}, eventSource, eventTypes: event_types };
 const getContext = () => context;
 const drafts = new Map();
 let runtime, view, shell, currentRow, read = 0, readAbort;
@@ -97,7 +94,7 @@ async function start() {
         eventSource.emit(context.eventTypes.CHAT_CHANGED);
     }).catch(() => { document.documentElement.dataset.vcCharacters = 'error'; });
     // 不 await 聊天准备：导航、历史和设置拥有各自生命周期。
-    void import('./runtime.js').then(module => module.prepareChatRuntime()).then(value => {
+    void import('./runtime.js').then(module => module.prepareChatRuntime({ client, context })).then(value => {
         runtime = value; chat.canSend = typeof runtime.generate === 'function'; paint();
         document.documentElement.dataset.vcRuntime = 'prepared';
     }).catch(() => { document.documentElement.dataset.vcRuntime = 'error'; });

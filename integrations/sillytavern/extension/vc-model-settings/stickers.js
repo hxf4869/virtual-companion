@@ -687,7 +687,8 @@ function watchSettings(doc) {
 // 内置包 + 可选的专属包（docs/planning/2026-10-30-custom-stickers-brief.md），缺哪个跳过哪个。
 const BUNDLED_MANIFESTS = ['./stickers/builtin-manifest.json', './stickers/custom/manifest.json'];
 
-async function loadBundledManifest() {
+export async function loadBundledManifest({ getContext } = {}) {
+    if (getContext) runtime.getContext = getContext;
     const assets = [];
     for (const rel of BUNDLED_MANIFESTS) {
         try {

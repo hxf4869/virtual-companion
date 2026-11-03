@@ -1,0 +1,176 @@
+import {wi_anchor_position, forceWorldInfoEntries} from './world-info.js';
+import {GENERATION_TYPE_TRIGGERS} from './st/constants.js';
+// 一个桌面 realm 只有一个聊天计算 owner；页面/历史读取不等待此锁。
+import { bindEngineContext, getMaxPromptTokens } from './ports.js';
+import { initMacros } from './st/scripts/macros.js';
+import { substituteParams, substituteParamsExtended, setExtensionPrompt } from './st/script.js';
+import { getCharaFilename } from './st/scripts/utils.js';
+import { Handlebars, Bowser, lodash } from './st/lib.js';
+import { event_types } from './st/events.js';
+import { createRegexRuntime } from './regex.js';
+import { createTokenizer } from './tokenizers.js';
+import { createResourcePorts } from './resources.js';
+import { createPromptRuntime } from './st/scripts/openai.js';
+import { ToolManager } from './tools.js';
+import { createChatComputation } from './computation.js';
+import { openaiDefaults, powerUserDefaults } from './defaults.js';
+import { installHistoryWindow } from '../../../prompt-history.js';
+import { createMemoryInjection } from '../../../memory-injection.js';
+import { injectCompanionPrompt } from '../../../companion-prompt.js';
+import { planReply } from '../../../reply-planner.js';
+import { createStoryContext } from '../../../story-context.js';
+import { companionToolSpecs, companionToolsShouldRegister, attachCompanionIdentity, COMPANION_TOOL_ACTION_ERROR } from '../../../companion-tools.js';
+import { recallSTMemory, resolveSTBinding } from '../../../api.js';
+import { loadBundledManifest } from '../../../stickers.js';
+import { showToast } from '../../../ui/toast.js';
+import { buildScope, characterKeyOf, chatKeyOf, advanceRunState, isToolContinuation, rewriteGenerateData, restoreManagedReasoningEffort, parseBindingMarker, settingsMarkerFor } from '../../../projection.js';
+
+let initialized = false, owner = Promise.resolve();
+// 只为脱离 loadSettings 的现有设置补原缺省值；数组与已保存额外键保留，不维护另一份业务模型。
+function defaults(saved, initial) {
+    if (saved == null) return structuredClone(initial);
+    if (!initial || typeof initial !== 'object' || Array.isArray(initial)) return saved;
+    const output = { ...saved };
+    for (const [key, value] of Object.entries(initial)) output[key] = defaults(saved[key], value);
+    return output;
+}
+
+export function runtimeSettings(raw) {
+    const settings = { ...raw, ...(raw.world_info_settings || {}) };
+    settings.power_user = defaults(raw.power_user, powerUserDefaults);
+    settings.oai_settings = defaults(raw.oai_settings, openaiDefaults);
+    settings.extension_settings = { ...raw.extension_settings };
+    const extensions = settings.extension_settings;
+    extensions.variables ||= { global: {} };
+    extensions.disabledExtensions ||= [];
+    extensions.note ||= {};
+    return settings;
+}
+
+export function projectModelSettings(settings, decision, scope) {
+    if (!decision?.eligible) return;
+    const oai = settings.oai_settings;
+    oai.chat_completion_source = decision.source;
+    oai[decision.markerField] = settingsMarkerFor(decision, scope);
+    const other = decision.markerField === 'custom_url' ? 'reverse_proxy' : 'custom_url';
+    if (String(oai[other] || '').startsWith('vc-go://')) oai[other] = '';
+    oai[decision.modelField] = decision.modelId;
+    oai.openai_max_context = decision.contextWindowTokens;
+    oai.openai_max_tokens = decision.maxOutputTokens;
+    if (decision.pinned.temperature !== undefined) oai.temp_openai = decision.pinned.temperature;
+    if (decision.pinned.topP !== undefined) oai.top_p_openai = decision.pinned.topP;
+    if (decision.pinned.reasoningEffort !== undefined) oai.reasoning_effort = decision.pinned.reasoningEffort;
+}
+
+export async function createChatEngine({ client, context, settings, decision, presets, models, extensions = [] }) {
+    const getContext = () => context;
+    const state = { runId: 0 };
+    const toast = { error: message => showToast(String(message), { type: 'failure' }), warning: message => showToast(String(message)) };
+    const t = (strings, ...values) => String.raw({ raw: strings }, ...values);
+    context.extensionPrompts ||= {};
+    context.extensionSettings = settings.extension_settings;
+    context.powerUserSettings = settings.power_user;
+    context.chatCompletionSettings = settings.oai_settings;
+    context.tagMap = settings.tag_map || {};
+    context.eventTypes = event_types;
+    const locale = String(localStorage.getItem('language') || navigator.language || 'en').toLowerCase();
+    const mobile = ['mobile', 'tablet'].includes(Bowser.getParser(navigator.userAgent).getPlatformType());
+    const environment = { input: '', firstDisplayedMessageId: 0, model: decision?.modelId || '', models,
+        openrouterWebsiteModel: '', locale, mobile, extensions };
+    bindEngineContext(context, settings, environment);
+    context.setExtensionPrompt = setExtensionPrompt;
+    context.saveMetadataDebounced = () => { context.metadataDirty = true; };
+    context.saveSettingsDebounced = () => { context.settingsDirty = true; };
+    if (!initialized) {
+        initMacros();
+        Handlebars.registerHelper('trim', () => '{{trim}}');
+        Handlebars.registerHelper('helperMissing', function () { const options = arguments[arguments.length - 1]; return substituteParams(`{{${options.name}}}`); });
+        initialized = true;
+    }
+    await loadBundledManifest({ getContext });
+    const memory = createMemoryInjection({ getContext, recall: recallSTMemory, ensureBinding: async () => {
+        const metadata = context.chatMetadata;
+        if (metadata.vc_binding?.relationshipId && metadata.vc_binding?.conversationId) return metadata.vc_binding;
+        const characterRef = context.characters[context.characterId]?.data?.extensions?.vc_character_ref;
+        if (!characterRef || !metadata.vc_f2?.id) throw new Error('聊天尚未建立读取基线。');
+        metadata.vc_binding = await resolveSTBinding({ characterRef, chatIdentity: metadata.vc_f2.id,
+            mode: metadata.vc_binding?.mode || 'COMPANION', displayName: metadata.vc_binding?.displayName || context.name2 });
+        context.metadataDirty = true;
+        return metadata.vc_binding;
+    }, onStatus: message => { context.memoryStatus = message; } });
+    const story = createStoryContext({ getContext });
+    const onProjection = data => {
+        advanceRunState(state, isToolContinuation(data.messages));
+        const scope = buildScope(characterKeyOf(context), chatKeyOf(context.chatId), state.runId);
+        rewriteGenerateData(data, decision, scope);
+        restoreManagedReasoningEffort(data, decision, settings.oai_settings);
+    };
+    installHistoryWindow(getContext);
+    context.eventSource.on(event_types.CHAT_CHANGED, () => { memory.reset(); state.runId = 0; context.forcedWorldInfoEntries?.clear(); });
+    context.eventSource.on(event_types.WORLDINFO_FORCE_ACTIVATE, entries => forceWorldInfoEntries(context, entries));
+    context.eventSource.on(event_types.CHAT_COMPLETION_SETTINGS_READY, onProjection);
+    context.eventSource.on(event_types.CHAT_COMPLETION_SETTINGS_READY, memory.attach);
+    context.eventSource.on(event_types.CHAT_COMPLETION_SETTINGS_READY, data => attachCompanionIdentity(data, getContext));
+    for (const spec of companionToolSpecs) ToolManager.registerFunctionTool({ ...spec,
+        shouldRegister: () => companionToolsShouldRegister(getContext), action() { throw new Error(COMPANION_TOOL_ACTION_ERROR); } });
+    story.install(context.eventSource, event_types.CHAT_COMPLETION_SETTINGS_READY);
+
+    return { settings, story, memory,
+        async prepare(options = {}) {
+            let release;
+            const previous = owner;
+            owner = new Promise(resolve => { release = resolve; });
+            await previous;
+            try {
+                options.signal?.throwIfAborted();
+                environment.input = options.input || '';
+                environment.firstDisplayedMessageId = context.firstDisplayedMessageId ?? 0;
+                bindEngineContext(context, settings, environment);
+                const type = options.type || 'normal';
+                const eventOptions = { automatic_trigger: options.automatic_trigger ?? false, force_name2: options.force_name2 ?? false,
+                    quiet_prompt: options.quiet_prompt || '', quietToLoud: options.quietToLoud ?? false, skipWIAN: options.skipWIAN ?? false,
+                    force_chid: options.force_chid, signal: options.signal, quietImage: options.quietImage ?? null };
+                await context.eventSource.emit(event_types.GENERATION_STARTED, type, eventOptions, options.dryRun ?? false);
+                await context.eventSource.emit(event_types.GENERATION_AFTER_COMMANDS, type, eventOptions, options.dryRun ?? false);
+                if (!options.dryRun) context.chatMetadata.tainted = true;
+                const request = (url, body) => client.request(url, body, { signal: options.signal });
+                const fetch = (input, init = {}) => globalThis.fetch(input, { ...init, signal: options.signal });
+                const resources = createResourcePorts({ getRequestHeaders: client.headers, fetch, toast, t });
+                const tokenizer = createTokenizer({ settings, models, request });
+                const presetName = settings.oai_settings.preset_settings_openai;
+                const preset = presets?.[presetName] || settings.oai_settings;
+                const regex = createRegexRuntime({ characters: context.characters, characterId: context.characterId,
+                    extensionSettings: settings.extension_settings, substituteParams, substituteParamsExtended,
+                    getPresetManager: () => ({ apiId: 'openai', getSelectedPresetName: () => presetName,
+                        readPresetExtensionField: ({ path }) => lodash.get(preset.extensions, path) }),
+                });
+                const prompt = createPromptRuntime({ ...resources, countTokensOpenAIAsync: tokenizer.countTokensOpenAIAsync,
+                    eventSource: context.eventSource, event_types, ToolManager, fetch, toast, t,
+                    getTokenizerModel: tokenizer.getTokenizerModel, getRequestHeaders: client.headers,
+                    async validateReverseProxy() {
+                        const marker = parseBindingMarker(settings.oai_settings.reverse_proxy);
+                        if (!marker || marker.invalid || marker.purpose !== 'FOREGROUND_CHAT') throw new Error('请先同步模型绑定。');
+                    },
+                });
+                const computation = createChatComputation({ context, settings, regex, prompt, tokenizer, ToolManager,
+                    ...resources, eventSource: context.eventSource, event_types, getCharaFilename, getMaxPromptTokens, Handlebars,
+                    model: decision.modelId, wi_anchor_position,
+                    generationTriggers: GENERATION_TYPE_TRIGGERS,
+                    toast, t,
+                    loadWorldInfo: name => request('/api/worldinfo/get', { name }),
+                    async runGenerationInterceptors(chat, size, type) {
+                        const plan = await planReply({ getContext, type, discardPending: memory.discardPending });
+                        if (plan?.silent || plan?.cancelled) return true;
+                        let aborted = false;
+                        await memory.intercept(chat, size, () => { aborted = true; }, type);
+                        try { await injectCompanionPrompt({ getContext }); } catch { /* 沿用原状态服务不可用时的语义。 */ }
+                        return aborted;
+                    },
+                });
+                const result = await computation.prepare(options);
+                options.signal?.throwIfAborted();
+                return result;
+            } finally { release(); }
+        },
+    };
+}
