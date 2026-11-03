@@ -8,7 +8,7 @@ import { iconSpriteUrl } from '../../ui/icons.js';
 import { openSheet } from '../../ui/sheet.js';
 import { showToast } from '../../ui/toast.js';
 import { readDraft, writeDraft } from '../../chat-compose.js';
-import { mergeInput, showF2Draft } from '../../f2-client.js';
+import { mergeInput, showF2Draft, createF2Client, createNativeF2IO, characterChatPath } from '../../f2-client.js';
 import { createChatActions } from './chat-actions.js';
 import { gapLabel, parseSendDate } from '../../chat-view.js';
 import { mountDesktopFollow, posKey, readStoredNumber } from '../../chat-scroll.js';
@@ -19,17 +19,24 @@ import { mountModelSettings, observeGenerateBudget } from '../../page.js';
 import { mountConsentGate } from '../../consent.js';
 import { EventEmitter } from './engine/events.js';
 import { event_types } from './engine/st/events.js';
+import { createDesktopPreferences } from './presentation.js';
+import { applyInputMarkdown } from './input-markdown.js';
 
-let modelSettings, budget, catalogSavedWhilePreparing = false;
+let modelSettings, preferences, preferencesAccepted = false, budget, catalogSavedWhilePreparing = false;
 const client = createDesktopClient({ onGenerateResponse: response => observeGenerateBudget(response, signal => modelSettings.applyBudget(signal)) });
 const eventSource = new EventEmitter([event_types.APP_INITIALIZED, event_types.APP_READY]);
 const context = { characters: [], chat: [], chatMetadata: {}, characterId: undefined, chatId: '', name1: '', name2: '',
     extensionPrompts: {}, eventSource, eventTypes: event_types };
 const getContext = () => context;
 const drafts = new Map();
-let runtime, view, shell, currentRow, currentRecords, retryRow, charactersReady, read = 0, committedRead = 0, activated = 0, readAbort, activeAbort;
-const getSettingsContext = () => chat.status === 'error' ? { ...context, chatMetadata: {}, chatId: '', characterId: undefined } : currentRecords ? { ...context, chatMetadata: currentRecords[0].chat_metadata,
-    chatId: currentRow.file, characterId: context.characters.findIndex(card => card.avatar === currentRow.avatar) } : { ...context };
+let runtime, view, shell, settingsHandle, currentRow, currentRecords, retryRow, charactersReady, read = 0, committedRead = 0, activated = 0, readAbort, activeAbort, settingsChatReady = false;
+const pendingConfiguration = [];
+const getSettingsContext = () => chat.status === 'error' ? { ...context, chatMetadata: {}, chatId: '', characterId: undefined, canEditChatMetadata: false } : currentRecords ? { ...context, chatMetadata: currentRecords[0].chat_metadata,
+    chatId: currentRow.file, characterId: context.characters.findIndex(card => card.avatar === currentRow.avatar), canEditChatMetadata: chat.status === 'ready' && Boolean(runtime?.ready) } : { ...context, canEditChatMetadata: false };
+function applyConfiguration(method, ...args) {
+    if (runtime) return runtime[method](...args);
+    pendingConfiguration.push([method, args]);
+}
 const draftId = key => JSON.stringify([client.identity.accountId, ...JSON.parse(key)]);
 const draftOf = (key, migrate = false) => {
     if (drafts.has(key)) return drafts.get(key);
@@ -43,10 +50,11 @@ function setDraft(key, value) {
     if (chat.conversation === key) { chat.draft = value; paint(); }
 }
 const chat = { messages: [], status: 'empty', draft: '', sprite: iconSpriteUrl(), avatar: '', canSend: false, busy: false,
-    mountFollow: (node, floatingHost) => mountDesktopFollow(node, { floatingHost, getChatId: () => chat.conversation ? draftId(chat.conversation) : '',
+    mountFollow: (node, floatingHost) => mountDesktopFollow(node, { floatingHost, getChatId: () => chat.conversation ? draftId(chat.conversation) : '',getAutoFollow:()=>preferences?.values.auto_scroll_chat_to_bottom!==false,
         dateLabel: index => { const ms = parseSendDate(chat.messages[index]?.send_date); return ms === null ? '' : gapLabel(ms); } }),
     notice: '', conflict: false, enterToSend: true, error: '', conversation: '',
     onDraft(value) { setDraft(chat.conversation, value); },
+    onFormatInput(event,node) {if(preferences?.values.enable_md_hotkeys)applyInputMarkdown(event,node);},
     onSend() { actions.send(); },
     onAction(...args) { void actions.run(...args); },
     onPat() { void runtime?.pat(); },
@@ -68,7 +76,7 @@ const chat = { messages: [], status: 'empty', draft: '', sprite: iconSpriteUrl()
     },
 };
 const actions = createChatActions({ getContext, getSession: () => runtime, chat, paint });
-function paint() { document.body.dataset.generating = String(chat.busy); view?.update(chat); }
+function paint() { document.body.dataset.generating = String(chat.busy);preferences?.refresh();chat.preferences=preferences?.values; view?.update(chat); }
 const chatKey = row => JSON.stringify([row.avatar, row.file]);
 
 async function activateCurrent(ticket, latest) {
@@ -153,6 +161,7 @@ async function start() {
     enableVcUi();
     await client.initialize();
     setStHeadersProvider(client.headers, { identity: client.identity });
+    preferences=createDesktopPreferences({getContext:getSettingsContext});
     const session = await captureSessionContext();
     if (session.accountId !== client.identity.accountId || session.sessionId !== client.identity.sessionId) throw new Error('登录状态已变化，请重新打开页面。');
     const onBudgetChange = value => { budget = value; runtime?.setBudget(value); };
@@ -172,8 +181,32 @@ async function start() {
     shell = mountShell({ independent: true, getContext, storage: { getItem(key) { return key === 'vc-ui' ? 'on' : localStorage.getItem(key); }, setItem: (key, value) => localStorage.setItem(key, value) },
         getConversationDraft: row => row.avatar && row.file ? draftOf(chatKey(row)) : '',
         loadChatSnapshots: async () => chatSnapshotsFromRecent(await client.recent()), openConversation,
-        mountDesktopSettings: container => mountSettingsShell(container, { getContext: getSettingsContext, onBudgetChange,
-            onCatalogSaved() { if (runtime) void runtime.refreshCatalog(); else catalogSavedWhilePreparing = true; } }),
+        mountDesktopSettings: container => settingsHandle = mountSettingsShell(container, { getContext: getSettingsContext, onBudgetChange,
+            onCatalogSaved() { if (runtime) void runtime.refreshCatalog(); else catalogSavedWhilePreparing = true; },
+            async mountTavernSettings(body, options) {
+                const module = await import('../tavern-settings.js');
+                if (options.signal.aborted) return;
+                return module.mountTavernSettings(body, { ...options, client, getContext: getSettingsContext,
+                    onSettingsCommit(changes,value) { preferencesAccepted=true;preferences.apply(value);paint();return applyConfiguration('applySettings', changes); },
+                    onPresetCommit: (...args) => applyConfiguration('applyPreset', ...args),
+                    onWorldbookCommit: (...args) => applyConfiguration('applyWorldbook', ...args),
+                    onCharacterSaved: avatar => applyConfiguration('reloadCharacter', avatar),
+                    async onDeleteCharacter(avatar,deleteChats) {
+                        if(runtime) await runtime.deleteCharacter(avatar,deleteChats);
+                        else {
+                            const f2=createF2Client();if(currentRecords)f2.loaded(characterChatPath(currentRow.avatar,currentRow.file),currentRecords[0].chat_metadata);
+                            const io=createNativeF2IO({getRequestHeaders:client.headers,client:f2});
+                            const rows=deleteChats?await client.request('/api/characters/chats',{avatar_url:avatar,simple:true}):[];
+                            const baselines=await io.baselines((Array.isArray(rows)?rows:[]).map(row=>({avatar,file:row.file_name})));
+                            await client.post('/api/characters/delete',{avatar_url:avatar,delete_chats:deleteChats,vc_f2_chats:baselines});
+                        }
+                        if(currentRow?.avatar===avatar){activeAbort?.abort();currentRow=currentRecords=null;activated=0;Object.assign(chat,{messages:[],status:'empty',conversation:'',draft:'',canSend:false,busy:false,notice:'',conflict:false});paint();}
+                        await applyConfiguration('reloadCharacter',avatar);
+                    },
+                    onMetadataCommit: changes => runtime.commitMetadata(changes, chat.conversation),
+                    onOpenModels: () => shell.openSettings('model'), onOpenAppearance: () => shell.openSettings('appearance'),
+                });
+            } }),
         mountChatSurface(container) {
             const host = document.createElement('div'); host.className = 'vc-desktop-chat-root'; container.append(host);
             view = mountDesktopChatView(host, chat);
@@ -188,21 +221,28 @@ async function start() {
         context.characters = characters;
     }).catch(() => { document.documentElement.dataset.vcCharacters = 'error'; });
     void client.settings().then(packet => {
-        if (context.chatId) return;
         const settings = JSON.parse(packet.settings);
+        if(!preferencesAccepted){preferences.apply(settings);paint();}
+        if (context.chatId) return;
         context.name1 = settings.username || ''; context.userAvatar = settings.user_avatar || '';
         return eventSource.emit(event_types.PERSONA_CHANGED, context.userAvatar);
     }).catch(() => {});
     // 不 await 聊天准备：导航、历史和设置拥有各自生命周期。
     void import('./runtime.js').then(module => module.prepareChatRuntime({ client, context, choosePersona, readInput: () => chat.draft,
         paint, onConflict(snapshot, error) { showF2Draft(snapshot, error, { latest: () => chat.onNoticeRetry(), copy: () => chat.onCopyDraft() }); },
-        onChange(state) { if (state.key !== chat.conversation || chat.status !== 'ready') return; Object.assign(chat, state); chat.noticeAction = state.settingsRequired ? '模型设置' : ''; paint(); },
+        onChange(state) {
+            if (state.key !== chat.conversation || chat.status !== 'ready') return;
+            Object.assign(chat, state); chat.noticeAction = state.settingsRequired ? '模型设置' : ''; paint();
+            const ready = Boolean(runtime?.ready);
+            if (settingsChatReady !== ready) { settingsChatReady = ready; settingsHandle?.refreshContext(); }
+        },
         onTakeDraft(key, input) { if (draftOf(key) === input) setDraft(key, ''); },
         onRestoreDraft(key, input) {
             if (input) setDraft(key, mergeInput(draftOf(key), input));
         },
     })).then(async value => {
         runtime = value;
+        for (const [method, args] of pendingConfiguration.splice(0)) await runtime[method](...args);
         runtime.setBudget(budget);
         if (catalogSavedWhilePreparing) { catalogSavedWhilePreparing = false; await runtime.refreshCatalog(); }
         chat.renderMessage = runtime.renderMessage; chat.mountCardActions = runtime.mountCardActions; chat.renderMedia = runtime.renderMedia; chat.mountVoiceInput = runtime.mountVoiceInput; paint();

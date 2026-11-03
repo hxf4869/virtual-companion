@@ -24,7 +24,7 @@ test('旧卡异步变量结果过期：拒绝原操作，不能把新会话标�
 });
 
 const deferred = () => { let resolve; const promise = new Promise(done => { resolve = done; }); return { promise, resolve }; };
-function fixture({ save, prepare, readResponse } = {}) {
+function fixture({ save, prepare, readResponse, generateHelper, shouldAutoContinue } = {}) {
     const card = { avatar: 'synthetic.png', name: '合成角色', data: { extensions: { vc_character_ref: 'synthetic-ref' } } };
     const context = { characters: [card], chat: [], chatMetadata: {}, extensionPrompts: {}, eventSource: new EventEmitter(), eventTypes: event_types };
     const binding = id => ({ characterRef: 'synthetic-ref', chatIdentity: id, relationshipId: '1', conversationId: id, mode: 'COMPANION' });
@@ -34,6 +34,7 @@ function fixture({ save, prepare, readResponse } = {}) {
     const sent = [], states = [], taken = [], restored = []; let generations = 0, preparations = 0;
     const client = {
         request: async path => path === '/api/avatars/get' ? [] : structuredClone(card), post: async () => new Response('{}'),
+        saveSettings: async () => new Response('{}'), settingsChanged: () => false,
         async raw(path, serialized) {
             const body = JSON.parse(serialized); sent.push(body);
             if (save) return save(body);
@@ -42,10 +43,12 @@ function fixture({ save, prepare, readResponse } = {}) {
         async generate() { generations++; return new Response('{}'); },
     };
     const engine = { settings: { username: '合成用户', user_avatar: '', power_user: { personas: {}, persona_descriptions: {} }, oai_settings: {} },
-        bindContext() {},
+        bindContext() {}, settingsForSave() { return this.settings; },
         userMessage: async text => ({ message: { name: context.name1, mes: text, is_user: true, extra: {} }, bias: {} }),
         async prepare(options) { preparations++; if (prepare) return prepare(options); return { body: { model: 'synthetic', chat_completion_source: 'custom' } }; },
         cleanResponse: text => text, memory: { finalStatus() {} },
+        generateHelper: generateHelper || (async () => '合成脚本回复'),
+        shouldAutoContinue,
     };
     const session = createDesktopSession({ client, context, engine, prepareSourceIdentities,
         choosePersona: async () => '', resolveBinding: async value => binding(value.chatIdentity), reconcileSources: async () => [],
@@ -55,10 +58,50 @@ function fixture({ save, prepare, readResponse } = {}) {
             await onUpdate(result); return result;
         }),
     });
-    return { session, context, sent, states, taken, restored, records,
+    return { session, context, engine, sent, states, taken, restored, records,
         open: (id, options) => session.activate({ avatar: card.avatar, file: id }, records(id), options),
         get generations() { return generations; }, get preparations() { return preparations; } };
 }
+test('自动续写为串行后续步骤，空输入续写不追加第二条用户消息',async()=>{
+    let rounds=0;const f=fixture({shouldAutoContinue:async()=>++rounds===1});await f.open('auto');
+    assert.equal(await f.session.send('合成输入'),true);assert.equal(f.generations,2);
+    assert.equal(f.context.chat.length,3);assert.equal(f.context.chat.filter(message=>message.is_user).length,1);assert.equal(f.context.chat.at(-1).mes,'合成回复合成回复');
+    const empty=fixture();await empty.open('empty');empty.engine.settings.power_user.continue_on_send=true;
+    assert.equal(await empty.session.send(''),true);assert.equal(empty.context.chat.length,1);assert.equal(empty.context.chat[0].mes,'合成历史合成回复');
+});
+
+test('Helper生成共用owner：不追加消息、拒绝重入普通发送，停止取消同一受控请求', async () => {
+    const began=deferred();let aborted=false;
+    const f=fixture({generateHelper:async(_config,{signal})=>{began.resolve();await new Promise((_,reject)=>signal.addEventListener('abort',()=>{aborted=true;reject(signal.reason);},{once:true}));}});
+    await f.open('helper');const pending=f.context.generateHelper('generateRaw',{user_input:'合成输入'});await began.promise;
+    assert.equal(await f.session.send('重复动作'),false);
+    await assert.rejects(f.context.generateHelper('generate',{user_input:'并行动作'}),/当前生成/);
+    const rejected=assert.rejects(pending);await f.session.stop();await rejected;
+    assert.equal(aborted,true);assert.equal(f.context.chat.length,1);assert.equal(f.states.at(-1).canSend,true);
+});
+
+test('EJS生成作用域只在父步骤有效；子步骤返回后父生成继续且无第二次用户消息写入', async () => {
+    let lease,seen=0;
+    const f=fixture({prepare:async()=>{
+        lease=f.context.captureHelperScope();assert.ok(lease);
+        assert.equal(await f.context.generateHelper('generateRaw',{user_input:'子步骤'},lease.scope),'合成脚本回复');seen++;
+        lease.release();await assert.rejects(f.context.generateHelper('generateRaw',{user_input:'过期子步骤'},lease.scope),/当前生成/);
+        return {body:{model:'synthetic',chat_completion_source:'custom'}};
+    }});
+    await f.open('scoped');assert.equal(await f.session.send('主步骤'),true);
+    assert.equal(seen,1);assert.equal(f.generations,1);assert.equal(f.context.chat.length,3);assert.equal(f.sent.length,2);
+    await assert.rejects(f.context.generateHelper('generateRaw',{user_input:'迟到'},lease.scope),/已失效/);
+});
+
+test('设置聊天绑定通过同一F2保存，旧页面或旧字段基线不能覆盖当前值', async () => {
+    const f=fixture();await f.open('metadata');
+    const changes=[{path:['world_info'],before:{exists:false},after:{exists:true,value:'合成世界书'}}];
+    await f.session.commitMetadata(changes,JSON.stringify(['synthetic.png','metadata']));
+    assert.equal(f.context.chatMetadata.world_info,'合成世界书');assert.equal(f.sent.length,1);
+    await assert.rejects(f.session.commitMetadata(changes,JSON.stringify(['synthetic.png','metadata'])),error=>error.status===409);
+    await f.open('other');await assert.rejects(f.session.commitMetadata(changes,JSON.stringify(['synthetic.png','metadata'])),/聊天已切换/);
+    assert.equal(f.context.chatMetadata.world_info,undefined);assert.equal(f.sent.length,1);
+});
 
 test('桌面一次动作只生成一次；先F2保存用户消息，ACK后用真实人设/角色名生成并保存回复', async () => {
     const gate = deferred(); let saves = 0;

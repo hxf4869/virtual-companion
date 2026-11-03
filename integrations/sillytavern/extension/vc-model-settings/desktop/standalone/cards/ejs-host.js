@@ -36,7 +36,30 @@ export function bindCardHost(options) {
         t: (strings, ...values) => String.raw({ raw: strings }, ...values) });
 }
 export const getCardHost = () => owner;
-export const refreshCardHost = () => { user_avatar = owner.context.userAvatar; };
+// 每次模板求值拥有可撤销的生成作用域；异步计时器不能沿用已结束模板的授权。
+export function enterTemplateScope(data) {
+    const lease = owner.context.captureHelperScope?.();
+    const metadata = owner.context.chatMetadata; let valid = true;
+    const generate = (name, config) => {
+        if (!valid || owner.context.chatMetadata !== metadata) return Promise.reject(new Error('角色卡执行上下文已失效。'));
+        return owner.context.generateHelper(name,config,lease?.scope);
+    };
+    const previous = Object.getOwnPropertyDescriptor(data,'TavernHelper');
+    Object.defineProperty(data,'TavernHelper',{configurable:true,enumerable:true,writable:true,value:{...globalThis.TavernHelper,
+        generate:config=>generate('generate',config),
+        generateRaw:config=>generate('generateRaw',config),
+    }});
+    return () => {valid=false;lease?.release();if(previous)Object.defineProperty(data,'TavernHelper',previous);else delete data.TavernHelper;};
+}
+export function refreshCardHost() {
+    user_avatar = owner.context.userAvatar;
+    world_info = owner.settings.world_info ||= {};
+    selected_world_info = world_info.globalSelect ||= [];
+    world_info_case_sensitive = owner.settings.world_info_case_sensitive ?? false;
+    world_info_match_whole_words = owner.settings.world_info_match_whole_words ?? false;
+    world_info_use_group_scoring = owner.settings.world_info_use_group_scoring ?? false;
+    world_info_max_recursion_steps = owner.settings.world_info_max_recursion_steps ?? 0;
+}
 export const getThumbnailUrl = (type, file) => `/thumbnail?type=${encodeURIComponent(type)}&file=${encodeURIComponent(file)}`;
 export const getUserAvatar = () => getThumbnailUrl('persona', owner.context.userAvatar);
 export const getChatCompletionModel = () => modelOf(oai_settings);
@@ -70,7 +93,7 @@ export function parseRegexFromString(input) {
     try { return new RegExp(pattern, flags); } catch { return null; }
 }
 export function updateMessageBlock(index, message) { owner.surface?.format(index, message); }
-export function addCopyToCodeBlocks(parent) { owner.surface?.codeBlocks(parent); }
+export function addCopyToCodeBlocks(parent) { owner.surface?.codeBlocks(parent?.jquery ? parent[0] : parent); }
 export function appendMediaToMessage(message, parent) { owner.surface?.media(message, parent); }
 export function updateReasoningUI(parent) { owner.surface?.reasoning(parent); }
 export const getSTContext = getContext;

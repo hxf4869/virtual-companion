@@ -1,0 +1,268 @@
+openapi: 3.1.0
+info:
+  title: Virtual Companion ST Node document commits
+  version: 1.0.0
+  description: NF-07：现有 ST JSON 保存路由的有条件局部提交。使用同一原始文件，不创建配置版本库。 原生页面、Helper 与自有桌面持有读取基线；全部 before 匹配后才提交。 原有未携带 vc_changes
+    的完整替换接口保留给已存在的受管装配/导入调用，不能视为有条件提交。
+servers:
+- url: /
+security:
+- vcSession: []
+paths:
+  /api/settings/save:
+    post:
+      operationId: stCommitSettings
+      summary: 按读取旧值提交设置字段
+      parameters:
+      - $ref: '#/components/parameters/STCSRF'
+      - $ref: '#/components/parameters/ExpectedAccount'
+      - $ref: '#/components/parameters/ExpectedSession'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SettingsCommit'
+      responses:
+        '200':
+          description: 原子提交成功；保留原 result=ok 响应
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  result:
+                    const: ok
+        '400':
+          $ref: '#/components/responses/Invalid'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+  /api/presets/save:
+    post:
+      operationId: stCommitPreset
+      summary: 按读取旧值提交既有格式的预设
+      parameters:
+      - $ref: '#/components/parameters/STCSRF'
+      - $ref: '#/components/parameters/ExpectedAccount'
+      - $ref: '#/components/parameters/ExpectedSession'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PresetCommit'
+      responses:
+        '200':
+          description: 提交成功；保留原 name 响应
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - name
+                properties:
+                  name:
+                    type: string
+        '400':
+          $ref: '#/components/responses/Invalid'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+  /api/worldinfo/edit:
+    post:
+      operationId: stCommitWorldbook
+      summary: 按读取旧值提交世界书条目
+      parameters:
+      - $ref: '#/components/parameters/STCSRF'
+      - $ref: '#/components/parameters/ExpectedAccount'
+      - $ref: '#/components/parameters/ExpectedSession'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WorldbookCommit'
+      responses:
+        '200':
+          description: 提交成功；保留原 ok=true 响应
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    const: true
+        '400':
+          $ref: '#/components/responses/Invalid'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+components:
+  securitySchemes:
+    vcSession:
+      type: apiKey
+      in: cookie
+      name: vc_session
+  parameters:
+    STCSRF:
+      name: X-CSRF-Token
+      in: header
+      required: true
+      schema:
+        type: string
+        minLength: 1
+    ExpectedAccount:
+      name: X-VC-Expected-Account-ID
+      in: header
+      required: true
+      schema:
+        type: string
+        pattern: ^[1-9][0-9]*$
+    ExpectedSession:
+      name: X-VC-Expected-Session-ID
+      in: header
+      required: true
+      schema:
+        type: string
+        pattern: ^[1-9][0-9]*$
+  schemas:
+    ValueState:
+      type: object
+      required:
+      - exists
+      additionalProperties: false
+      properties:
+        exists:
+          type: boolean
+        value: {}
+      if:
+        properties:
+          exists:
+            const: true
+      then:
+        required:
+        - value
+    Change:
+      type: object
+      required:
+      - path
+      - before
+      - after
+      additionalProperties: false
+      properties:
+        path:
+          type: array
+          items:
+            type: string
+            minLength: 1
+          description: 字面对象键路径，点不分段；数组必须整体修改，不接受数组下标路径。 拒绝原型污染键、重复路径及祖先/后代重叠。空路径仅用于明确新建或覆盖完整文档。
+        before:
+          $ref: '#/components/schemas/ValueState'
+        after:
+          $ref: '#/components/schemas/ValueState'
+      description: 缺失与null不同；after.exists=false删除属性。对象按键值比较，数组按顺序比较。 所有before必须匹配，否则整批不写；冲突响应不回传旧值、配置或凭据。
+    SettingsCommit:
+      type: object
+      required:
+      - vc_changes
+      additionalProperties: false
+      properties:
+        vc_changes:
+          type: array
+          items:
+            $ref: '#/components/schemas/Change'
+    PresetCommit:
+      type: object
+      required:
+      - name
+      - apiId
+      - vc_changes
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          minLength: 1
+        apiId:
+          type: string
+          enum:
+          - openai
+          - instruct
+          - context
+          - sysprompt
+          - reasoning
+          - kobold
+          - koboldhorde
+          - novel
+          - textgenerationwebui
+        vc_changes:
+          type: array
+          items:
+            $ref: '#/components/schemas/Change'
+    WorldbookCommit:
+      type: object
+      required:
+      - name
+      - vc_changes
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          minLength: 1
+        vc_changes:
+          type: array
+          items:
+            $ref: '#/components/schemas/Change'
+    ErrorCode:
+      type: string
+      enum:
+      - VC_DOCUMENT_CONFLICT
+      - VC_DOCUMENT_INVALID
+      - VC_DOCUMENT_UNAVAILABLE
+      - VC_AUTH_REQUIRED
+      - ACCOUNT_CONTEXT_CHANGED
+      - NOT_FOUND_OR_FORBIDDEN
+    ErrorEnvelope:
+      type: object
+      required:
+      - code
+      - message
+      properties:
+        code:
+          $ref: '#/components/schemas/ErrorCode'
+        message:
+          type: string
+  responses:
+    Invalid:
+      description: 非法路径、文档、基线或变更；无写入
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    Unauthorized:
+      description: 未认证，不写入
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    Conflict:
+      description: 任一旧值或页面身份不匹配，整批不写，客户端保留草稿
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    Unavailable:
+      description: 受管保存钩子不可用，不能退回完整覆盖
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'

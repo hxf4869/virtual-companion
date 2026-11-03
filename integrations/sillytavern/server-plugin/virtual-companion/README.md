@@ -73,6 +73,18 @@ Go 侧需把确切 ST 来源（如 `http://127.0.0.1:8742`）加入 Origin 白�
   `/scripts/vc-runtime/` 提供：装配时由 `scripts/lib/managed.mjs` 从自有 extension 源拷贝并
   校验，所有映射 profile 均可用，不依赖每个 profile 单独安装扩展。
 
+## 独立桌面与原生共享设置提交（NF-07）
+
+`settings/save`、`presets/save`、`worldinfo/edit` 的 `vc_changes` 契约见
+`specs/openapi/st-node.yaml`（与Go契约分域，同一个OpenAPI生成/检查入口）。原端点解析文档位置，
+插件 `commitDocument` 同步读取、比较全部旧值并调用原 `writeFileAtomicSync`；任何冲突整批409，
+无配置正文日志、磁盘版本号或第二份存储。数组整体提交，字面对象键不解释点，未知键保留。
+
+原生 `script.js`、`preset-manager.js`、`world-info.js` 与独立桌面/Helper复用
+`settings-documents.js` 的内存读取/归一化快照。原生归一化缺省值不冒充用户编辑；请求级Go scope不形成
+配置修改。冲突后保留当前内存/表单值，明确重新读取前不盲重试；迟到修改仍有未提交状态。
+原完整替换格式保留现有受管装配/导入消费者语义，未带 `vc_changes` 的请求没有本节的字段冲突保障。
+
 ## 生成链（受控取用 + 三协议）
 
 绑定标记（S3 投影写进 ST 连接设置；桥接每请求解析并核验）：

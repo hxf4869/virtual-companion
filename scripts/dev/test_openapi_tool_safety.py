@@ -54,11 +54,25 @@ class OpenAPIToolSafetyTest(unittest.TestCase):
         proc = self.generate()
         self.assertEqual(proc.returncode, 0, proc.stderr)
         self.assertTrue((self.repo / "specs/openapi/dist/api-bundle.yaml").exists())
+        self.assertTrue((self.repo / "specs/openapi/dist/st-node-bundle.yaml").exists())
         diff = subprocess.run(
             [sys.executable, str(TOOL), "diff", "--root", str(self.repo)],
             capture_output=True, text=True,
         )
         self.assertEqual(diff.returncode, 0, diff.stderr)
+
+    def test_node_source_is_validated_and_drift_is_detected(self):
+        proc = self.generate()
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        source = self.repo / "specs/openapi/st-node.yaml"
+        source.write_text(source.read_text().replace("stCommitSettings", "changedNodeOperation"))
+        diff = subprocess.run([sys.executable, str(TOOL), "diff", "--fail-on-drift", "--root", str(self.repo)], capture_output=True, text=True)
+        self.assertNotEqual(diff.returncode, 0)
+        self.assertIn("st-node-bundle.yaml", diff.stderr)
+        source.write_text(source.read_text().replace("operationId:", "missingOperationId:"))
+        validate = subprocess.run([sys.executable, str(TOOL), "validate", "--root", str(self.repo)], capture_output=True, text=True)
+        self.assertNotEqual(validate.returncode, 0)
+        self.assertIn("operationId", validate.stderr)
 
     def test_root_alias_still_generates(self):
         # A path alias for the repository root itself is a normal access and

@@ -4,6 +4,14 @@ import { createMemoryInjection, coreMemoryBlock, memoryBlock, MEMORY_NOTE, MEMOR
 import { memoryRequest, replaceMemorySlots, refreshMemorySlot } from '../server-plugin/virtual-companion/lib/memory-guard.js';
 const id = '20000000-0000-4000-8000-000000000001';
 const input = { chatIdentity: id, revision: 4, enabled: true, budgetTokens: 1024 };
+test('NF-07 嵌套模板生成不消耗父请求记忆快照；切聊天后不能恢复旧快照', async () => {
+    const h=host(),c=h.controller(async()=>({status:'ok',block:'合成父请求资料'}));
+    await c.intercept([],8192,()=>assert.fail(),'normal');const resume=c.suspendPending();
+    const child={};c.attach(child);assert.equal(child.vc_memory,undefined);resume();
+    const parent={};c.attach(parent);assert.deepEqual(parent.vc_memory,{...input,block:'合成父请求资料'});
+    await c.intercept([],8192,()=>assert.fail(),'normal');const expired=c.suspendPending();c.reset();expired();
+    const next={};c.attach(next);assert.equal(next.vc_memory,undefined);
+});
 function host() {
     let context = { chatMetadata: { vc_f2: { id, revision: 4 }, vc_binding: { relationshipId: '7' } },
         extensionSettings: {}, prompts: {}, setExtensionPrompt(key, ...value) { this.prompts[key] = value; } };

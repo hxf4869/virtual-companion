@@ -44,6 +44,7 @@ import { desktopPromptScene } from './desktop-prompt-accept.mjs';
 import { desktopChatScene, desktopOperationsScene } from './desktop-chat-accept.mjs';
 import { desktopMediaScene } from './desktop-media-accept.mjs';
 import { desktopCardScene } from './desktop-card-accept.mjs';
+import { desktopTavernScene } from './desktop-tavern-accept.mjs';
 
 export const ACCEPT_SCENES = [
     memoryRealModelScene,
@@ -114,4 +115,5 @@ export const ACCEPT_SCENES = [
     desktopOperationsScene,
     desktopMediaScene,
     desktopCardScene,
+    desktopTavernScene,
 ];

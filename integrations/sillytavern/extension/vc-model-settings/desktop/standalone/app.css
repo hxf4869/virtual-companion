@@ -39,3 +39,18 @@ body[data-vc-standalone] #vc-date-chip.is-on { opacity: 1; }
 body[data-vc-standalone].vc-reply-bubble #chat > .mes:has(> .mes_block > .vc-desktop-message-content.vc-segmented) > .mes_block { width: 100%; max-width: 80%; padding: 0; background: transparent; border-radius: 0; }
 
 body[data-vc-standalone] .vc-desktop-message-content[aria-hidden="true"] { display: none; }
+.vc-tavern-background { position: fixed; inset: 0; pointer-events: none; background-position: center; background-repeat: no-repeat; }
+body[data-vc-standalone][data-vc-background="true"] .vc-desktop-aurora { visibility: hidden; }
+body[data-vc-standalone][data-vc-hide-chat-avatars="true"] #chat .mesAvatarWrapper { display: none !important; }
+body[data-vc-standalone][data-vc-avatar-style="1"] #chat .avatar { border-radius: 4px; }
+body[data-vc-standalone][data-vc-avatar-style="2"] #chat .avatar { border-radius: 0; }
+body[data-vc-standalone][data-vc-avatar-style="3"] #chat .avatar { border-radius: 12px; }
+body[data-vc-standalone][data-vc-compact-input="false"] #send_textarea { min-height: 112px; }
+/* 元信息沿用悬停提示和可访问文本，不改变气泡高度或阅读锚点。 */
+body[data-vc-standalone] .vc-message-metadata { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+body[data-vc-standalone] .vc-quick-continue { display: block; margin-inline-start: auto; min-height: 36px; }
+body[data-vc-standalone] .mes_text pre { position: relative; white-space: pre; overflow: auto; padding: 12px; background: var(--vc-fill); border-radius: var(--vc-radius-xs); }
+body[data-vc-standalone] .vc-code-copy { display: block; min-height: 32px; margin-inline-start: auto; }
+body[data-vc-standalone] .vc-code-block > summary { cursor: pointer; min-height: 32px; }
+body[data-vc-standalone] .mesAvatarWrapper:has(.vc-message-model-icon) { position: relative; }
+body[data-vc-standalone] .vc-message-model-icon { position: absolute; inset-inline-end: 0; inset-block-end: 0; display: grid; place-items: center; background: var(--vc-canvas); color: var(--vc-ink-2); border-radius: var(--vc-radius-pill); }

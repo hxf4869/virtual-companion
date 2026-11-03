@@ -1,5 +1,5 @@
 // 现有受控端点的响应边界；分帧、文本/reasoning/logprobs和工具delta复用锁定ST算法。
-import { EventSourceStream } from './sse.js';
+import { createEventSourceStream } from './sse.js';
 import { createResponseParser } from './response-core.js';
 import { ToolManager } from './tools.js';
 
@@ -9,7 +9,7 @@ export class GenerationError extends Error {
     }
 }
 
-export async function readGenerationResponse(response, { settings, signal, stream, onUpdate = () => {} } = {}) {
+export async function readGenerationResponse(response, { settings, powerSettings, signal, stream, onUpdate = () => {} } = {}) {
     const snapshot = structuredClone(settings);
     const parser = createResponseParser(snapshot);
     const state = { reasoning: '', images: [], signature: null, toolSignatures: {} };
@@ -30,7 +30,7 @@ export async function readGenerationResponse(response, { settings, signal, strea
         await onUpdate(result); return result;
     }
     if (!response.body) throw new GenerationError('VC_EMPTY_STREAM');
-    const reader = response.body.pipeThrough(new EventSourceStream()).getReader();
+    const reader = response.body.pipeThrough(createEventSourceStream(powerSettings)).getReader();
     let terminal = false;
     try {
         while (true) {

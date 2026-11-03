@@ -20,6 +20,7 @@ import {
 } from './lib/paths.mjs';
 import { sha256File, sha512Base64, readJson, writeJson, mkdirp, run, copyTree, ok, info, fail } from './lib/util.mjs';
 import { applySpecToFile } from './lib/patcher.mjs';
+import { createEjsEditorSource } from './lib/ejs-editor.mjs';
 import { renderConfig } from './lib/config.mjs';
 import { verifyStDependencyTree, verifyVendorTree, verifyPatchedDist, VENDOR_SERVE_ROOT } from './lib/verify.mjs';
 
@@ -142,6 +143,9 @@ function assembleDataRoot(vendorReport) {
     copyTree(HELPER_DIR, path.join(EXT_DIR, 'JS-Slash-Runner'));
     copyTree(EJS_DIR, path.join(EXT_DIR, 'ST-Prompt-Template'));
     applySpecToFile(path.join(EJS_DIR, 'dist/index.js'), path.join(EXT_DIR, 'ST-Prompt-Template/dist/desktop.js'), readJson(EJS_DESKTOP_PATCH_SPEC));
+    const editorFile=path.join(EXT_DIR,'ST-Prompt-Template/dist/desktop-editor.js');
+    fs.writeFileSync(editorFile,createEjsEditorSource(fs.readFileSync(path.join(EJS_DIR,'dist/index.js'),'utf8')),{mode:0o600});
+    if(sha256File(editorFile)!==readJson(EJS_DESKTOP_PATCH_SPEC).desktop_editor_sha256)die('EJS编辑器派生产物不匹配');
     // 原生/手机与桌面共用同一设置；原发布树漏掉的worker也落到原调用路径。
     fs.copyFileSync(path.join(INTEG, 'extension/vc-model-settings/desktop/standalone/cards/ejs-worker.js'), path.join(EXT_DIR, 'ST-Prompt-Template/dist/ejs.workers.js'));
     ok('扩展已从锁定上游复制（排除 .git）');
@@ -198,6 +202,7 @@ function writeConfigAndManifest(vendorReport, patchResult) {
         vendor: vendorReport,
         mvu_bundle: { file: 'user/files/mvu-bundle-d03b7dc8.js', patch: readJson(MVU_PATCH_SPEC).id, sha256: readJson(MVU_PATCH_SPEC).expected_output_sha256 },
         ejs_desktop: { file: 'extensions/ST-Prompt-Template/dist/desktop.js', patch: readJson(EJS_DESKTOP_PATCH_SPEC).id, sha256: readJson(EJS_DESKTOP_PATCH_SPEC).expected_output_sha256 },
+        ejs_desktop_editor: {file:'extensions/ST-Prompt-Template/dist/desktop-editor.js',sha256:readJson(EJS_DESKTOP_PATCH_SPEC).desktop_editor_sha256},
         mvu_desktop: { file: 'extensions/JS-Slash-Runner/lib/mvu-desktop.js', patch: readJson(MVU_DESKTOP_PATCH_SPEC).id, sha256: readJson(MVU_DESKTOP_PATCH_SPEC).expected_output_sha256 },
         note: '原始产物 SHA256 只存于 upstream.lock.json（未改）；本文件是派生产物记录。',
     });

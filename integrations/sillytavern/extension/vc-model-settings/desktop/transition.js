@@ -1,4 +1,4 @@
-export const reducedMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches || document.documentElement.dataset.vcReducedMotion==='true';
+export const reducedMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches || document.documentElement.dataset.vcReducedMotion==='true' || document.documentElement.dataset.vcNativeReducedMotion==='true';
 export function transitionContent(element, update, { shared = false } = {}) {
     if(document.documentElement.dataset.vcLayout!=='desktop')return update();
     if(shared && document.startViewTransition && !reducedMotion())return document.startViewTransition(update);

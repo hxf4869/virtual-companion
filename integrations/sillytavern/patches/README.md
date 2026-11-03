@@ -93,3 +93,19 @@ start 预检 / status 与 `tests/patcher.test.mjs` 都按该值校验，输出�
 给既有管理桥和 Go 的有界 WAV 解析；同一宿主认证、CSRF 和 Go 本人会话门禁继续生效。
 原始录音不进入 `.uploads`。规格仍校验锁定上游输入、每个替换次数和输出；升级上游提供
 等价的内存转发入口后可移除此例外。`voice-input` 受管场景同时核对 ASR 请求及磁盘上传目录不变。
+
+## NF-07 设置文档条件保存与 EJS 桌面派生物
+
+- `st-settings-commit.json`、`st-presets-commit.json`、`st-worldinfo-commit.json` 只在原保存端点接入
+  `vc_changes`；桥同步读取原 JSON、比较全部旧值并原子写入。契约见 `specs/openapi/st-node.yaml`。
+  不增加版本存储；旧完整请求保持原接口语义，不宣称具有局部提交的冲突保障。
+- `st-client-f2.json` 的 settings 保存端口、`st-preset-client-commit.json`、`st-worldinfo-client-commit.json`
+  让原生手机消费者与独立桌面共用 `settings-documents.js`。已提交路径才推进基线；冲突不盲重试，
+  排队自动保存读取最新状态，保留未编辑字段、未知键与用户草稿。
+- `ejs-desktop-runtime.json` 给原 evalTemplate 增加受限的生成作用域，嵌套 Helper 调用沿唯一 Session，
+  过期模板不能借旧作用域另开生成。原生完整 EJS 路径不变。
+- `scripts/lib/ejs-editor.mjs` 从同一锁定 EJS bundle 提取原 Monaco runtime、语言及补全，
+  移除原生 APP_READY/世界书 DOM 接管，仅暴露自有 Sheet 使用的编辑器端口。原 chunks/worker 同源自托管，
+  保留原 `st_monaco_editor_settings` 及 30 项配置，无新增生产依赖。派生物按现有 manifest 校验。
+- 所有规格继续锁定输入、输出与替换次数；装配、启动和 status 校验不变。升级上游提供相同公共端口后可移除。
+  验证复用原 patcher 单测、原生 hl-persona/nf-cards 及独立 nf-tavern/nf-cards 场景。

@@ -161,7 +161,12 @@ export function createMemoryInjection({ getContext, recall, ensureBinding, onSta
         // 跳过、空召回和来源核对都留在后台。连续失败的安静说明不在这里被单次跳过抹掉。
         if (status === 'skipped') banner();
     }
-    return { intercept, attach, reset, discardPending, finalStatus };
+    return { intercept, attach, reset, discardPending, finalStatus,
+        suspendPending() {
+            const pending = ready, capturedEpoch = epoch; ready = null;
+            return () => { if (capturedEpoch === epoch) ready = pending; };
+        },
+    };
 }
 
 export function mountMemoryControls({ getContext, reset, document: doc = document }) {

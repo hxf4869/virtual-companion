@@ -2727,5 +2727,5 @@ function setOpenAIMessageExamples(mesExamplesArray) {
 }
  const tokenHandler=new TokenHandler(countTokensOpenAIAsync);
  const promptManager=new PromptManager(oai_settings,tokenHandler,{main:default_main_prompt,nsfw:default_nsfw_prompt,jailbreak:default_jailbreak_prompt,enhanceDefinitions:default_enhance_definitions_prompt},render);
- return { createGenerationParameters, prepareOpenAIMessages, setOpenAIMessages, setOpenAIMessageExamples, get messageCount(){return openai_messages_count;}, get messages(){return openai_msgs;}, get examples(){return openai_mes_examples;}, get manager(){return promptManager;} };
+ return { createGenerationParameters, prepareOpenAIMessages, setOpenAIMessages, setOpenAIMessageExamples, ChatCompletion, Message, MessageCollection, Prompt, PromptCollection, get messageCount(){return openai_messages_count;}, get messages(){return openai_msgs;}, get examples(){return openai_mes_examples;}, get manager(){return promptManager;} };
 }

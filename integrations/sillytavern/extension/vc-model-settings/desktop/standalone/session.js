@@ -1,10 +1,11 @@
 // 桌面唯一聊天写入/生成 owner。原始JSONL始终经ST的既有F2/CAS保存。
-import { createF2Client, createSourceGuard, characterChatPath, F2ConflictError, F2_CONFLICT_COPY, extractUnsavedUserInput } from '../../f2-client.js';
+import { createF2Client, createSourceGuard, createNativeF2IO, characterChatPath, F2ConflictError, F2_CONFLICT_COPY, extractUnsavedUserInput } from '../../f2-client.js';
 import { createInstanceBinding } from '../../instance-binding.js';
 import { resolveSTBinding, reconcileSTSources } from '../../api.js';
 import { toggleReaction, addNudge, dropNudge, reactionNudge, runPat } from '../../chat-react.js';
 import { createPersonaSelection } from './personas.js';
 import { BUDGET_COPY } from '../../model-logic.js';
+import { applyDocumentValues, documentEqual, documentValue } from '../../settings-documents.js';
 
 export function createDesktopSession({ client, context, engine, prepareSourceIdentities, readResponse,
     choosePersona, onChange = () => {}, onTakeDraft = () => {}, onRestoreDraft = () => {}, onConflict = () => {},
@@ -12,7 +13,9 @@ export function createDesktopSession({ client, context, engine, prepareSourceIde
     let current, job, epoch = 0, savingSettled = false, opening = Promise.resolve();
     let budget, catalogReady = true, catalogNotice = '', catalogNeedsSettings = false, lastOperation = Promise.resolve();
     const rejected = new Map(), patState = {};
+    const helperRuns = new Map();
     const f2 = createF2Client();
+    const f2IO = createNativeF2IO({getRequestHeaders:client.headers,client:f2});
     const getContext = () => context;
     const guard = createSourceGuard(getContext, { onSettled() {
         if (current?.ready && !job) void save(current).catch(() => {});
@@ -31,7 +34,7 @@ export function createDesktopSession({ client, context, engine, prepareSourceIde
     const binding = createInstanceBinding({ resolveBinding, getSource: source });
     const publish = target => {
         if (!target || target !== current || target.signal?.aborted) return;
-        onChange({ key: target.key, messages: target.messages, busy: Boolean(job && job.target === target),
+        onChange({ key: target.key, messages: target.messages, busy: Boolean(job && job.target === target && job.kind !== 'opening'),
             canSend: target.ready && !target.blocked && !job && catalogReady && !budget?.insufficient,
             notice: target.blocked ? target.notice : budget?.insufficient ? BUDGET_COPY : target.notice || catalogNotice,
             conflict: target.blocked, catalogBlocked: !catalogReady, settingsRequired: !target.blocked && (catalogNeedsSettings || Boolean(budget?.insufficient)),
@@ -60,8 +63,8 @@ export function createDesktopSession({ client, context, engine, prepareSourceIde
     }
     async function saveSettings() {
         if (!context.settingsDirty) return;
-        await client.post('/api/settings/save', engine.settings);
-        context.settingsDirty = false;
+        await client.saveSettings(() => engine.settingsForSave());
+        context.settingsDirty = client.settingsChanged(engine.settingsForSave());
     }
     context.getCurrentChatId = () => context.chatId;
     context.saveChat = () => save(current);
@@ -76,14 +79,14 @@ export function createDesktopSession({ client, context, engine, prepareSourceIde
     async function stop() {
         if (!job) return;
         const active = job;
-        if (active.kind === 'mutation') { await active.promise; return; }
+        if (active.kind === 'mutation' || active.kind === 'configuration') { await active.promise; return; }
         if (!active.controller.signal.aborted) {
             active.controller.abort();
             await context.eventSource.emit(context.eventTypes.GENERATION_STOPPED);
         }
-        await active.promise;
+        try { await active.promise; } catch (error) { if (!active.controller.signal.aborted) throw error; }
     }
-    async function open(row, records, { signal, latest = false } = {}, ticket) {
+    async function open(row, records, { signal, latest = false } = {}, ticket, operation) {
         await stop();
         await engine.cards?.settle();
         await engine.cards?.closeScripts();
@@ -112,6 +115,7 @@ export function createDesktopSession({ client, context, engine, prepareSourceIde
         target.metadata.integrity ||= crypto.randomUUID();
         f2.loaded(target.path, target.metadata);
         context.metadataDirty = false;
+        operation.target = target; operation.phase = 'preparing'; operation.leaf = operation; job = operation;
         try {
             await personas.load(target.path, { signal });
             signal?.throwIfAborted();
@@ -144,14 +148,15 @@ export function createDesktopSession({ client, context, engine, prepareSourceIde
                 target.notice = error instanceof F2ConflictError ? F2_CONFLICT_COPY : '聊天没有加载出来，请重试。'; publish(target);
             }
             throw error;
-        }
+        } finally { if (job === operation) { job = null; publish(target); } }
     }
     function send(input, { retry = false, type = 'normal', voiceInput, draftInput = input } = {}) {
         const target = current;
+        if(type==='normal'&&!retry&&!input.trim()&&engine.settings.power_user.continue_on_send&&target?.messages.at(-1)&&!target.messages.at(-1).is_user&&!target.messages.at(-1).is_system)type='continue';
         if (!target?.ready || target.signal?.aborted || target.blocked || job || !catalogReady || budget?.insufficient || (type === 'normal' && !retry && !input.trim())) return Promise.resolve(false);
         const previous = target.messages.at(-1);
         if (type !== 'normal' && (!previous || previous.is_user || previous.is_system)) return Promise.resolve(false);
-        const active = { target, controller: new AbortController(), promise: null };
+        const active = { target, controller: new AbortController(), promise: null, phase: 'preparing' }; active.leaf = active;
         job = active; target.notice = ''; target.retryType = type; publish(target);
         const signal = active.controller.signal;
         const slowTimer = setTimeout(() => {
@@ -205,6 +210,7 @@ export function createDesktopSession({ client, context, engine, prepareSourceIde
                 }
                 signal.throwIfAborted();
                 const responseSettings = { ...engine.settings.oai_settings };
+                active.phase = 'transport';
                 const response = await client.generate(packet, { signal });
                 if (packet.body.vc_memory && response.headers.has('X-VC-Memory-Status')) {
                     engine.memory.finalStatus({ ...packet.body.vc_memory, status: response.headers.get('X-VC-Memory-Status') });
@@ -232,9 +238,10 @@ export function createDesktopSession({ client, context, engine, prepareSourceIde
                     assistant.swipes[candidate] = assistant.mes;
                     publish(target);
                 };
-                const result = await readResponse(response, { settings: responseSettings, signal, stream: packet.stream,
+                const result = await readResponse(response, { settings: responseSettings, powerSettings:engine.settings.power_user, signal, stream: packet.stream,
                     onUpdate: value => update(value, true) });
                 update(result, false);
+                await engine.measureMessage?.(assistant);
                 if (!result.text && !result.toolCalls.length) throw new Error('VC_EMPTY_RESPONSE');
                 assistant.gen_finished = Date.now(); assistant.extra.finish_reason = result.finishReason;
                 if (result.toolCalls.length) assistant.extra.tool_calls = result.toolCalls;
@@ -246,12 +253,14 @@ export function createDesktopSession({ client, context, engine, prepareSourceIde
                     if (assistant.variables) assistant.variables[at] = {};
                 }
                 context.liveReply = assistant;
+                active.phase = 'callbacks';
                 await context.eventSource.emit(context.eventTypes.MESSAGE_RECEIVED, target.messages.length - 1, type);
                 await context.eventSource.emit(context.eventTypes.CHARACTER_MESSAGE_RENDERED, target.messages.length - 1, type);
                 await engine.cards?.surface.refresh([target.messages.length - 1]);
                 snapshot();
                 await save(target, { settled: guard.isSettled() });
                 finalSaved = true;
+                active.autoChunk = result.text;
                 return true;
             } catch (error) {
                 if (assistant) {
@@ -284,6 +293,10 @@ export function createDesktopSession({ client, context, engine, prepareSourceIde
                 publish(target);
             }
         })();
+        active.promise=active.promise.then(async result=>{
+            if(result&&current===target&&!signal.aborted&&!job&&await engine.shouldAutoContinue?.(active.autoChunk)&&current===target&&!job&&!signal.aborted)return send('',{type:'continue'});
+            return result;
+        });
         lastOperation = active.promise;
         return active.promise;
     }
@@ -309,14 +322,59 @@ export function createDesktopSession({ client, context, engine, prepareSourceIde
     }
     const api = { activate(row, records, options = {}) {
         const ticket = ++epoch, previous = opening;
-        const pending = previous.catch(() => {}).then(() => open(row, records, options, ticket));
+        const operation = {kind:'opening',controller:new AbortController(),promise:null};
+        const signal = options.signal ? AbortSignal.any([options.signal,operation.controller.signal]) : operation.controller.signal;
+        const pending = previous.catch(() => {}).then(() => open(row, records, {...options,signal}, ticket, operation));
+        operation.promise = pending;
         opening = pending; return pending;
     }, send, stop,
         refreshView() { publish(current); },
         setBudget(value) { budget = value; publish(current); },
         setCatalogStatus(ready, notice = '', needsSettings = false) { catalogReady = ready; catalogNotice = notice; catalogNeedsSettings = needsSettings; publish(current); },
         async whenIdle() {
-            while (true) { const operation = lastOperation; await operation; if (operation === lastOperation) return; }
+            while (true) {
+                const pendingOpen = opening, operation = lastOperation;
+                await pendingOpen.catch(() => {}); await operation;
+                if (pendingOpen === opening && operation === lastOperation) return;
+            }
+        },
+        async configure(apply) {
+            await api.whenIdle();
+            const target = current, active = { kind: 'configuration', target, promise: null };
+            job = active; publish(target);
+            active.promise = (async () => {
+                try {
+                    await engine.cards?.settle();
+                    await apply();
+                    if (target === current && context.metadataDirty && target?.ready && !target.blocked) await save(target, { settled: guard.isSettled() });
+                    await saveSettings();
+                } finally { if (job === active) job = null; publish(target); }
+            })();
+            lastOperation = active.promise.catch(() => {});
+            return active.promise;
+        },
+        refreshPersona: () => personas.refresh(),
+        deleteCharacter(avatar, deleteChats) { return api.configure(async () => {
+            const rows=deleteChats?await client.request('/api/characters/chats',{avatar_url:avatar,simple:true}):[];
+            const baselines=await f2IO.baselines((Array.isArray(rows)?rows:[]).map(row=>({avatar,file:row.file_name})));
+            await client.post('/api/characters/delete',{avatar_url:avatar,delete_chats:deleteChats,vc_f2_chats:baselines});
+            if(current?.row.avatar===avatar){await engine.cards?.closeScripts();f2.leave();current=null;context.chat=[];context.chatMetadata={};context.chatId='';context.characterId=undefined;context.metadataDirty=false;}
+        }); },
+        get ready() { return Boolean(current?.ready && !current.blocked && !current.signal?.aborted); },
+        async commitMetadata(changes, expectedKey) {
+            await api.whenIdle();
+            const target = current;
+            if (!api.ready || target.key !== expectedKey) throw new Error('聊天已切换或尚未就绪，聊天绑定尚未保存；其他设置可继续保存。');
+            if (changes.some(change => !documentEqual(documentValue(target.metadata, change.path), change.before))) {
+                const error = new Error('设置已在另一处更新。'); error.status = 409; throw error;
+            }
+            const saved = await mutate(0, target.messages[0], async () => {
+                applyDocumentValues(target.metadata, changes);
+                if (changes.some(change => change.path[0] === 'persona')) await personas.load(`${target.path}:settings:${crypto.randomUUID()}`, { signal: target.signal });
+                engine.bindContext();
+                await context.eventSource.emit(context.eventTypes.CHAT_CHANGED, context.chatId);
+            }, 'all');
+            if (!saved) { const error = new Error(target.notice || '配置没有保存，请重试。'); error.status = target.blocked ? 409 : undefined; throw error; }
         },
         regenerate: () => send('', { type: 'regenerate' }),
         continue: () => send('', { type: 'continue' }),
@@ -381,6 +439,49 @@ export function createDesktopSession({ client, context, engine, prepareSourceIde
             return extractUnsavedUserInput(entry.snapshot, latest);
         },
     };
+    context.captureHelperScope = () => {
+        if (!job || job.phase === 'transport') return null;
+        const scope = { job, leaf: job.leaf, valid: true };
+        return { scope, release() { scope.valid = false; } };
+    };
+    context.generateHelper = (apiName, config, scoped) => {
+        if (!catalogReady || budget?.insufficient || !current || current.blocked || current.signal?.aborted) return Promise.reject(new Error('请先配置聊天模型并打开聊天。'));
+        const nested = Boolean(scoped);
+        if (job && (!scoped?.valid || scoped.job !== job || scoped.leaf !== job.leaf || job.phase === 'transport')) return Promise.reject(new Error('当前生成尚未结束。'));
+        if (scoped && !job) return Promise.reject(new Error('角色卡执行上下文已失效。'));
+        if (!job && !current.ready) return Promise.reject(new Error('聊天尚未就绪。'));
+        config.generation_id ||= crypto.randomUUID();
+        if (helperRuns.has(config.generation_id)) return Promise.reject(new Error('该生成请求仍在进行中。'));
+        const parent = job, target = current, token = structuredClone(target.metadata.vc_f2);
+        const controller = new AbortController(), active = parent || {kind:'helper',target,controller,promise:null,phase:'preparing'};
+        const previousLeaf = active.leaf, previousPhase = active.phase, leaf = {generationId:config.generation_id};
+        active.leaf = leaf; active.phase = 'preparing'; job = active;
+        const signal = AbortSignal.any([controller.signal,active.controller?.signal || controller.signal,target.signal].filter(Boolean));
+        helperRuns.set(config.generation_id,controller); publish(target);
+        const pending = (async () => {
+            try {
+                await context.eventSource.emit('js_generation_requested',config.generation_id,apiName,config);
+                const {fromGenerateConfig,fromGenerateRawConfig,convertGenerateWithCustomPreset} = await import('./engine/helper-config.js');
+                const params = apiName === 'generateRaw' ? fromGenerateRawConfig(config) : config.preset_name && config.preset_name !== 'in_use'
+                    ? fromGenerateRawConfig(convertGenerateWithCustomPreset(config,engine.cards.getPreset,engine.substituteMacros)) : fromGenerateConfig(config);
+                const value = await engine.generateHelper(params,{signal,onPhase:phase=>{active.phase=phase;}});
+                signal.throwIfAborted();
+                if (target !== current || target.metadata.vc_f2.id !== token.id || target.metadata.vc_f2.revision !== token.revision) throw new F2ConflictError('VC_STALE_SOURCE');
+                return value;
+            } finally {
+                helperRuns.delete(config.generation_id);
+                active.leaf = previousLeaf; active.phase = previousPhase;
+                if (!nested && job === active) {
+                    try { if (context.metadataDirty && guard.isSettled()) await save(target,{settled:true}); await saveSettings(); }
+                    finally {job = null;publish(target);}
+                }
+            }
+        })();
+        if (!parent) {active.promise = pending;lastOperation = pending.catch(()=>{});}
+        return pending;
+    };
+    context.stopHelperGenerationById = id => { const controller=helperRuns.get(id);if(!controller)return false;controller.abort();void context.eventSource.emit(context.eventTypes.GENERATION_STOPPED,id);return true; };
+    context.stopAllHelperGeneration = () => {for(const id of helperRuns.keys())context.stopHelperGenerationById(id);};
     context.generate = type => type === 'regenerate' ? api.regenerate() : type === 'continue' ? api.continue() : type === 'swipe' ? api.swipe(context.chat.length - 1, 1) : api.retry();
     return api;
 }

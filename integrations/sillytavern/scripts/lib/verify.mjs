@@ -43,6 +43,8 @@ export function verifyNativeRuntime(userDir = USER_DIR) {
     if (!fs.existsSync(mvu) || sha256File(mvu) !== readJson(MVU_PATCH_SPEC).expected_output_sha256) problems.push('mvu-bundle');
     const ejsDesktop = path.join(ext, 'ST-Prompt-Template/dist/desktop.js');
     if (!fs.existsSync(ejsDesktop) || sha256File(ejsDesktop) !== readJson(EJS_DESKTOP_PATCH_SPEC).expected_output_sha256) problems.push('ejs-desktop');
+    const ejsEditor=path.join(ext,'ST-Prompt-Template/dist/desktop-editor.js');
+    if(!fs.existsSync(ejsEditor)||sha256File(ejsEditor)!==readJson(EJS_DESKTOP_PATCH_SPEC).desktop_editor_sha256)problems.push('ejs-desktop-editor');
     const ejsWorker = path.join(ext, 'ST-Prompt-Template/dist/ejs.workers.js');
     if (!fs.existsSync(ejsWorker) || sha256File(ejsWorker) !== sha256File(path.join(INTEG, 'extension/vc-model-settings/desktop/standalone/cards/ejs-worker.js'))) problems.push('ejs-worker');
     const mvuDesktop = path.join(ext, 'JS-Slash-Runner/lib/mvu-desktop.js');

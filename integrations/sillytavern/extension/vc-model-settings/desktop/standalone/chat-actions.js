@@ -10,6 +10,7 @@ import { chatVoiceAvailable, readReplyAloud } from '../../voice-chat.js';
 import { mountEmojiPanelView, mountReactionToolbarView } from '../build/index.js';
 import { REACTIONS, searchEmoji, searchStickers, stickerMarkup, pushRecent, readRecent, writeRecent } from '../../chat-react.js';
 import { listStickerPicks } from '../../stickers.js';
+import { applyInputMarkdown } from './input-markdown.js';
 
 export function createChatActions({ getContext, getSession, chat, paint }) {
     let quote, menu, sheet, panel, recent = readRecent();
@@ -31,9 +32,22 @@ export function createChatActions({ getContext, getSession, chat, paint }) {
     function edit(index, message) {
         const key = chat.conversation, body = document.createElement('div'); body.className = 'vc-column';
         const input = document.createElement('textarea'); input.className = 'vc-input'; input.rows = 10; input.value = message.mes; input.setAttribute('aria-label', '消息内容'); body.append(input);
-        sheet = openSheet({ title: COPY.edit, body, isDirty: () => input.value !== message.mes,
-            async onSubmit() { if (!active(key, index, message)) return true; return await getSession().edit(index, input.value, message); },
-            onDone() { sheet = null; } });
+        input.addEventListener('keydown',event=>{if(getContext().powerUserSettings?.enable_md_hotkeys)applyInputMarkdown(event,input);});
+        let saving=false;
+        const saveEdit=async()=>{
+            if(saving)return false;if(!active(key,index,message))return true;
+            saving=true;input.disabled=true;
+            try{return await getSession().edit(index,input.value,message);}finally{saving=false;if(input.isConnected)input.disabled=false;}
+        };
+        const editorSheet=openSheet({ title: COPY.edit, body, isDirty: () => input.value !== message.mes,
+            onSubmit:saveEdit,
+            canClose(){
+                if(saving)return false;
+                if(input.value!==message.mes&&getContext().powerUserSettings?.auto_save_msg_edits){void saveEdit().then(saved=>{if(saved)editorSheet.dismiss();}).catch(failure);return false;}
+                return true;
+            },
+            onDone() { if(sheet===editorSheet)sheet = null; } });
+        sheet=editorSheet;
     }
     async function remind(message, at) {
         const id = getContext().chatMetadata.vc_binding?.relationshipId;
@@ -52,7 +66,7 @@ export function createChatActions({ getContext, getSession, chat, paint }) {
             if (!chat.canSend || !session) return;
             if (action === 'edit') { edit(index, message); return; }
             if (action === 'remove') {
-                if (await confirmAlert({ title: COPY.deleteTitle, message: COPY.deleteBody, action: COPY.remove, opener: anchor }) && active(key, index, message)) await session.remove(index, message);
+                if ((getContext().powerUserSettings?.confirm_message_delete===false || await confirmAlert({ title: COPY.deleteTitle, message: COPY.deleteBody, action: COPY.remove, opener: anchor })) && active(key, index, message)) await session.remove(index, message);
             } else if (action === 'regen' || action === 'regenerate') {
                 if (index === chat.messages.length - 1) await session.regenerate();
             } else if (action === 'continue') {

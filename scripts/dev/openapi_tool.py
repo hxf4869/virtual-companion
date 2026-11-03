@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """OpenAPI single-source generator and drift gate (TASK-0023).
 
-The hand-written ``specs/openapi/virtual-companion.yaml`` is the single source
-of truth (ADR-0002). This tool deterministically generates a bundled OpenAPI
+The hand-written Go and ST Node sources in ``specs/openapi/`` are the HTTP
+sources of truth (ADR-0002, NF-07). This tool deterministically generates bundled OpenAPI
 document plus an audit snapshot, and fails closed when the generated artifacts
 drift from what is committed. Generation is pure and deterministic — the same
 source always yields byte-identical output (LF newlines, stable key order) — so
@@ -24,7 +24,8 @@ from typing import Any
 
 import yaml
 
-GENERATOR_VERSION = "1.1.0"
+GENERATOR_VERSION = "1.2.0"
+SOURCE_NAMES = ("virtual-companion.yaml", "st-node.yaml")
 
 
 def repo_root() -> Path:
@@ -47,13 +48,17 @@ def sha256_bytes(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
-def source_path(root: Path) -> Path:
-    return root / "specs/openapi/virtual-companion.yaml"
+def source_path(root: Path, name: str = SOURCE_NAMES[0]) -> Path:
+    return root / "specs/openapi" / name
 
 
 def validate(root: Path) -> list[str]:
+    return [error for name in SOURCE_NAMES for error in validate_source(root, name)]
+
+
+def validate_source(root: Path, name: str) -> list[str]:
     errors: list[str] = []
-    path = source_path(root)
+    path = source_path(root, name)
     if not path.exists():
         return [f"missing OpenAPI source: {path.relative_to(root)}"]
     doc = load_yaml(path)
@@ -84,7 +89,7 @@ def validate(root: Path) -> list[str]:
     # here; catalog content itself stays catalog_tool's responsibility.
     enum_codes = set(error_code.get("enum") or [])
     catalog_path = root / "specs/catalog/error-codes.yaml"
-    if catalog_path.exists():
+    if name == SOURCE_NAMES[0] and catalog_path.exists():
         try:
             catalog_codes = {
                 entry.get("code")
@@ -192,6 +197,10 @@ def generate(root: Path, out: Path) -> None:
     write_text_lf(
         out / "api-bundle.yaml",
         yaml.safe_dump(doc, allow_unicode=True, sort_keys=False, width=120),
+    )
+    write_text_lf(
+        out / "st-node-bundle.yaml",
+        yaml.safe_dump(load_yaml(source_path(root, SOURCE_NAMES[1])), allow_unicode=True, sort_keys=False, width=120),
     )
 
     # Snapshot for auditability.

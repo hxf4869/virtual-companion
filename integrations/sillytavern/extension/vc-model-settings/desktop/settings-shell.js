@@ -15,20 +15,21 @@ import { transitionContent } from './transition.js';
 import { NOTIFY_KEY, notifySupported, requestNotifyPermission, systemNotifyEnabled } from './notify.js';
 import { mountAppearance } from './appearance.js';
 const categories = [['account','账户','user-round','gray'],['model','模型','cpu','blue'],['voice','语音','mic','orange'],['notifications','通知','bell','pink'],['appearance','外观','monitor','purple'],['data','账户与数据','shield','green']];
-export function mountSettingsShell(container, { getContext = () => ({}), onBudgetChange, onCatalogSaved } = {}) {
+export function mountSettingsShell(container, { getContext = () => ({}), onBudgetChange, onCatalogSaved, mountTavernSettings } = {}) {
     const root = document.createElement('section'); root.className = 'vc-settings-shell';
     container.replaceChildren(root);
     const model = mountModelSettings({ onBudgetChange }); let account; let current = '', voice = null, detailHidden = false;
     const unregisterCatalog = onCatalogSaved ? model.onCatalogSaved(onCatalogSaved) : null;
     let unmountOverview = () => {};
     let unmountAppearance = () => {};
-    let unmountDrawerEntry = () => {}, voiceHeader;
+    let unmountDrawerEntry = () => {}, voiceHeader, editor, editorHeader, editorLoad;
     const titleFor = key => categories.find(row => row[0] === key)?.[1] || TAVERN_ENTRIES.find(row => row.panel === key)?.label || '';
-    const frameProps = () => ({ sprite: iconSpriteUrl(), categories, tavern: TAVERN_ENTRIES, current, title: titleFor(current), model: model.root, voice: voiceHeader, detailHidden,
+    const frameProps = () => ({ sprite: iconSpriteUrl(), categories, tavern: TAVERN_ENTRIES, current, title: titleFor(current), model: model.root, voice: voiceHeader, editor: editorHeader, detailHidden,
         onSelect: key => void select(key), onCategories: openCategories });
     const frame = mountSettingsFrameView(root, frameProps());
     root.setDetailVisibility = hidden => { detailHidden = Boolean(hidden); frame.update(frameProps()); };
     const setVoiceHeader = next => { voiceHeader = next; frame.update(frameProps()); };
+    const setEditorHeader = next => { editorHeader = next; frame.update(frameProps()); };
     function openCategories(trigger) { popMenu(trigger, [...categories.map(([key, label]) => ({ label, run: () => void select(key) })), '-', ...TAVERN_ENTRIES.map(row => ({ label: row.label, run: () => void select(row.panel) }))]); }
     const modelHome = model.root.parentNode;
     function restoreModel() { if (root.contains(model.root)) (modelHome || document.body).append(model.root); }
@@ -86,6 +87,7 @@ export function mountSettingsShell(container, { getContext = () => ({}), onBudge
             try { return await confirmDiscard({opener:document.activeElement}); }
             finally { confirmingLeave = false; }
         }
+        if (editor) return editor.requestLeave();
         return true;
     }
     async function select(key, { initial = false } = {}) {
@@ -98,6 +100,7 @@ export function mountSettingsShell(container, { getContext = () => ({}), onBudge
         unmountAppearance = () => {};
         unmountDrawerEntry();
         unmountDrawerEntry = () => {};
+        editorLoad?.abort(); editorLoad = null; editor?.destroy(); editor = null; editorHeader = undefined;
         voice?.destroy();
         leaveDrawer();
         voice = null; current = key; detailHidden = false; root.dataset.category = key;root.dataset.categoriesOpen = 'false';
@@ -108,6 +111,19 @@ export function mountSettingsShell(container, { getContext = () => ({}), onBudge
         if (key === 'voice') { voice = await mountVoice(content, body, setVoiceHeader); }
         else if (key === 'appearance') unmountAppearance = mountAppearance(body, getContext);
         else if (['account', 'data', 'notifications'].includes(key)) mountOverview(body, key);
+        else if (mountTavernSettings) {
+            const loading = new AbortController(); editorLoad = loading;
+            setEditorHeader({ dirty: false, working: false, disabled: true, onSave() {}, onDiscard() {} });
+            try {
+                const candidate = await mountTavernSettings(body, { key, signal: loading.signal, setHeader: setEditorHeader });
+                if (loading.signal.aborted || ac.signal.aborted || !body.isConnected) { candidate?.destroy(); return; }
+                editor = candidate;
+            } catch {
+                if (loading.signal.aborted || ac.signal.aborted || !body.isConnected) return;
+                const status = document.createElement('p'); status.role = 'status'; status.textContent = '页面没有加载出来，请重新打开。';
+                const retry = document.createElement('button'); retry.type = 'button'; retry.className = 'vc-btn vc-btn-text'; retry.textContent = '重新加载'; retry.onclick = () => location.reload(); body.append(status, retry);
+            }
+        }
         else {
             unmountDrawerEntry = mountDrawerEntryView(body, { title: titleFor(key), sprite: iconSpriteUrl(), onOpen: () => void openDrawer(key) });
             await openDrawer(key);
@@ -126,12 +142,12 @@ export function mountSettingsShell(container, { getContext = () => ({}), onBudge
     document.addEventListener('click',event=>{
         if(root.dataset.drawer&&event.target.closest?.('[data-vc-drawer-back]')){delete root.dataset.drawer;current='';}
     },{capture:true,signal:ac.signal});
-    return { root, model, select, requestLeave,
-        isDirty: () => current === 'model' ? model.isDirty() : Boolean(voice?.isDirty()),
-        isBusy: () => current === 'model' ? model.isBusy() : Boolean(voice?.working()),
+    return { root, model, select, requestLeave, refreshContext: () => editor?.refreshContext(),
+        isDirty: () => current === 'model' ? model.isDirty() : Boolean(voice?.isDirty() || editor?.isDirty()),
+        isBusy: () => current === 'model' ? model.isBusy() : Boolean(voice?.working() || editor?.working()),
         resume(){ if (current === 'model') { frame.content.append(model.root); model.open(); } else if (!current) void select('account', { initial: true }); },
-        close(){ if (current === 'model') { model.detach(); restoreModel(); } if (voice) { voice.destroy(); voice = null; current = ''; } if (root.dataset.drawer) { leaveDrawer(); current = ''; } },
-        destroy(){ac.abort();unregisterCatalog?.();account?.destroy();unmountOverview();voice?.destroy();unmountAppearance();unmountDrawerEntry();leaveDrawer();if(current==='model')model.detach();restoreModel();frame.unmount();root.remove();} };
+        close(){ if (editorLoad) { editorLoad.abort(); editorLoad = null; editor?.destroy(); editor = null; current = ''; } if (current === 'model') { model.detach(); restoreModel(); } if (voice) { voice.destroy(); voice = null; current = ''; } if (root.dataset.drawer) { leaveDrawer(); current = ''; } },
+        destroy(){ac.abort();editorLoad?.abort();editor?.destroy();unregisterCatalog?.();account?.destroy();unmountOverview();voice?.destroy();unmountAppearance();unmountDrawerEntry();leaveDrawer();if(current==='model')model.detach();restoreModel();frame.unmount();root.remove();} };
 }
 async function mountVoice(content,body,setHeader) {
     let settings, engines, baseline='', working=false, loaded=false, destroyed=false, fields=null, values={}, saveStyle={};

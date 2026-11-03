@@ -102,7 +102,7 @@ function makeManagedFixture() {
     fs.mkdirSync(path.join(extSrc, 'harness'), { recursive: true });
     fs.writeFileSync(path.join(extSrc, 'manifest.json'), '{"js":"index.js"}\n');
     fs.writeFileSync(path.join(extSrc, 'index.js'), 'export const init = () => {};\n');
-    for (const name of ['f2-client.js', 'instance-binding.js']) fs.writeFileSync(path.join(extSrc, name), 'export {};\n');
+    for (const name of ['f2-client.js', 'instance-binding.js', 'settings-documents.js']) fs.writeFileSync(path.join(extSrc, name), 'export {};\n');
     fs.writeFileSync(path.join(extSrc, 'harness', 'server.mjs'), 'export {}; // 开发验收用具，不是生产扩展资产\n');
     return { root, stDir, spec, specFile, patched, pluginSrc, extSrc };
 }
@@ -158,7 +158,7 @@ test('deployManagedAssets：harness 不被部署；部署漂移/缺失被 verify
         fs.mkdirSync(extDir, { recursive: true });
         const dep = deployManagedAssets({ pluginSrc: f.pluginSrc, extensionSrc: f.extSrc, runDir, extDir });
         assert.equal(dep.plugin.files, 4);
-        assert.equal(dep.extension.files, 4, 'harness 内文件不计入部署');
+        assert.equal(dep.extension.files, 5, 'harness 内文件不计入部署');
         assert.ok(!fs.existsSync(path.join(extDir, 'vc-model-settings', 'harness')));
         assert.ok(fs.existsSync(path.join(runDir, 'plugins', 'virtual-companion', 'index.js')));
         let v = verifyManagedDeployment({ pluginSrc: f.pluginSrc, extensionSrc: f.extSrc, runDir, extDir });

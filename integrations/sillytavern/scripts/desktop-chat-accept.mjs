@@ -29,7 +29,7 @@ export async function captureWindows(page, ctx, prefix = 'nf-chat') {
     // 与NF-04 reopen相同的真实发送就绪检查；只改合成草稿，不发出请求。
     const input = page.locator('#send_textarea'), draft = await input.inputValue();
     if (!draft.trim()) await input.fill('合成就绪检查');
-    await page.waitForFunction(() => !document.querySelector('#send_but')?.disabled);
+    await page.waitForFunction(() => Boolean(document.querySelector('#send_but') && !document.querySelector('#send_but').disabled));
     if (!draft.trim()) await input.fill(draft);
     // NF-05可按未读/阅读位置恢复。窗口跟随场景先通过公开动作回到最新，再保留原严格几何断言。
     await page.locator('#chat').focus(); await page.keyboard.press('End');
@@ -72,7 +72,7 @@ async function recoveryChecks({ ctx, st, page, fixture, other, reply }) {
     };
     const input = page.locator('#send_textarea');
     const send = async text => {
-        await input.fill(text); await page.waitForFunction(() => !document.querySelector('#send_but')?.disabled);
+        await input.fill(text); await page.waitForFunction(() => Boolean(document.querySelector('#send_but') && !document.querySelector('#send_but').disabled));
         await page.locator('#send_but').click();
     };
     const notice = text => page.waitForFunction(value => document.querySelector('#vc-chat-gen')?.textContent.includes(value)
@@ -146,7 +146,7 @@ async function recoveryChecks({ ctx, st, page, fixture, other, reply }) {
     assert.equal(await conflict.locator('[data-action="keep-draft"]').count(), 1);
     await conflict.locator('[data-action="view-latest"]').click();
     await conflict.waitFor({ state: 'hidden' });
-    await page.waitForFunction(() => !document.querySelector('#send_but')?.disabled);
+    await page.waitForFunction(() => Boolean(document.querySelector('#send_but') && !document.querySelector('#send_but').disabled));
     assert.equal(await input.inputValue(), casDraft);
     await page.locator('#send_but').click(); await done();
     saved = await read(fixture); assert.equal(saved.at(-2).mes, 'NF03 CAS合成草稿');
@@ -160,7 +160,7 @@ async function recoveryChecks({ ctx, st, page, fixture, other, reply }) {
     const otherId = other.chat[0].chat_metadata.vc_binding.relationshipId;
     await page.locator(`[data-convo-list] [data-relationship-id="${otherId}"]`).click();
     await page.waitForFunction(() => document.querySelectorAll('#chat>.mes').length === 24);
-    await input.fill('NF03 B草稿'); await page.waitForFunction(() => !document.querySelector('#send_but')?.disabled);
+    await input.fill('NF03 B草稿'); await page.waitForFunction(() => Boolean(document.querySelector('#send_but') && !document.querySelector('#send_but').disabled));
     assert.equal(await input.inputValue(), 'NF03 B草稿');
     assert.equal(await page.locator('#chat>.mes:last-child .mes_text').textContent(), '合成基准消息 24。');
     assert.equal((await read(other)).length, other.chat.length, '迟到旧回复不能写进新会话');
@@ -216,7 +216,7 @@ async function sceneDesktopChat(ctx) {
                 stage = 'ready-to-send';
                 const input = 'NF03 合成输入 ' + row.id;
                 await page.locator('#send_textarea').fill(input);
-                await page.waitForFunction(() => !document.querySelector('#send_but')?.disabled);
+                await page.waitForFunction(() => Boolean(document.querySelector('#send_but') && !document.querySelector('#send_but').disabled));
                 assert.equal(await ctx.fixtureHttp.count({ protocol: row.protocol }), before, '打开/配置不能调用模型');
                 // 同一真实按钮连击：第二次到达旧React props时也须由唯一owner拒绝。
                 if (row.id === 'chat-stream') await page.locator('#send_but').dblclick();
@@ -300,7 +300,7 @@ export async function sceneDesktopOperations(ctx) {
         await ctx.fixtureHttp.setOverride('vc03m-chat', { text: 'NF05 合成候选。', chunks: 2, tool: null });
         stage = 'open80'; await openDesktopFixture(page, ctx.w05.stBase, fixture, 80);
         stage = 'ready';
-        await page.waitForFunction(() => !document.querySelector('#send_but')?.disabled);
+        await page.waitForFunction(() => Boolean(document.querySelector('#send_but') && !document.querySelector('#send_but').disabled));
         assert.equal(await page.locator('#send_textarea').inputValue(), 'NF05 旧草稿');
         assert.equal(await page.evaluate(file => localStorage.getItem('vc-draft:' + file), fixture.file), null);
         await page.evaluate(() => document.fonts.ready);
@@ -322,7 +322,7 @@ export async function sceneDesktopOperations(ctx) {
         await page.locator('#chat').hover(); await page.mouse.wheel(0, 80);
         await page.waitForFunction(() => Object.keys(localStorage).some(key => key.startsWith('vc-pos:') && Number(localStorage.getItem(key)) < 20));
         await openDesktopFixture(page, ctx.w05.stBase, fixture, 180);
-        await page.waitForFunction(() => !document.querySelector('#send_but')?.disabled);
+        await page.waitForFunction(() => Boolean(document.querySelector('#send_but') && !document.querySelector('#send_but').disabled));
         assert.ok(await page.locator('#vc-latest').isVisible(), '刷新恢复阅读位置而非强制底部');
         await page.locator('#vc-latest').click(); await page.waitForFunction(() => { const chat = document.querySelector('#chat'); return chat.scrollHeight - chat.scrollTop - chat.clientHeight < 2; });
         stage = 'candidate';

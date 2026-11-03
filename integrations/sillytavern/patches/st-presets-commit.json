@@ -1,0 +1,25 @@
+{
+  "id": "st-presets-commit",
+  "reason": "NF-07：复用ST原JSON文件和同步原子写；带旧值的局部提交保留未知键，并发改同一路径整批409。",
+  "upstream": {
+    "component": "sillytavern",
+    "commit": "7e8663cd9c184a550b37238218bdd32c6efc68e9"
+  },
+  "removal_condition": "上游提供同等字段基线提交且桌面/手机/Helper共享回归通过后移除。",
+  "target": "src/endpoints/presets.js",
+  "replacements": [
+    {
+      "from": "    if (!request.body.preset || !name) {",
+      "to": "    if ((!request.body.preset && !Object.hasOwn(request.body, 'vc_changes')) || !name) {",
+      "count": 1
+    },
+    {
+      "from": "    const fullpath = path.join(settings.folder, filename);\n    writeFileAtomicSync(fullpath, JSON.stringify(request.body.preset, null, 4), 'utf-8');",
+      "to": "    const fullpath = path.join(settings.folder, filename);\n    if (Object.hasOwn(request.body, 'vc_changes')) {\n            const vcCommit = globalThis[Symbol.for('virtual-companion.bridge')]?.commitDocument;\n            if (!vcCommit) return response.status(503).json({ code: 'VC_DOCUMENT_UNAVAILABLE', message: 'Configuration unavailable' });\n        return vcCommit(request, response, fullpath, { result: { name }, allowCreate: true,\n            write(next) { writeFileAtomicSync(fullpath, JSON.stringify(next, null, 4), 'utf-8'); } });\n    }\n    writeFileAtomicSync(fullpath, JSON.stringify(request.body.preset, null, 4), 'utf-8');",
+      "count": 1
+    }
+  ],
+  "applies_to": "assemble-managed派生运行副本；不修改锁定upstream",
+  "expected_input_sha256": "710620f0ae5157a9c0f5dadb1bd81f93ffabf11feb18d7c91c96ce452cfd583c",
+  "expected_output_sha256": "1dfc7bca79aacfad63daf10aa54bbd8840ff49847b019f045011c4c9c13ea0be"
+}

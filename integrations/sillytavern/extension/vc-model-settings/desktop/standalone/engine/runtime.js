@@ -24,6 +24,7 @@ import { companionToolSpecs, companionToolsShouldRegister, attachCompanionIdenti
 import { recallSTMemory, resolveSTBinding } from '../../../api.js';
 import { loadBundledManifest } from '../../../stickers.js';
 import { showToast } from '../../../ui/toast.js';
+import { applyDocumentValues } from '../../../settings-documents.js';
 import { buildScope, characterKeyOf, chatKeyOf, advanceRunState, isToolContinuation, rewriteGenerateData, restoreManagedReasoningEffort, parseBindingMarker, settingsMarkerFor } from '../../../projection.js';
 
 let initialized = false, owner = Promise.resolve();
@@ -36,6 +37,15 @@ function defaults(saved, initial) {
     return output;
 }
 
+// 计算模块和扩展持有这些设置对象的引用。保存后原位更新，避免留下旧 power_user / EJS 引用。
+function updateObject(target, next) {
+    for (const key of Object.keys(target)) if (!Object.hasOwn(next, key)) delete target[key];
+    for (const [key, value] of Object.entries(next)) {
+        if (value && typeof value === 'object' && !Array.isArray(value) && target[key] && typeof target[key] === 'object' && !Array.isArray(target[key])) updateObject(target[key], value);
+        else Object.defineProperty(target, key, { value, writable: true, enumerable: true, configurable: true });
+    }
+}
+
 export function runtimeSettings(raw) {
     const settings = { ...raw, ...(raw.world_info_settings || {}) };
     settings.power_user = defaults(raw.power_user, powerUserDefaults);
@@ -46,6 +56,15 @@ export function runtimeSettings(raw) {
     extensions.disabledExtensions ||= [];
     extensions.note ||= {};
     return settings;
+}
+
+export function settingsForSave(settings) {
+    const document = { ...settings }, world = { ...settings.world_info_settings };
+    for (const key of Object.keys(document)) {
+        if (key !== 'world_info_settings' && (key === 'world_info' || key.startsWith('world_info_'))) { world[key] = document[key]; delete document[key]; }
+    }
+    document.world_info_settings = world;
+    return document;
 }
 
 export function projectModelSettings(settings, decision, scope) {
@@ -127,8 +146,130 @@ export async function createChatEngine({ client, context, settings, decision, pr
             getPresetManager: () => ({ apiId: 'openai', getSelectedPresetName: () => presetName,
                 readPresetExtensionField: ({ path }) => lodash.get(preset.extensions, path) }) });
     }
+    async function measureMessage(message) {
+        if(!settings.power_user.message_token_count_enabled)return;
+        message.extra ||= {};
+        message.extra.token_count=await createTokenizer({settings,models,request:(url,body)=>client.request(url,body)}).getTokenCountAsync(message.mes,0);
+    }
 
-    return { settings, story, memory, cards,
+    function makeComputation(options = {}) {
+    const request = (url, body) => client.request(url, body, { signal: options.signal });
+    const fetch = (input, init = {}) => globalThis.fetch(input, { ...init, signal: options.signal });
+    const resources = createResourcePorts({ getRequestHeaders: client.headers, fetch, toast, t });
+    const tokenizer = createTokenizer({ settings, models, request });
+    const presetName = settings.oai_settings.preset_settings_openai;
+    const preset = presets?.[presetName] || settings.oai_settings;
+    const regex = createRegexRuntime({ characters: context.characters, characterId: context.characterId,
+        extensionSettings: settings.extension_settings, substituteParams, substituteParamsExtended,
+        getPresetManager: () => ({ apiId: 'openai', getSelectedPresetName: () => presetName,
+            readPresetExtensionField: ({ path }) => lodash.get(preset.extensions, path) }),
+    });
+    const prompt = createPromptRuntime({ ...resources, countTokensOpenAIAsync: tokenizer.countTokensOpenAIAsync,
+        eventSource: context.eventSource, event_types, ToolManager, fetch, toast, t,
+        getTokenizerModel: tokenizer.getTokenizerModel, getRequestHeaders: client.headers,
+        async validateReverseProxy() {
+            const marker = parseBindingMarker(settings.oai_settings.reverse_proxy);
+            if (!marker || marker.invalid || marker.purpose !== 'FOREGROUND_CHAT') throw new Error('请先同步模型绑定。');
+        },
+    });
+    const generatePlan = async ({ prompt: input, systemPrompt, responseLength, prefill }) => {
+        const data = { chat: createRawPrompt(input, systemPrompt, prefill), dryRun: false };
+        await context.eventSource.emit(event_types.CHAT_COMPLETION_PROMPT_READY, data);
+        options.signal?.throwIfAborted();
+        const packet = await prompt.createGenerationParameters(settings.oai_settings, decision.modelId, 'quiet', data.chat, {});
+        await context.eventSource.emit(event_types.CHAT_COMPLETION_SETTINGS_READY, packet.generate_data);
+        if (responseLength > 0) packet.generate_data.max_tokens = Math.min(responseLength, decision.maxOutputTokens);
+        const result = await readGenerationResponse(await client.generate({ url: '/api/backends/chat-completions/generate',
+            body: JSON.parse(JSON.stringify(packet.generate_data)) }, { signal: options.signal }), { settings: settings.oai_settings, signal: options.signal, stream: packet.stream });
+        return computation.cleanUpMessage({ getMessage: result.text, isImpersonate: false, isContinue: false,
+            displayIncompleteSentences: true, includeUserPromptBias: false, trimNames: true, trimWrongNames: true });
+    };
+    const computation = createChatComputation({ context, settings, regex, prompt, tokenizer, ToolManager,
+        ...resources, eventSource: context.eventSource, event_types, getCharaFilename, getMaxPromptTokens, Handlebars,
+        model: decision.modelId, wi_anchor_position,
+        generationTriggers: GENERATION_TYPE_TRIGGERS,
+        toast, t,
+        loadWorldInfo: name => request('/api/worldinfo/get', { name }),
+        async runGenerationInterceptors(chat, size, type) {
+            const plan = await planReply({ getContext, type, discardPending: memory.discardPending, generate: generatePlan });
+            if (plan?.silent || plan?.cancelled) return true;
+            let aborted = false;
+            await memory.intercept(chat, size, () => { aborted = true; }, type);
+            try { await injectCompanionPrompt({ getContext }); } catch { /* 沿用原状态服务不可用时的语义。 */ }
+            return aborted;
+        },
+    });
+        return { computation, prompt, regex, tokenizer, loadWorldInfo: name => request('/api/worldinfo/get', { name }) };
+    }
+
+    return { settings, story, memory, cards, measureMessage, substituteMacros: substituteParams, settingsForSave: () => settingsForSave(settings),
+        async shouldAutoContinue(chunk) {
+            const auto=settings.power_user.auto_continue;
+            if(!auto?.enabled || !auto.allow_chat_completions || auto.target_length<=0 || String(readInput()).length || typeof chunk!=='string' || chunk.trim().length<=5 || !context.chat.length)return false;
+            const count=await createTokenizer({settings,models,request:(url,body)=>client.request(url,body)}).getTokenCountAsync(context.chat.at(-1).mes,0);
+            return count<auto.target_length;
+        },
+        async generateHelper(config, { signal, onPhase = () => {} } = {}) {
+            const [{createHelperPromptRuntime},{createGenerateResult}] = await Promise.all([import('./helper-computation.js'),import('./helper-types.js')]);
+            signal.throwIfAborted();
+            const original = structuredClone(settings.oai_settings), prompts = Object.fromEntries(Object.entries(context.extensionPrompts).map(([key,value])=>[key,{...value}]));
+            const character = context.characters[context.characterId], scenario = character?.scenario;
+            const resumeMemory = memory.suspendPending();
+            try {
+                const custom = config.custom_api || {};
+                if (['key','apiurl','proxy_preset','custom_include_headers'].some(key => custom[key]) || custom.model && custom.model !== decision.modelId || custom.source && custom.source !== decision.source) throw new Error('角色卡生成使用当前聊天模型，请在模型设置中配置连接。');
+                for (const [key, field] of Object.entries({temperature:'temp_openai',frequency_penalty:'freq_pen_openai',presence_penalty:'pres_pen_openai',top_p:'top_p_openai',top_k:'top_k_openai',max_tokens:'openai_max_tokens'})) {
+                    if (typeof custom[key] === 'number') settings.oai_settings[field] = custom[key];
+                    else if (custom[key] === 'unset') delete settings.oai_settings[field];
+                }
+                settings.oai_settings.stream_openai = config.stream;
+                projectModelSettings(settings, decision, buildScope(characterKeyOf(context),chatKeyOf(context.chatId),state.runId));
+                if (typeof custom.max_tokens === 'number') settings.oai_settings.openai_max_tokens = Math.min(custom.max_tokens,decision.maxOutputTokens);
+                bindEngineContext(context,settings,environment);
+                const services = makeComputation({signal});
+                const calculation = createHelperPromptRuntime({context,settings,...services,getMaxContextSize:getMaxPromptTokens});
+                const data = await calculation.prepare({...config,user_input:config.user_input || ''});
+                signal.throwIfAborted();
+                await context.eventSource.emit('js_generation_started',config.generation_id);
+                const packet = await services.prompt.createGenerationParameters(settings.oai_settings,decision.modelId,'normal',data.prompt,{jsonSchema:config.json_schema});
+                packet.generate_data.include_reasoning = true;
+                Object.assign(packet.generate_data,custom.custom_include_body || {});
+                for(const key of custom.custom_exclude_body || [])delete packet.generate_data[key];
+                if(config.tools?.length){packet.generate_data.tools=config.tools;if(config.tool_choice)packet.generate_data.tool_choice=config.tool_choice;}
+                await context.eventSource.emit(event_types.CHAT_COMPLETION_SETTINGS_READY,packet.generate_data);
+                onPhase('transport');
+                let previous='',reasoning='';
+                const result=await readGenerationResponse(await client.generate({url:'/api/backends/chat-completions/generate',body:JSON.parse(JSON.stringify(packet.generate_data))},{signal}),{
+                    settings:settings.oai_settings,powerSettings:settings.power_user,signal,stream:packet.stream,onUpdate:async result=>{
+                        if(!packet.stream)return;
+                        const full=result.text,thought=result.state.reasoning;
+                        const incremental=services.computation.cleanUpMessage({getMessage:full.slice(previous.length),isImpersonate:false,isContinue:false,displayIncompleteSentences:true});
+                        await context.eventSource.emit('js_stream_token_received_fully',full,config.generation_id);
+                        await context.eventSource.emit('js_stream_token_received_incrementally',incremental,config.generation_id);
+                        await context.eventSource.emit('js_reasoning_token_received_fully',thought,config.generation_id);
+                        await context.eventSource.emit('js_reasoning_token_received_incrementally',thought.slice(reasoning.length),config.generation_id);
+                        previous=full;reasoning=thought;
+                    },
+                });
+                onPhase('callbacks');
+                const text=packet.stream?services.computation.cleanUpMessage({getMessage:result.text,isImpersonate:false,isContinue:false,displayIncompleteSentences:false}):result.text;
+                await context.eventSource.emit('js_generation_before_end',{message:text,...(result.state.reasoning?{reasoning:result.state.reasoning}:{})},config.generation_id);
+                await context.eventSource.emit('js_generation_ended',text,config.generation_id,result.state.reasoning || undefined);
+                return createGenerateResult(result.text,{reasoning:result.state.reasoning,reasoning_signature:result.state.signature,tool_calls:result.toolCalls},config.should_return_reasoning);
+            } finally {
+                updateObject(settings.oai_settings,original); updateObject(context.extensionPrompts,prompts);
+                if(character)character.scenario=scenario;
+                resumeMemory();bindEngineContext(context,settings,environment);
+            }
+        },
+        applySettings(changes) {
+            const next = applyDocumentValues(structuredClone(settingsForSave(settings)), changes);
+            updateObject(settings, runtimeSettings(next));
+            projectModelSettings(settings, decision, buildScope(characterKeyOf(context), chatKeyOf(context.chatId), state.runId));
+            context.tagMap = settings.tag_map || {};
+            bindEngineContext(context, settings, environment);
+        },
+        applyPreset(name, changes, value) { return presets[name] = applyDocumentValues(presets[name] || value,changes); },
         bindContext() { bindEngineContext(context, settings, environment); cards?.bindContext?.(); },
         updateCatalog(nextDecision, nextModels) {
             decision = nextDecision;
@@ -148,9 +289,7 @@ export async function createChatEngine({ client, context, settings, decision, pr
                 send_date: new Date().toISOString(), mes: biasOnly ? ' ' : substituteParams(text), extra: { isSmallSys: false } };
             if (messageBias) { message.extra.bias = messageBias; if (!biasOnly) message.mes = removeMacros(message.mes); }
             if (context.userAvatar in settings.power_user.personas) message.force_avatar = `/thumbnail?type=persona&file=${encodeURIComponent(context.userAvatar)}`;
-            if (settings.power_user.message_token_count_enabled) {
-                message.extra.token_count = await createTokenizer({ settings, models, request: (url, body) => client.request(url, body) }).getTokenCountAsync(message.mes, 0);
-            }
+            await measureMessage(message);
             return { message, bias };
         },
         editMessage(message, text) {
@@ -185,52 +324,7 @@ export async function createChatEngine({ client, context, settings, decision, pr
                 await context.eventSource.emit(event_types.GENERATION_STARTED, type, eventOptions, options.dryRun ?? false);
                 await context.eventSource.emit(event_types.GENERATION_AFTER_COMMANDS, type, eventOptions, options.dryRun ?? false);
                 if (!options.dryRun) context.chatMetadata.tainted = true;
-                const request = (url, body) => client.request(url, body, { signal: options.signal });
-                const fetch = (input, init = {}) => globalThis.fetch(input, { ...init, signal: options.signal });
-                const resources = createResourcePorts({ getRequestHeaders: client.headers, fetch, toast, t });
-                const tokenizer = createTokenizer({ settings, models, request });
-                const presetName = settings.oai_settings.preset_settings_openai;
-                const preset = presets?.[presetName] || settings.oai_settings;
-                const regex = createRegexRuntime({ characters: context.characters, characterId: context.characterId,
-                    extensionSettings: settings.extension_settings, substituteParams, substituteParamsExtended,
-                    getPresetManager: () => ({ apiId: 'openai', getSelectedPresetName: () => presetName,
-                        readPresetExtensionField: ({ path }) => lodash.get(preset.extensions, path) }),
-                });
-                const prompt = createPromptRuntime({ ...resources, countTokensOpenAIAsync: tokenizer.countTokensOpenAIAsync,
-                    eventSource: context.eventSource, event_types, ToolManager, fetch, toast, t,
-                    getTokenizerModel: tokenizer.getTokenizerModel, getRequestHeaders: client.headers,
-                    async validateReverseProxy() {
-                        const marker = parseBindingMarker(settings.oai_settings.reverse_proxy);
-                        if (!marker || marker.invalid || marker.purpose !== 'FOREGROUND_CHAT') throw new Error('请先同步模型绑定。');
-                    },
-                });
-                const generatePlan = async ({ prompt: input, systemPrompt, responseLength, prefill }) => {
-                    const data = { chat: createRawPrompt(input, systemPrompt, prefill), dryRun: false };
-                    await context.eventSource.emit(event_types.CHAT_COMPLETION_PROMPT_READY, data);
-                    options.signal?.throwIfAborted();
-                    const packet = await prompt.createGenerationParameters(settings.oai_settings, decision.modelId, 'quiet', data.chat, {});
-                    await context.eventSource.emit(event_types.CHAT_COMPLETION_SETTINGS_READY, packet.generate_data);
-                    if (responseLength > 0) packet.generate_data.max_tokens = Math.min(responseLength, decision.maxOutputTokens);
-                    const result = await readGenerationResponse(await client.generate({ url: '/api/backends/chat-completions/generate',
-                        body: JSON.parse(JSON.stringify(packet.generate_data)) }, { signal: options.signal }), { settings: settings.oai_settings, signal: options.signal, stream: packet.stream });
-                    return computation.cleanUpMessage({ getMessage: result.text, isImpersonate: false, isContinue: false,
-                        displayIncompleteSentences: true, includeUserPromptBias: false, trimNames: true, trimWrongNames: true });
-                };
-                const computation = createChatComputation({ context, settings, regex, prompt, tokenizer, ToolManager,
-                    ...resources, eventSource: context.eventSource, event_types, getCharaFilename, getMaxPromptTokens, Handlebars,
-                    model: decision.modelId, wi_anchor_position,
-                    generationTriggers: GENERATION_TYPE_TRIGGERS,
-                    toast, t,
-                    loadWorldInfo: name => request('/api/worldinfo/get', { name }),
-                    async runGenerationInterceptors(chat, size, type) {
-                        const plan = await planReply({ getContext, type, discardPending: memory.discardPending, generate: generatePlan });
-                        if (plan?.silent || plan?.cancelled) return true;
-                        let aborted = false;
-                        await memory.intercept(chat, size, () => { aborted = true; }, type);
-                        try { await injectCompanionPrompt({ getContext }); } catch { /* 沿用原状态服务不可用时的语义。 */ }
-                        return aborted;
-                    },
-                });
+                const { computation } = makeComputation(options);
                 const result = await computation.prepare(options);
                 options.signal?.throwIfAborted();
                 lastComputation = computation;

@@ -1,0 +1,20 @@
+{
+  "id": "st-worldinfo-commit",
+  "reason": "NF-07：复用ST原JSON文件和同步原子写；带旧值的局部提交保留未知键，并发改同一路径整批409。",
+  "upstream": {
+    "component": "sillytavern",
+    "commit": "7e8663cd9c184a550b37238218bdd32c6efc68e9"
+  },
+  "removal_condition": "上游提供同等字段基线提交且桌面/手机/Helper共享回归通过后移除。",
+  "target": "src/endpoints/worldinfo.js",
+  "replacements": [
+    {
+      "from": "    if (!request.body.name) {\n        return response.status(400).send('World file must have a name');\n    }\n\n    try {",
+      "to": "    if (!request.body.name) {\n        return response.status(400).send('World file must have a name');\n    }\n    if (Object.hasOwn(request.body, 'vc_changes')) {\n        const filename = sanitize(`${request.body.name}.json`);\n        const pathToFile = path.join(request.user.directories.worlds, filename);\n            const vcCommit = globalThis[Symbol.for('virtual-companion.bridge')]?.commitDocument;\n            if (!vcCommit) return response.status(503).json({ code: 'VC_DOCUMENT_UNAVAILABLE', message: 'Configuration unavailable' });\n        return vcCommit(request, response, pathToFile, { result: { ok: true }, allowCreate: true,\n            validate: value => value && typeof value === 'object' && !Array.isArray(value) && value.entries && typeof value.entries === 'object' && !Array.isArray(value.entries),\n            write(next) { writeFileAtomicSync(pathToFile, JSON.stringify(next, null, 4)); } });\n    }\n\n    try {",
+      "count": 1
+    }
+  ],
+  "applies_to": "assemble-managed派生运行副本；不修改锁定upstream",
+  "expected_input_sha256": "1c7bcf4fc54b41beaaa69a88f0398978be048d735a15891e93691930d31991d2",
+  "expected_output_sha256": "fb3553fc7b87375e5f05c8405c497ea0c0be9be59a0c68a8a9fa08db35cd3fdd"
+}

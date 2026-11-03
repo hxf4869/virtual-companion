@@ -8,7 +8,6 @@
   "removal_condition": "Replace only when upstream exposes an equivalent headless entry and the managed complex-card chain passes.",
   "target": "dist/index.js",
   "expected_input_sha256": "9a4d1a3228a90a235b1b4111e5698c9fb7ac31b3f9828023d5dc582d9ee01ca5",
-  "expected_output_sha256": "ad712c0ff89f5b0d96805bd04e8420a9784cf92030fd517a8c5c3f69532ea9c5",
   "replacements": [
     {
       "from": "import*as __WEBPACK_EXTERNAL_MODULE__script_js_588e7203__ from\"../../../../../script.js\";",
@@ -129,6 +128,18 @@
       "from": "//# sourceMappingURL=index.js.map",
       "to": "export { initializeDesktop };\n// Headless entry, 2026-11-03. Original EJS algorithms and packaged dependencies retained; no UI/editor/native boot. AGPL-3.0-only.",
       "count": 1
+    },
+    {
+      "from": "try{if(w.compile_workers)",
+      "to": "const __vcTemplateScope=__WEBPACK_EXTERNAL_MODULE__script_js_588e7203__.enterTemplateScope(t);try {if(w.compile_workers)",
+      "count": 1
+    },
+    {
+      "from": "throw t}return h}async function tg",
+      "to": "throw t}finally{__vcTemplateScope?.()}return h}async function tg",
+      "count": 1
     }
-  ]
+  ],
+  "expected_output_sha256": "747de0f2d5637d60ac5545ddc72ec953b93362fe61d318fc7836b7fce0ce93be",
+  "desktop_editor_sha256": "a6a7221d3662f1bf4bfd5e93f02d14e32f9429d0f026c2b24cd20d29214121b4"
 }

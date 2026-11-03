@@ -2,7 +2,8 @@
 import { getCurrentChatId, chat, chat_metadata, characters, this_chid, name1, name2, extension_settings } from '../engine/ports.js';
 import { substituteParamsExtended } from '../engine/st/script.js';
 import { klona } from './klona.js';
-import { RawCharacter, world_info, getWorldInfoSettings, world_names, loadWorldInfo, parseRegexFromString, METADATA_KEY } from './ejs-host.js';
+import { RawCharacter, world_info, getWorldInfoSettings, world_names, loadWorldInfo, parseRegexFromString, METADATA_KEY, getCardHost, refreshCardHost } from './ejs-host.js';
+import { documentChanges } from '../../../settings-documents.js';
 function toLorebookSettings(world_info_settings) {
     return {
         selected_global_lorebooks: world_info_settings.world_info.globalSelect,
@@ -211,3 +212,164 @@ const _default_implicit_keys = {
         tags: [],
     },
 };
+
+// 原Helper的文档操作，保存/选择端口替换原生世界书编辑器和DOM点击。
+async function writeWorldbook(name, entries, raw) {
+    const { client, context } = getCardHost();
+    const converted = handleWorldbookEntriesCollision(entries).map(fromWorldbookEntry);
+    const next = { ...raw, entries: Object.fromEntries(converted.map(entry => [entry.uid, { ...raw?.entries?.[entry.uid], ...entry }])) };
+    const changes = raw === undefined ? [{path:[],before:{exists:false},after:{exists:true,value:next}}] : documentChanges(raw, raw, next);
+    await client.post('/api/worldinfo/edit', {name,vc_changes:changes});
+    if (!world_names.includes(name)) world_names.push(name);
+    client.documents.captureWorldbook(name,next);
+    await context.eventSource.emit(context.eventTypes.WORLDINFO_UPDATED,name,next);
+    return next;
+}
+export async function createWorldbook(name, entries = []) {
+    if (world_names.includes(name)) return false;
+    await writeWorldbook(name, entries, undefined); return true;
+}
+export async function createOrReplaceWorldbook(name, entries = [], _options = {}) {
+    const existing = world_names.includes(name);
+    const raw = existing ? await loadWorldInfo(name) : undefined;
+    await writeWorldbook(name,entries,raw); return !existing;
+}
+export async function replaceWorldbook(name, entries, options) {
+    if (!world_names.includes(name)) throw new Error(`未能找到世界书 '${name}'`);
+    await createOrReplaceWorldbook(name,entries,options);
+}
+export async function updateWorldbookWith(name, updater, _options) {
+    if (!world_names.includes(name)) throw new Error(`未能找到世界书 '${name}'`);
+    const raw = await loadWorldInfo(name);
+    const current = klona(_(raw.entries).values().sortBy('displayIndex').map(toWorldbookEntry).value());
+    const next = await updater(current);
+    const saved = await writeWorldbook(name,next,raw);
+    return klona(_(saved.entries).values().sortBy('displayIndex').map(toWorldbookEntry).value());
+}
+export async function createWorldbookEntries(name, entries, options) {
+    let start;
+    const worldbook = await updateWorldbookWith(name, data => { start=data.length;return [...data,...entries]; },options);
+    return {worldbook,new_entries:worldbook.slice(start)};
+}
+export async function deleteWorldbookEntries(name,predicate,options) {
+    let deleted_entries=[];
+    const worldbook=await updateWorldbookWith(name,data=>{deleted_entries=_.remove(data,predicate);return data;},options);
+    return {worldbook,deleted_entries};
+}
+export async function rebindGlobalWorldbooks(names) {
+    const {settings,context}=getCardHost();
+    settings.world_info.globalSelect=klona(names);refreshCardHost();
+    context.saveSettingsDebounced();
+}
+export async function rebindCharWorldbooks(name, books) {
+    if (name !== 'current') throw new Error('目前不支持对非当前角色卡调用 bindCharWorldbooks');
+    const {client,context}=getCardHost(), card=RawCharacter.find();
+    if (!card) throw new Error('未打开任何角色卡');
+    const missing=[books.primary,...(books.additional || [])].filter(Boolean).filter(book=>!world_names.includes(book));
+    if (missing.length) throw new Error('绑定的世界书不存在');
+    if (books.primary !== undefined) {
+        await client.post('/api/characters/merge-attributes',{avatar:card.avatar,data:{extensions:{world:books.primary || ''}}});
+        card.data.extensions.world=books.primary || '';
+    }
+    if (books.additional !== undefined) {
+        const filename=card.avatar.replace(/\.[^.]+$/,''),rows=world_info.charLore ||= [],index=rows.findIndex(row=>row.name===filename);
+        if (index < 0 && books.additional.length) rows.push({name:filename,extraBooks:klona(books.additional)});
+        else if(index >= 0) { if(books.additional.length)rows[index].extraBooks=klona(books.additional);else rows.splice(index,1); }
+        context.saveSettingsDebounced();
+    }
+}
+export async function rebindChatWorldbook(name, book) {
+    if (name !== 'current' || !getCurrentChatId()) throw new Error('未打开当前聊天');
+    if (book !== null && !world_names.includes(book)) throw new Error('绑定的世界书不存在');
+    if(book === null) delete chat_metadata[METADATA_KEY];else chat_metadata[METADATA_KEY]=book;
+    await getCardHost().context.saveMetadata();
+}
+export async function getOrCreateChatWorldbook(name, book) {
+    if(name !== 'current') throw new Error('目前不支持非当前聊天');
+    const existing=getChatWorldbookName(name);if(existing)return existing;
+    const next=book || `Chat Book ${getCurrentChatId()}`.replace(/[^a-z0-9]/gi,'_').replace(/_{2,}/g,'_').substring(0,64);
+    if(!await createWorldbook(next))throw new Error('同名世界书已存在');
+    await rebindChatWorldbook(name,next);return next;
+}
+export async function deleteWorldbook(name) {
+    if(!world_names.includes(name))return false;
+    const {client,context,settings}=getCardHost();
+    await client.post('/api/worldinfo/delete',{name});world_names.splice(world_names.indexOf(name),1);
+    settings.world_info.globalSelect=settings.world_info.globalSelect.filter(book=>book!==name);
+    const card=RawCharacter.find();
+    if(card?.data.extensions.world===name)await rebindCharWorldbooks('current',{primary:null});
+    if(settings.power_user.persona_description_lorebook===name){settings.power_user.persona_description_lorebook='';const descriptor=settings.power_user.persona_descriptions[context.userAvatar];if(descriptor)descriptor.lorebook='';}
+    refreshCardHost();context.saveSettingsDebounced();return true;
+}
+export const getLorebooks=getWorldbookNames, setChatLorebook=book=>rebindChatWorldbook('current',book), getOrCreateChatLorebook=book=>getOrCreateChatWorldbook('current',book);
+export const setCurrentCharLorebooks=books=>rebindCharWorldbooks('current',books);
+
+// Locked Helper worldbook.ts: original inverse conversion and UID collision algorithm.
+function fromWorldbookEntry(entry, display_index) {
+    let result = _({})
+        .set('uid', entry.uid)
+        .set('displayIndex', display_index)
+        .set('comment', entry.name ?? '')
+        .set('disable', !(entry.enabled ?? true))
+        .set('constant', entry?.strategy?.type ? entry?.strategy?.type === 'constant' : true)
+        .set('selective', entry?.strategy?.type === 'selective')
+        .set('key', entry?.strategy?.keys?.map(_.toString) ?? [])
+        .set('selectiveLogic', {
+        and_any: 0,
+        not_all: 1,
+        not_any: 2,
+        and_all: 3,
+    }[entry?.strategy?.keys_secondary?.logic ?? 'and_any'])
+        .set('keysecondary', entry?.strategy?.keys_secondary?.keys?.map(_.toString) ?? [])
+        .set('scanDepth', entry?.strategy?.scan_depth === 'same_as_global' ? null : (entry?.strategy?.scan_depth ?? null))
+        .set('vectorized', entry?.strategy?.type === 'vectorized')
+        .set('position', {
+        before_character_definition: 0,
+        after_character_definition: 1,
+        before_example_messages: 5,
+        after_example_messages: 6,
+        before_author_note: 2,
+        after_author_note: 3,
+        at_depth: 4,
+        outlet: 7,
+    }[entry?.position?.type ?? 'at_depth'])
+        .set('role', { system: 0, user: 1, assistant: 2 }[entry?.position?.role ?? 'system'])
+        .set('depth', entry?.position?.depth ?? 4)
+        .set('order', entry?.position?.order ?? 100)
+        .set('content', entry.content ?? '')
+        .set('useProbability', true)
+        .set('probability', entry.probability ?? 100)
+        .set('excludeRecursion', entry.recursion?.prevent_incoming ?? false)
+        .set('preventRecursion', entry.recursion?.prevent_outgoing ?? false)
+        .set('delayUntilRecursion', entry.recursion?.delay_until ?? false)
+        .set('sticky', entry.effect?.sticky ?? null)
+        .set('cooldown', entry.effect?.cooldown ?? null)
+        .set('delay', entry.effect?.delay ?? null);
+    if (entry.extra) {
+        result = result.set('extra', entry.extra);
+    }
+    result = result.merge(_default_implicit_keys).merge(_.pick(entry, Object.keys(_default_implicit_keys)));
+    return result.value();
+}
+function handleWorldbookEntriesCollision(entries) {
+    const MAX_UID = 1_000_000;
+    const uid_set = new Set();
+    const handle_uid_collision = (index) => {
+        if (index === undefined) {
+            index = _.random(0, MAX_UID - 1);
+        }
+        let i = 1;
+        while (true) {
+            if (!uid_set.has(index)) {
+                uid_set.add(index);
+                return index;
+            }
+            index = (index + i * i) % MAX_UID;
+            ++i;
+        }
+    };
+    return entries.map(entry => ({
+        ...entry,
+        uid: handle_uid_collision(entry.uid),
+    }));
+}

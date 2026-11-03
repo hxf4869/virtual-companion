@@ -81,8 +81,11 @@ export function createScriptState(script, type) {
 
 let scopeWrite = Promise.resolve();
 function queueScopeWrite(url, body) {
-    const { client, context } = getCardHost(), frozen = JSON.stringify(body);
-    const write = scopeWrite.catch(() => {}).then(() => client.post(url, frozen));
+    const host=getCardHost(),{ client, context } = host, frozen = JSON.stringify(body);
+    const write = scopeWrite.catch(() => {}).then(() => {
+        if (url === '/api/presets/save') { const body = JSON.parse(frozen); return client.savePreset(body.apiId, body.name, () => host.presets[body.name] || host.settings.oai_settings); }
+        return client.post(url, frozen);
+    });
     scopeWrite = write;
     context.cardWrites ||= []; context.cardWrites.push(write);
     void write.catch(() => {}); // owner.settle保留并报告失败，不产生未处理Promise。

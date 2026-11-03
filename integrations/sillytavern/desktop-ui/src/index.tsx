@@ -30,6 +30,7 @@ import { IconButton } from './components/IconButton';
 import { ModelPage, type ModelPageProps } from './features/models/ModelPage';
 import { VoiceForm, type VoiceFormProps } from './features/settings/VoiceForm';
 import { SettingsOverview, type SettingsOverviewProps } from './features/settings/SettingsOverview';
+import { TavernEditor, type TavernEditorProps } from './features/tavern/TavernEditor';
 import { AccountDialog, type AccountDialogProps } from './features/settings/AccountDialog';
 import { Characters, InstanceContents, PersonaEditor, type CharactersProps, type PersonaProps } from './features/characters/Characters';
 import { MemoryList, MemoryDetail, MemoryContents, MemoryLayer, type MemoryProps, type MemoryLayerProps } from './features/memory/Memory';
@@ -178,6 +179,13 @@ export function mountVoiceFormView(container: HTMLElement, props: VoiceFormProps
     const update = (next: VoiceFormProps) => flushSync(() => root.render(<VoiceForm {...next} />));
     update(props);
     return { update, unmount: () => root.unmount() };
+}
+
+export function mountTavernEditorView(container: HTMLElement, props: TavernEditorProps) {
+    let current = props;
+    const mount = overlayMount(container, null, nested => <><TavernEditor {...current} />{nested}</>, container);
+    mount.own(container); mount.render();
+    return { update(next: TavernEditorProps) { current = next; mount.render(); }, unmount: mount.unmount };
 }
 
 export function mountCharactersView(container: HTMLElement, props: CharactersProps) {

@@ -6,9 +6,10 @@ export function createPersonaSelection({ client, context, settings, choose, onSe
     context.name1 = settings.username || 'User';
     context.userAvatar = settings.user_avatar || '';
     const power = settings.power_user;
-    async function select(avatar) {
-        if (avatar === context.userAvatar) return;
+    async function select(avatar, { force = false } = {}) {
+        if (avatar === context.userAvatar && !force) return;
         context.userAvatar = settings.user_avatar = avatar;
+        context.name1 = settings.username || 'User';
         context.settingsDirty = true;
         const name = power.personas[avatar];
         if (name) {
@@ -28,6 +29,7 @@ export function createPersonaSelection({ client, context, settings, choose, onSe
         await onSelected(avatar);
     }
     return {
+        refresh: () => select(settings.user_avatar || '', { force: true }),
         async load(key, { signal } = {}) {
             if (key === loaded) return;
             const avatars = await client.request('/api/avatars/get', {}, { signal });

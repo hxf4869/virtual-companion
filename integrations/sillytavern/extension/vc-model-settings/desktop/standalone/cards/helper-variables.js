@@ -1,5 +1,5 @@
 // AGPL-3.0-only. Locked upstream algorithms, adapted 2026-11-03 for explicit desktop ports.
-import { chat, chat_metadata, characters, this_chid, name1, name2, extension_settings } from '../engine/ports.js';
+import { chat, chat_metadata, characters, this_chid, name1, name2, extension_settings, oai_settings } from '../engine/ports.js';
 import { substituteParamsExtended } from '../engine/st/script.js';
 import { klona } from './klona.js';
 import { _getCurrentMessageId, _getIframeName, _getScriptId } from './helper-util.js';
@@ -158,14 +158,21 @@ export function _replaceVariables(variables, option = { type: 'chat' }) {
         : replaceVariables(variables, option);
 }
 export function updateVariablesWith(updater, option = { type: 'chat' }) {
-    // 与受管 Helper 补丁相同：await updater 前后复核同一F2来源，失败不写任何作用域。
+    option={...option};
+    // 聊天/消息沿用F2；持久配置作用域在await后核对实体与读取值，防止覆盖页面刚保存的变量。
     const guard = globalThis[Symbol.for('virtual-companion.f2-source')];
     const snapshot = guard && ['chat', 'message'].includes(option.type) ? guard.capture(option.message_id) : null;
     const finish = snapshot ? guard.begin(option.message_id) : null;
+    const target=()=>option.type==='character'?characters[this_chid]?.avatar:option.type==='preset'?oai_settings.preset_settings_openai:option.type==='script'?useScriptIframeRuntimesStore().get(option.script_id):extension_settings;
+    const originalTarget=snapshot?null:target(),originalValue=snapshot?null:klona(get_variables_without_clone(option));
     let result;
     try { result = updater(getVariables(option)); } catch (error) { finish?.(false); throw error; }
     const write = value => {
-        try { if (snapshot) guard.assert(snapshot, value); replaceVariables(value, option); finish?.(true); return value; }
+        try {
+            if (snapshot) guard.assert(snapshot, value);
+            else if(isPromise(result)&&(target()!==originalTarget||!_.isEqual(get_variables_without_clone(option),originalValue))){const error=new Error('变量已经变化，请重新执行。');error.status=409;throw error;}
+            replaceVariables(value, option); finish?.(true); return value;
+        }
         catch (error) { finish?.(false); throw error; }
     };
     return isPromise(result) ? result.then(write, error => { finish?.(false); throw error; }) : write(result);

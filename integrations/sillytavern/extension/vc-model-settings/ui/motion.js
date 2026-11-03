@@ -10,7 +10,7 @@ export const PROJECT_SECONDS = 0.18;
 
 export function prefersReducedMotion() {
     try {
-        return globalThis.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches === true;
+        return globalThis.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches === true || globalThis.document?.documentElement.dataset.vcReducedMotion==='true' || globalThis.document?.documentElement.dataset.vcNativeReducedMotion==='true';
     } catch {
         return false;
     }

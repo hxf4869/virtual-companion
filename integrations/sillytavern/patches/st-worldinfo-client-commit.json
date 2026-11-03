@@ -1,0 +1,30 @@
+{
+  "id": "st-worldinfo-client-commit",
+  "reason": "NF-07：复用ST原JSON文件和同步原子写；带旧值的局部提交保留未知键，并发改同一路径整批409。",
+  "upstream": {
+    "component": "sillytavern",
+    "commit": "7e8663cd9c184a550b37238218bdd32c6efc68e9"
+  },
+  "removal_condition": "上游提供同等字段基线提交且桌面/手机/Helper共享回归通过后移除。",
+  "target": "public/scripts/world-info.js",
+  "replacements": [
+    {
+      "from": "import { Fuse } from '../lib.js';\n",
+      "to": "import { vcDocuments } from '../script.js';\nimport { Fuse } from '../lib.js'; // NF-07\n",
+      "count": 1
+    },
+    {
+      "from": "        worldInfoCache.set(name, data);\n        return data;",
+      "to": "        vcDocuments.captureWorldbook(name, data);\n        worldInfoCache.set(name, data); // NF-07 captured read\n        return data;",
+      "count": 1
+    },
+    {
+      "from": "    await fetch('/api/worldinfo/edit', {\n        method: 'POST',\n        headers: getRequestHeaders(),\n        body: JSON.stringify({ name: name, data: data }),\n    });",
+      "to": "    try { await vcDocuments.saveWorldbook(name, data); }\n    catch (error) { toastr.error(error.status === 409 ? '配置已在另一处更新，你的修改尚未保存。' : '配置没有保存，请重试。'); throw error; }",
+      "count": 1
+    }
+  ],
+  "applies_to": "assemble-managed派生运行副本；不修改锁定upstream",
+  "expected_input_sha256": "111c7f47945839e75b021e09bdbb112a54f0a9b7857d2b95435f573efc7cd9a5",
+  "expected_output_sha256": "09af2f53a164e3bb9da332107d2b8316bd824e05db5c0ef02b0140ca29a798ef"
+}

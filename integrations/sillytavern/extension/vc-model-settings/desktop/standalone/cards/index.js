@@ -1,5 +1,5 @@
 // 桌面卡片运行入口。只运行卡片HTML/脚本iframe与锁定EJS handler；没有ST页面宿主。
-import { lodash, yaml, showdown } from '/lib.js';
+import { lodash, yaml, showdown, hljs } from '/lib.js';
 import { bindCardHost, refreshCardHost, messageFormatting, getCardHost, getChatCompletionModel, getTokenCountAsync, loadWorldInfo,
     getRegexedString, getThumbnailUrl, MessageFormatter } from './ejs-host.js';
 import { scripts, createScriptState, setHelperSchemaLibrary, notifyScriptButtons, onScriptButtonsChanged, waitUntil, getButtonId } from './helper-host.js';
@@ -10,6 +10,8 @@ import * as scriptApi from './helper-script.js';
 import * as globals from './helper-global.js';
 import * as messages from './helper-message.js';
 import * as books from './helper-worldbook.js';
+import * as generation from './helper-generate.js';
+import * as presetsApi from './helper-preset.js';
 import { klona } from './klona.js';
 import { ToolManager } from '../engine/tools.js';
 import { substituteParamsExtended, getCharacterCardFields } from '../engine/st/script.js';
@@ -59,6 +61,7 @@ export async function initializeCards(options) {
         if (evaluate) await ejs.render(String(index), 'desktop', true);
         if (!valid(node, index, message, ticket)) return;
         mountHtml(node, index);
+        decorateCodes(node,{afterHtml:true});
         if (context.chatMetadata.vc_binding?.mode === 'COMPANION' && !message.is_user && !message.is_system
             && !message.extra?.vc_voice && !/<%|<script|```/.test(message.mes) && !node.querySelector('iframe, img, video, .TH-render')) {
             renderReplyBubbles(node, message.extra?.display_text || message.mes, { reducedMotion: message !== context.liveReply,
@@ -74,7 +77,7 @@ export async function initializeCards(options) {
     const surface = { format, async refresh(indices, options) {
         await new Promise(resolve => requestAnimationFrame(resolve));
         for (const index of indices) await schedule(index, options);
-    }, codeBlocks() {}, media() {}, reasoning() {} };
+    }, codeBlocks:decorateCodes, media() {}, reasoning() {} };
     bindCardHost({ ...options, surface });
     Object.assign(context, { getRequestHeaders: client.headers, getChatCompletionModel, getTokenCountAsync, loadWorldInfo,
         ToolManager, getCharacterCardFields, registerFunctionTool: spec => ToolManager.registerFunctionTool(spec),
@@ -113,10 +116,10 @@ export async function initializeCards(options) {
             return result;
         };
     }
-    for (const [name, fn] of Object.entries({ ...messages, ...books })) {
+    for (const [name, fn] of Object.entries({ ...messages, ...books, ...generation, ...presetsApi })) {
         if (typeof fn === 'function') bind['_' + name] = function (...args) { assertFrame(this.frameElement); return fn(...args); };
     }
-    const publicApi = { ...variables, ...messages, ...books, ...globals,
+    const publicApi = { ...variables, ...messages, ...books, ...globals, ...generation, ...presetsApi,
         getActiveScriptIds: () => [...scripts.keys()],
         getTavernHelperVersion: () => '4.11.3', getTavernVersion: () => version,
         getLastMessageId: util.getLastMessageId, getMessageId: util.getMessageId, substitudeMacros: util.substitudeMacros,
@@ -158,9 +161,11 @@ export async function initializeCards(options) {
             if (jquery) { await jquery(view).triggerHandler('pagehide'); jquery(view).off('pagehide'); }
         }
         releaseFrames(scriptFrames); scriptFrames.replaceChildren(); scripts.clear(); actions.replaceChildren();
+        delete globalThis.Mvu;
     }
     function mountHtml(node, index) {
-        if (settings.extension_settings.tavern_helper?.render?.enabled === false) return;
+        const config=settings.extension_settings.tavern_helper?.render || {};
+        if (config.enabled === false || !eligible(index,config.depth || 0,config.depth_ignore_hidden)) return;
         let number = 0;
         for (const pre of node.querySelectorAll('pre')) {
             const content = pre.textContent || '';
@@ -169,6 +174,28 @@ export async function initializeCards(options) {
             const container = document.createElement('div'); container.className = 'TH-render';
             pre.replaceWith(container); container.append(frame);
             void context.eventSource.emit('message_iframe_render_started', frame.id);
+        }
+    }
+    function eligible(index,depth,ignoreHidden) {
+        if(ignoreHidden&&context.chat[index]?.is_system)return false;
+        if(depth===0)return true;
+        let remaining=depth;
+        for(let at=context.chat.length-1;at>=0;at--){if(ignoreHidden&&context.chat[at]?.is_system)continue;if(at===index)return remaining>0;if(--remaining===0)return false;}
+        return false;
+    }
+    function decorateCodes(parent,{afterHtml=false}={}) {
+        const config=settings.extension_settings.tavern_helper?.render || {};
+        for(const pre of parent.querySelectorAll('pre')){
+            if(Object.hasOwn(pre.dataset,'vcCode'))continue;
+            const text=pre.textContent || '',frontend=['html>','<head>','<body'].some(tag=>text.includes(tag)),code=pre.querySelector('code');
+            if(frontend&&!afterHtml)continue;pre.dataset.vcCode='';
+            if(code&&(!config.optimize_hljs||!frontend))hljs.highlightElement(code);
+            const copy=document.createElement('button');copy.type='button';copy.className='vc-link vc-code-copy';copy.textContent='复制';
+            copy.addEventListener('click',()=>{if(copy.isConnected)void navigator.clipboard.writeText(text);});pre.append(copy);
+            if(config.enabled!==false&&(config.collapse_code_block==='all'||config.collapse_code_block==='frontend_only'&&frontend)){
+                const details=document.createElement('details'),summary=document.createElement('summary');details.className='vc-code-block';summary.textContent=frontend?'显示前端代码块':'显示代码块';
+                pre.replaceWith(details);details.append(summary,pre);details.addEventListener('toggle',()=>{summary.textContent=(details.open?'隐藏':'显示')+(frontend?'前端代码块':'代码块');});
+            }
         }
     }
     const drawActions = () => {
@@ -183,13 +210,21 @@ export async function initializeCards(options) {
         }
     };
     onScriptButtonsChanged(drawActions);
-    return { surface, bindContext: refreshCardHost, closeScripts,
+    const api = { surface, bindContext: refreshCardHost, closeScripts, getPreset: presetsApi.getPreset,
+        async configure({ restartScripts = false } = {}) {
+            Object.assign(ejs.settings, settings.extension_settings.EjsTemplate || {});
+            refreshCardHost();
+            if (restartScripts && context.characters[context.characterId]) {
+                await closeScripts(); await api.open();
+            }
+            await surface.refresh([...nodes.keys()]);
+        },
         mountCardActions(node) { node.append(actions); return () => actions.remove(); },
         renderMessage(node, index, message, streaming) {
             const ticket = ++serial; nodes.set(index, { node, ticket, timers: new Set() });
             const ready = context.chat[index] === message;
             if (!ready) { const text = document.createElement('div'); text.className = 'mes_text'; text.textContent = message.mes; node.replaceChildren(text); }
-            else if (streaming) format(index, message);
+            else if (streaming) {format(index, message);if(settings.extension_settings.tavern_helper?.render?.allow_streaming)mountHtml(node,index);}
             else void schedule(index).catch(() => { node.setAttribute('data-card-error', ''); });
             return () => { const entry = nodes.get(index); if (entry?.ticket === ticket) { for (const timer of entry.timers) clearTimeout(timer); nodes.delete(index); } node.removeAttribute('data-vc-segs'); releaseFrames(node); node.replaceChildren(); };
         },
@@ -220,4 +255,5 @@ export async function initializeCards(options) {
             }
         },
     };
+    return api;
 }

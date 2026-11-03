@@ -24,16 +24,17 @@ export function nextFollow(state, event) {
 }
 
 /** 独立桌面的跟随端口；沿用上面的用户滚动规则，异步HTML/iframe增长不改变阅读状态。 */
-export function mountDesktopFollow(chat, { floatingHost, getChatId = () => '', dateLabel = () => '' } = {}) {
+export function mountDesktopFollow(chat, { floatingHost, getChatId = () => '', dateLabel = () => '', getAutoFollow = () => true } = {}) {
     const view = chat.ownerDocument.defaultView;
-    let attached = true, frame = 0, wasBusy = false, dead = false;
+    let attached = true, frame = 0, wasBusy = false, dead = false, explicit = false;
     const schedule = () => {
         if (dead || frame) return;
         frame = view.requestAnimationFrame(() => {
             frame = 0;
             const host = chat.parentElement;
             host.style.setProperty('--vc-composer-h', `${Math.max(0, host.getBoundingClientRect().bottom - chat.getBoundingClientRect().bottom)}px`);
-            if (attached && !api.holding()) chat.scrollTop = chat.scrollHeight;
+            if (attached && !api.holding() && (getAutoFollow() || explicit)) chat.scrollTop = chat.scrollHeight;
+            explicit=false;
         });
     };
     const api = mountChatScroll({ chat, doc: chat.ownerDocument, overlayHost: floatingHost,
@@ -43,7 +44,7 @@ export function mountDesktopFollow(chat, { floatingHost, getChatId = () => '', d
     const mutation = new view.MutationObserver(observe);
     mutation.observe(chat, { childList: true, subtree: true, characterData: true }); observe();
     view.addEventListener('resize', schedule);
-    return { beforeHistory() { api.captureAnchor(); }, open() { api.openChat(); schedule(); }, sent() { api.sent(); attached = true; schedule(); },
+    return { beforeHistory() { api.captureAnchor(); }, open() { api.openChat(); schedule(); }, sent() { explicit=true;api.sent(); attached = true; schedule(); },
         update(state = {}) { api.refresh(); if (wasBusy && !state.busy) api.replyRendered(state.lastIndex); wasBusy = Boolean(state.busy); schedule(); },
         destroy() { dead = true; resize.disconnect(); mutation.disconnect(); view.cancelAnimationFrame(frame); view.removeEventListener('resize', schedule); api.destroy(); } };
 }

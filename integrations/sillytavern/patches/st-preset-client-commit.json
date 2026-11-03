@@ -1,0 +1,25 @@
+{
+  "id": "st-preset-client-commit",
+  "reason": "NF-07：复用ST原JSON文件和同步原子写；带旧值的局部提交保留未知键，并发改同一路径整批409。",
+  "upstream": {
+    "component": "sillytavern",
+    "commit": "7e8663cd9c184a550b37238218bdd32c6efc68e9"
+  },
+  "removal_condition": "上游提供同等字段基线提交且桌面/手机/Helper共享回归通过后移除。",
+  "target": "public/scripts/preset-manager.js",
+  "replacements": [
+    {
+      "from": "import { Fuse, lodash } from '../lib.js';\n",
+      "to": "import { vcDocuments } from '../script.js';\nimport { Fuse, lodash } from '../lib.js'; // NF-07\n",
+      "count": 1
+    },
+    {
+      "from": "        const response = await fetch('/api/presets/save', {\n            method: 'POST',\n            headers: getRequestHeaders(),\n            body: JSON.stringify({ preset, name, apiId: this.apiId }),\n        });",
+      "to": "        const response = await vcDocuments.savePreset(this.apiId, name, preset);",
+      "count": 1
+    }
+  ],
+  "applies_to": "assemble-managed派生运行副本；不修改锁定upstream",
+  "expected_input_sha256": "6a4bf761140e105069f251e8db8f6a68144d6236b5175b452494a725a9a4df4c",
+  "expected_output_sha256": "b130f2855ae83646a0e97d6575b1e4fc90d7cff6f24f319e9fe056261de04981"
+}

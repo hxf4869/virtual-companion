@@ -858,5 +858,6 @@ function cleanUpMessage({ getMessage, isImpersonate, isContinue, displayIncomple
     return getMessage;
 }
 
- return {prepare, cleanUpMessage, getStoppingStrings};
+ return {prepare, cleanUpMessage, getStoppingStrings,
+ prepareAuthorNote(){initializeAuthorNote();setFloatingPrompt();},get shouldWIAddPrompt(){return shouldWIAddPrompt;}};
 }
