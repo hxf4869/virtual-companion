@@ -40,7 +40,7 @@ export function popupSummary(dialog) {
     return { onboarding: Boolean(dialog?.querySelector?.('.onboarding')), text: text.slice(0, 120) };
 }
 
-export function createEngine({ doc = globalThis.document, src = '/', onState } = {}) {
+export function createEngine({ doc = globalThis.document, src = '/native/', onState } = {}) {
     const bus = createEmitter();
     let frame = null;
     let script = null;

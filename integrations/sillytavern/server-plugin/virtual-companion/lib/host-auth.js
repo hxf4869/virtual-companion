@@ -88,6 +88,8 @@ export function createHostAuth({ config, getUser, accountVersion, indexHtml, fet
                 return await sourceBridge(req, res);
             }
             if (req.method === 'GET' && req.path === '/index.html') return res.redirect(303, '/');
+            if (req.method === 'GET' && ['/native', '/native/index.html'].includes(req.path)) return res.redirect(303, '/native/');
+            const pageEntry = req.method === 'GET' && ['/', '/native/', '/m/'].includes(req.path);
             if (req.method === 'GET' && req.path === '/m') return res.redirect(303, '/m/');
             if (req.method === 'GET' && ['/auth', '/login'].includes(req.path)) return res.redirect(303, '/auth/');
             if (req.method === 'GET' && ASSETS.has(req.path)) {
@@ -106,7 +108,7 @@ export function createHostAuth({ config, getUser, accountVersion, indexHtml, fet
                 redirect: 'error', signal: AbortSignal.timeout(config.timeoutMs),
             });
             if (!response.ok) {
-                if (response.status === 401 && req.method === 'GET' && ['/', '/m/'].includes(req.path)) return res.redirect(303, '/auth/');
+                if (response.status === 401 && pageEntry) return res.redirect(303, '/auth/');
                 return fail(res, response.status === 401 ? 401 : 503, 'AUTHENTICATION_REQUIRED', '请重新登录');
             }
             const identity = await response.json();
@@ -114,14 +116,14 @@ export function createHostAuth({ config, getUser, accountVersion, indexHtml, fet
             if (identity.deletionPending) return fail(res, 409, 'ACCOUNT_DELETION_PENDING', '账号删除处理中，聊天已暂停。');
             if (identity.nextStep !== 'ACTIVE' || identity.authenticatorEnabled !== true || identity.passwordMustChange !== false || !handle
                 || !/^[1-9][0-9]*$/.test(identity.sessionId)) {
-                if (req.method === 'GET' && ['/', '/m/'].includes(req.path)) return res.redirect(303, '/auth/');
+                if (pageEntry) return res.redirect(303, '/auth/');
                 return fail(res, 403, 'ACCESS_DENIED', '请完成登录与身份验证');
             }
             if (identity.stDataConfigured !== true) return fail(res, 503, 'VC_DATA_NOT_CONFIGURED', '聊天数据服务尚未配置');
             const user = await getUser(handle);
             if (!user?.enabled || user.handle !== handle) return fail(res, 403, 'ACCESS_DENIED', '此账号尚未绑定可用的聊天空间');
             const mismatch = req.session?.vcAccountId !== identity.accountId || req.session?.vcSessionId !== identity.sessionId || req.session?.handle !== handle;
-            const canBind = req.method === 'GET' && (['/', '/m/', '/auth/access'].includes(req.path) || req.path === '/csrf-token' && !req.session?.vcSessionId);
+            const canBind = pageEntry || req.method === 'GET' && (req.path === '/auth/access' || req.path === '/csrf-token' && !req.session?.vcSessionId);
             if (mismatch && !canBind) return fail(res, 409, 'ACCOUNT_CONTEXT_CHANGED', '登录状态已变化，请重新打开聊天');
             if (canBind) {
                 const registered = await fetchImpl(`${config.goBaseUrl}/api/v1/service/st/profile`, {
@@ -142,13 +144,19 @@ export function createHostAuth({ config, getUser, accountVersion, indexHtml, fet
             res.setHeader('Cache-Control', 'no-store'); res.setHeader('Vary', 'Cookie');
             if (req.method === 'GET' && req.path === '/auth/access') return res.json({ allowed: true });
             if (['GET', 'HEAD'].includes(req.method) && req.path.startsWith('/m/')) return serveMobile(mobileDir, req, res);
-            if (req.method === 'GET' && req.path === '/') {
+            if (pageEntry) {
                 // 只输出非凭据十进制 ID；getRequestHeaders 在模块初始化时捕获，旧页不能冒用新 cookie。
                 const meta = `<meta name="vc-account-id" content="${identity.accountId}"><meta name="vc-session-id" content="${identity.sessionId}">`;
                 res.setHeader('Cache-Control', 'no-store'); res.setHeader('Vary', 'Cookie');
                 res.setHeader('Content-Type', 'text/html; charset=utf-8');
-                return res.end(indexHtml().replace('<head>', `<head>${meta}`)
-                    .replace('<div id="preloader"></div>', STARTUP_HTML));
+                let html = indexHtml();
+                if (req.path === '/native/') {
+                    // jQuery UI backgrounds tabs must remain local despite the root asset base.
+                    const href = (req.originalUrl || req.url || req.path).replace(/[&"<>']/g, ch => ({ '&': '&amp;', '"': '&quot;', '<': '&lt;', '>': '&gt;', "'": '&#39;' }[ch]));
+                    html = html.replace(/href="#(bg_global_tab|bg_chat_tab)"/g, `href="${href}#$1"`);
+                }
+                return res.end(html.replace('<head>', `<head>${req.path === '/native/' ? '<base href="/">' : ''}${meta}`)
+                    .replace('<div id="preloader"></div>', req.path === '/native/' ? STARTUP_HTML.replace('href="/"', 'href="/native/"') : STARTUP_HTML));
             }
             next();
         } catch { fail(res, 503, 'VC_AUTH_UNAVAILABLE', '登录服务暂不可用，请稍后重试'); }

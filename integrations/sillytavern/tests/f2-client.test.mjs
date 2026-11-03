@@ -146,3 +146,27 @@ test('绑定 404 不丢弃 relationshipId，也不再分配新关系', async () 
     assert.equal(metadata.vc_binding.relationshipId, '11');
     assert.equal(metadata.vc_binding.conversationId, '21');
 });
+
+
+test('原生完整保存消费已覆盖的 metadata 定时器，保存后的新修改仍能另行保存', async () => {
+    const patch = JSON.parse(fs.readFileSync(new URL('../patches/st-client-f2.json', import.meta.url)));
+    const actual = patch.replacements.find(row => row.from.startsWith('export async function saveChatConditional()')).to;
+    const gate = deferred();
+    const metadata = { variables: { trust: 17 } };
+    let scheduled = () => {}, snapshot;
+    const host = vm.createContext({ vcPendingSaves: 0, isChatSaving: false, selected_group: '',
+        cancelDebouncedChatSave() {}, cancelDebouncedMetadataSave() { scheduled = null; },
+        saveChat() { snapshot = structuredClone(metadata); return gate.promise; },
+        saveTokenCache() {}, saveItemizedPrompts() {}, getCurrentChatId: () => 'synthetic-chat' });
+    const save = vm.runInContext(actual.replace('export ', '') + '; saveChatConditional', host);
+    const pending = save();
+    assert.equal(scheduled, null, '当前完整快照已覆盖 metadata，不可在召回期间再推进一次版本');
+    assert.equal(snapshot.variables.trust, 17);
+    metadata.variables.trust = 18;
+    const later = () => {};
+    scheduled = later;
+    gate.resolve(); await pending;
+    assert.equal(snapshot.variables.trust, 17);
+    assert.equal(scheduled, later, '捕获快照之后的新 metadata 修改不能被旧保存的完成回调取消');
+    assert.equal(host.isChatSaving, false);
+});

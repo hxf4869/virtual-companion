@@ -3,7 +3,7 @@
 export async function completeStOnboarding(context, stBase) {
     const page = await context.newPage();
     try {
-        await page.goto(stBase);
+        await page.goto(stBase + '/native/');
         await page.waitForFunction(async () => (await import('/script.js')).settingsReady || document.querySelector('dialog[open] .onboarding'), null, { timeout: 180000 });
         const onboarding = page.locator('dialog[open].popup').filter({ has: page.locator('.onboarding') });
         if (await onboarding.count()) {

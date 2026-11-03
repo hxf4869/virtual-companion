@@ -184,7 +184,13 @@ export async function init() {
     }});
     let reportMemory = () => {};
     const memory = createMemoryInjection({ getContext, recall: recallSTMemory,
-        ensureBinding: async () => (await bindingReady).ensureBound(),
+        ensureBinding: async () => {
+            const binding = await (await bindingReady).ensureBound();
+            // Card hooks can leave metadata waiting on its native debounce timer.
+            // Commit it through F2 before capturing the authoritative recall revision.
+            await getContext().saveMetadata();
+            return binding;
+        },
         onStatus: (message) => { reportMemory(message); if (message.includes('跳过')) globalThis.toastr?.warning(message); },
     });
     reportMemory = mountMemoryControls({ getContext, reset: memory.reset });

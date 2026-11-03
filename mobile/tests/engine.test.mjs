@@ -2,7 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer, toMessage, stripJsonl, ServerError } from '../src/engine/server.mjs';
-import { createEmitter, until, popupSummary, needsUser } from '../src/engine/engine.mjs';
+import { createEngine, createEmitter, until, popupSummary, needsUser } from '../src/engine/engine.mjs';
 
 function fakeFetch(routes) {
     const calls = [];
@@ -95,4 +95,20 @@ test('只有带操作控件的弹窗需要用户处理', () => {
     assert.equal(needsUser({ querySelectorAll: () => [hidden, shown] }), true);
     assert.equal(needsUser({ querySelectorAll: () => [hidden] }), false, '加载提示的隐藏按钮不算');
     assert.equal(needsUser({ querySelectorAll: () => [] }), false);
+});
+
+
+test('引擎默认从明确原生入口启动，保持手机外壳与原生页面分离', async () => {
+    const script = { settingsReady: true };
+    const frame = { setAttribute() {}, contentWindow: {
+        SillyTavern: { getContext: () => ({ eventTypes: {}, eventSource: { on() {} } }) },
+        eval: async () => script,
+        document: { querySelector: () => null, addEventListener() {} },
+    } };
+    const doc = { documentElement: { dataset: {} }, createElement: () => frame, body: { appendChild() {} } };
+    const engine = createEngine({ doc });
+    await engine.start();
+    assert.equal(engine.frame.src, '/native/');
+    assert.equal(engine.state, 'ready');
+    assert.equal(doc.documentElement.dataset.vcEngine, 'ready');
 });

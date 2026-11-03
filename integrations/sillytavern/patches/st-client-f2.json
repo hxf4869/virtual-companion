@@ -1,6 +1,6 @@
 {
   "id": "st-client-f2",
-  "reason": "W05：原生入口捕获不可变 F2 读取基线，旧完整快照和迟到异步结果拒绝；冲突留在页面，不提供 force 覆盖。",
+  "reason": "W05：原生入口捕获不可变 F2 读取基线，旧完整快照和迟到异步结果拒绝；冲突留在页面，不提供 force 覆盖。 NF-10：完整保存消费已覆盖的metadata延迟保存，防止记忆召回期间本端重复推进F2版本。",
   "upstream": {
     "component": "sillytavern",
     "commit": "7e8663cd9c184a550b37238218bdd32c6efc68e9"
@@ -8,7 +8,7 @@
   "removal_condition": "上游原生提供全部写入 CAS、稳定身份与同端异步来源保护，且 B05/B07 回归通过后移除。",
   "target": "public/script.js",
   "expected_input_sha256": "955c603d0bad84bac5a716f0818d85c2543e44d4c43878e0d63ef1e55ca91855",
-  "expected_output_sha256": "088dce8fbcdc46add5fff71e1a5c1d677f152dff8ccf3ae18e9cd02fcd63b711",
+  "expected_output_sha256": "d33c9901db63fe6604894621dc73a541d9de0f0ee3406c55388f4b480fd9d8d2",
   "replacements": [
     {
       "from": "import { getContext } from './scripts/st-context.js';\n",
@@ -37,7 +37,7 @@
     },
     {
       "from": "export async function saveChatConditional() {\n    try {\n        await waitUntilCondition(() => !isChatSaving, DEFAULT_SAVE_EDIT_TIMEOUT, 100);\n    } catch {\n        console.warn('Timeout waiting for chat to save');\n        return;\n    }\n\n    try {\n        cancelDebouncedChatSave();\n\n        isChatSaving = true;\n\n        if (selected_group) {\n            await saveGroupChat(selected_group, true);\n        } else {\n            await saveChat();\n        }\n\n        // Save token and prompts cache to IndexedDB storage\n        saveTokenCache();\n        saveItemizedPrompts(getCurrentChatId());\n    } catch (error) {\n        console.error('Error saving chat', error);\n    } finally {\n        isChatSaving = false;\n    }\n}\n\n",
-      "to": "export async function saveChatConditional() {\n    // saveChat/saveGroupChat freeze their snapshots synchronously; the F2 queue\n    // serializes them without waiting first and accidentally reading another source.\n    cancelDebouncedChatSave();\n    vcPendingSaves++; isChatSaving = true;\n    try {\n        const pending = selected_group ? saveGroupChat(selected_group, true) : saveChat();\n        await pending;\n        saveTokenCache();\n        saveItemizedPrompts(getCurrentChatId());\n    } finally { vcPendingSaves--; isChatSaving = vcPendingSaves > 0; }\n}\n\n",
+      "to": "export async function saveChatConditional() {\n    // saveChat/saveGroupChat freeze their snapshots synchronously; the F2 queue\n    // serializes them without waiting first and accidentally reading another source.\n    cancelDebouncedChatSave();\n    // This complete snapshot also covers already-scheduled metadata changes.\n    cancelDebouncedMetadataSave();\n    vcPendingSaves++; isChatSaving = true;\n    try {\n        const pending = selected_group ? saveGroupChat(selected_group, true) : saveChat();\n        await pending;\n        saveTokenCache();\n        saveItemizedPrompts(getCurrentChatId());\n    } finally { vcPendingSaves--; isChatSaving = vcPendingSaves > 0; }\n}\n\n",
       "count": 1
     },
     {
