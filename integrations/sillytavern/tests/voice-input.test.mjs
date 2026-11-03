@@ -50,7 +50,7 @@ test('ASR 容器解析仅接受一个有界单声道 WAV，不使用磁盘录音
 });
 
 test('转录迟到时检查稳定会话身份和取消状态，仍允许当前会话正常发送', { timeout: 5000 }, async t => {
-    for (const action of ['send', 'switch', 'cancel']) await t.test(action, async t => {
+    for (const action of ['send', 'switch', 'cancel', 'destroy']) await t.test(action, async t => {
         const names = ['document', 'navigator', 'fetch', 'MediaRecorder', 'AudioContext', 'OfflineAudioContext', 'requestAnimationFrame', 'cancelAnimationFrame', 'addEventListener'];
         const previous = names.map(name => [name, Object.getOwnPropertyDescriptor(globalThis, name)]);
         t.after(() => { for (const [name, descriptor] of previous) { if (descriptor) Object.defineProperty(globalThis, name, descriptor); else delete globalThis[name]; } });
@@ -85,7 +85,7 @@ test('转录迟到时检查稳定会话身份和取消状态，仍允许当前�
         const pending = new Promise(resolve => { resolveRecognition = resolve; });
         const started = new Promise(resolve => { recognitionStarted = resolve; });
         const sent = [], tick = () => new Promise(resolve => setImmediate(resolve));
-        installVoiceInput({ doc, getContext: () => context, recognize: () => { recognitionStarted(); return pending; }, sendText: async text => sent.push({ chatId: context.chatId, text }) });
+        const controller = installVoiceInput({ doc, getContext: () => context, recognize: () => { recognitionStarted(); return pending; }, sendText: async text => sent.push({ chatId: context.chatId, text }) });
         await tick(); await tick();
         const mic = doc.querySelector('#vc-voice-input'); mic.click(); await tick(); mic.click(); await started;
         if (action === 'switch') {
@@ -93,6 +93,7 @@ test('转录迟到时检查稳定会话身份和取消状态，仍允许当前�
             chat.splice(0, chat.length, { mes: 'synthetic B' });
             context.chatId = 'B'; context.chatMetadata = { vc_binding: { mode: 'COMPANION' }, vc_f2: { id: 'chat-B' } };
         }
+        if (action === 'destroy') { controller.destroy(); assert.equal(doc.querySelector('#vc-voice-input'), null); assert.equal(events.listenerCount('chat'), 0); }
         if (action === 'cancel') mic.dispatch('keydown', { key: 'Escape' });
         resolveRecognition({ text: 'synthetic transcript from A' }); await tick(); await tick();
         assert.deepEqual(sent, action === 'send' ? [{ chatId: 'A', text: 'synthetic transcript from A' }] : []);

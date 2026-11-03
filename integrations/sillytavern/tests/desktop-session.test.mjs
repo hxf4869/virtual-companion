@@ -166,3 +166,68 @@ test('多个人设遵循原连接顺序；选择期间切会话，迟到结果�
     await assert.rejects(pending, { name: 'AbortError' });
     assert.equal(context.name1, '临时称呼'); assert.equal(context.userAvatar, 'a.png'); assert.deepEqual(selected, []);
 });
+
+
+test('候选沿用同一消息身份，各自来源与变量独立；切换、编辑和删除全部经F2保存', async () => {
+    const f = fixture(); await f.open('synthetic-candidates'); await f.session.send('合成输入');
+    const index = f.context.chat.length - 1, message = f.context.chat[index];
+    message.variables = [{ marker: 'original' }];
+    const firstId = message.extra.vc_source.id, messageId = message.vc_message_id;
+    f.context.eventSource.on(event_types.MESSAGE_RECEIVED, (id, type) => {
+        if (type === 'swipe') f.context.chat[id].variables[f.context.chat[id].swipe_id] = { marker: 'new' };
+    });
+    assert.equal(await f.session.swipe(index, 1, message), true);
+    assert.equal(f.context.chat.length, 3); assert.equal(message.swipe_id, 1); assert.equal(message.swipes.length, 2);
+    assert.equal(message.vc_message_id, messageId); const secondId = message.extra.vc_source.id; assert.notEqual(firstId, secondId);
+    assert.deepEqual(message.variables, [{ marker: 'original' }, { marker: 'new' }]);
+    assert.equal(await f.session.swipe(index, -1, message), true);
+    assert.equal(message.extra.vc_source.id, firstId); assert.equal(message.variables[message.swipe_id].marker, 'original');
+    assert.equal(await f.session.edit(index, '合成编辑', message), true); assert.equal(message.swipes[0], '合成编辑');
+    assert.equal(message.swipes[1], '合成回复'); assert.equal(message.extra.vc_source.id, firstId);
+    await f.session.swipe(index, 1, message); assert.equal(message.extra.vc_source.id, secondId);
+    assert.equal(message.variables[message.swipe_id].marker, 'new');
+    const saved = f.sent.at(-1).chat; await f.session.activate({ avatar: 'synthetic.png', file: 'synthetic-candidates' }, saved);
+    assert.equal(f.context.chat[index].extra.vc_source.id, secondId); assert.deepEqual(f.context.chat[index].variables, message.variables);
+    assert.equal(await f.session.remove(1), true); assert.equal(f.context.chat.length, 2); assert.equal(f.sent.at(-1).chat.length, 3);
+    assert.equal(f.context.chat.at(-1).vc_message_id, messageId); assert.equal(f.generations, 2);
+});
+
+test('继续在当前候选追加且保留来源；重生成替换末条，不增加用户消息或消耗草稿', async () => {
+    const f = fixture(); await f.open('synthetic-continue'); await f.session.send('合成输入');
+    const previous = f.context.chat.at(-1), id = previous.extra.vc_source.id, messageId = previous.vc_message_id;
+    await f.session.continue(); assert.equal(f.context.chat.length, 3); assert.equal(previous.mes, '合成回复合成回复');
+    assert.equal(previous.swipes[0], previous.mes); assert.equal(previous.extra.vc_source.id, id);
+    await f.session.regenerate(); assert.equal(f.context.chat.length, 3); assert.notEqual(f.context.chat.at(-1).vc_message_id, messageId);
+    assert.equal(f.taken.length, 1); assert.equal(f.context.chat.filter(message => message.is_user).length, 1);
+});
+
+test('候选/继续在网络错误前恢复原候选，重生成失败恢复旧回复；不丢弃既有变量', async () => {
+    const f = fixture({readResponse: async () => { throw new Error('synthetic transport'); }}); await f.open('synthetic-recover');
+    const original = f.context.chat.at(-1); original.variables = [{ marker: 'saved' }]; await f.session.save(); const saved = structuredClone(original);
+    assert.equal(await f.session.swipe(0, 1, original), false); assert.deepEqual(original, saved);
+    assert.equal(await f.session.continue(), false); assert.deepEqual(original, saved);
+    assert.equal(await f.session.regenerate(), false); assert.deepEqual(f.context.chat.at(-1), saved);
+    assert.ok(f.states.at(-1).canSend);
+});
+
+test('编辑保存冲突保留完整拒绝快照，阻止后续生成，复制仍能取回未保存正文', async () => {
+    const f = fixture({save: async () => new Response(JSON.stringify({code:'VC_REVISION_CONFLICT'}), {status:409})});
+    await f.open('synthetic-edit-conflict');
+    assert.equal(await f.session.edit(0, '合成未保存编辑'), false);
+    const snapshot = JSON.parse(await f.session.copyRejected());
+    assert.equal(snapshot.chat[1].mes, '合成未保存编辑'); assert.equal(snapshot.file_name, 'synthetic-edit-conflict');
+    assert.equal(await f.session.retry(), false); assert.equal(f.generations, 0); assert.equal(f.states.at(-1).conflict, true);
+});
+
+test('生成中迟到的旧语音状态沿既有元数据端口随最终F2提交，不改动当前出站的版本基线', async () => {
+    const began = deferred(), finish = deferred(); let prepared = 0;
+    const f = fixture({ prepare: async () => { if (++prepared === 2) { began.resolve(); await finish.promise; }
+        return {body:{model:'synthetic',chat_completion_source:'custom'}}; } });
+    await f.open('synthetic-late-voice'); await f.session.send('合成第一轮');
+    const oldReply = f.context.chat.at(-1), pending = f.session.send('合成第二轮'); await began.promise;
+    const before = f.sent.length; oldReply.extra.vc_voice = {clipId:'1',status:'ready',durationMs:1000};
+    await f.context.saveChatConditional(); assert.equal(f.sent.length, before);
+    finish.resolve(); await pending;
+    assert.deepEqual(f.sent.at(-1).chat[3].extra.vc_voice, {clipId:'1',status:'ready',durationMs:1000});
+    assert.equal(f.generations, 2); assert.ok(f.states.at(-1).canSend);
+});

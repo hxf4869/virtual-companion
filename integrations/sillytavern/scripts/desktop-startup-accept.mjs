@@ -7,7 +7,7 @@ import { createStClient } from './managed-lib.mjs';
 import { bindForeground } from './lib/accept-scene-helpers.mjs';
 import { openStCharacterChat } from './lib/open-st-chat.mjs';
 
-export async function seedDesktopBenchmark(ctx) {
+export async function seedDesktopBenchmark(ctx, { messages = 24 } = {}) {
     await bindForeground(ctx, 'vc03m-chat', 'chat', 'vc03m-chat');
     for (const consentType of ['SERVICE_TERMS', 'PRIVACY_POLICY', 'AI_CONTENT_NOTICE', 'THIRD_PARTY_MODEL_PROCESSING', 'SENSITIVE_DATA_PROCESSING']) {
         const result = await ctx.admin.call('PUT', '/api/v1/consents', { consentType, version: 'nf-synthetic', granted: true });
@@ -31,7 +31,7 @@ export async function seedDesktopBenchmark(ctx) {
         { user_name: '合成用户', character_name: card.name, chat_metadata: {
             vc_f2: { id: chatIdentity, revision: 0 }, vc_binding: { ...bound.json, mode: 'COMPANION', displayName: '合成实例' },
         } },
-        ...Array.from({ length: 24 }, (_, i) => ({ name: i % 2 ? card.name : '合成用户', is_user: i % 2 === 0,
+        ...Array.from({ length: messages }, (_, i) => ({ name: i % 2 ? card.name : '合成用户', is_user: i % 2 === 0,
             mes: `合成基准消息 ${i + 1}。`, send_date: new Date(Date.UTC(2026, 0, 1, 12, i)).toISOString() })),
     ];
     const saved = await st.call('POST', '/api/chats/save', { avatar_url: avatar, file_name: file, chat });

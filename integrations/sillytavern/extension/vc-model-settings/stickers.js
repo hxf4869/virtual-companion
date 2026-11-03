@@ -112,7 +112,7 @@ function normalizeSettings(raw) {
     return { enabled: raw?.enabled !== false, frequency, uploads };
 }
 
-function readSettings() {
+export function readSettings() {
     if (catalogOverride && typeof catalogOverride === 'object') {
         return {
             enabled: catalogOverride.enabled !== false,

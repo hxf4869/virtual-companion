@@ -319,7 +319,7 @@ body.vc-ui.vc-reply-bubble #chat > .mes:not([is_user="true"]) .mes_text {
   line-height: var(--vc-lh-bubble);
 }
 
-body.vc-ui #chat > .mes.vc-segmented .mes_text {
+body.vc-ui #chat :is(.mes.vc-segmented, .vc-desktop-message-content.vc-segmented) .mes_text {
   position: absolute !important;
   width: 1px !important;
   height: 1px !important;
@@ -336,7 +336,7 @@ body.vc-ui.vc-reply-bubble #chat > .mes.vc-segmented:not([is_user="true"]):not([
   border-radius: 0 !important;
 }
 
-body.vc-ui #chat > .mes.vc-segmented .vc-segs {
+body.vc-ui #chat :is(.mes.vc-segmented, .vc-desktop-message-content.vc-segmented) .vc-segs {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
@@ -350,14 +350,14 @@ body.vc-ui #chat .vc-reply-expand {
   padding-inline: 0;
 }
 
-body.vc-ui #chat > .mes.vc-segmented .vc-seg {
+body.vc-ui #chat :is(.mes.vc-segmented, .vc-desktop-message-content.vc-segmented) .vc-seg {
   margin: 0;
   color: var(--vc-ink);
   font-size: var(--vc-fs-reading);
   line-height: var(--vc-lh-reading);
 }
 
-body.vc-ui.vc-reply-bubble #chat > .mes.vc-segmented .vc-seg {
+body.vc-ui.vc-reply-bubble #chat :is(.mes.vc-segmented, .vc-desktop-message-content.vc-segmented) .vc-seg {
   width: fit-content;
   max-width: 100%;
   padding: var(--vc-space-sm) var(--vc-space-md);
@@ -368,7 +368,7 @@ body.vc-ui.vc-reply-bubble #chat > .mes.vc-segmented .vc-seg {
   line-height: var(--vc-lh-bubble);
 }
 
-body.vc-ui #chat > .mes.vc-segmented .vc-typing {
+body.vc-ui #chat :is(.mes.vc-segmented, .vc-desktop-message-content.vc-segmented) .vc-typing {
   margin: 0;
   color: var(--vc-ink-2);
   font-size: var(--vc-fs-footnote);

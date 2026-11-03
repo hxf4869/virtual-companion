@@ -41,7 +41,8 @@ import { desktopOverlaysScene } from './desktop-overlays-accept.mjs';
 import { desktopPagesScene } from './desktop-pages-accept.mjs';
 import { nativeStartupScene, independentDesktopScene } from './desktop-startup-accept.mjs';
 import { desktopPromptScene } from './desktop-prompt-accept.mjs';
-import { desktopChatScene } from './desktop-chat-accept.mjs';
+import { desktopChatScene, desktopOperationsScene } from './desktop-chat-accept.mjs';
+import { desktopMediaScene } from './desktop-media-accept.mjs';
 import { desktopCardScene } from './desktop-card-accept.mjs';
 
 export const ACCEPT_SCENES = [
@@ -109,5 +110,7 @@ export const ACCEPT_SCENES = [
     independentDesktopScene,
     desktopPromptScene,
     desktopChatScene,
+    desktopOperationsScene,
+    desktopMediaScene,
     desktopCardScene,
 ];

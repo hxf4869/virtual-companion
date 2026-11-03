@@ -687,8 +687,8 @@ async function runFull() {
     fs.mkdirSync(artifactsDir, { recursive: true, mode: 0o700 });
 
     const secrets = {
-        needsVoice: selected.some((id) => id.startsWith('voice-')),
-        needsASR: selected.includes('voice-input') || selected.includes('voice-real'),
+        needsVoice: selected.some((id) => id.startsWith('voice-') || id === 'nf-media'),
+        needsASR: selected.includes('voice-input') || selected.includes('voice-real') || selected.includes('nf-media'),
         realVoice: selected.includes('voice-real'),
         needsRights: selected.some((id) => id.startsWith('rights-')),
         needsMemory: selected.some(id => id.startsWith('memory-')),

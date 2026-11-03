@@ -166,10 +166,29 @@ async function sceneDesktopCards(ctx) {
         assert.deepEqual(await page.evaluate(() => Object.fromEntries(['message', 'chat', 'character', 'preset', 'script', 'global'].map(type =>
             [type, TavernHelper.getVariables({ type, message_id: 6, script_id: 'vc04-mvu' })['nf_scope_' + type]]))),
         { message: 'message', chat: 'chat', character: 'character', preset: 'preset', script: 'script', global: 'global' });
+        // NF-05：在真实MVU卡上生成/切换候选，变量与来源按swipe保存并刷新恢复。
+        const oldSource = (await read())[7].extra.vc_source.id;
+        const beforeSwipe = (await captures()).length;
+        await page.evaluate(() => { const c = SillyTavern.getContext(); c.eventSource.makeFirst(c.eventTypes.MESSAGE_SWIPED, () => {
+            const m = c.chat.at(-1); if (m.swipes?.[m.swipe_id] === '') globalThis.nf05EmptyCandidate = Object.keys(m.variables[m.swipe_id]).length === 0;
+        }); c.eventSource.makeFirst(c.eventTypes.GENERATION_STARTED, type => {
+            if (type === 'swipe') { const m = c.chat.at(-1); globalThis.nf05SwipeStart = { at: m.swipe_id, empty: globalThis.nf05EmptyCandidate }; }
+        }); });
+        await ctx.fixtureHttp.setOverride('vc03m-chat', { text: complexReply(31), tool: null, chunks: 3 });
+        const swipe = async action => { await page.locator('#chat>.mes').last().hover(); await page.locator(`#chat>.mes:last-child [data-vc-act="${action}"]`).click(); };
+        await swipe('swipe-next'); await expectState(31, true); await storedTrust(6, 31); await panelTrust(6, 31);
+        assert.deepEqual(await page.evaluate(() => globalThis.nf05SwipeStart), { at: 1, empty: true }, '真实EJS/MVU生成钩子先读取新候选上下文');
+        let selected = (await read())[7]; const newSource = selected.extra.vc_source.id;
+        assert.notEqual(newSource, oldSource); assert.equal(selected.variables[0].stat_data.trust[0], 25); assert.equal(selected.variables[1].stat_data.trust[0], 31);
+        await swipe('swipe-prev'); await expectState(25, true); await storedTrust(6, 25); await panelTrust(6, 25);
+        assert.equal((await read())[7].extra.vc_source.id, oldSource);
+        await swipe('swipe-next'); await expectState(31, true); await storedTrust(6, 31);
+        assert.equal((await read())[7].extra.vc_source.id, newSource); assert.equal((await captures()).length, beforeSwipe + 1, '切到已有候选不额外生成');
+        await reopen(7); await expectState(31, true); await panelTrust(6, 31);
         await captureWindows(page, ctx, 'nf-cards');
         await page.evaluate(() => { EjsTemplate.setFeatures({ compile_workers: false, sandbox: false }); SillyTavern.getContext().saveSettingsDebounced(); });
         assert.deepEqual(forbidden, []); assert.deepEqual(errors, []);
-        return { initialized: 10, generated: 15, nextTurn: 17, reprocessed: 19, replayed: 25, workerAndSandbox: true, nativeRequests: 0 };
+        return { initialized: 10, generated: 15, nextTurn: 17, reprocessed: 19, replayed: 25, workerAndSandbox: true, candidateVariables: [25, 31], nativeRequests: 0 };
     } catch (error) {
         const state = await page.evaluate(() => ({ app: document.documentElement.dataset.vcApp, runtime: document.documentElement.dataset.vcRuntime,
             notice: document.querySelector('#vc-chat-gen')?.textContent, frames: [...document.querySelectorAll('iframe')].map(frame => ({ id: frame.id, kind: frame.dataset.vcCardKind })),

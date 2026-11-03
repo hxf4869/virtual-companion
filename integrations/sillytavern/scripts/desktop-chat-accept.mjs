@@ -26,6 +26,17 @@ export async function openDesktopFixture(page, base, fixture, messages = 24) {
 }
 
 export async function captureWindows(page, ctx, prefix = 'nf-chat') {
+    // 与NF-04 reopen相同的真实发送就绪检查；只改合成草稿，不发出请求。
+    const input = page.locator('#send_textarea'), draft = await input.inputValue();
+    if (!draft.trim()) await input.fill('合成就绪检查');
+    await page.waitForFunction(() => !document.querySelector('#send_but')?.disabled);
+    if (!draft.trim()) await input.fill(draft);
+    // NF-05可按未读/阅读位置恢复。窗口跟随场景先通过公开动作回到最新，再保留原严格几何断言。
+    await page.locator('#chat').focus(); await page.keyboard.press('End');
+    const latest = page.locator('#vc-latest');
+    if (await latest.isVisible()) {
+        await latest.click(); await page.waitForFunction(() => { const chat = document.querySelector('#chat'); return chat.scrollHeight - chat.scrollTop - chat.clientHeight < 2; });
+    }
     for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
         await page.setViewportSize(viewport);
         for (const scheme of ['light', 'dark']) {
@@ -36,13 +47,18 @@ export async function captureWindows(page, ctx, prefix = 'nf-chat') {
             await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
             const geometry = await page.evaluate(() => ({ width: innerWidth, scrollWidth: document.body.scrollWidth,
                 input: document.querySelector('#send_textarea').getBoundingClientRect().toJSON(),
+                emoji: document.querySelector('#vc-emoji-btn').getBoundingClientRect().toJSON(),
                 last: document.querySelector('#chat>.mes:last-child').getBoundingClientRect().toJSON(),
-                send: document.querySelector('#send_but').getBoundingClientRect().toJSON() }));
+                send: (document.querySelector('#send_but').getClientRects().length ? document.querySelector('#send_but') : document.querySelector('#vc-voice-input')).getBoundingClientRect().toJSON() }));
             assert.ok(geometry.scrollWidth <= geometry.width + 1);
             assert.ok(geometry.input.left >= 0 && geometry.input.right <= geometry.width + 1);
             assert.ok(geometry.last.bottom <= geometry.input.top + 1 && geometry.last.top >= 0,
                 `保持底部时窗口调整后仍应看到最新回复 ${JSON.stringify({ last: geometry.last.bottom, input: geometry.input.top, width: geometry.width })}`);
             assert.ok(geometry.send.width >= 36 && geometry.send.height >= 36);
+            assert.ok(geometry.send.top >= geometry.input.top - 1 && geometry.send.bottom <= geometry.input.bottom + 1,
+                `发送/麦克风必须在输入框内 ${JSON.stringify({width: geometry.width, button: geometry.send, input: geometry.input})}`);
+            assert.ok(Math.abs(geometry.emoji.width - geometry.emoji.height) < 1 && geometry.emoji.top >= geometry.input.top - 1 && geometry.emoji.bottom <= geometry.input.bottom + 1,
+                `表情按钮不能另占空白行 ${JSON.stringify({width: geometry.width, emoji: geometry.emoji, input: geometry.input})}`);
             await page.screenshot({ path: path.join(ctx.artifactsDir, `${prefix}-${viewport.width}-${scheme}.png`) });
         }
     }
@@ -192,7 +208,7 @@ async function sceneDesktopChat(ctx) {
                 const pathname = new URL(request.url()).pathname;
                 if (['/', '/index.html', '/script.js', '/scripts/extensions.js', '/scripts/st-context.js'].includes(pathname)) forbidden.push(pathname);
             });
-            page.on('pageerror', error => errors.push(error.name + ': ' + error.message));
+            page.on('pageerror', error => errors.push(error.stack?.split('\n').slice(0, 5).join('\n') || error.name + ': ' + error.message));
             let stage = 'open';
             try {
                 const before = await ctx.fixtureHttp.count({ protocol: row.protocol });
@@ -257,3 +273,100 @@ async function sceneDesktopChat(ctx) {
 }
 
 export const desktopChatScene = { id: 'nf-chat', title: 'NF-03 独立桌面普通聊天、三协议/F2与恢复', needs: ['catalog', 'stack', 'browser'], default: false, run: sceneDesktopChat };
+
+
+export async function sceneDesktopOperations(ctx) {
+    const fixture = await seedDesktopBenchmark(ctx, { messages: 180 });
+    const st = createStClient({ baseUrl: ctx.w05.stBase, expectedIdentity: ctx.secrets.session,
+        extraCookies: `vc_session=${ctx.secrets.session.vcSession}; vc_csrf=${ctx.secrets.session.vcCsrf}` });
+    const settings = JSON.parse((await st.call('POST', '/api/settings/get', {})).json.settings);
+    settings.extension_settings.EjsTemplate ||= {}; Object.assign(settings.extension_settings.EjsTemplate, { compile_workers: false, sandbox: false });
+    settings.extension_settings.vc_reply_planner = false;
+    assert.equal((await st.call('POST', '/api/settings/save', settings)).status, 200);
+    const { chromium } = await import('playwright-core');
+    const browser = await chromium.launch({ headless: true, ...(process.env.VC_W03_CHROMIUM_PATH ? { executablePath: process.env.VC_W03_CHROMIUM_PATH } : {}) });
+    const context = await desktopBenchmarkContext(browser, ctx); await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+    const page = await context.newPage(), errors = [], forbidden = [];
+    page.on('pageerror', error => errors.push(error.name + ': ' + error.message));
+    page.on('request', request => { const pathname = new URL(request.url()).pathname; if (['/', '/script.js', '/scripts/extensions.js', '/scripts/st-context.js'].includes(pathname)) forbidden.push(pathname); });
+    await page.addInitScript(file => { if (!localStorage.getItem('nf05-seeded')) { localStorage.setItem('nf05-seeded', '1'); localStorage.setItem('vc-draft:' + file, 'NF05 旧草稿'); } }, fixture.file);
+    const read = async () => (await st.call('POST', '/api/chats/get', { avatar_url: fixture.avatar, file_name: fixture.file })).json;
+    const idle = () => page.waitForFunction(() => document.body.dataset.generating !== 'true' && !document.querySelector('#mes_stop') && document.documentElement.dataset.vcRuntime === 'prepared');
+    const last = () => page.locator('#chat>.mes').last();
+    async function action(name) { await last().hover(); await last().locator(`[data-vc-act="${name}"]`).click(); }
+    async function menu(name) { await action('more'); await page.getByRole('menuitem', { name, exact: true }).click(); }
+    let stage = 'history';
+    try {
+        await ctx.fixtureHttp.setOverride('vc03m-chat', { text: 'NF05 合成候选。', chunks: 2, tool: null });
+        stage = 'open80'; await openDesktopFixture(page, ctx.w05.stBase, fixture, 80);
+        stage = 'ready';
+        await page.waitForFunction(() => !document.querySelector('#send_but')?.disabled);
+        assert.equal(await page.locator('#send_textarea').inputValue(), 'NF05 旧草稿');
+        assert.equal(await page.evaluate(file => localStorage.getItem('vc-draft:' + file), fixture.file), null);
+        await page.evaluate(() => document.fonts.ready);
+        stage = 'scroll-top'; await page.locator('#chat').hover(); await page.mouse.wheel(0, -10000);
+        await page.waitForFunction(() => document.querySelector('#chat').scrollTop === 0);
+        await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+        const anchorOffset = () => page.evaluate(() => document.querySelector('#chat>.mes[mesid="100"]').getBoundingClientRect().top - document.querySelector('#chat').getBoundingClientRect().top);
+        const before = await anchorOffset();
+        stage = 'prepend'; await page.getByRole('button', { name: '显示更早的消息', exact: true }).click();
+        await page.waitForFunction(() => document.querySelectorAll('#chat>.mes').length === 160);
+        await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+        const after = await anchorOffset();
+        assert.ok(Math.abs(after - before) < 2, `前插历史保持原消息相对聊天视口的锚点 ${JSON.stringify({before, after})}`);
+        stage = 'search/read-position';
+        await page.keyboard.press('Control+f'); await page.getByRole('textbox', { name: '搜索', exact: true }).fill('合成基准消息 1。');
+        await page.waitForFunction(() => document.querySelector('#chat>.mes[mesid="0"]')?.hasAttribute('data-vc-search-current'));
+        assert.equal(await page.locator('#chat>.mes').count(), 180, '搜索必须覆盖尚未展开的历史');
+        await page.getByRole('button', { name: '完成', exact: true }).click();
+        await page.locator('#chat').hover(); await page.mouse.wheel(0, 80);
+        await page.waitForFunction(() => Object.keys(localStorage).some(key => key.startsWith('vc-pos:') && Number(localStorage.getItem(key)) < 20));
+        await openDesktopFixture(page, ctx.w05.stBase, fixture, 180);
+        await page.waitForFunction(() => !document.querySelector('#send_but')?.disabled);
+        assert.ok(await page.locator('#vc-latest').isVisible(), '刷新恢复阅读位置而非强制底部');
+        await page.locator('#vc-latest').click(); await page.waitForFunction(() => { const chat = document.querySelector('#chat'); return chat.scrollHeight - chat.scrollTop - chat.clientHeight < 2; });
+        stage = 'candidate';
+        await page.evaluate(async () => { TavernHelper.replaceVariables({ marker: 'candidate-zero' }, { type: 'message', message_id: 179 }); await SillyTavern.getContext().saveChat(); });
+        const original = (await read()).at(-1), originalSource = original.extra.vc_source.id;
+        await action('swipe-next'); await idle();
+        let saved = (await read()).at(-1);
+        assert.equal(saved.vc_message_id, original.vc_message_id); assert.equal(saved.swipes.length, 2); assert.equal(saved.swipe_id, 1);
+        assert.notEqual(saved.extra.vc_source.id, originalSource); const nextSource = saved.extra.vc_source.id;
+        assert.equal(saved.variables[0].marker, 'candidate-zero');
+        assert.equal(await page.locator('#send_textarea').inputValue(), 'NF05 旧草稿', '候选生成不消耗输入草稿');
+        await action('swipe-prev'); await idle(); saved = (await read()).at(-1);
+        assert.equal(saved.extra.vc_source.id, originalSource); assert.equal(saved.variables[saved.swipe_id].marker, 'candidate-zero');
+        stage = 'edit/continue/copy';
+        await action('edit'); await page.getByRole('textbox', { name: '消息内容' }).fill('NF05 编辑原候选。');
+        await page.locator('.vc-sheet-done').click(); await page.getByRole('textbox', { name: '消息内容' }).waitFor({ state: 'detached' }); await idle();
+        saved = (await read()).at(-1); assert.equal(saved.swipes[0], 'NF05 编辑原候选。'); assert.equal(saved.swipes[1], 'NF05 合成候选。');
+        assert.equal(saved.swipe_info[1].extra.vc_source.id, nextSource); assert.equal(saved.extra.vc_source.id, originalSource);
+        await menu('继续'); await idle(); saved = (await read()).at(-1);
+        assert.equal(saved.mes, 'NF05 编辑原候选。NF05 合成候选。'); assert.equal(saved.extra.vc_source.id, originalSource);
+        await action('copy'); assert.equal(await page.evaluate(() => navigator.clipboard.readText()), saved.mes);
+        stage = 'quote/regenerate/reaction/delete';
+        await menu('引用'); await page.locator('#send_but').click(); await idle();
+        let records = await read(); assert.match(records.at(-2).mes, /^> NF 合成角色：NF05 编辑原候选/); assert.ok(records.at(-2).mes.endsWith('NF05 旧草稿'));
+        const replaced = records.at(-1).vc_message_id; await action('regen'); await idle();
+        records = await read(); assert.notEqual(records.at(-1).vc_message_id, replaced); assert.equal(records.length, 183);
+        await page.locator('#send_textarea').fill('NF05 保留草稿');
+        await action('more'); await page.locator('#vc-react-bar [data-emoji="❤️"]').click(); await idle();
+        assert.deepEqual((await read()).at(-1).extra.vc_reactions, ['❤️']); assert.equal(await last().locator('.vc-react-badge').textContent(), '❤️');
+        await page.locator('#chat>.mes[mesid="1"]').scrollIntoViewIfNeeded(); await page.locator('#chat>.mes[mesid="1"]').hover();
+        await page.locator('#chat>.mes[mesid="1"] [data-vc-act="more"]').click(); await page.getByRole('menuitem', { name: '删除', exact: true }).click();
+        await page.getByRole('button', { name: '删除', exact: true }).click(); await idle(); assert.equal((await read()).length, 182);
+        stage = 'emoji/refresh';
+        await page.locator('#vc-emoji-btn').click(); await page.locator('#vc-emoji-panel [data-k="e"]').first().click();
+        assert.ok((await page.locator('#send_textarea').inputValue()).startsWith('NF05 保留草稿'));
+        await page.keyboard.press('Escape');
+        assert.equal((await read()).length, 182, '刷新前ST仍持有完整181条消息');
+        await openDesktopFixture(page, ctx.w05.stBase, fixture, 80); await page.waitForFunction(() => document.documentElement.dataset.vcRuntime === 'prepared');
+        assert.ok((await page.locator('#send_textarea').inputValue()).startsWith('NF05 保留草稿'));
+        await captureWindows(page, ctx, 'nf-operations');
+        assert.deepEqual(errors, []); assert.deepEqual(forbidden, []);
+        return { history: 180, prependAnchor: true, searchAll: true, readPosition: true, candidates: true, variablesAndSources: true, edit: true, continue: true,
+            quote: true, copy: true, regenerate: true, delete: true, reactions: true, emoji: true, legacyDraft: true, refresh: true, nativeRequests: 0 };
+    } catch (error) { const state = await page.evaluate(() => ({ app: document.documentElement.dataset.vcApp, runtime: document.documentElement.dataset.vcRuntime, count: document.querySelectorAll('#chat>.mes').length, top: document.querySelector('#chat')?.scrollTop, height: document.querySelector('#chat')?.scrollHeight, notice: document.querySelector('#vc-chat-gen')?.textContent })); throw new Error(`NF05 ${stage}: ${error.message}; ${JSON.stringify({ state, errors, forbidden })}`); }
+    finally { await browser.close(); await ctx.fixtureHttp.setOverride('vc03m-chat', null); }
+}
+export const desktopOperationsScene = { id: 'nf-operations', title: 'NF-05 自有消息操作、候选来源变量与历史阅读恢复', needs: ['catalog', 'stack', 'browser'], default: false, run: sceneDesktopOperations };

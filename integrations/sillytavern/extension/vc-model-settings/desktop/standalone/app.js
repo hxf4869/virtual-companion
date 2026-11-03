@@ -9,7 +9,9 @@ import { openSheet } from '../../ui/sheet.js';
 import { showToast } from '../../ui/toast.js';
 import { readDraft, writeDraft } from '../../chat-compose.js';
 import { mergeInput, showF2Draft } from '../../f2-client.js';
-import { mountDesktopFollow } from '../../chat-scroll.js';
+import { createChatActions } from './chat-actions.js';
+import { gapLabel, parseSendDate } from '../../chat-view.js';
+import { mountDesktopFollow, posKey, readStoredNumber } from '../../chat-scroll.js';
 import { mountDesktopChatView } from '../build/index.js';
 import { mountDesktopShell } from '../host.js';
 import { mountSettingsShell } from '../settings-shell.js';
@@ -24,16 +26,27 @@ const getContext = () => context;
 const drafts = new Map();
 let runtime, view, shell, currentRow, currentRecords, charactersReady, read = 0, activated = 0, readAbort;
 const draftId = key => JSON.stringify([client.identity.accountId, ...JSON.parse(key)]);
-const draftOf = key => drafts.has(key) ? drafts.get(key) : readDraft(draftId(key));
+const draftOf = (key, migrate = false) => {
+    if (drafts.has(key)) return drafts.get(key);
+    const current = readDraft(draftId(key)), legacy = migrate ? readDraft(JSON.parse(key)[1]) : '';
+    // 只在明确打开的会话迁入旧file-only键；列表中同文件名的其他角色不能抢走草稿。
+    if (legacy) { const migrated = mergeInput(current, legacy); writeDraft(draftId(key), migrated); writeDraft(JSON.parse(key)[1], ''); return migrated; }
+    return current;
+};
 function setDraft(key, value) {
-    drafts.set(key, value); writeDraft(draftId(key), value);
+    drafts.set(key, value); writeDraft(draftId(key), value); shell?.refreshConversationDrafts();
     if (chat.conversation === key) { chat.draft = value; paint(); }
 }
 const chat = { messages: [], status: 'empty', draft: '', sprite: iconSpriteUrl(), avatar: '', canSend: false, busy: false,
-    mountFollow: mountDesktopFollow,
+    mountFollow: (node, floatingHost) => mountDesktopFollow(node, { floatingHost, getChatId: () => chat.conversation ? draftId(chat.conversation) : '',
+        dateLabel: index => { const ms = parseSendDate(chat.messages[index]?.send_date); return ms === null ? '' : gapLabel(ms); } }),
     notice: '', conflict: false, enterToSend: true, error: '', conversation: '',
     onDraft(value) { setDraft(chat.conversation, value); },
-    onSend() { void runtime?.send(chat.draft); },
+    onSend() { actions.send(); },
+    onAction(...args) { void actions.run(...args); },
+    onPat() { void runtime?.pat(); },
+    onEmoji(anchor) { actions.emoji(anchor); },
+    tools(index, message) { return actions.tools(index, message); },
     onStop() { void runtime?.stop(); },
     onRetry() { if (currentRow) return openConversation(currentRow, { latest: true }).then(opened => { if (opened) document.querySelector('#send_textarea')?.focus(); }); },
     onNoticeRetry() {
@@ -46,6 +59,7 @@ const chat = { messages: [], status: 'empty', draft: '', sprite: iconSpriteUrl()
         catch { showToast('没有完成，请重试。', { type: 'failure' }); }
     },
 };
+const actions = createChatActions({ getContext, getSession: () => runtime, chat, paint });
 function paint() { document.body.dataset.generating = String(chat.busy); view?.update(chat); }
 const chatKey = row => JSON.stringify([row.avatar, row.file]);
 
@@ -65,12 +79,13 @@ async function activateCurrent(ticket, latest) {
 
 async function openConversation(row, { latest = false } = {}) {
     if (!row?.avatar || !row?.file) return false;
+    actions.changed(); chat.historyAll = false;
     currentRow = row;
     readAbort?.abort(); readAbort = new AbortController();
     void runtime?.stop();
     currentRecords = null;
     const ticket = ++read;
-    chat.conversation = chatKey(row); chat.draft = draftOf(chat.conversation) || '';
+    chat.conversation = chatKey(row); chat.historyAll = readStoredNumber(posKey(draftId(chat.conversation))) !== null; chat.draft = draftOf(chat.conversation, true) || ''; shell?.refreshConversationDrafts();
     chat.status = 'loading'; chat.error = ''; chat.notice = ''; chat.conflict = false; chat.canSend = false; chat.busy = false; paint();
     try {
         const records = await client.readChat(row, { signal: readAbort.signal });
@@ -132,6 +147,7 @@ async function start() {
         story: lazyPage(() => import('../../story-page.js'), (module, container, args) => module.mountStoryTab(container, args)),
     });
     shell = mountShell({ getContext, storage: { getItem(key) { return key === 'vc-ui' ? 'on' : localStorage.getItem(key); }, setItem: (key, value) => localStorage.setItem(key, value) },
+        getConversationDraft: row => row.avatar && row.file ? draftOf(chatKey(row)) : '',
         loadChatSnapshots: async () => chatSnapshotsFromRecent(await client.recent()), openConversation,
         mountDesktopSettings: container => mountSettingsShell(container, { getContext }),
         mountChatSurface(container) {
@@ -139,7 +155,9 @@ async function start() {
             view = mountDesktopChatView(host, chat);
         },
     });
-    mountDesktopShell({ shell, getContext });
+    mountDesktopShell({ shell, getContext, beforeSearch: async () => {
+        if (!chat.historyAll) { chat.historyAll = true; paint(); await new Promise(resolve => requestAnimationFrame(resolve)); }
+    } });
     document.querySelector('#vc-desktop-startup')?.remove();
     document.documentElement.dataset.vcApp = 'ready';
     charactersReady = client.characters().then(characters => {
@@ -147,7 +165,7 @@ async function start() {
     }).catch(() => { document.documentElement.dataset.vcCharacters = 'error'; });
     // 不 await 聊天准备：导航、历史和设置拥有各自生命周期。
     void import('./runtime.js').then(module => module.prepareChatRuntime({ client, context, choosePersona, readInput: () => chat.draft,
-        onConflict(snapshot, error) { showF2Draft(snapshot, error, { latest: () => chat.onNoticeRetry(), copy: () => chat.onCopyDraft() }); },
+        paint, onConflict(snapshot, error) { showF2Draft(snapshot, error, { latest: () => chat.onNoticeRetry(), copy: () => chat.onCopyDraft() }); },
         onChange(state) { if (state.key !== chat.conversation || chat.status !== 'ready') return; Object.assign(chat, state); paint(); },
         onTakeDraft(key, input) { if (draftOf(key) === input) setDraft(key, ''); },
         onRestoreDraft(key, input) {
@@ -155,7 +173,7 @@ async function start() {
         },
     })).then(async value => {
         runtime = value;
-        chat.renderMessage = runtime.renderMessage; chat.mountCardActions = runtime.mountCardActions; paint();
+        chat.renderMessage = runtime.renderMessage; chat.mountCardActions = runtime.mountCardActions; chat.renderMedia = runtime.renderMedia; chat.mountVoiceInput = runtime.mountVoiceInput; paint();
         document.documentElement.dataset.vcRuntime = 'prepared';
         await eventSource.emit(event_types.APP_INITIALIZED); await eventSource.emit(event_types.APP_READY);
         void activateCurrent(read, false);

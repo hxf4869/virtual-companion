@@ -24,40 +24,28 @@ export function nextFollow(state, event) {
 }
 
 /** 独立桌面的跟随端口；沿用上面的用户滚动规则，异步HTML/iframe增长不改变阅读状态。 */
-export function mountDesktopFollow(chat) {
-    const doc = chat.ownerDocument, view = doc.defaultView, ac = new view.AbortController();
-    let state = 'follow', lastTop = chat.scrollTop, lastInput = -1e9, dragging = false, frame = 0;
+export function mountDesktopFollow(chat, { floatingHost, getChatId = () => '', dateLabel = () => '' } = {}) {
+    const view = chat.ownerDocument.defaultView;
+    let attached = true, frame = 0, wasBusy = false, dead = false;
     const schedule = () => {
-        if (frame) return;
+        if (dead || frame) return;
         frame = view.requestAnimationFrame(() => {
             frame = 0;
-            if (state === 'follow') { chat.scrollTop = chat.scrollHeight; lastTop = chat.scrollTop; }
+            const host = chat.parentElement;
+            host.style.setProperty('--vc-composer-h', `${Math.max(0, host.getBoundingClientRect().bottom - chat.getBoundingClientRect().bottom)}px`);
+            if (attached && !api.holding()) chat.scrollTop = chat.scrollHeight;
         });
     };
-    const markInput = () => { lastInput = view.performance.now(); };
-    const listen = (target, name, fn, options = {}) => target.addEventListener(name, fn, { ...options, signal: ac.signal });
-    listen(chat, 'wheel', markInput, { passive: true }); listen(chat, 'touchmove', markInput, { passive: true });
-    listen(chat, 'pointerdown', event => { if (event.target === chat) { dragging = true; markInput(); } });
-    listen(chat, 'pointermove', () => { if (dragging) markInput(); });
-    listen(chat, 'pointerup', () => { dragging = false; }); listen(chat, 'pointercancel', () => { dragging = false; });
-    const keys = new Set(['PageUp', 'PageDown', 'Home', 'End', 'ArrowUp', 'ArrowDown', ' ']);
-    listen(doc, 'keydown', event => {
-        if (keys.has(event.key) && !event.metaKey && !event.ctrlKey && !event.altKey
-            && !['TEXTAREA', 'INPUT'].includes(event.target?.tagName) && !event.target?.isContentEditable) markInput();
-    }, { capture: true });
-    listen(chat, 'scroll', () => {
-        const top = chat.scrollTop;
-        if (view.performance.now() - lastInput < 250) state = nextFollow(state, { type: 'user-scroll', up: top < lastTop,
-            gap: chat.scrollHeight - top - chat.clientHeight });
-        lastTop = top;
-    });
-    listen(view, 'resize', schedule);
-    const resize = new view.ResizeObserver(schedule);
+    const api = mountChatScroll({ chat, doc: chat.ownerDocument, overlayHost: floatingHost,
+        hooks: { isDesktop: () => true, attach() { attached = true; schedule(); }, detach() { attached = false; }, getChatId, dateLabel } });
+    const resize = new view.ResizeObserver(() => { api.layout(); schedule(); });
     const observe = () => { resize.disconnect(); resize.observe(chat); for (const node of chat.children) resize.observe(node); schedule(); };
     const mutation = new view.MutationObserver(observe);
     mutation.observe(chat, { childList: true, subtree: true, characterData: true }); observe();
-    return { open() { state = 'follow'; lastInput = -1e9; schedule(); }, sent() { state = nextFollow(state, { type: 'send' }); schedule(); },
-        update: schedule, destroy() { ac.abort(); resize.disconnect(); mutation.disconnect(); view.cancelAnimationFrame(frame); } };
+    view.addEventListener('resize', schedule);
+    return { beforeHistory() { api.captureAnchor(); }, open() { api.openChat(); schedule(); }, sent() { api.sent(); attached = true; schedule(); },
+        update(state = {}) { api.refresh(); if (wasBusy && !state.busy) api.replyRendered(state.lastIndex); wasBusy = Boolean(state.busy); schedule(); },
+        destroy() { dead = true; resize.disconnect(); mutation.disconnect(); view.cancelAnimationFrame(frame); view.removeEventListener('resize', schedule); api.destroy(); } };
 }
 
 export const latestVisible = (gap) => Number(gap) > LATEST_PX;
@@ -153,8 +141,11 @@ export function jumpToMessage(mesid, options) {
 }
 export const highlightMessage = jumpToMessage;
 
-export function mountChatScroll({ chat, doc = document, hooks }) {
+export function mountChatScroll({ chat, doc = document, hooks, overlayHost }) {
     if (!chat || active) return active;
+    const listeners = new AbortController();
+    const listen = (target, name, fn, options = {}) => target.addEventListener(name, fn, { ...options, signal: listeners.signal });
+    let observer;
     const desktop = () => hooks.isDesktop();
     const conversationVisible = () => {
         const shell = doc.querySelector('#vc-shell');
@@ -177,7 +168,7 @@ export function mountChatScroll({ chat, doc = document, hooks }) {
     let posTimer = 0;
     let chipTimer = 0;
     let flashTimer = 0;
-    let openToken = null;
+    let openToken = null, programTop = null, width = chat.clientWidth, height = chat.clientHeight;
 
     const gap = () => (Number(chat.scrollHeight) || 0) - (Number(chat.scrollTop) || 0) - (Number(chat.clientHeight) || 0);
     const maxTop = () => Math.max(0, (Number(chat.scrollHeight) || 0) - (Number(chat.clientHeight) || 0));
@@ -188,7 +179,7 @@ export function mountChatScroll({ chat, doc = document, hooks }) {
 
     function ensureNodes() {
         if (nodes) return nodes;
-        const parent = chat.parentElement;
+        const parent = overlayHost || chat.parentElement;
         if (!parent) return null;
         const latest = doc.createElement('button');
         latest.id = 'vc-latest';
@@ -197,7 +188,7 @@ export function mountChatScroll({ chat, doc = document, hooks }) {
         latest.hidden = true;
         latest.setAttribute('aria-label', latestLabel(0));
         latest.innerHTML = `${icon('arrow-down', { size: 18 })}<span class="vc-latest-count" hidden></span>`;
-        latest.addEventListener('click', goLatest);
+        listen(latest, 'click', goLatest);
         const chip = doc.createElement('div');
         chip.id = 'vc-date-chip';
         chip.setAttribute('aria-hidden', 'true');
@@ -233,6 +224,7 @@ export function mountChatScroll({ chat, doc = document, hooks }) {
     }
 
     function markInput() {
+        programTop = null;
         lastInput = nowMs();
         if (holding) { releaseHold(); openToken = null; }
     }
@@ -244,16 +236,17 @@ export function mountChatScroll({ chat, doc = document, hooks }) {
     }
 
     // ---- 回到最新 ----
-    function goLatest() {
+    function goLatest({ instant = false } = {}) {
+        openToken = null; releaseHold();
         state = 'follow';
         const distance = maxTop() - (Number(chat.scrollTop) || 0);
         glide({
             target: maxTop,
-            duration: scrollDuration(distance),
+            duration: instant ? 0 : scrollDuration(distance),
             onDone: () => {
                 hooks.attach();
                 const settle = () => { if (!holding && gap() > 1) chat.scrollTop = maxTop(); };
-                if ('onscrollend' in chat) chat.addEventListener('scrollend', settle, { once: true });
+                if ('onscrollend' in chat) listen(chat, 'scrollend', settle, { once: true });
                 setTimeout(settle, 120);
             },
         });
@@ -346,7 +339,7 @@ export function mountChatScroll({ chat, doc = document, hooks }) {
     // ---- 向上加载历史：以视口首条 .mes 为锚 ----
     function recordAnchor() {
         const first = firstVisible();
-        anchor = first ? { el: first.el, off: first.el.getBoundingClientRect().top - chat.getBoundingClientRect().top } : null;
+        anchor = first ? { el: first.el, id: first.id, off: first.el.getBoundingClientRect().top - chat.getBoundingClientRect().top } : null;
     }
     function compensate(records) {
         if (!anchor || !anchor.el.isConnected || holding) return;
@@ -355,7 +348,7 @@ export function mountChatScroll({ chat, doc = document, hooks }) {
         if (!prepended) return;
         const off = anchor.el.getBoundingClientRect().top - chat.getBoundingClientRect().top;
         const delta = anchorDelta(anchor.off, off);
-        if (Math.abs(delta) > 0.5) chat.scrollTop = (Number(chat.scrollTop) || 0) + delta;
+        if (Math.abs(delta) > 0.5) { chat.scrollTop = (Number(chat.scrollTop) || 0) + delta; programTop = chat.scrollTop; }
     }
 
     // ---- 打开会话：分割线 > 阅读位置 > 底部（交给宿主的贴底） ----
@@ -444,7 +437,7 @@ export function mountChatScroll({ chat, doc = document, hooks }) {
                 target,
                 duration: scrollDuration(Math.abs(target() - (Number(chat.scrollTop) || 0))),
                 hold: LAND_MS,
-                onDone: () => { hooks.detach(); refreshLatest(); },
+                onDone: () => { state = 'detached'; hooks.detach(); refreshLatest(); },
             });
         });
     }
@@ -460,6 +453,7 @@ export function mountChatScroll({ chat, doc = document, hooks }) {
     function jump(mesid, { highlight = true } = {}) {
         const mes = byId(mesid);
         if (!mes || !desktop()) return false;
+        openToken = null; releaseHold();
         const target = () => centerTop({
             chatTop: chat.getBoundingClientRect().top,
             mesTop: mes.getBoundingClientRect().top,
@@ -477,19 +471,20 @@ export function mountChatScroll({ chat, doc = document, hooks }) {
 
     // ---- 事件 ----
     const KEYS = new Set(['PageUp', 'PageDown', 'Home', 'End', 'ArrowUp', 'ArrowDown', ' ']);
-    chat.addEventListener('wheel', markInput, { passive: true });
-    chat.addEventListener('touchmove', markInput, { passive: true });
-    chat.addEventListener('pointerdown', (event) => { if (event.target === chat) { dragging = true; markInput(); } });
-    chat.addEventListener('pointermove', () => { if (dragging) markInput(); });
+    listen(chat, 'wheel', markInput, { passive: true });
+    listen(chat, 'touchmove', markInput, { passive: true });
+    listen(chat, 'pointerdown', (event) => { if (event.target === chat) { dragging = true; markInput(); } });
+    listen(chat, 'pointermove', () => { if (dragging) markInput(); });
     const endDrag = () => { dragging = false; };
-    chat.addEventListener('pointerup', endDrag);
-    chat.addEventListener('pointercancel', endDrag);
-    doc.addEventListener('keydown', (event) => {
+    listen(chat, 'pointerup', endDrag);
+    listen(chat, 'pointercancel', endDrag);
+    listen(doc, 'keydown', (event) => {
         if (!KEYS.has(event.key) || event.metaKey || event.ctrlKey || event.altKey) return;
         const tag = event.target?.tagName;
         if (tag === 'TEXTAREA' || tag === 'INPUT' || event.target?.isContentEditable) return;
         markInput();
-    }, true);
+        if (event.key === 'End' && desktop() && conversationVisible() && (doc.activeElement === chat || chat.contains(doc.activeElement))) { event.preventDefault(); goLatest({ instant: true }); }
+    }, { capture: true });
 
     const onScroll = () => {
         scrollFrame = 0;
@@ -499,39 +494,67 @@ export function mountChatScroll({ chat, doc = document, hooks }) {
         if (user) {
             const prev = state;
             state = nextFollow(state, { type: 'user-scroll', up: top < lastTop, gap: gap() });
-            if (prev !== state && state === 'detached') hooks.detach();
+            if (prev !== state) { if (state === 'detached') hooks.detach(); else hooks.attach(); }
         }
         lastTop = top;
         refreshLatest();
         if (!holding) {
-            recordAnchor();
+            if (user || !anchor) recordAnchor();
             showChip();
             scheduleRead();
             schedulePos();
         }
     };
-    chat.addEventListener('scroll', () => { if (!scrollFrame) scrollFrame = raf(onScroll) || 1; });
+    listen(chat, 'scroll', () => {
+        // 用户滚动先同步脱离；前插补偿和窗口布局产生的scroll不重新选中阅读锚点。
+        if (width !== chat.clientWidth || height !== chat.clientHeight) { width = chat.clientWidth; height = chat.clientHeight; lastInput = -1e9; }
+        const top = Number(chat.scrollTop) || 0;
+        if (programTop !== null && Math.abs(top - programTop) < 1) { lastInput = -1e9; programTop = null; }
+        if (nowMs() - lastInput < 250) {
+            const previous = state;
+            state = nextFollow(state, { type: 'user-scroll', up: top < lastTop, gap: gap() });
+            if (previous !== state) { if (state === 'detached') hooks.detach(); else hooks.attach(); }
+        }
+        lastTop = top;
+        if (!scrollFrame) scrollFrame = raf(onScroll) || 1;
+    });
 
     if (typeof globalThis.MutationObserver === 'function') {
-        new globalThis.MutationObserver((records) => {
+        observer = new globalThis.MutationObserver((records) => {
             if (!desktop()) return;
             compensate(records);
             applyDivider();
             refreshLatest();
             scheduleRead();
             if (!holding && !anchor) recordAnchor();
-        }).observe(chat, { childList: true });
+        }); observer.observe(chat, { childList: true });
     }
-    doc.addEventListener('visibilitychange', () => { if (!doc.hidden) scheduleRead(); });
+    if (doc.defaultView) listen(doc.defaultView, 'resize', () => { lastInput = -1e9; });
+    listen(doc, 'visibilitychange', () => { if (!doc.hidden) scheduleRead(); });
 
     const api = {
-        jump,
+        jump, captureAnchor: recordAnchor,
         holding: () => holding,
         state: () => state,
-        sent() { state = 'follow'; },
+        sent() { openToken = null; releaseHold(); state = 'follow'; hooks.attach(); },
         openChat,
         replyRendered,
         refresh() { applyDivider(); refreshLatest(); },
+        layout() {
+            if (state !== 'detached' || holding || !anchor) return;
+            if (!anchor.el?.isConnected) anchor.el = byId(anchor.id);
+            if (!anchor.el) return;
+            const off = anchor.el.getBoundingClientRect().top - chat.getBoundingClientRect().top;
+            const delta = anchorDelta(anchor.off, off);
+            if (Math.abs(delta) > 0.5) { chat.scrollTop += delta; programTop = chat.scrollTop; }
+        },
+        destroy() {
+            listeners.abort(); observer?.disconnect(); releaseHold(); openToken = null;
+            for (const timer of [readTimer, posTimer, chipTimer, flashTimer]) clearTimeout(timer);
+            if (scrollFrame) globalThis.cancelAnimationFrame?.(scrollFrame);
+            nodes?.latest.remove(); nodes?.chip.remove();
+            if (active === api) active = null;
+        },
     };
     active = api;
     openChat();

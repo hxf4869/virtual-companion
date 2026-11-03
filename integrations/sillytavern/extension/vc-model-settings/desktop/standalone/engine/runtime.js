@@ -3,7 +3,7 @@ import {GENERATION_TYPE_TRIGGERS} from './st/constants.js';
 // 一个桌面 realm 只有一个聊天计算 owner；页面/历史读取不等待此锁。
 import { bindEngineContext, getMaxPromptTokens } from './ports.js';
 import { initMacros } from './st/scripts/macros.js';
-import { substituteParams, substituteParamsExtended, setExtensionPrompt, getBiasStrings, removeMacros, createRawPrompt } from './st/script.js';
+import { substituteParams, substituteParamsExtended, setExtensionPrompt, getBiasStrings, extractMessageBias, removeMacros, createRawPrompt } from './st/script.js';
 import { getCharaFilename } from './st/scripts/utils.js';
 import { Handlebars, Bowser, lodash } from './st/lib.js';
 import { event_types } from './st/events.js';
@@ -145,6 +145,18 @@ export async function createChatEngine({ client, context, settings, decision, pr
                 message.extra.token_count = await createTokenizer({ settings, models, request: (url, body) => client.request(url, body) }).getTokenCountAsync(message.mes, 0);
             }
             return { message, bias };
+        },
+        editMessage(message, text) {
+            // 锁定ST updateMessage 的编辑计算，移除原textarea/mesBlock读取。
+            bindEngineContext(context, settings, environment);
+            const regex = currentRegex(), placement = message.is_user ? regex.regex_placement.USER_INPUT
+                : message.extra?.type === 'narrator' ? regex.regex_placement.SLASH_COMMAND : regex.regex_placement.AI_OUTPUT;
+            text = regex.getRegexedString(text, placement, { characterOverride: message.extra?.type === 'narrator' ? undefined : message.name, isEdit: true });
+            if (settings.power_user.trim_spaces) text = text.trim();
+            const bias = substituteParams(extractMessageBias(text)); text = substituteParams(text);
+            if (bias) text = removeMacros(text);
+            message.extra ||= {}; message.extra.bias = message.is_system || message.is_user || message.extra.type === 'narrator' ? bias ?? null : null;
+            return text;
         },
         cleanResponse(text, { incomplete = false, type = 'normal' } = {}) {
             return lastComputation.cleanUpMessage({ getMessage: text, isImpersonate: type === 'impersonate', isContinue: type === 'continue',

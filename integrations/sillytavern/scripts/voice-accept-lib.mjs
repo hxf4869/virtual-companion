@@ -38,7 +38,7 @@ export async function voiceShots(page, ctx, id, name) {
     }
     fs.writeFileSync(path.join(dir, 'NOTES.md'), `# ${id}\n\n语音条与设置沿用现有组件、语义颜色和 44px 触控区。截图只含合成验收数据。\n390/1440 浅深色、横向溢出及对应场景交互断言已检查；请结合本批次受管结果复核。\n`);
 }
-export async function openVoiceChat(ctx, label = '语音验收', {fakeAudio=false}={}) {
+export async function openVoiceChat(ctx, label = '语音验收', {fakeAudio=false,standalone=false}={}) {
     await reauthForWrite(ctx);
     const purposes = await ctx.admin.listPurposes();
     const purpose = purposes.json.find((item) => item.purpose === 'FOREGROUND_CHAT');
@@ -60,16 +60,41 @@ export async function openVoiceChat(ctx, label = '语音验收', {fakeAudio=fals
         chat: [{ user_name: 'unused', character_name: card.name, chat_metadata: { vc_f2: { id: identity, revision: 0 }, vc_binding: { mode: 'COMPANION', displayName: label } } },
             { name: card.name, is_user: false, mes: '合成语音验收。', extra: {} }], force: false });
     assert.equal(result.status, 200);
+    let desktopBinding;
+    if (standalone) {
+        const character = (await st.call('POST', '/api/characters/get', { avatar_url: card.avatar })).json;
+        const characterRef = character.data?.extensions?.vc_character_ref || crypto.randomUUID();
+        assert.equal((await st.call('POST', '/api/characters/merge-attributes', { avatar: card.avatar, data: { extensions: { vc_character_ref: characterRef } } })).status, 200);
+        desktopBinding = await voiceCall(ctx, 'POST', '/api/v1/st/bindings', { characterRef, chatIdentity: identity, displayName: label, mode: 'COMPANION' });
+        const records = (await st.call('POST', '/api/chats/get', { avatar_url: card.avatar, file_name: file })).json;
+        records[0].chat_metadata.vc_binding = { ...desktopBinding, mode: 'COMPANION', displayName: label };
+        assert.equal((await st.call('POST', '/api/chats/save', { avatar_url: card.avatar, file_name: file, chat: records })).status, 200);
+        const packet = await st.call('POST', '/api/settings/get', {}), saved = JSON.parse(packet.json.settings);
+        saved.extension_settings.EjsTemplate ||= {}; Object.assign(saved.extension_settings.EjsTemplate, { compile_workers: false, sandbox: false });
+        saved.extension_settings.vc_reply_planner = false;
+        assert.equal((await st.call('POST', '/api/settings/save', saved)).status, 200);
+    }
     const { chromium } = await import('playwright-core');
     const browser = await chromium.launch({ headless: true,args:fakeAudio?['--use-fake-device-for-media-stream','--use-fake-ui-for-media-stream']:[], ...(process.env.VC_W03_CHROMIUM_PATH ? { executablePath: process.env.VC_W03_CHROMIUM_PATH } : {}) });
     try {
-        const bc = await browser.newContext({ viewport: { width: 390, height: 844 },hasTouch:fakeAudio,permissions:fakeAudio?['microphone']:[] });
+        const bc = await browser.newContext({ viewport: standalone ? { width: 1440, height: 900 } : { width: 390, height: 844 },hasTouch:fakeAudio,permissions:fakeAudio?['microphone']:[] });
         await bc.addCookies([
             { name: 'vc_session', value: ctx.secrets.session.vcSession, url: ctx.w05.stBase },
             { name: 'vc_csrf', value: ctx.secrets.session.vcCsrf, url: ctx.w05.stBase },
         ]);
         await bc.addInitScript(() => { localStorage.setItem('vc-ui', 'on'); localStorage.setItem('vc-theme', 'light'); });
         const page = await bc.newPage();
+        if (standalone) {
+            const nativeRequests = [];
+            page.on('request', request => { const path = new URL(request.url()).pathname;
+                if (['/', '/index.html', '/script.js', '/scripts/extensions.js', '/scripts/st-context.js'].includes(path)) nativeRequests.push(path); });
+            await page.goto(ctx.w05.stBase + '/desktop/');
+            await page.waitForFunction(() => document.documentElement.dataset.vcApp === 'ready');
+            await page.locator(`[data-convo-list] [data-relationship-id="${desktopBinding.relationshipId}"]`).click();
+            await page.locator('#send_textarea').fill('合成准备'); await page.waitForFunction(() => !document.querySelector('#send_but')?.disabled);
+            await page.locator('#send_textarea').fill('');
+            return { browser, page, st, card, file, identity, settings, nativeRequests };
+        }
         await page.goto(ctx.w05.stBase);
         await page.waitForFunction(() => Boolean(window.SillyTavern?.getContext?.()?.eventSource));
         await page.waitForFunction(async () => (await import('/script.js')).settingsReady || document.querySelector('dialog[open] .onboarding'));

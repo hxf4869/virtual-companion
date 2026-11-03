@@ -8,6 +8,7 @@ export interface ConversationItem {
     sameName: boolean;
     avatar: string;
     preview: string;
+    draft?: string;
     time: string;
     timeMs?: number;
     unread: boolean;
@@ -84,7 +85,7 @@ export function Conversations(p: ConversationsProps) {
                                 </span>
                             )}
                         </span>
-                        <span className="vc-convo-preview">{row.preview}</span>
+                        <span className="vc-convo-preview">{row.draft ? <><span className="vc-danger">草稿：</span>{row.draft}</> : row.preview}</span>
                     </span>
                     {row.unread && (
                         <i

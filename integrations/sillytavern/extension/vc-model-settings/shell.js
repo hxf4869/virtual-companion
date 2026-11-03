@@ -556,7 +556,7 @@ export function mountShell(options = {}) {
     function paintConversations() {
         const desktop = doc.documentElement.dataset.vcLayout === 'desktop';
         const current = String(getContext().chatMetadata?.vc_binding?.relationshipId ?? '');
-        conversationState.rows = conversationViewItems([...rowById.values()], { desktop, current });
+        conversationState.rows = conversationViewItems([...rowById.values()], { desktop, current, getDraft: options.getConversationDraft });
         conversationView.update(conversationState);
     }
     const chatPane = body.querySelector('.vc-shell-chat'), chatNav = chatPane.querySelector('header'), chatBody = chatPane.querySelector('.vc-shell-chat-body');
@@ -1225,6 +1225,7 @@ export function mountShell(options = {}) {
             frameState.characterImport = undefined; frame.update(frameState);
         };
     };
+    root.refreshConversationDrafts = paintConversations;
     root.updateConversationSnapshot = snap => {
         const row = snap?.preview && rowById.get(snap.relationshipId);
         if (!row) return;

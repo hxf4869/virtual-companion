@@ -5,9 +5,10 @@ import { createChatEngine, runtimeSettings, projectModelSettings } from './engin
 import { createDesktopSession } from './session.js';
 import { readGenerationResponse } from './engine/response.js';
 import { prepareSourceIdentities } from '/scripts/vc-runtime/source-identity.js';
+import { installDesktopMedia } from './media.js';
 import { initializeCards } from './cards/index.js';
 
-export async function prepareChatRuntime({ client, context, choosePersona, readInput, onChange, onTakeDraft, onRestoreDraft, onConflict }) {
+export async function prepareChatRuntime({ client, context, choosePersona, readInput, onChange, onTakeDraft, onRestoreDraft, onConflict, paint = () => {} }) {
     const [purposes, providers, packet] = await Promise.all([fetchModelPurposes(), fetchProviders(), client.request('/api/settings/get', {})]);
     const decision = resolveForegroundProjection(purposes, providers);
     if (!decision.eligible) throw new Error('请先配置聊天模型。');
@@ -20,5 +21,6 @@ export async function prepareChatRuntime({ client, context, choosePersona, readI
         initializeCards: args => initializeCards({ ...args, packet }) });
     const session = createDesktopSession({ client, context, engine, prepareSourceIdentities, readResponse: readGenerationResponse,
         choosePersona, onChange, onTakeDraft, onRestoreDraft, onConflict });
-    return Object.assign(session, { renderMessage: engine.cards.renderMessage, mountCardActions: engine.cards.mountCardActions });
+    const media = installDesktopMedia({ context, session, paint });
+    return Object.assign(session, media, { renderMessage: engine.cards.renderMessage, mountCardActions: engine.cards.mountCardActions });
 }

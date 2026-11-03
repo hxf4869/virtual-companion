@@ -348,10 +348,11 @@ export function conversationTitle(row) {
 }
 
 // 与壳层共享数据投影，UI只由生产React组件渲染。
-export function conversationViewItems(rows, { desktop = false, current = '' } = {}) {
+export function conversationViewItems(rows, { desktop = false, current = '', getDraft } = {}) {
     return rows.map(row => {
-        const title = conversationTitle(row);
+        const title = conversationTitle(row), draft = getDraft?.(row);
         return { id: row.relationshipId, name: title.name, instance: desktop ? instanceTail(title.name, title.inst) : title.inst,
+            ...(draft ? { draft } : {}),
             label: [title.name, title.inst, row.unread ? '未读' : ''].filter(Boolean).join('，'), sameName: Boolean(title.inst && title.inst === title.name),
             avatar: avatarUrl(row.avatar), preview: String(row.preview || '').trim().replace(/<[^<>]*>/g, '').trim() || '暂无消息',
             time: desktop && Number.isFinite(row.timeMs) ? desktopConversationTime(row.timeMs) || row.time : row.time || '', timeMs: row.timeMs,

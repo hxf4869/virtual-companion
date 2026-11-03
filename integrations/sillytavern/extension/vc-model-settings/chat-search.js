@@ -74,7 +74,7 @@ export function collectMatches(chat, query) {
 
 const highlightSupported = () => typeof globalThis.CSS?.highlights?.set === 'function' && typeof globalThis.Highlight === 'function';
 
-export function mountChatSearch({ pane, getContext, onOpenChange, doc = pane.ownerDocument } = {}) {
+export function mountChatSearch({ pane, getContext, onOpenChange, beforeSearch, doc = pane.ownerDocument } = {}) {
     const navbar = pane?.querySelector('.vc-navbar'), capsule = pane?.querySelector('.vc-chat-search-tools'), toolbar = pane?.querySelector('.vc-chat-toolbar-views');
     if (!navbar || !capsule || !toolbar) return null;
     ensureStyle(doc);
@@ -114,8 +114,10 @@ export function mountChatSearch({ pane, getContext, onOpenChange, doc = pane.own
         const at = matches.findIndex((m) => m.range.getBoundingClientRect().bottom >= top);
         return at < 0 ? matches.length - 1 : at;
     }
-    function run({ keep = false } = {}) {
+    async function run({ keep = false } = {}) {
         timer = 0;
+        const requested = query; if (beforeSearch) await beforeSearch();
+        if (dead || requested !== query) return;
         if (dead) return;
         const chat = chatNode();
         matches = chat && query ? collectMatches(chat, query.trim()) : [];

@@ -93,20 +93,24 @@ export async function waitForVoiceClip(id, { timeoutMs = VOICE_REPLY_WAIT_MS, fe
 export function chatVoiceAvailable(context){return policyCache?.id===String(context?.chatMetadata?.vc_binding?.relationshipId||'') && policyCache?.value?.available && policyCache.value.relationship.voiceFrequency!=='OFF';}
 export function installChatVoice(options) {
     integration = options;
-    const refresh=async()=>{try{await options.ready;await loadVoicePolicy(options.getContext());}catch{ /* Capability remains hidden while unavailable. */ }};
-    void refresh();const context=options.getContext();context.eventSource?.on(context.eventTypes.CHAT_CHANGED,()=>void refresh());
-    globalThis.addEventListener?.('vc-voice-settings-changed',()=>{invalidateVoicePolicy();void refresh();});
+    const refresh=async()=>{try{if(dead)return;await options.ready;if(dead)return;await loadVoicePolicy(options.getContext());}catch{ /* Capability remains hidden while unavailable. */ }};
+    let dead=false;const changed=()=>{if(!dead)void refresh();},settingsChanged=()=>{invalidateVoicePolicy();changed();};
+    void refresh();const context=options.getContext();context.eventSource?.on(context.eventTypes.CHAT_CHANGED,changed);
+    globalThis.addEventListener?.('vc-voice-settings-changed',settingsChanged);
+    return {destroy(){dead=true;if(integration===options){integration=null;invalidateVoicePolicy();}context.eventSource?.removeListener(context.eventTypes.CHAT_CHANGED,changed);globalThis.removeEventListener?.('vc-voice-settings-changed',settingsChanged);}};
 }
 
 // state由实际聊天工具栏控制器持有；本模块仅产生状态，不再改写React按钮。
 export async function readReplyAloud(index, state, onChange) {
     if (!integration || state.busy) return;
-    const context = integration.getContext(), message = context.chat?.[index], text = message?.mes;
+    const owner = integration, context = owner.getContext(), message = context.chat?.[index], text = message?.mes;
     if (!message || message.is_user || message.is_system || context.chatMetadata?.vc_binding?.mode !== 'COMPANION') return;
-    const relationshipId = String(context.chatMetadata.vc_binding.relationshipId || '');
+    const relationshipId = String(context.chatMetadata.vc_binding.relationshipId || ''), chat = context.chat, identity = context.chatMetadata.vc_f2?.id, candidate = message.swipe_id ?? 0;
+    let sourceId = message.extra?.vc_source?.id;
     const active = () => {
-        const current = integration.getContext();
-        return current.chat === context.chat && current.chat[index] === message && message.mes === text
+        if (integration !== owner) return false;
+        const current = owner.getContext();
+        return current.chat === chat && current.chatMetadata.vc_f2?.id === identity && current.chat[index] === message && (message.swipe_id ?? 0) === candidate && (!sourceId || message.extra?.vc_source?.id === sourceId) && message.mes === text
             && String(current.chatMetadata?.vc_binding?.relationshipId || '') === relationshipId;
     };
     const paint = patch => { Object.assign(state, patch); if (active()) onChange(); };
@@ -122,7 +126,7 @@ export async function readReplyAloud(index, state, onChange) {
         const { voicePlayer } = await import('./voice.js');
         if (!active()) return;
         const policy = await loadVoicePolicy(context); if (!active() || !policy?.available) return;
-        await integration.saveChat(); if (!active()) return;
+        await owner.saveChat(); if (!active()) return;
         const identity = context.chatMetadata.vc_f2?.id, source = message.extra?.vc_source;
         if (!identity || !source?.id || !message.vc_message_id) return;
         await reconcileSTSources([identity]); if (!active()) return;
@@ -137,13 +141,14 @@ export async function readReplyAloud(index, state, onChange) {
 
 export async function requestChatVoice(index) {
     if (!integration) return;
-    const context = integration.getContext();
+    const owner = integration, context = owner.getContext();
     if (context?.chatMetadata?.vc_binding?.mode !== 'COMPANION') return;
     const message = context.chat?.[index];
     if (!message || message.is_user || message.is_system) return;
     const text = message.mes;
-    const identity = context.chatMetadata?.vc_f2?.id;
-    const active = () => integration.getContext()?.chat === context.chat && context.chat[index] === message && message.mes === text;
+    const identity = context.chatMetadata?.vc_f2?.id, chat = context.chat, candidate = message.swipe_id ?? 0;
+    let sourceId = message.extra?.vc_source?.id;
+    const active = () => integration === owner && owner.getContext()?.chat === chat && owner.getContext()?.chatMetadata.vc_f2?.id === identity && chat[index] === message && (message.swipe_id ?? 0) === candidate && (!sourceId || message.extra?.vc_source?.id === sourceId) && message.mes === text;
     const refresh = () => globalThis.document?.dispatchEvent(new Event('vc-chat-retry'));
     let attempted = false;
     try {
@@ -151,15 +156,15 @@ export async function requestChatVoice(index) {
         if (!active() || !policy) return;
         // Save first: native F2 assigns stable message/candidate identities and
         // the backend will read this same persisted source, never browser text.
-        await integration.saveChat();
+        await owner.saveChat();
         if (!active()) return;
-        const source = message.extra?.vc_source;
+        const source = message.extra?.vc_source; sourceId = source?.id;
         if (!identity || !source?.id || !message.vc_message_id) return;
         if (message.extra?.vc_voice_attempt?.sourceId === source.id) return;
         const plan = planChatVoice({ chat: context.chat, index, ...policy });
         message.extra ||= {};
         message.extra.vc_voice_attempt = { sourceId: source.id, sent: plan.send };
-        if (!plan.send) { await integration.saveChat(); return; }
+        if (!plan.send) { await owner.saveChat(); return; }
         attempted = true;
         await reconcileSTSources([identity]);
         if (!active()) return;
@@ -179,7 +184,7 @@ export async function requestChatVoice(index) {
     } finally {
         if (attempted && active()) {
             refresh();
-            try { await integration.saveChat(); } catch { /* Native save already surfaces a revision conflict. */ }
+            try { await owner.saveChat(); } catch { /* Native save already surfaces a revision conflict. */ }
         }
     }
 }

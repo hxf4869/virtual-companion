@@ -15,6 +15,7 @@ import { ToolManager } from '../engine/tools.js';
 import { substituteParamsExtended, getCharacterCardFields } from '../engine/st/script.js';
 import { MacrosParser } from '../engine/st/scripts/macros.js';
 import { openSheet } from '../../../ui/sheet.js';
+import { renderReplyBubbles } from '../../../chat-view.js';
 import { confirmAlert } from '../../../ui/alert.js';
 
 const base = new URL('./', import.meta.url).href;
@@ -42,9 +43,12 @@ export async function initializeCards(options) {
         const node = nodes.get(index)?.node;
         if (node && message) {
             releaseFrames(node);
-            node.innerHTML = messageFormatting(message.extra?.display_text || message.mes,
+            const entry = nodes.get(index); for (const timer of entry.timers) clearTimeout(timer); entry.timers.clear();
+            node.removeAttribute('data-vc-segs'); node.classList.remove('vc-segmented');
+            const content = document.createElement('div'); content.className = 'mes_text';
+            content.innerHTML = messageFormatting(message.extra?.display_text || message.mes,
                 message.name, message.is_system, message.is_user, index);
-            node.dataset.vcFormatted = '';
+            content.dataset.vcFormatted = ''; node.replaceChildren(content);
         }
     }
     async function render(index, { evaluate = true } = {}) {
@@ -55,6 +59,11 @@ export async function initializeCards(options) {
         if (evaluate) await ejs.render(String(index), 'desktop', true);
         if (!valid(node, index, message, ticket)) return;
         mountHtml(node, index);
+        if (context.chatMetadata.vc_binding?.mode === 'COMPANION' && !message.is_user && !message.is_system
+            && !message.extra?.vc_voice && !/<%|<script|```/.test(message.mes) && !node.querySelector('iframe, img, video, .TH-render')) {
+            renderReplyBubbles(node, message.extra?.display_text || message.mes, { reducedMotion: message !== context.liveReply,
+                schedule(fn, delay) { const timer = setTimeout(() => { entry.timers.delete(timer); if (valid(node, index, message, ticket)) fn(); }, delay); entry.timers.add(timer); } });
+        }
     }
     const track = promise => { pending.add(promise); void promise.finally(() => pending.delete(promise)).catch(() => {}); return promise; };
     const schedule = (index, options) => {
@@ -177,12 +186,12 @@ export async function initializeCards(options) {
     return { surface, bindContext: refreshCardHost, closeScripts,
         mountCardActions(node) { node.append(actions); return () => actions.remove(); },
         renderMessage(node, index, message, streaming) {
-            const ticket = ++serial; nodes.set(index, { node, ticket });
+            const ticket = ++serial; nodes.set(index, { node, ticket, timers: new Set() });
             const ready = context.chat[index] === message;
-            if (!ready) { delete node.dataset.vcFormatted; node.textContent = message.mes; }
+            if (!ready) { const text = document.createElement('div'); text.className = 'mes_text'; text.textContent = message.mes; node.replaceChildren(text); }
             else if (streaming) format(index, message);
             else void schedule(index).catch(() => { node.setAttribute('data-card-error', ''); });
-            return () => { if (nodes.get(index)?.ticket === ticket) nodes.delete(index); releaseFrames(node); node.replaceChildren(); };
+            return () => { const entry = nodes.get(index); if (entry?.ticket === ticket) { for (const timer of entry.timers) clearTimeout(timer); nodes.delete(index); } node.removeAttribute('data-vc-segs'); releaseFrames(node); node.replaceChildren(); };
         },
         async settle() { await Promise.allSettled([...pending]); await Promise.all(context.cardWrites?.splice(0) || []); },
         async open({ signal } = {}) {

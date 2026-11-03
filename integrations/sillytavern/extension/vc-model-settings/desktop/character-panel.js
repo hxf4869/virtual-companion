@@ -15,7 +15,7 @@ import { SPRING } from '../ui/motion.js';
 import { reducedMotion } from './transition.js';
 import { mountCharacterPanelView, recalledEditorContent } from './build/index.js';
 
-export function mountCharacterPanel({ shell, getContext, aurora } = {}) {
+export function mountCharacterPanel({ shell, getContext, beforeSearch, aurora } = {}) {
     if (document.documentElement.dataset.vcLayout !== 'desktop') return null;
     const pane = shell.querySelector('.vc-shell-chat'), host = shell.querySelector('.vc-shell-extensions');
     const tools = pane.querySelector('.vc-capsule-tools');
@@ -34,7 +34,7 @@ export function mountCharacterPanel({ shell, getContext, aurora } = {}) {
     };
     const view = mountCharacterPanelView(panel, tools, p), toggle = view.toggle;
     const memorySection = panel.querySelector('.vc-desk-character-section');
-    const search = mountChatSearch({ pane, getContext, onOpenChange: on => shell.setChatSearchOpen(on) });
+    const search = mountChatSearch({ pane, getContext, beforeSearch, onOpenChange: on => shell.setChatSearchOpen(on) });
     const paint = () => { if (!dead) view.update(p); };
     function setOpen(open, animate = true) {
         if (dead) return;

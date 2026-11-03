@@ -2,115 +2,115 @@
 
 
 /* ---- 纯 emoji 放大：去掉气泡底色 ---- */
-html[data-vc-layout="desktop"] body.vc-ui [data-vc-emoji="1"] { --vc-emoji-size: var(--vc-emoji-size-1); }
-html[data-vc-layout="desktop"] body.vc-ui [data-vc-emoji="2"] { --vc-emoji-size: var(--vc-emoji-size-2); }
-html[data-vc-layout="desktop"] body.vc-ui [data-vc-emoji="3"] { --vc-emoji-size: var(--vc-emoji-size-3); }
-html[data-vc-layout="desktop"] body.vc-ui #chat > .mes[data-vc-emoji] .mes_text,
-html[data-vc-layout="desktop"] body.vc-ui #chat > .mes .vc-seg[data-vc-emoji] { font-size: var(--vc-emoji-size) !important; /* 压过气泡字号 */ line-height: 1.2 !important; }
-html[data-vc-layout="desktop"] body.vc-ui.vc-reply-bubble #chat > .mes[data-vc-emoji] .mes_text,
-html[data-vc-layout="desktop"] body.vc-ui.vc-reply-bubble #chat > .mes .vc-seg[data-vc-emoji],
-html[data-vc-layout="desktop"] body.vc-ui.vc-reply-bubble #chat > .mes[is_user="true"][data-vc-emoji] > .mes_block {
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) [data-vc-emoji="1"] { --vc-emoji-size: var(--vc-emoji-size-1); }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) [data-vc-emoji="2"] { --vc-emoji-size: var(--vc-emoji-size-2); }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) [data-vc-emoji="3"] { --vc-emoji-size: var(--vc-emoji-size-3); }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) #chat > .mes[data-vc-emoji] .mes_text,
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) #chat > .mes .vc-seg[data-vc-emoji] { font-size: var(--vc-emoji-size) !important; /* 压过气泡字号 */ line-height: 1.2 !important; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui).vc-reply-bubble #chat > .mes[data-vc-emoji] .mes_text,
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui).vc-reply-bubble #chat > .mes .vc-seg[data-vc-emoji],
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui).vc-reply-bubble #chat > .mes[is_user="true"][data-vc-emoji] > .mes_block {
   background: none !important; box-shadow: none !important; /* 压过气泡底色 */
 }
-html[data-vc-layout="desktop"] body.vc-ui.vc-reply-bubble #chat > .mes[data-vc-emoji] .mes_text,
-html[data-vc-layout="desktop"] body.vc-ui.vc-reply-bubble #chat > .mes .vc-seg[data-vc-emoji] { padding: 0 !important; color: inherit; }
-html[data-vc-layout="desktop"] body.vc-ui.vc-reply-bubble #chat > .mes[is_user="true"][data-vc-emoji] > .mes_block { padding: 0 !important; }
-html[data-vc-layout="desktop"] body.vc-ui.vc-reply-bubble #chat > .mes[is_user="true"][data-vc-emoji] .mes_text { color: var(--vc-ink); }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui).vc-reply-bubble #chat > .mes[data-vc-emoji] .mes_text,
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui).vc-reply-bubble #chat > .mes .vc-seg[data-vc-emoji] { padding: 0 !important; color: inherit; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui).vc-reply-bubble #chat > .mes[is_user="true"][data-vc-emoji] > .mes_block { padding: 0 !important; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui).vc-reply-bubble #chat > .mes[is_user="true"][data-vc-emoji] .mes_text { color: var(--vc-ink); }
 
 /* ---- 输入区表情按钮：与麦克风同一格，叠在输入框右侧 ---- */
-html[data-vc-layout="desktop"] body.vc-ui #send_form #vc-emoji-btn {
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) #send_form #vc-emoji-btn {
   position: relative; z-index: 2; grid-column: 2; grid-row: 1; justify-self: end; align-self: center;
   display: grid; place-items: center; width: 40px; height: 40px; padding: 0; margin-inline-end: 48px;
   border: 0; border-radius: var(--vc-radius-pill); background: none; color: var(--vc-ink-2);
 }
-html[data-vc-layout="desktop"] body.vc-ui #send_form #vc-emoji-btn[hidden] { display: none; }
-html[data-vc-layout="desktop"] body.vc-ui #send_form #vc-emoji-btn:hover,
-html[data-vc-layout="desktop"] body.vc-ui #send_form #vc-emoji-btn[aria-expanded="true"] { background: var(--vc-hover-fill); color: var(--vc-ink); }
-html[data-vc-layout="desktop"] body.vc-ui #send_form #vc-emoji-btn:focus-visible { outline: 2px solid var(--vc-accent-text); outline-offset: var(--vc-space-xxs); }
-html[data-vc-layout="desktop"] body.vc-ui #send_form:has(#vc-emoji-btn:not([hidden])) #send_textarea { padding-right: 96px; }
-html[data-vc-layout="desktop"] body.vc-ui #send_form.vc-voice-input-available #vc-emoji-btn { margin-inline-end: 88px; }
-html[data-vc-layout="desktop"] body.vc-ui #send_form.vc-voice-input-available:has(#vc-emoji-btn:not([hidden])) #send_textarea { padding-right: 144px; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) #send_form #vc-emoji-btn[hidden] { display: none; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) #send_form #vc-emoji-btn:hover,
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) #send_form #vc-emoji-btn[aria-expanded="true"] { background: var(--vc-hover-fill); color: var(--vc-ink); }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) #send_form #vc-emoji-btn:focus-visible { outline: 2px solid var(--vc-accent-text); outline-offset: var(--vc-space-xxs); }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) #send_form:has(#vc-emoji-btn:not([hidden])) #send_textarea { padding-right: 96px; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) #send_form.vc-voice-input-available #vc-emoji-btn { margin-inline-end: 88px; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) #send_form.vc-voice-input-available:has(#vc-emoji-btn:not([hidden])) #send_textarea { padding-right: 144px; }
 
 /* ---- 表情 / 贴纸面板 ---- */
-html[data-vc-layout="desktop"] body.vc-ui #vc-emoji-panel {
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) #vc-emoji-panel {
   position: fixed; z-index: var(--vc-z-popup); display: flex; flex-direction: column; gap: var(--vc-space-xs);
   box-sizing: border-box; width: var(--vc-emoji-panel-w); padding: var(--vc-space-sm);
   border-radius: var(--vc-radius-lg); border: 1px solid var(--vc-rim); background: var(--vc-glass-3);
   -webkit-backdrop-filter: blur(var(--vc-blur-3)); backdrop-filter: blur(var(--vc-blur-3));
   box-shadow: var(--vc-shadow-overlay); animation: vc-react-in var(--vc-dur-quick) var(--vc-spring);
 }
-html[data-vc-layout="desktop"] body.vc-ui #vc-emoji-panel .vc-emoji-search {
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) #vc-emoji-panel .vc-emoji-search {
   box-sizing: border-box; width: 100%; height: 36px; padding: 0 var(--vc-space-sm); border: 0;
   border-radius: var(--vc-radius-sm); background: var(--vc-fill); color: var(--vc-ink); font: inherit; font-size: var(--vc-fs-subhead);
 }
-html[data-vc-layout="desktop"] body.vc-ui #vc-emoji-panel .vc-emoji-search::placeholder { color: var(--vc-ink-2); }
-html[data-vc-layout="desktop"] body.vc-ui #vc-emoji-panel .vc-emoji-search:focus-visible { outline: 2px solid var(--vc-accent-text); outline-offset: 0; }
-html[data-vc-layout="desktop"] body.vc-ui #vc-emoji-panel .vc-emoji-segment { margin: 0; }
-html[data-vc-layout="desktop"] body.vc-ui #vc-emoji-panel .vc-emoji-body { max-height: 264px; overflow-y: auto; overflow-x: hidden; }
-html[data-vc-layout="desktop"] body.vc-ui #vc-emoji-panel h3 { margin: var(--vc-space-xs) var(--vc-space-xxs) var(--vc-space-xxs); font-size: var(--vc-fs-caption); font-weight: 600; color: var(--vc-ink-2); }
-html[data-vc-layout="desktop"] body.vc-ui #vc-emoji-panel .vc-emoji-grid { display: grid; grid-template-columns: repeat(auto-fill, var(--vc-emoji-cell)); gap: var(--vc-space-xxs); justify-content: space-between; }
-html[data-vc-layout="desktop"] body.vc-ui #vc-emoji-panel .vc-emoji-cell {
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) #vc-emoji-panel .vc-emoji-search::placeholder { color: var(--vc-ink-2); }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) #vc-emoji-panel .vc-emoji-search:focus-visible { outline: 2px solid var(--vc-accent-text); outline-offset: 0; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) #vc-emoji-panel .vc-emoji-segment { margin: 0; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) #vc-emoji-panel .vc-emoji-body { max-height: 264px; overflow-y: auto; overflow-x: hidden; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) #vc-emoji-panel h3 { margin: var(--vc-space-xs) var(--vc-space-xxs) var(--vc-space-xxs); font-size: var(--vc-fs-caption); font-weight: 600; color: var(--vc-ink-2); }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) #vc-emoji-panel .vc-emoji-grid { display: grid; grid-template-columns: repeat(auto-fill, var(--vc-emoji-cell)); gap: var(--vc-space-xxs); justify-content: space-between; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) #vc-emoji-panel .vc-emoji-cell {
   display: grid; place-items: center; width: var(--vc-emoji-cell); height: var(--vc-emoji-cell); padding: 0;
   border: 0; border-radius: var(--vc-radius-xs); background: none; color: var(--vc-ink); font-size: var(--vc-fs-title-2); line-height: 1; overflow: hidden;
 }
-html[data-vc-layout="desktop"] body.vc-ui #vc-emoji-panel .vc-emoji-cell.is-sticker { font-size: var(--vc-fs-caption); }
-html[data-vc-layout="desktop"] body.vc-ui #vc-emoji-panel .vc-emoji-cell img { width: 100%; height: 100%; object-fit: contain; }
-html[data-vc-layout="desktop"] body.vc-ui #vc-emoji-panel .vc-emoji-cell:hover,
-html[data-vc-layout="desktop"] body.vc-ui #vc-emoji-panel .vc-emoji-cell:focus-visible { background: var(--vc-hover-fill); outline: none; }
-html[data-vc-layout="desktop"] body.vc-ui #vc-emoji-panel .vc-emoji-none { margin: var(--vc-space-lg) 0; text-align: center; color: var(--vc-ink-2); font-size: var(--vc-fs-subhead); }
-html[data-vc-layout="desktop"] body.vc-ui #vc-emoji-panel .vc-emoji-zoom {
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) #vc-emoji-panel .vc-emoji-cell.is-sticker { font-size: var(--vc-fs-caption); }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) #vc-emoji-panel .vc-emoji-cell img { width: 100%; height: 100%; object-fit: contain; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) #vc-emoji-panel .vc-emoji-cell:hover,
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) #vc-emoji-panel .vc-emoji-cell:focus-visible { background: var(--vc-hover-fill); outline: none; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) #vc-emoji-panel .vc-emoji-none { margin: var(--vc-space-lg) 0; text-align: center; color: var(--vc-ink-2); font-size: var(--vc-fs-subhead); }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) #vc-emoji-panel .vc-emoji-zoom {
   position: absolute; z-index: 1; display: grid; place-items: center; width: var(--vc-emoji-zoom); height: var(--vc-emoji-zoom);
   border-radius: var(--vc-radius-md); background: var(--vc-glass-3); box-shadow: var(--vc-shadow-panel); pointer-events: none; overflow: hidden;
 }
-html[data-vc-layout="desktop"] body.vc-ui #vc-emoji-panel .vc-emoji-zoom[hidden] { display: none; }
-html[data-vc-layout="desktop"] body.vc-ui #vc-emoji-panel .vc-emoji-zoom .vc-emoji-cell { width: 100%; height: 100%; font-size: var(--vc-fs-large-title); background: none; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) #vc-emoji-panel .vc-emoji-zoom[hidden] { display: none; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) #vc-emoji-panel .vc-emoji-zoom .vc-emoji-cell { width: 100%; height: 100%; font-size: var(--vc-fs-large-title); background: none; }
 
 /* ---- 回应条 ---- */
-html[data-vc-layout="desktop"] body.vc-ui #vc-react-bar {
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) #vc-react-bar {
   position: fixed; z-index: calc(var(--vc-z-menu) + 1); display: flex; align-items: center; gap: var(--vc-space-xxs);
   padding: var(--vc-space-xxs); border-radius: var(--vc-radius-pill); border: 1px solid var(--vc-rim);
   background: var(--vc-glass-3); box-shadow: var(--vc-shadow-panel);
   -webkit-backdrop-filter: blur(var(--vc-blur-2)); backdrop-filter: blur(var(--vc-blur-2));
 }
-html[data-vc-layout="desktop"] body.vc-ui #vc-react-bar[hidden] { display: none; }
-html[data-vc-layout="desktop"] body.vc-ui #vc-react-bar.is-enter { animation: vc-react-in var(--vc-dur-press) var(--vc-spring); }
-html[data-vc-layout="desktop"] body.vc-ui #vc-react-bar button {
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) #vc-react-bar[hidden] { display: none; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) #vc-react-bar.is-enter { animation: vc-react-in var(--vc-dur-press) var(--vc-spring); }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) #vc-react-bar button {
   display: grid; place-items: center; width: 32px; height: 32px; padding: 0; border: 0; border-radius: var(--vc-radius-pill);
   background: none; color: var(--vc-ink-2); font-size: var(--vc-fs-headline); line-height: 1;
   transition: transform var(--vc-dur-press) var(--vc-spring), background var(--vc-dur-press) ease;
 }
-html[data-vc-layout="desktop"] body.vc-ui #vc-react-bar button:hover { background: var(--vc-hover-fill); transform: scale(1.2); }
-html[data-vc-layout="desktop"] body.vc-ui #vc-react-bar button[aria-pressed="true"] { background: var(--vc-select-fill); }
-html[data-vc-layout="desktop"] body.vc-ui #vc-react-bar button:focus-visible { outline: 2px solid var(--vc-accent-text); outline-offset: 0; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) #vc-react-bar button:hover { background: var(--vc-hover-fill); transform: scale(1.2); }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) #vc-react-bar button[aria-pressed="true"] { background: var(--vc-select-fill); }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) #vc-react-bar button:focus-visible { outline: 2px solid var(--vc-accent-text); outline-offset: 0; }
 
 /* ---- 回应徽标：在气泡下沿，角色靠左、用户靠右 ---- */
-html[data-vc-layout="desktop"] body.vc-ui #chat > .mes[data-vc-react] > .mes_block { position: relative; overflow: visible; /* 宿主为 hidden，会裁掉骑在下沿的徽标 */ margin-bottom: var(--vc-space-md) !important; /* 压过气泡 margin: 0 */ }
-html[data-vc-layout="desktop"] body.vc-ui #chat > .mes > .mes_block > .vc-react-badge {
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) #chat > .mes[data-vc-react] > .mes_block { position: relative; overflow: visible; /* 宿主为 hidden，会裁掉骑在下沿的徽标 */ margin-bottom: var(--vc-space-md) !important; /* 压过气泡 margin: 0 */ }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) #chat > .mes > .mes_block > .vc-react-badge {
   position: absolute; left: var(--vc-space-xs); bottom: calc(-1 * var(--vc-space-sm)); z-index: 1; display: inline-flex; gap: 2px;
   padding: 1px var(--vc-space-xs); border-radius: var(--vc-radius-pill); background: var(--vc-glass-3); box-shadow: var(--vc-shadow-panel);
   font-size: var(--vc-react-size); line-height: 1.3; white-space: nowrap; pointer-events: none;
 }
-html[data-vc-layout="desktop"] body.vc-ui #chat > .mes[is_user="true"] > .mes_block > .vc-react-badge { left: auto; right: var(--vc-space-xs); }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) #chat > .mes[is_user="true"] > .mes_block > .vc-react-badge { left: auto; right: var(--vc-space-xs); }
 
 /* ---- 拍一拍：系统行与头像轻晃 ---- */
-html[data-vc-layout="desktop"] body.vc-ui #chat > .mes[data-vc-kind="pat"] { display: flex !important; /* 压过消息行网格 */ justify-content: center; }
-html[data-vc-layout="desktop"] body.vc-ui #chat > .mes[data-vc-kind="pat"] :is(.mesAvatarWrapper, .ch_name, .mes_buttons, .vc-mes-tools) { display: none !important; }
-html[data-vc-layout="desktop"] body.vc-ui #chat > .mes[data-vc-kind="pat"] > .mes_block { width: auto !important; max-width: none !important; padding: 0 !important; background: none !important; box-shadow: none !important; margin: 0; }
-html[data-vc-layout="desktop"] body.vc-ui #chat > .mes[data-vc-kind="pat"] .mes_text { padding: 0 !important; background: none !important; box-shadow: none !important; text-align: center; color: var(--vc-ink-2); font-size: var(--vc-fs-footnote) !important; line-height: 1.4 !important; }
-html[data-vc-layout="desktop"] body.vc-ui .vc-pat-shake { animation: vc-pat-shake var(--vc-pat-dur) var(--vc-ease-out); transform-origin: 50% 80%; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) #chat > .mes[data-vc-kind="pat"] { display: flex !important; /* 压过消息行网格 */ justify-content: center; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) #chat > .mes[data-vc-kind="pat"] :is(.mesAvatarWrapper, .ch_name, .mes_buttons, .vc-mes-tools) { display: none !important; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) #chat > .mes[data-vc-kind="pat"] > .mes_block { width: auto !important; max-width: none !important; padding: 0 !important; background: none !important; box-shadow: none !important; margin: 0; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) #chat > .mes[data-vc-kind="pat"] .mes_text { padding: 0 !important; background: none !important; box-shadow: none !important; text-align: center; color: var(--vc-ink-2); font-size: var(--vc-fs-footnote) !important; line-height: 1.4 !important; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-pat-shake { animation: vc-pat-shake var(--vc-pat-dur) var(--vc-ease-out); transform-origin: 50% 80%; }
 
 /* ---- 关键词轻特效：浮层在 #chat 之外 ---- */
-html[data-vc-layout="desktop"] body.vc-ui #vc-react-fx { position: fixed; inset: 0; z-index: var(--vc-z-popup); pointer-events: none; overflow: hidden; }
-html[data-vc-layout="desktop"] body.vc-ui #vc-react-fx .vc-fx-piece {
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) #vc-react-fx { position: fixed; inset: 0; z-index: var(--vc-z-popup); pointer-events: none; overflow: hidden; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) #vc-react-fx .vc-fx-piece {
   position: absolute; width: 7px; height: 11px; border-radius: var(--vc-radius-particle); opacity: 0;
   animation: vc-fx-fly var(--vc-fx-dur) var(--vc-ease-out) forwards; animation-delay: calc(var(--i) * var(--vc-fx-stagger));
 }
-html[data-vc-layout="desktop"] body.vc-ui #vc-react-fx .vc-fx-piece.is-confetti:nth-child(5n+1) { background: var(--vc-fx-1); }
-html[data-vc-layout="desktop"] body.vc-ui #vc-react-fx .vc-fx-piece.is-confetti:nth-child(5n+2) { background: var(--vc-fx-2); }
-html[data-vc-layout="desktop"] body.vc-ui #vc-react-fx .vc-fx-piece.is-confetti:nth-child(5n+3) { background: var(--vc-fx-3); }
-html[data-vc-layout="desktop"] body.vc-ui #vc-react-fx .vc-fx-piece.is-confetti:nth-child(5n+4) { background: var(--vc-fx-4); }
-html[data-vc-layout="desktop"] body.vc-ui #vc-react-fx .vc-fx-piece.is-confetti:nth-child(5n) { background: var(--vc-fx-5); }
-html[data-vc-layout="desktop"] body.vc-ui #vc-react-fx .vc-fx-piece.is-stars { width: auto; height: auto; background: none; color: var(--vc-fx-star); font-size: var(--vc-fs-headline); line-height: 1; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) #vc-react-fx .vc-fx-piece.is-confetti:nth-child(5n+1) { background: var(--vc-fx-1); }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) #vc-react-fx .vc-fx-piece.is-confetti:nth-child(5n+2) { background: var(--vc-fx-2); }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) #vc-react-fx .vc-fx-piece.is-confetti:nth-child(5n+3) { background: var(--vc-fx-3); }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) #vc-react-fx .vc-fx-piece.is-confetti:nth-child(5n+4) { background: var(--vc-fx-4); }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) #vc-react-fx .vc-fx-piece.is-confetti:nth-child(5n) { background: var(--vc-fx-5); }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) #vc-react-fx .vc-fx-piece.is-stars { width: auto; height: auto; background: none; color: var(--vc-fx-star); font-size: var(--vc-fs-headline); line-height: 1; }
 
 @keyframes vc-react-in { from { opacity: 0; transform: translateY(8px) scale(.96); } to { opacity: 1; transform: none; } }
 @keyframes vc-pat-shake { 0%, 100% { transform: rotate(0); } 25% { transform: rotate(-10deg); } 50% { transform: rotate(8deg); } 75% { transform: rotate(-5deg); } }
@@ -120,15 +120,15 @@ html[data-vc-layout="desktop"] body.vc-ui #vc-react-fx .vc-fx-piece.is-stars { w
   100% { opacity: 0; transform: translate(var(--dx), calc(var(--dy) + var(--fall))) scale(.8) rotate(calc(var(--rot) * 2)); }
 }
 @media (prefers-reduced-motion: reduce) {
-  html[data-vc-layout="desktop"] body.vc-ui :is(.vc-pat-shake, #vc-react-fx .vc-fx-piece, #vc-react-bar.is-enter, #vc-emoji-panel) { animation: none; }
+  :is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) :is(.vc-pat-shake, #vc-react-fx .vc-fx-piece, #vc-react-bar.is-enter, #vc-emoji-panel) { animation: none; }
 }
 html[data-vc-reduced-motion="true"][data-vc-layout="desktop"] body.vc-ui :is(.vc-pat-shake, #vc-react-fx .vc-fx-piece, #vc-react-bar.is-enter, #vc-emoji-panel) { animation: none; }
-html[data-vc-layout="desktop"] body.vc-ui .vc-who [data-who-avatar] { user-select: none; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-who [data-who-avatar] { user-select: none; }
 
 /* ================= UX-28 建议回复：输入区上方的玻璃 chip ================= */
-html[data-vc-layout="desktop"] body.vc-ui #vc-suggest { display: flex; flex-wrap: wrap; gap: var(--vc-space-xs); padding: 0 var(--vc-space-xxs) var(--vc-space-xs); }
-html[data-vc-layout="desktop"] body.vc-ui #vc-suggest[hidden] { display: none; }
-html[data-vc-layout="desktop"] body.vc-ui #vc-suggest .vc-suggest-chip {
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) #vc-suggest { display: flex; flex-wrap: wrap; gap: var(--vc-space-xs); padding: 0 var(--vc-space-xxs) var(--vc-space-xs); }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) #vc-suggest[hidden] { display: none; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) #vc-suggest .vc-suggest-chip {
   max-width: 100%; padding: var(--vc-space-xs) var(--vc-space-md); border: 1px solid var(--vc-rim); border-radius: var(--vc-radius-pill);
   background: var(--vc-glass-3); color: var(--vc-ink); font: inherit; font-size: var(--vc-fs-subhead); line-height: var(--vc-lh-subhead);
   -webkit-backdrop-filter: blur(var(--vc-blur-2)); backdrop-filter: blur(var(--vc-blur-2));
@@ -136,90 +136,90 @@ html[data-vc-layout="desktop"] body.vc-ui #vc-suggest .vc-suggest-chip {
   animation: vc-suggest-in var(--vc-suggest-dur) var(--vc-spring) both; animation-delay: calc(var(--i, 0) * var(--vc-suggest-stagger));
   transition: background var(--vc-dur-press) var(--vc-ease-out);
 }
-html[data-vc-layout="desktop"] body.vc-ui #vc-suggest .vc-suggest-chip:hover { background: var(--vc-hover-fill); }
-html[data-vc-layout="desktop"] body.vc-ui #vc-suggest .vc-suggest-chip:focus-visible { outline: 2px solid var(--vc-accent-text); outline-offset: var(--vc-space-xxs); }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) #vc-suggest .vc-suggest-chip:hover { background: var(--vc-hover-fill); }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) #vc-suggest .vc-suggest-chip:focus-visible { outline: 2px solid var(--vc-accent-text); outline-offset: var(--vc-space-xxs); }
 @keyframes vc-suggest-in { from { opacity: 0; transform: translateY(var(--vc-suggest-rise)); } to { opacity: 1; transform: none; } }
 
 /* ================= UX-29 标题栏副标题、状态卡、里程碑卡 ================= */
-html[data-vc-layout="desktop"] body.vc-ui .vc-who-copy [data-who-sub]:not([hidden]) + [data-who-inst] { display: none; /* 副标题优先，实例名在状态卡里 */ }
-html[data-vc-layout="desktop"] body.vc-ui .vc-who [data-who-avatar][role="button"] { cursor: pointer; border-radius: var(--vc-radius-pill); }
-html[data-vc-layout="desktop"] body.vc-ui .vc-who [data-who-avatar][role="button"]:focus-visible { outline: 2px solid var(--vc-accent-text); outline-offset: var(--vc-space-xxs); }
-html[data-vc-layout="desktop"] body.vc-ui #vc-status-card {
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-who-copy [data-who-sub]:not([hidden]) + [data-who-inst] { display: none; /* 副标题优先，实例名在状态卡里 */ }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-who [data-who-avatar][role="button"] { cursor: pointer; border-radius: var(--vc-radius-pill); }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-who [data-who-avatar][role="button"]:focus-visible { outline: 2px solid var(--vc-accent-text); outline-offset: var(--vc-space-xxs); }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) #vc-status-card {
   position: fixed; z-index: var(--vc-z-popup); display: flex; flex-direction: column; gap: var(--vc-space-md); box-sizing: border-box;
   width: var(--vc-card-w); max-width: calc(100vw - 2 * var(--vc-space-md)); padding: var(--vc-space-lg); outline: none;
   border-radius: var(--vc-radius-lg); border: 1px solid var(--vc-rim); background: var(--vc-glass-3); color: var(--vc-ink);
   -webkit-backdrop-filter: blur(var(--vc-blur-3)); backdrop-filter: blur(var(--vc-blur-3)); box-shadow: var(--vc-shadow-overlay);
   animation: vc-react-in var(--vc-dur-quick) var(--vc-spring);
 }
-html[data-vc-layout="desktop"] body.vc-ui #vc-status-card p { margin: 0; }
-html[data-vc-layout="desktop"] body.vc-ui #vc-status-card .vc-sc-head { display: flex; align-items: center; gap: var(--vc-space-md); }
-html[data-vc-layout="desktop"] body.vc-ui #vc-status-card .vc-sc-head b { display: block; font-size: var(--vc-fs-title-2); line-height: var(--vc-lh-title-2); }
-html[data-vc-layout="desktop"] body.vc-ui #vc-status-card .vc-sc-head small { display: block; color: var(--vc-ink-2); font-size: var(--vc-fs-subhead); }
-html[data-vc-layout="desktop"] body.vc-ui #vc-status-card .vc-sc-avatar {
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) #vc-status-card p { margin: 0; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) #vc-status-card .vc-sc-head { display: flex; align-items: center; gap: var(--vc-space-md); }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) #vc-status-card .vc-sc-head b { display: block; font-size: var(--vc-fs-title-2); line-height: var(--vc-lh-title-2); }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) #vc-status-card .vc-sc-head small { display: block; color: var(--vc-ink-2); font-size: var(--vc-fs-subhead); }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) #vc-status-card .vc-sc-avatar {
   position: relative; flex: none; width: var(--vc-card-avatar); height: var(--vc-card-avatar); border-radius: var(--vc-radius-pill);
   overflow: hidden; background: var(--vc-select-fill); color: var(--vc-accent-text);
 }
-html[data-vc-layout="desktop"] body.vc-ui #vc-status-card .vc-sc-face { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: grid; place-items: center; font-size: var(--vc-fs-title-1); font-weight: 600; }
-html[data-vc-layout="desktop"] body.vc-ui #vc-status-card .vc-sc-face.is-incoming { animation: vc-face-in var(--vc-face-fade) var(--vc-ease-out) both; }
-html[data-vc-layout="desktop"] body.vc-ui #vc-status-card .vc-sc-title { font-size: var(--vc-fs-headline); font-weight: 600; line-height: var(--vc-lh-headline); }
-html[data-vc-layout="desktop"] body.vc-ui #vc-status-card .vc-sc-sub { margin-top: var(--vc-sub-gap); color: var(--vc-ink-2); font-size: var(--vc-fs-subhead); }
-html[data-vc-layout="desktop"] body.vc-ui #vc-status-card .vc-sc-label { color: var(--vc-ink-2); font-size: var(--vc-fs-footnote); }
-html[data-vc-layout="desktop"] body.vc-ui #vc-status-card .vc-sc-text { margin-top: var(--vc-sub-gap); font-size: var(--vc-fs-body); }
-html[data-vc-layout="desktop"] body.vc-ui #vc-status-card .vc-sc-doing,
-html[data-vc-layout="desktop"] body.vc-ui #vc-status-card .vc-sc-bars,
-html[data-vc-layout="desktop"] body.vc-ui #vc-status-card .vc-sc-days { padding-top: var(--vc-space-md); border-top: 1px solid var(--vc-separator); }
-html[data-vc-layout="desktop"] body.vc-ui #vc-status-card .vc-sc-bars { display: flex; flex-direction: column; gap: var(--vc-space-sm); }
-html[data-vc-layout="desktop"] body.vc-ui #vc-status-card .vc-sc-bar { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: var(--vc-space-md); color: var(--vc-ink-2); font-size: var(--vc-fs-subhead); }
-html[data-vc-layout="desktop"] body.vc-ui #vc-status-card .vc-sc-bar > i { display: block; height: var(--vc-bar-h); border-radius: var(--vc-radius-pill); background: var(--vc-fill); overflow: hidden; }
-html[data-vc-layout="desktop"] body.vc-ui #vc-status-card .vc-sc-bar > i > b { display: block; width: calc(var(--v) * 1%); height: 100%; border-radius: inherit; background: var(--vc-meter-fill); }
-html[data-vc-layout="desktop"] body.vc-ui #vc-status-card .vc-sc-next { margin-top: var(--vc-space-xs); color: var(--vc-ink-2); font-size: var(--vc-fs-subhead); }
-html[data-vc-layout="desktop"] body.vc-ui #vc-status-card .vc-sc-actions { display: grid; grid-template-columns: 1fr 1fr; gap: var(--vc-space-sm); }
-html[data-vc-layout="desktop"] body.vc-ui #vc-status-card .vc-sc-action { width: 100%; justify-content: center; background: var(--vc-fill); color: var(--vc-ink); border-radius: var(--vc-radius-md); }
-html[data-vc-layout="desktop"] body.vc-ui #vc-status-card .vc-sc-action:hover { background: var(--vc-hover-fill); }
-html[data-vc-layout="desktop"] body.vc-ui #vc-status-card .vc-sc-action:focus-visible { outline: 2px solid var(--vc-accent-text); outline-offset: var(--vc-space-xxs); }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) #vc-status-card .vc-sc-face { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: grid; place-items: center; font-size: var(--vc-fs-title-1); font-weight: 600; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) #vc-status-card .vc-sc-face.is-incoming { animation: vc-face-in var(--vc-face-fade) var(--vc-ease-out) both; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) #vc-status-card .vc-sc-title { font-size: var(--vc-fs-headline); font-weight: 600; line-height: var(--vc-lh-headline); }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) #vc-status-card .vc-sc-sub { margin-top: var(--vc-sub-gap); color: var(--vc-ink-2); font-size: var(--vc-fs-subhead); }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) #vc-status-card .vc-sc-label { color: var(--vc-ink-2); font-size: var(--vc-fs-footnote); }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) #vc-status-card .vc-sc-text { margin-top: var(--vc-sub-gap); font-size: var(--vc-fs-body); }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) #vc-status-card .vc-sc-doing,
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) #vc-status-card .vc-sc-bars,
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) #vc-status-card .vc-sc-days { padding-top: var(--vc-space-md); border-top: 1px solid var(--vc-separator); }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) #vc-status-card .vc-sc-bars { display: flex; flex-direction: column; gap: var(--vc-space-sm); }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) #vc-status-card .vc-sc-bar { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: var(--vc-space-md); color: var(--vc-ink-2); font-size: var(--vc-fs-subhead); }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) #vc-status-card .vc-sc-bar > i { display: block; height: var(--vc-bar-h); border-radius: var(--vc-radius-pill); background: var(--vc-fill); overflow: hidden; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) #vc-status-card .vc-sc-bar > i > b { display: block; width: calc(var(--v) * 1%); height: 100%; border-radius: inherit; background: var(--vc-meter-fill); }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) #vc-status-card .vc-sc-next { margin-top: var(--vc-space-xs); color: var(--vc-ink-2); font-size: var(--vc-fs-subhead); }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) #vc-status-card .vc-sc-actions { display: grid; grid-template-columns: 1fr 1fr; gap: var(--vc-space-sm); }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) #vc-status-card .vc-sc-action { width: 100%; justify-content: center; background: var(--vc-fill); color: var(--vc-ink); border-radius: var(--vc-radius-md); }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) #vc-status-card .vc-sc-action:hover { background: var(--vc-hover-fill); }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) #vc-status-card .vc-sc-action:focus-visible { outline: 2px solid var(--vc-accent-text); outline-offset: var(--vc-space-xxs); }
 @keyframes vc-face-in { from { opacity: 0; } to { opacity: 1; } }
 
 /* 里程碑：居中玻璃卡，标题在 .mes_text，副文由 .mes_block 的 data-vc-sub 经伪元素显示 */
-html[data-vc-layout="desktop"] body.vc-ui #chat > .mes[data-vc-kind="milestone"] { display: flex !important; /* 压过消息行网格 */ justify-content: center; }
-html[data-vc-layout="desktop"] body.vc-ui #chat > .mes[data-vc-kind="milestone"] :is(.mesAvatarWrapper, .ch_name, .mes_buttons, .vc-mes-tools) { display: none !important; }
-html[data-vc-layout="desktop"] body.vc-ui #chat > .mes[data-vc-kind="milestone"] > .mes_block {
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) #chat > .mes[data-vc-kind="milestone"] { display: flex !important; /* 压过消息行网格 */ justify-content: center; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) #chat > .mes[data-vc-kind="milestone"] :is(.mesAvatarWrapper, .ch_name, .mes_buttons, .vc-mes-tools) { display: none !important; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) #chat > .mes[data-vc-kind="milestone"] > .mes_block {
   width: var(--vc-milestone-w) !important; max-width: 100% !important; box-sizing: border-box; margin: var(--vc-space-md) 0 !important; padding: var(--vc-space-lg) !important; text-align: center;
   border-radius: var(--vc-radius-lg) !important; border: 1px solid var(--vc-rim); background: var(--vc-glass-3) !important; box-shadow: var(--vc-shadow-panel) !important;
   -webkit-backdrop-filter: blur(var(--vc-blur-2)); backdrop-filter: blur(var(--vc-blur-2));
 }
-html[data-vc-layout="desktop"] body.vc-ui #chat > .mes[data-vc-kind="milestone"] .mes_text { padding: 0 !important; background: none !important; box-shadow: none !important; text-align: center; color: var(--vc-ink); font-size: var(--vc-fs-title-2) !important; font-weight: 600; line-height: var(--vc-lh-title-2) !important; }
-html[data-vc-layout="desktop"] body.vc-ui #chat > .mes[data-vc-kind="milestone"] > .mes_block[data-vc-sub]::after { content: attr(data-vc-sub); display: block; margin-top: var(--vc-space-xs); color: var(--vc-ink-2); font-size: var(--vc-fs-subhead); }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) #chat > .mes[data-vc-kind="milestone"] .mes_text { padding: 0 !important; background: none !important; box-shadow: none !important; text-align: center; color: var(--vc-ink); font-size: var(--vc-fs-title-2) !important; font-weight: 600; line-height: var(--vc-lh-title-2) !important; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) #chat > .mes[data-vc-kind="milestone"] > .mes_block[data-vc-sub]::after { content: attr(data-vc-sub); display: block; margin-top: var(--vc-space-xs); color: var(--vc-ink-2); font-size: var(--vc-fs-subhead); }
 
 /* ================= UX-30 站内横幅与未读 ================= */
-html[data-vc-layout="desktop"] body.vc-ui #vc-notify { position: fixed; top: var(--vc-space-md); right: var(--vc-space-md); z-index: var(--vc-z-toast); width: var(--vc-notify-w); max-width: calc(100vw - 2 * var(--vc-space-md)); }
-html[data-vc-layout="desktop"] body.vc-ui #vc-notify .vc-notify-card {
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) #vc-notify { position: fixed; top: var(--vc-space-md); right: var(--vc-space-md); z-index: var(--vc-z-toast); width: var(--vc-notify-w); max-width: calc(100vw - 2 * var(--vc-space-md)); }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) #vc-notify .vc-notify-card {
   display: flex; align-items: center; gap: var(--vc-space-md); box-sizing: border-box; width: 100%; padding: var(--vc-space-md); text-align: left; font: inherit; color: var(--vc-ink);
   border-radius: var(--vc-radius-lg); border: 1px solid var(--vc-rim); background: var(--vc-glass-3); box-shadow: var(--vc-shadow-overlay);
   -webkit-backdrop-filter: blur(var(--vc-blur-3)); backdrop-filter: blur(var(--vc-blur-3)); cursor: pointer;
   animation: vc-notify-in var(--vc-notify-in) var(--vc-spring) both;
 }
-html[data-vc-layout="desktop"] body.vc-ui #vc-notify .vc-notify-card.is-out { animation: vc-notify-out var(--vc-notify-out) var(--vc-ease-out) both; }
-html[data-vc-layout="desktop"] body.vc-ui #vc-notify .vc-notify-card:focus-visible { outline: 2px solid var(--vc-accent-text); outline-offset: var(--vc-space-xxs); }
-html[data-vc-layout="desktop"] body.vc-ui #vc-notify .vc-notify-avatar { flex: none; display: grid; place-items: center; width: var(--vc-notify-avatar); height: var(--vc-notify-avatar); border-radius: var(--vc-radius-pill); object-fit: cover; background: var(--vc-select-fill); color: var(--vc-accent-text); font-weight: 600; }
-html[data-vc-layout="desktop"] body.vc-ui #vc-notify .vc-notify-copy { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: var(--vc-sub-gap); }
-html[data-vc-layout="desktop"] body.vc-ui #vc-notify .vc-notify-top { display: flex; align-items: baseline; justify-content: space-between; gap: var(--vc-space-sm); }
-html[data-vc-layout="desktop"] body.vc-ui #vc-notify .vc-notify-top b { font-size: var(--vc-fs-subhead); font-weight: 600; }
-html[data-vc-layout="desktop"] body.vc-ui #vc-notify .vc-notify-top small { color: var(--vc-ink-2); font-size: var(--vc-fs-caption); }
-html[data-vc-layout="desktop"] body.vc-ui #vc-notify .vc-notify-text { color: var(--vc-ink-2); font-size: var(--vc-fs-subhead); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) #vc-notify .vc-notify-card.is-out { animation: vc-notify-out var(--vc-notify-out) var(--vc-ease-out) both; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) #vc-notify .vc-notify-card:focus-visible { outline: 2px solid var(--vc-accent-text); outline-offset: var(--vc-space-xxs); }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) #vc-notify .vc-notify-avatar { flex: none; display: grid; place-items: center; width: var(--vc-notify-avatar); height: var(--vc-notify-avatar); border-radius: var(--vc-radius-pill); object-fit: cover; background: var(--vc-select-fill); color: var(--vc-accent-text); font-weight: 600; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) #vc-notify .vc-notify-copy { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: var(--vc-sub-gap); }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) #vc-notify .vc-notify-top { display: flex; align-items: baseline; justify-content: space-between; gap: var(--vc-space-sm); }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) #vc-notify .vc-notify-top b { font-size: var(--vc-fs-subhead); font-weight: 600; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) #vc-notify .vc-notify-top small { color: var(--vc-ink-2); font-size: var(--vc-fs-caption); }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) #vc-notify .vc-notify-text { color: var(--vc-ink-2); font-size: var(--vc-fs-subhead); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @keyframes vc-notify-in { from { opacity: 0; transform: translateY(calc(-1 * var(--vc-notify-rise))); } to { opacity: 1; transform: none; } }
 @keyframes vc-notify-out { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateY(calc(-1 * var(--vc-notify-rise))); } }
 
 /* 会话行：数字计数（99+）取代小圆点；侧栏「聊天」小圆点 */
-html[data-vc-layout="desktop"] body.vc-ui .vc-convo-unread[data-count] {
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-convo-unread[data-count] {
   display: inline-grid; place-items: center; width: auto; min-width: var(--vc-unread-h); height: var(--vc-unread-h); margin-top: 0; padding: 0 var(--vc-space-xs); box-sizing: border-box;
   background: var(--vc-accent); color: var(--vc-on-accent); font-size: var(--vc-fs-caption); font-style: normal; font-weight: 600; line-height: 1;
 }
-html[data-vc-layout="desktop"] body.vc-ui .vc-convo-unread[data-count]::after { content: attr(data-count); }
-html[data-vc-layout="desktop"] body.vc-ui .vc-side-item .vc-side-dot { position: absolute; top: var(--vc-space-sm); right: var(--vc-space-sm); width: var(--vc-dot); height: var(--vc-dot); border-radius: var(--vc-radius-pill); background: var(--vc-accent); pointer-events: none; }
-html[data-vc-layout="desktop"] body.vc-ui .vc-side-item .vc-side-dot[hidden] { display: none; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-convo-unread[data-count]::after { content: attr(data-count); }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-side-item .vc-side-dot { position: absolute; top: var(--vc-space-sm); right: var(--vc-space-sm); width: var(--vc-dot); height: var(--vc-dot); border-radius: var(--vc-radius-pill); background: var(--vc-accent); pointer-events: none; }
+:is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-side-item .vc-side-dot[hidden] { display: none; }
 html:not([data-vc-layout="desktop"]) body.vc-ui .vc-side-dot { display: none; }
 
 @media (prefers-reduced-motion: reduce) {
-  html[data-vc-layout="desktop"] body.vc-ui :is(#vc-suggest .vc-suggest-chip, #vc-status-card, .vc-sc-face.is-incoming, #vc-notify .vc-notify-card) { animation: none; }
+  :is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) :is(#vc-suggest .vc-suggest-chip, #vc-status-card, .vc-sc-face.is-incoming, #vc-notify .vc-notify-card) { animation: none; }
 }
 html[data-vc-reduced-motion="true"][data-vc-layout="desktop"] body.vc-ui :is(#vc-suggest .vc-suggest-chip, #vc-status-card, .vc-sc-face.is-incoming, #vc-notify .vc-notify-card) { animation: none; }
