@@ -40,16 +40,12 @@ import { mountConsentGate } from './consent.js';
 import { enableVcUi, readVcUiFlag } from './ui/theme.js';
 import { mountDrawerPages, openAccountData, openDrawerPage, openModelSettings } from './drawers.js';
 import { mountChatView, openChatMoreMenu, openMemoryInspector, posterTarget } from './chat-view.js';
-import { mountChatCompose } from './chat-compose.js';
-import { mountChatReact } from './chat-react.js';
 import { mountLightbox } from './lightbox.js';
 import { openMessageSource } from './message-source.js';
 import { installStickers } from './stickers.js';
 import { installChatVoice } from './voice-chat.js';
 import { installVoiceInput } from './voice-input.js';
 import { openGlobalVoiceSettings, refreshVoiceAvailability, voiceSettingsAvailable } from './voice-settings.js';
-import { mountDesktopShell } from './desktop/host.js';
-import { mountSettingsShell } from './desktop/settings-shell.js';
 export { openAccountData, openDrawerPage, openModelSettings };
 export { mountChatView, openChatMoreMenu, openMemoryInspector, posterTarget };
 
@@ -76,8 +72,6 @@ function mountVcUi() {
     if (!readVcUiFlag()) return;
     enableVcUi();
     mountChatView({ getContext });
-    mountChatCompose({ getContext });
-    mountChatReact({ getContext });
     mountLightbox({ getContext });
     if (!document.head) return;
     for (const [id, file] of [
@@ -87,13 +81,11 @@ function mountVcUi() {
         ['vc-companion-persona-css', './companion-persona.css'],
         ['vc-stickers-css', './stickers.css'],
         ['vc-voice-css', './voice.css'],
-        ...['base', 'chat', 'chat-react', 'rich', 'characters', 'memory', 'inbox', 'story', 'settings'].map(name => [`vc-desktop-${name}-css`, `./desktop/${name}.css`]),
     ]) {
         if (document.getElementById(id)) continue;
         const link = document.createElement('link');
         link.id = id;
         link.rel = 'stylesheet';
-        if (file.startsWith('./desktop/')) link.media = '(min-width: 744px)';
         link.href = new URL(file, import.meta.url).href;
         document.head.append(link);
     }
@@ -181,7 +173,13 @@ export async function init() {
     }});
     let reportMemory = () => {};
     const memory = createMemoryInjection({ getContext, recall: recallSTMemory,
-        ensureBinding: async () => (await bindingReady).ensureBound(),
+        ensureBinding: async () => {
+            const binding = await (await bindingReady).ensureBound();
+            // Card hooks can leave metadata waiting on its native debounce timer.
+            // Commit it through F2 before capturing the authoritative recall revision.
+            await getContext().saveMetadata();
+            return binding;
+        },
         onStatus: (message) => { reportMemory(message); if (message.includes('跳过')) globalThis.toastr?.warning(message); },
     });
     reportMemory = mountMemoryControls({ getContext, reset: memory.reset });
@@ -370,7 +368,6 @@ export async function init() {
         });
         const shell = mountShell({
             getContext,
-            mountDesktopSettings: container => mountSettingsShell(container, { getContext }),
             openModels: (opener) => { if (!pageController.isOpen()) pageController.open(opener); },
             openCharacters: openCharactersLegacy,
             openInbox: openInboxOnce,
@@ -398,7 +395,6 @@ export async function init() {
             openConversation: row => shell.openConversation(row),
             loadNative: () => import('../../../../script.js'),
         });
-        if (shell) mountDesktopShell({ shell, getContext });
     }
     void mountConsentGate();
     void maybeStartOnboarding({

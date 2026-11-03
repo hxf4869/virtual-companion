@@ -35,10 +35,33 @@ export function parseAccountHandles(raw) {
     return map;
 }
 
+// 手机界面（ADR-0011）：uni-app H5 产物，同源在 /m/ 提供；只读产物目录内的文件。
+const MOBILE_TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',
+    '.svg': 'image/svg+xml', '.png': 'image/png', '.json': 'application/json', '.woff2': 'font/woff2', '.ttf': 'font/ttf', '.ico': 'image/x-icon' };
+export function serveMobile(mobileDir, req, res) {
+    let rel;
+    try { rel = decodeURIComponent(req.path.slice('/m/'.length)) || 'index.html'; } catch { return fail(res, 400, 'INVALID_REQUEST', '路径无效'); }
+    if (rel.split('/').some((part) => part === '' || part === '..' || part.includes('\\') || part.includes('\0'))) {
+        return fail(res, 404, 'NOT_FOUND_OR_FORBIDDEN', '未找到此入口');
+    }
+    const root = path.resolve(mobileDir);
+    const file = path.resolve(root, rel);
+    if (!file.startsWith(root + path.sep)) return fail(res, 404, 'NOT_FOUND_OR_FORBIDDEN', '未找到此入口');
+    if (!fs.existsSync(path.join(root, 'index.html'))) return fail(res, 503, 'VC_MOBILE_UNAVAILABLE', '手机界面暂不可用');
+    let stat;
+    try { stat = fs.statSync(file); } catch { return fail(res, 404, 'NOT_FOUND_OR_FORBIDDEN', '未找到此入口'); }
+    if (!stat.isFile()) return fail(res, 404, 'NOT_FOUND_OR_FORBIDDEN', '未找到此入口');
+    res.setHeader('Content-Type', MOBILE_TYPES[path.extname(file)] || 'application/octet-stream');
+    res.setHeader('Cache-Control', rel.startsWith('assets/') ? 'private, max-age=31536000, immutable' : 'no-store');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    return res.end(req.method === 'HEAD' ? undefined : fs.readFileSync(file));
+}
+
 export function createHostAuth({ config, getUser, accountVersion, indexHtml, fetchImpl = fetch,
     sourceBridge, accountData,
     desktopHtml = () => fs.readFileSync(new URL('../desktop/index.html', import.meta.url), 'utf8'),
-    authDir = fileURLToPath(new URL('../auth/', import.meta.url)) }) {
+    authDir = fileURLToPath(new URL('../auth/', import.meta.url)),
+    mobileDir = fileURLToPath(new URL('../mobile-dist/', import.meta.url)) }) {
     async function proxyAuth(req, res, suffix) {
         if (!AUTH_API.some(([method, pattern]) => req.method === method && pattern.test(suffix))) return fail(res, 404, 'NOT_FOUND_OR_FORBIDDEN', '未找到此入口');
         const headers = { Accept: 'application/json', Cookie: goCookies(req.headers.cookie) };
@@ -66,7 +89,9 @@ export function createHostAuth({ config, getUser, accountVersion, indexHtml, fet
             }
             if (req.method === 'GET' && req.path === '/index.html') return res.redirect(303, '/');
             if (req.method === 'GET' && ['/desktop', '/desktop/index.html'].includes(req.path)) return res.redirect(303, '/desktop/');
-            const pageEntry = req.method === 'GET' && ['/', '/desktop/'].includes(req.path);
+            if (req.method === 'GET' && ['/native', '/native/index.html'].includes(req.path)) return res.redirect(303, '/native/');
+            if (req.method === 'GET' && req.path === '/m') return res.redirect(303, '/m/');
+            const pageEntry = req.method === 'GET' && ['/', '/desktop/', '/native/', '/m/'].includes(req.path);
             if (req.method === 'GET' && ['/auth', '/login'].includes(req.path)) return res.redirect(303, '/auth/');
             if (req.method === 'GET' && ASSETS.has(req.path)) {
                 const file = ASSETS.get(req.path);
@@ -119,13 +144,21 @@ export function createHostAuth({ config, getUser, accountVersion, indexHtml, fet
             if (accountData && !await accountData.enter(identity.accountId, handle, res)) return fail(res, 409, 'ACCOUNT_DELETION_PENDING', '账号删除处理中，聊天已暂停。');
             res.setHeader('Cache-Control', 'no-store'); res.setHeader('Vary', 'Cookie');
             if (req.method === 'GET' && req.path === '/auth/access') return res.json({ allowed: true });
+            if (['GET', 'HEAD'].includes(req.method) && req.path.startsWith('/m/')) return serveMobile(mobileDir, req, res);
             if (pageEntry) {
                 // 只输出非凭据十进制 ID；getRequestHeaders 在模块初始化时捕获，旧页不能冒用新 cookie。
                 const meta = `<meta name="vc-account-id" content="${identity.accountId}"><meta name="vc-session-id" content="${identity.sessionId}">`;
                 res.setHeader('Cache-Control', 'no-store'); res.setHeader('Vary', 'Cookie');
                 res.setHeader('Content-Type', 'text/html; charset=utf-8');
-                if (req.path === '/desktop/') return res.end(desktopHtml().replace('<head>', `<head>${meta}`));
-                return res.end(indexHtml().replace('<head>', `<head>${meta}`).replace('<div id="preloader"></div>', STARTUP_HTML));
+                if (['/', '/desktop/'].includes(req.path)) return res.end(desktopHtml().replace('<head>', `<head>${meta}`));
+                let html = indexHtml();
+                if (req.path === '/native/') {
+                    // jQuery UI backgrounds tabs must remain local despite the root asset base.
+                    const href = (req.originalUrl || req.url || req.path).replace(/[&"<>']/g, ch => ({ '&': '&amp;', '"': '&quot;', '<': '&lt;', '>': '&gt;', "'": '&#39;' }[ch]));
+                    html = html.replace(/href="#(bg_global_tab|bg_chat_tab)"/g, `href="${href}#$1"`);
+                }
+                return res.end(html.replace('<head>', `<head>${req.path === '/native/' ? '<base href="/">' : ''}${meta}`)
+                    .replace('<div id="preloader"></div>', req.path === '/native/' ? STARTUP_HTML.replace('href="/"', 'href="/native/"') : STARTUP_HTML));
             }
             next();
         } catch { fail(res, 503, 'VC_AUTH_UNAVAILABLE', '登录服务暂不可用，请稍后重试'); }

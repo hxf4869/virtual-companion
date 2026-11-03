@@ -294,7 +294,9 @@ W03 集成收口的受管链路：ST 前台生成经 server plugin 桥接 Go 后
 
 ## 桌面 React 自有界面
 
-后台自有壳层、设置、角色/记忆/陪伴、聊天控件与剧情富内容使用React和Base UI，沿用原CSS/token与ST原生边界。构建、挂载约定和各批视觉/行为命令见[desktop-ui开发说明](desktop-ui/README.md)，完整范围与验收限制见[重构计划](../../docs/planning/2026-11-02-desktop-frontend-refactor-plan.md)。`npm test`与标准检查会先构建同源bundle；不依赖本机残留产物。
+正式电脑端在同源 `/` 独立启动，`/desktop/` 是同一应用的别名。React、Base UI、原 CSS/token 与 Go/ST 服务复用；桌面不加载完整 ST 页面或隐藏宿主。手机原生引擎使用明确的 `/native/`，保留原生卡片/配置消费者与同一 F2 聊天存储。构建约定见[desktop-ui 开发说明](desktop-ui/README.md)，各批结果见[唯一重构计划 §11](../../docs/planning/2026-11-02-desktop-frontend-refactor-plan.md)。`npm test` 与标准检查先重建同源 bundle。
+
+手机源码仍在 `mb-mobile`，地址适配为 `993fb625`；本分支不合入该分支的手机业务或 Go 变更。联合受管验收在手机工作树运行既有 `npm --prefix mobile run build:h5`，将生成的 `server-plugin/virtual-companion/mobile-dist/` 复制到当前插件同路径，再运行原 `assemble-managed` / `accept-managed`。产物固定覆盖一份、忽略不提交；缺少 H5 时 `/m/` 明确返回 503，不能拿桌面根页充当手机引擎。联合发布须带该新版 H5，本轮未进行生产镜像构建或部署。
 
 ## 浏览器验收（scripts/accept.mjs）
 

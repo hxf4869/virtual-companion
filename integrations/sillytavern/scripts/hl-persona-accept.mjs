@@ -162,7 +162,7 @@ export async function sceneHlPersona(ctx) {
             notes.push(`fail ${req.url().replace(base, '').slice(0, 120)}`);
             pending.delete(req.url().replace(base, ''));
         });
-        await page.goto(base, { waitUntil: 'domcontentloaded', timeout: 60000 });
+        await page.goto(base + '/native/', { waitUntil: 'domcontentloaded', timeout: 60000 });
         await page.waitForFunction(() => {
             const area = document.querySelector('dialog[open].popup textarea');
             const shown = area && area.getClientRects().length > 0 && getComputedStyle(area).visibility !== 'hidden';

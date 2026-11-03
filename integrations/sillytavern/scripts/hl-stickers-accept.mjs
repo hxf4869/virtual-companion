@@ -268,7 +268,7 @@ export async function sceneHlStickers(ctx) {
         });
         const page = await bc.newPage();
         page.setDefaultTimeout(120000);
-        await page.goto(ctx.w05.stBase, { waitUntil: 'domcontentloaded' });
+        await page.goto(ctx.w05.stBase + '/native/', { waitUntil: 'domcontentloaded' });
         await nativeReady(page);
         await page.evaluate((itemPath) => {
             const context = window.SillyTavern.getContext();

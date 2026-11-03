@@ -127,7 +127,7 @@ export async function sceneStoryOutbound(ctx) {
             await page.screenshot({ path: file });
             ctx.screenshots.push(file);
         };
-        await page.goto(rt.ST_BASE, { waitUntil: 'domcontentloaded' });
+        await page.goto(rt.ST_BASE + '/native/', { waitUntil: 'domcontentloaded' });
         await waitFor(async () => page.evaluate(async () => (await import('/script.js')).settingsReady || Boolean(document.querySelector('dialog[open] .onboarding'))), { timeoutMs: 60000, label: 'ST 设置或欢迎页' });
         const onboarding = page.locator('dialog[open].popup').filter({ has: page.locator('.onboarding') });
         if (await onboarding.count()) {

@@ -142,7 +142,7 @@ export async function sceneF3Settings(ctx) {
         ]);
         const page = await browserContext.newPage();
         const pageErrors = trackPageErrors(page);
-        await page.goto(base, { waitUntil: 'domcontentloaded', timeout: 60000 });
+        await page.goto(base + '/native/', { waitUntil: 'domcontentloaded', timeout: 60000 });
         await page.waitForFunction(() => {
             const area = document.querySelector('dialog[open].popup textarea');
             const shown = area && area.getClientRects().length > 0 && getComputedStyle(area).visibility !== 'hidden';

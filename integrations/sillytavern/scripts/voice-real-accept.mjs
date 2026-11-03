@@ -47,7 +47,7 @@ export async function sceneVoiceReal(ctx) {
             { name: 'vc_csrf', value: ctx.secrets.session.vcCsrf, url: ctx.w05.stBase },
         ]);
         const page = await context.newPage();
-        await page.goto(ctx.w05.stBase);
+        await page.goto(ctx.w05.stBase + '/native/');
         await page.waitForFunction(() => window.SillyTavern?.getContext?.()?.eventSource);
         const onboarding = page.locator('dialog[open].popup').filter({ has: page.locator('.onboarding') });
         if (await onboarding.count()) {

@@ -249,7 +249,7 @@ export async function sceneAuthBrowser(ctx) {
         const download = await downloadPromise;
         assert.equal(download.suggestedFilename(), 'recovery-codes.txt');
         assert.equal(await page.locator('#finish-login').isDisabled(), false);
-        await page.click('#finish-login'); await page.waitForURL(stBase + '/'); await nativeReady(page);
+        await page.click('#finish-login'); await page.waitForURL(stBase + '/'); await page.goto(stBase + '/native/'); await nativeReady(page);
         assert.equal(await page.locator('meta[name=vc-account-id]').getAttribute('content'), secondId);
         const isolated = await page.evaluate(async (file) => {
             const { getRequestHeaders } = await import('/script.js');
@@ -258,7 +258,7 @@ export async function sceneAuthBrowser(ctx) {
             return { handle: me.handle, empty: !Array.isArray(chat) || chat.length === 0 };
         }, privateFile);
         assert.deepEqual(isolated, { handle: 'vc-w05-second', empty: true }, '第二账号只读取自己的ST目录');
-        const stale = await bc.newPage(); await stale.goto(stBase); await nativeReady(stale);
+        const stale = await bc.newPage(); await stale.goto(stBase + '/native/'); await nativeReady(stale);
         const oldStatus = await stale.evaluate(async () => {
             const { getRequestHeaders } = await import('/script.js');
             return (await fetch('/api/characters/all', { method: 'POST', headers: getRequestHeaders() })).status;
@@ -310,6 +310,8 @@ export async function sceneAuthBrowser(ctx) {
         await page.click('#login-form button[type=submit]');
         await page.waitForFunction(() => Boolean(document.querySelector('meta[name="vc-account-id"]')));
         assert.equal(await page.locator('#verify-step').count(), 0);
+        await page.waitForURL(stBase + '/');
+        await page.goto(stBase + '/native/');
         await nativeReady(page);
         const accountState = await page.waitForFunction(async () => {
             try {
@@ -340,7 +342,7 @@ export async function sceneAuthBrowser(ctx) {
         await page.goto(stBase + '/auth/'); await page.fill('#account', 'w03-accept-owner'); await page.fill('#password', ctx.secrets.password); await page.click('#login-form button[type=submit]');
         await page.waitForSelector('#use-recovery:not([hidden])'); await page.click('#use-recovery');
         await page.fill('#code', ctx.secrets.recoveryCodes.shift()); await page.click('#verify-submit');
-        await page.waitForURL(stBase + '/'); await nativeReady(page);
+        await page.waitForURL(stBase + '/'); await page.goto(stBase + '/native/'); await nativeReady(page);
         assert.equal(await page.locator('meta[name=vc-account-id]').getAttribute('content'), ownerId);
         const own = await page.evaluate(async (file) => {
             const { getRequestHeaders } = await import('/script.js');
@@ -374,7 +376,7 @@ export async function sceneF2Browser(ctx) {
         await bc.addCookies([{ name: 'vc_session', value: ctx.secrets.session.vcSession, url: ctx.w05.stBase }, { name: 'vc_csrf', value: ctx.secrets.session.vcCsrf, url: ctx.w05.stBase }]);
         const pages = [await bc.newPage(), await bc.newPage()];
         for (const page of pages) {
-            await page.goto(ctx.w05.stBase); await nativeReady(page);
+            await page.goto(ctx.w05.stBase + '/native/'); await nativeReady(page);
             await page.waitForFunction((avatar) => window.SillyTavern.getContext().characters.some((c) => c.avatar === avatar), card.avatar);
             await page.evaluate(async ({ avatar, file }) => {
                 const s = await import('/script.js');

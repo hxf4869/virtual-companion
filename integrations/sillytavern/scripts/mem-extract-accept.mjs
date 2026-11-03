@@ -84,7 +84,7 @@ export async function sceneMemoryExtractProd(ctx) {
         await bc.addCookies([{ name: 'vc_session', value: ctx.secrets.session.vcSession, url: ctx.w05.stBase },
             { name: 'vc_csrf', value: ctx.secrets.session.vcCsrf, url: ctx.w05.stBase }]);
         page = await bc.newPage();
-        await page.goto(ctx.w05.stBase, { waitUntil: 'domcontentloaded' });
+        await page.goto(ctx.w05.stBase + '/native/', { waitUntil: 'domcontentloaded' });
         await nativeReady(page);
         await page.waitForFunction((avatar) => window.SillyTavern.getContext().characters.some((c) => c.avatar === avatar), card.avatar);
         await page.evaluate(async ({ avatar, file }) => {

@@ -58,12 +58,12 @@ test('UX-22 QA P2-9 / P2-14 模型页用途表：分栏对齐、16.4 控件、�
     assert.match(css, /:is\(\.vcms-local \.vc-group, \.vcms-usage-cards\.vc-group\) \{ background: var\(--vc-raised\);/);
 });
 
-test('UX-22 QA P2-10 / P2-11 / P2-12 酒馆抽屉：滑杆统一、标题栏不压首行、返回钮为圆形图标钮', async () => {
+test('NF-10 酒馆配置使用自有表单焦点与控件，不再覆盖原生抽屉标题和滑杆', async () => {
     const css = strip(await ext('desktop/settings.css'));
-    assert.match(css, /input\[type="range"\] \{ filter: none !important;/);
-    assert.match(css, /\[data-vc-drawer-back\] \{ min-width: 40px; width: 40px; padding: 0;/);
-    assert.match(css, /\[data-vc-drawer-back\] > span \{ display: none; \}/);
-    assert.match(css, /> \[data-vc-drawer-nav\] \{ margin-bottom: var\(--vc-space-md\); \}/);
+    assert.doesNotMatch(css, /data-vc-drawer|vc-drawer-page|openDrawer/);
+    const tavern = strip(await ext('desktop/tavern.css'));
+    assert.match(tavern, /min-height: 44px/);
+    assert.match(tavern, /focus-visible[^}]+outline: 2px solid var\(--vc-accent\)/);
     const base = strip(await ext('desktop/base.css'));
     assert.match(base, /input\[type="checkbox"\]::before \{ content: none; \}/);
 });

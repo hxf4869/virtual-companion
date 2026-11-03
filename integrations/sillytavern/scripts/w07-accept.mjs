@@ -125,7 +125,7 @@ export async function sceneMemoryBrowser(ctx) {
                     nativeSlotPresent: JSON.stringify(body.messages || []).includes('<vc-long-term-memory>') }); } catch {}
             }
         });
-        await page.goto(ctx.w05.stBase, { waitUntil: 'domcontentloaded' });
+        await page.goto(ctx.w05.stBase + '/native/', { waitUntil: 'domcontentloaded' });
         await nativeReady(page);
         const openChat = async (file) => {
             step(file === sourceFile ? '打开并绑定来源聊天' : '打开并绑定新查询聊天');

@@ -101,3 +101,6 @@ ops/local/state/
 
 # 接手 agent 的 UI 截图复核队列（AGENTS.md「接手开发」）
 .review-queue/
+
+# NF-10 手机 H5：固定一份输出，由手机 build:h5 重建后同步。
+integrations/sillytavern/server-plugin/virtual-companion/mobile-dist/

@@ -78,7 +78,7 @@ async function assertStartup(ctx, browser, dir) {
                 const response = await route.fetch();
                 await route.fulfill({ response, body: `await new Promise(() => {});\n${await response.text()}` });
             }, { times: 1 });
-            await page.goto(ctx.w05.stBase, { waitUntil: 'commit' });
+            await page.goto(ctx.w05.stBase + '/native/', { waitUntil: 'commit' });
             await page.getByRole('status').filter({ hasText: '正在打开聊天…' }).waitFor({ state: 'visible' });
             const reload = page.getByRole('link', { name: '重新加载', exact: true });
             if (await reload.isVisible()) throw new Error('首屏不应立即要求重新加载');
@@ -313,7 +313,7 @@ export async function sceneVcUiShell(ctx) {
             if (settingsPage) await page.locator('#vc-shell [data-settings-done]:visible').click();
         };
         try {
-            await page.goto(ctx.w05.stBase, { waitUntil: 'domcontentloaded' });
+            await page.goto(ctx.w05.stBase + '/native/', { waitUntil: 'domcontentloaded' });
             await waitFor(async () => page.evaluate(async () => (await import('/script.js')).settingsReady || Boolean(document.querySelector('dialog[open] .onboarding'))), { timeoutMs: 60000, label: 'ST 设置或欢迎页' });
             const onboarding = page.locator('dialog[open].popup').filter({ has: page.locator('.onboarding') });
             if (await onboarding.count()) {

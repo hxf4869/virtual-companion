@@ -226,7 +226,7 @@ export async function sceneHlReply(ctx) {
         page = await bc.newPage();
         page.setDefaultTimeout(120000);
         console.log('[hl-reply] 打开宿主');
-        await page.goto(ctx.w05.stBase);
+        await page.goto(ctx.w05.stBase + '/native/');
         await nativeReady(page);
         await openChat(page, avatar, file);
         await page.waitForFunction(() => document.body.classList.contains('vc-ui') && document.body.classList.contains('vc-reply-bubble'));

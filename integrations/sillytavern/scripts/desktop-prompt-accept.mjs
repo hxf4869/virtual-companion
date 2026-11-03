@@ -78,7 +78,7 @@ async function scenePromptParity(ctx) {
             });
             let generation;
             try {
-                await oldPage.goto(ctx.w05.stBase, { waitUntil: 'domcontentloaded' });
+                await oldPage.goto(ctx.w05.stBase + '/native/', { waitUntil: 'domcontentloaded' });
                 await nativeReady(oldPage);
                 await openStCharacterChat(oldPage, fixture);
                 await ensureNativeConnection(oldPage);

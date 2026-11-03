@@ -117,84 +117,6 @@
 :is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-settings-profile .vc-settings-profile-head strong { font-size: var(--vc-fs-headline); font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 :is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-settings-profile > button.vc-cell { display: flex; align-items: center; width: 100%; border: 0; background: transparent; color: var(--vc-ink); text-align: left; }
 
-/* UX-22 R4：九个酒馆抽屉在设置内容区原位打开。只按九个内容根 id 选择，不写 .drawer-content 通配。
-   `.vc-settings-shell[data-drawer]` 由桌面设置壳在打开抽屉时标记；其他入口打开的抽屉保持原整页样式。 */
-html[data-vc-layout="desktop"] body.vc-ui { --vc-drawer-win: var(--vc-space-xl); --vc-drawer-left: var(--vc-native-page-left); --vc-drawer-max: 760px; }
-@media (max-width:1179px) { html[data-vc-layout="desktop"] body.vc-ui { --vc-drawer-win: var(--vc-space-md); } }
-@media (min-width:1024px) { html[data-vc-layout="desktop"] body.vc-ui { --vc-drawer-left: calc(var(--vc-native-page-left) + 240px + var(--vc-space-sm)); } }
-html[data-vc-layout="desktop"] body.vc-ui:has(.vc-settings-shell[data-drawer]) :is(#WorldInfo, #PersonaManagement, #right-nav-panel) { --vc-drawer-max: 100dvw; } /* 双栏页面不收窄到 760 */
-
-html[data-vc-layout="desktop"] body.vc-ui:has(.vc-settings-shell[data-drawer]) :is(#left-nav-panel, #rm_api_block, #AdvancedFormatting, #WorldInfo, #user-settings-block, #Backgrounds, #rm_extensions_block, #PersonaManagement, #right-nav-panel).vc-drawer-page {
-  --vc-drawer-pad: max(var(--vc-space-xl), calc((100dvw - var(--vc-drawer-left) - var(--vc-drawer-win) - var(--vc-drawer-max)) / 2));
-  font-size: var(--vc-fs-body);
-  &:is(.openDrawer, .vc-drawer-leave) {
-    inset: var(--vc-drawer-win) var(--vc-drawer-win) var(--vc-drawer-win) var(--vc-drawer-left) !important; /* 压过 drawers.css 的 inset / left / width !important */
-    width: auto !important; height: auto !important; min-height: 0 !important; /* 同上 */
-    padding: 0 var(--vc-drawer-pad) var(--vc-space-xl) !important; /* 压过 drawers.css padding */
-    border: 1px solid var(--vc-rim) !important; border-radius: var(--vc-radius-xl) !important; /* 压过 drawers.css border / radius */
-    background: var(--vc-glass-2) !important; background-image: none !important; /* 压过 drawers.css 的 canvas 底 */
-    box-shadow: var(--vc-shadow-rim-panel) !important; /* 压过 drawers.css box-shadow */
-    backdrop-filter: blur(var(--vc-blur-2)) saturate(180%) !important; /* 压过 drawers.css backdrop-filter */
-  }
-  &.vc-drawer-leave:not(.openDrawer) { opacity: 0 !important; pointer-events: none !important; } /* 切换分类时旧页立即让位，不与新页叠放 */
-  > [data-vc-drawer-nav] {
-    position: sticky; top: 0; z-index: 6; box-sizing: border-box; display: flex; align-items: center; gap: var(--vc-space-xs);
-    width: auto; height: 64px; margin: 0 calc(-1 * var(--vc-drawer-pad)); padding: 0 var(--vc-drawer-pad);
-    background: var(--vc-glass-3); box-shadow: var(--vc-shadow-divider); /* 不再叠一层模糊，常驻模糊表面预算 ≤4 */
-    .vc-nav-title { position: static; order: 0; flex: 1; transform: none; opacity: 1; text-align: left; font-size: var(--vc-fs-title-1); font-weight: 700; line-height: var(--vc-lh-title-1); }
-    .vc-nav-spacer { display: none; }
-    [data-vc-drawer-back] { order: -1; width: 40px; height: 40px; min-height: 40px; background: var(--vc-raised); box-shadow: none; }
-  }
-  > [data-vc-drawer-nav] + * { margin-top: var(--vc-space-md); }
-  h3.margin0 { display: none; } /* 宿主页内标题与标题栏重复；同行的操作按钮保留 */
-  > .spaceEvenly { flex-direction: column; align-items: stretch; } /* 提示词格式的三栏改为单列，避免控件被压到 250 宽 */
-  > .spaceEvenly > .flex1 { flex: none; width: 100%; }
-  @media (min-width:1024px) { > [data-vc-drawer-nav] [data-vc-drawer-back] { display: none; } } /* 分类列常驻时不需要返回 */
-
-  /* 标题：分组标题 17/600，位于分组上方左侧；操作留在右侧 */
-  :is(.standoutHeader, h4.title_restorable):not(.inline-drawer-header) { display: flex; align-items: center; justify-content: space-between; gap: var(--vc-space-xs); min-height: 40px; margin: var(--vc-space-xl) 0 var(--vc-space-xs) !important; color: var(--vc-ink) !important; font-size: var(--vc-fs-headline) !important; font-weight: 600 !important; } /* 压过 drawers.css 的 13px 灰色标题 */
-
-  /* 表单行：标签列 200，控件列；说明文字 13px ink-2 在行下 */
-  .range-block { display: grid; grid-template-columns: 200px minmax(0, 1fr); column-gap: var(--vc-space-xs); align-items: center; min-height: 44px; margin: 0 0 var(--vc-space-sm) !important; padding: var(--vc-space-xxs) var(--vc-space-md) !important; box-sizing: border-box; background: var(--vc-raised) !important; border: .5px solid var(--vc-raised-edge) !important; border-top-width: 0 !important; border-radius: 0 !important; } /* 压过 drawers.css 的整块分组底 */
-  .range-block:has(+ .range-block) { margin-bottom: 0 !important; } /* 连续行并成一张内卡 */
-  .range-block:not(.range-block + .range-block) { border-top-width: .5px !important; border-radius: var(--vc-radius-md) var(--vc-radius-md) 0 0 !important; } /* 压过 drawers.css 的 !important */
-  .range-block:not(:has(+ .range-block)) { border-radius: 0 0 var(--vc-radius-md) var(--vc-radius-md) !important; } /* 压过 drawers.css 的 !important */
-  .range-block:not(.range-block + .range-block):not(:has(+ .range-block)) { border-radius: var(--vc-radius-md) !important; } /* 压过 drawers.css 的 !important */
-  .range-block-title { grid-column: 1; width: auto; margin: 0 !important; justify-content: flex-start; text-align: left; font-size: var(--vc-fs-body); font-weight: 400; color: var(--vc-ink); } /* 压过 drawers.css 的 !important */
-  .range-block-range-and-counter { grid-column: 2; display: grid; grid-template-columns: minmax(0, 360px) 160px; gap: var(--vc-space-xs); align-items: center; min-width: 0; }
-  .range-block-range { min-width: 0; }
-  .range-block-counter { margin: 0; }
-  .range-block > :is(.wide100p, select, textarea, input:not([type="checkbox"])) { grid-column: 2; min-width: 0; }
-  .range-block > label.checkbox_label, .range-block > .toggle-description { grid-column: 1 / -1; }
-  label.checkbox_label:has(> input[type="checkbox"]):not(:has(> input[style*="display:none"])) { display: grid !important; grid-template-columns: 200px auto; justify-content: start; align-items: center; column-gap: var(--vc-space-xs); width: 100%; min-height: 44px; } /* 压过 drawers.css 的 inline-flex !important */
-  label.checkbox_label:has(> input[type="checkbox"]), label.checkbox_label:has(> input[type="checkbox"]) > :not(input) { color: var(--vc-ink) !important; opacity: 1 !important; } /* 压过浅色主题 drawers.css 把 label / small 统一调灰 */
-  label.checkbox_label > input[type="checkbox"] { grid-column: 2; grid-row: 1; }
-  label.checkbox_label:has(> input[type="checkbox"]) > :not(input) { grid-column: 1; grid-row: 1; }
-  .range-block > .toggle-description { width: auto; margin: 0 0 var(--vc-space-xs) !important; text-align: left; color: var(--vc-ink-2) !important; font-size: var(--vc-fs-footnote) !important; } /* 压过 drawers.css 的说明样式 */
-  input[type="range"] { width: 100%; max-width: 360px; }
-
-  /* 内卡：折叠分组 */
-  .inline-drawer { margin: 0 0 var(--vc-space-sm) !important; background: var(--vc-raised) !important; border: .5px solid var(--vc-raised-edge) !important; border-radius: var(--vc-radius-md) !important; } /* 压过 drawers.css 的分组底与外距 */
-  .inline-drawer-header { min-height: 44px; font-size: var(--vc-fs-headline) !important; font-weight: 600 !important; } /* 压过 drawers.css 15px 标题 */
-  .inline-drawer-content { padding: 0 var(--vc-space-md) var(--vc-space-xs) !important; } /* 压过 drawers.css padding */
-  .inline-drawer .range-block { background: transparent !important; border-width: 0 0 .5px !important; border-radius: 0 !important; margin: 0 !important; padding-inline: 0 !important; } /* 内卡里的行不再各自成卡 */
-
-  /* 控件：36 高、圆角 10、0.5px 描边；文本 ≤360，数字 160，选择 160–240，长文本整行 */
-  :is(input:not([type="range"], [type="checkbox"], [type="radio"], [type="file"], [type="color"], [type="button"], [type="submit"], .select2-search__field), select, textarea) { min-height: 36px; border: .5px solid var(--vc-raised-edge) !important; border-radius: var(--vc-radius-control) !important; background: var(--vc-raised) !important; color: var(--vc-ink) !important; box-shadow: none !important; font-size: var(--vc-fs-body) !important; padding: 0 12px; box-sizing: border-box; } /* 压过 vc-ui.css 的灰色 44 高控件 */
-  textarea { width: 100%; height: auto; min-height: 80px; padding: 8px 12px; }
-  .scrollableInner, .right_menu { background: transparent !important; min-height: 0 !important; } /* 压过 drawers.css 的 canvas 底与整屏最小高 */
-  &:is(#Backgrounds) :is(#bg-header-fixed, #bg_tabs, .ui-widget-content, .ui-widget-header, .ui-tabs-nav) { background: transparent !important; } /* 压过 drawers.css 的 canvas 底 */
-  &:is(#user-settings-block) h4 { margin: var(--vc-space-xl) 0 var(--vc-space-xs) !important; color: var(--vc-ink) !important; font-size: var(--vc-fs-headline) !important; font-weight: 600 !important; } /* 同上：分组标题 17/600 */
-  :is(.range-block, .range-block-counter) input[type="number"] { width: 160px !important; } /* 压过 drawers.css 的 11ch 数值框 */
-  .range-block > .wide100p > :is(input:not([type="number"]), select) { max-width: 360px; }
-  .range-block > select { width: min(100%, 240px); min-width: 160px; }
-
-  /* 图标按钮统一 40 圆形；带文字的按钮为 40 高胶囊 */
-  .menu_button { box-sizing: border-box; height: 40px; min-height: 40px; background: var(--vc-raised) !important; border: .5px solid var(--vc-raised-edge) !important; font-size: var(--vc-fs-body); font-weight: 600; } /* 压过 vc-ui.css 的 44 高灰按钮 */
-  :is(i.menu_button, .menu_button:has(> i:only-child)) { width: 40px; min-width: 40px; padding: 0; border-radius: var(--vc-radius-pill) !important; } /* 同上 */
-  .menu_button:not(i.menu_button, :has(> i:only-child)) { padding: 0 20px; }
-}
-
 /* UX-22 QA P2-9 / P2-14：模型页。
    · 内容区与其他设置页同为面板玻璃：分组、表格外层统一用 --vc-raised（第 16.1 节内卡），不再是不透明白 / 黑。
    · `.vcms-layout` 在 `.vcms-body` 里取了 100% 高度，内容更高时下一块（本机模型）压在用途表最后一行上；改为随内容。
@@ -218,20 +140,6 @@ html[data-vc-layout="desktop"] body.vc-ui:has(.vc-settings-shell[data-drawer]) :
 :is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-settings-content #vc-model-settings-root .vcms-binding-select .vcms-check input { width: 18px; height: 18px; margin: 0; border-radius: var(--vc-radius-check); }
 :is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-settings-content #vc-model-settings-root td.vcms-binding-purpose { display: block; min-width: 0; }
 :is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-settings-content #vc-model-settings-root .vcms-binding-status { align-self: center; }
-
-/* UX-22 QA P2-10 / P2-11 / P2-12：酒馆抽屉补丁（同上，只作用于设置内容区里的九个抽屉）。 */
-html[data-vc-layout="desktop"] body.vc-ui:has(.vc-settings-shell[data-drawer]) :is(#left-nav-panel, #rm_api_block, #AdvancedFormatting, #WorldInfo, #user-settings-block, #Backgrounds, #rm_extensions_block, #PersonaManagement, #right-nav-panel).vc-drawer-page {
-  /* 滑杆：宿主 range 带 filter 变暗、内阴影与 15px 灰钮；统一为 vc-ui.css 的 4px 轨道 + 圆钮 + 已填比例。 */
-  input[type="range"] { filter: none !important; box-shadow: none !important; opacity: 1; cursor: pointer; transition: none; } /* 压过宿主 style.css 的 brightness(.75) 与 inset 阴影；drawers.css 的 !important 同源 */
-  /* 抽屉标题栏的返回钮：16.4 圆形按钮 40px，只留图标（可访问名称已在 aria-label）。 */
-  > [data-vc-drawer-nav] [data-vc-drawer-back] { min-width: 40px; width: 40px; padding: 0; border-radius: var(--vc-radius-pill); color: var(--vc-ink); }
-  > [data-vc-drawer-nav] [data-vc-drawer-back] > span { display: none; }
-  > [data-vc-drawer-nav] [data-vc-drawer-back] .vc-icon { width: 20px; height: 20px; }
-  /* 标题栏下方至少留 16px：首个内容行不再贴着标题栏上沿（原规则只作用于紧邻的隐藏拖拽柄）。 */
-  > [data-vc-drawer-nav] { margin-bottom: var(--vc-space-md); }
-  /* 白色内卡里的控件需要可见边缘：raised 底的行里改用分隔线色（--vc-raised-edge 在白卡上近乎透明）。 */
-  :is(.range-block, .inline-drawer, .flexFlowColumn) :is(input:not([type="range"], [type="checkbox"], [type="radio"], [type="file"], [type="color"], [type="button"], [type="submit"], .select2-search__field), select, textarea) { border-color: var(--vc-separator) !important; background: var(--vc-raised) !important; } /* 压过本文件上方的 raised-edge 与宿主透明底 */
-}
 
 /* UX-22 QA P2-14：分组自带 16px 内边距，标题不再叠加 16px 外距（本机模型 / 用量与用途表同一左缘）。 */
 :is(html[data-vc-layout="desktop"] body.vc-ui, body[data-vc-standalone].vc-ui) .vc-settings-content #vc-model-settings-root :is(.vcms-local .vcms-desktop-group-title, .vcms-usage > .vcms-usage-head, .vcms-usage > .vcms-usage-note) { margin-inline: 0; }

@@ -75,7 +75,7 @@ export async function sceneRightsBrowser(ctx){
         await pinVcUi(bc, 'on');
         await bc.addCookies([{name:'vc_session',value:ctx.secrets.session.vcSession,url:ctx.w05.stBase},{name:'vc_csrf',value:ctx.secrets.session.vcCsrf,url:ctx.w05.stBase}]);
         const page=await bc.newPage();const errors=[];page.on('pageerror',()=>errors.push('pageerror'));
-        await page.goto(ctx.w05.stBase,{waitUntil:'domcontentloaded'});
+        await page.goto(ctx.w05.stBase + '/native/',{waitUntil:'domcontentloaded'});
         await page.waitForFunction(()=>window.SillyTavern?.getContext?.()?.eventSource);
         await page.waitForSelector('#vc_data_menu_button',{state:'attached'});
         const onboarding=page.locator('dialog[open].popup').filter({has:page.locator('.onboarding')});

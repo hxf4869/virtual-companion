@@ -854,7 +854,7 @@ async function main() {
     try {
         beginCase('C00', '前置：打开 ST、前端与 Helper 就绪、连接本地固定 provider');
         let connected = await step('C00.1 打开 ST 并等待前端 / Helper 就绪', true, async () => {
-            const r = await page.goto(ST_URL, { waitUntil: 'domcontentloaded', timeout: 60000 });
+            const r = await page.goto(new URL('/native/', ST_URL).href, { waitUntil: 'domcontentloaded', timeout: 60000 });
             if (r?.status() !== 200) throw new Error(`HTTP ${r?.status()}`);
             await uiReady(page); await clickPopup(page, /^OK$|^好$|^确定$|关闭/, 5000);
             return `ST ${pre.st.pkgVersion}（${pre.st.gitRevision}）`;

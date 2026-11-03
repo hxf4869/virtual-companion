@@ -68,7 +68,7 @@ export async function sceneUi03Browser(ctx) {
                 console.log(`[ui03-net] ${res.status()} ${u.replace(rt.ST_BASE, '')}${bodyHint}${respHint}`);
             }
         });
-        await page.goto(rt.ST_BASE, { waitUntil: 'domcontentloaded', timeout: 60000 });
+        await page.goto(rt.ST_BASE + '/native/', { waitUntil: 'domcontentloaded', timeout: 60000 });
         await page.waitForFunction(() => {
             const area = document.querySelector('dialog[open].popup textarea');
             const shown = area && area.getClientRects().length > 0 && getComputedStyle(area).visibility !== 'hidden';

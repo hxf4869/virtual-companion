@@ -337,7 +337,7 @@ export async function sceneVcUiWalkthrough(ctx) {
         });
         const page = await context.newPage();
         page.setDefaultTimeout(8000);
-        await page.goto(ctx.w05.stBase, { waitUntil: 'domcontentloaded' });
+        await page.goto(ctx.w05.stBase + '/native/', { waitUntil: 'domcontentloaded' });
         await waitFor(async () => page.evaluate(async () => (await import('/script.js')).settingsReady || Boolean(document.querySelector('dialog[open] .onboarding'))), { timeoutMs: 60000, label: 'ST 设置或欢迎页' });
         const onboarding = page.locator('dialog[open].popup').filter({ has: page.locator('.onboarding') });
         if (await onboarding.count()) {
@@ -832,7 +832,7 @@ export async function sceneVcUiWalkthrough(ctx) {
             const groupPage = await groupContext.newPage();
             groupPage.setDefaultTimeout(8000);
             try {
-                await groupPage.goto(ctx.w05.stBase, { waitUntil: 'domcontentloaded' });
+                await groupPage.goto(ctx.w05.stBase + '/native/', { waitUntil: 'domcontentloaded' });
                 await waitFor(async () => groupPage.evaluate(async () => (await import('/script.js')).settingsReady || Boolean(document.querySelector('dialog[open] .onboarding'))), { timeoutMs: 60000, label: 'ST 设置或欢迎页' });
                 const onboarding = groupPage.locator('dialog[open].popup').filter({ has: groupPage.locator('.onboarding') });
                 if (await onboarding.count()) {

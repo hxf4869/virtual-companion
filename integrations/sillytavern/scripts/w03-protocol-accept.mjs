@@ -758,7 +758,7 @@ export async function sceneStoryViewBrowser(ctx) {
             throw new Error(`${error.message} url=${url} body=${text} console=${consoleLines.slice(-4).join(' | ')}`);
         };
         try {
-        await page.goto(ctx.w05.stBase, { waitUntil: 'domcontentloaded' });
+        await page.goto(ctx.w05.stBase + '/native/', { waitUntil: 'domcontentloaded' });
         if (new URL(page.url()).pathname.startsWith('/auth')) throw new Error('未进入聊天，停在登录页');
         await page.waitForFunction(() => Boolean(window.SillyTavern?.getContext?.()?.eventSource));
         await page.waitForSelector('#send_textarea', { state: 'attached' });

@@ -95,7 +95,7 @@ export async function openVoiceChat(ctx, label = '语音验收', {fakeAudio=fals
             await page.locator('#send_textarea').fill('');
             return { browser, page, st, card, file, identity, settings, nativeRequests };
         }
-        await page.goto(ctx.w05.stBase);
+        await page.goto(ctx.w05.stBase + '/native/');
         await page.waitForFunction(() => Boolean(window.SillyTavern?.getContext?.()?.eventSource));
         await page.waitForFunction(async () => (await import('/script.js')).settingsReady || document.querySelector('dialog[open] .onboarding'));
         const onboarding = page.locator('dialog[open].popup').filter({ has: page.locator('.onboarding') });

@@ -333,7 +333,7 @@ export async function sceneF2ChatUi(ctx) {
         };
 
         console.log('[f2-chat-ui] 打开宿主');
-        await page.goto(ctx.w05.stBase);
+        await page.goto(ctx.w05.stBase + '/native/');
         await nativeReady(page);
         await page.waitForFunction(() => typeof globalThis.EjsTemplate?.compileTemplate === 'function');
         const nativeWorker = await page.evaluate(async () => {
@@ -409,7 +409,7 @@ export async function sceneF2ChatUi(ctx) {
         conflict.setDefaultTimeout(120000);
         other.setDefaultTimeout(120000);
         for (const tab of [conflict, other]) {
-            await tab.goto(ctx.w05.stBase);
+            await tab.goto(ctx.w05.stBase + '/native/');
             await nativeReady(tab);
             await openChat(tab, avatar, file);
             await tab.waitForFunction(() => typeof window.SillyTavern.getContext().chatMetadata?.vc_binding?.conversationId === 'string');

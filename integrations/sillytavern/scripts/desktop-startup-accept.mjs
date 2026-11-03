@@ -87,7 +87,7 @@ async function sceneNativeStartup(ctx, fixedFixture) {
         page.on('request', request => { if (new URL(request.url()).pathname.endsWith('/generate')) generated++; });
         const samples = [];
         for (const cache of ['cold', 'warm']) {
-            await page.goto(ctx.w05.stBase, { waitUntil: 'domcontentloaded' });
+            await page.goto(ctx.w05.stBase + '/native/', { waitUntil: 'domcontentloaded' });
             await page.waitForSelector('#preloader', { state: 'hidden' });
             await page.locator('#vc-shell .vc-sidebar [data-nav="characters"]').click();
             await page.waitForFunction(() => document.querySelector('#vc-shell')?.dataset.destination === 'characters');
@@ -129,7 +129,10 @@ async function sceneIndependentDesktop(ctx) {
         const requests = [], errors = [];
         page.on('request', request => requests.push(new URL(request.url()).pathname));
         page.on('pageerror', () => errors.push('uncaught-page-error'));
-        await page.goto(`${ctx.w05.stBase}/desktop/`, { waitUntil: 'domcontentloaded' });
+        const entry = await page.goto(`${ctx.w05.stBase}/`, { waitUntil: 'domcontentloaded' });
+        const alias = await context.request.get(`${ctx.w05.stBase}/desktop/`);
+        assert.equal(alias.status(), 200);
+        assert.equal(await alias.text(), await entry.text(), '根入口与开发别名必须是同一个应用');
         await page.waitForFunction(() => document.documentElement.dataset.vcApp === 'ready');
         await page.locator('#vc-shell .vc-sidebar [data-nav="characters"]').click();
         await page.locator('.vc-characters input[type="search"], .vc-characters .vc-search input').first().fill('NF');
@@ -169,7 +172,7 @@ async function sceneIndependentDesktop(ctx) {
         await page.locator('#vc-shell .vc-sidebar [data-nav="characters"]').click();
         await page.locator('#vc-shell .vc-sidebar [data-nav="chat"]').click();
         assert.equal(await page.locator('#send_textarea').inputValue(), '合成桌面草稿');
-        const forbidden = requests.filter(url => ['/', '/index.html', '/script.js', '/scripts/extensions.js', '/scripts/st-context.js'].includes(url)
+        const forbidden = requests.filter((url, index) => (['/', '/index.html', '/script.js', '/scripts/extensions.js', '/scripts/st-context.js'].includes(url) && !(index === 0 && url === '/'))
             || /\/(?:JS-Slash-Runner|ST-Prompt-Template)\/dist\//.test(url));
         assert.deepEqual(forbidden, [], '桌面不能请求完整宿主/启动器');
         assert.equal(requests.filter(url => url.endsWith('/generate')).length, 0);
@@ -192,10 +195,10 @@ async function sceneIndependentDesktop(ctx) {
                 throw new Error('聊天准备首次初始化失败');
             }, { avatar: fixture.avatar, file: fixture.file });
         }
-        const result = { uiMs, historyMs, openMs: Math.round(historyMs - opening), sendMs: null,
+        const result = { entry: '/', alias: '/desktop/', uiMs, historyMs, openMs: Math.round(historyMs - opening), sendMs: null,
             delayedRuntime: true, nativeRequests: forbidden.length, modelRequests: 0, messages: fixture.chat.length - 1,
             resources: [...new Set(requests)],
-            note: 'NF-01 验证导航/读取/设置独立；发送与复杂卡仍待 NF-02–04，不声称完成。' };
+            note: 'NF-01/NF-10 验证根入口在聊天准备延迟时仍可导航、读取和设置；发送与复杂卡由 nf-chat/nf-cards 单独验收。' };
         fs.writeFileSync(path.join(ctx.artifactsDir, 'nf-desktop.json'), JSON.stringify(result, null, 2) + '\n');
         return result;
     } finally { releaseRuntime(); await browser.close(); }

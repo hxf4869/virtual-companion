@@ -47,6 +47,9 @@ import { desktopCardScene } from './desktop-card-accept.mjs';
 import { desktopTavernScene } from './desktop-tavern-accept.mjs';
 import { desktopBusinessScene } from './desktop-business-accept.mjs';
 
+import { mbEngineScene } from './mb-engine-accept.mjs';
+import { mbChatScene } from './mb-chat-accept.mjs';
+
 export const ACCEPT_SCENES = [
     memoryRealModelScene,
     memoryRealEvalScene,
@@ -119,4 +122,6 @@ export const ACCEPT_SCENES = [
     desktopTavernScene,
     desktopBusinessScene,
     desktopPerformanceScene,
+    mbEngineScene,
+    mbChatScene,
 ];
