@@ -689,18 +689,19 @@ const BUNDLED_MANIFESTS = ['./stickers/builtin-manifest.json', './stickers/custo
 
 export async function loadBundledManifest({ getContext } = {}) {
     if (getContext) runtime.getContext = getContext;
-    const assets = [];
-    for (const rel of BUNDLED_MANIFESTS) {
+    const packs = await Promise.all(BUNDLED_MANIFESTS.map(async rel => {
         try {
             const url = new URL(rel, import.meta.url);
             const response = await fetch(url);
-            if (!response?.ok) continue;
+            if (!response?.ok) return [];
             const manifest = loadManifest(await response.json());
-            assets.push(...assetsFromManifest(manifest, new URL('./', url).href));
+            return assetsFromManifest(manifest, new URL('./', url).href);
         } catch {
             /* 单个包坏了不影响其他包。 */
+            return [];
         }
-    }
+    }));
+    const assets = packs.flat();
     builtinAssets = assets;
 }
 

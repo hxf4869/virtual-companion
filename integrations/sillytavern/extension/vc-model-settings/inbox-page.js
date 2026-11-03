@@ -1,3 +1,5 @@
+import { listFollowUps, markInboxRead } from './inbox-client.js';
+export { listFollowUps, markInboxRead } from './inbox-client.js';
 // UI-P04 主动陪伴 / 通知。跟进、静默、角色开关、inbox 与邮箱 / 飞书状态。
 // 凭据只在本次输入里存在，不回显、不写 localStorage。渠道接受不写成手机已收到。
 import { ApiError, captureSessionContext, fetchRelationships, reauth, storyRequest } from './api.js';
@@ -98,11 +100,6 @@ export async function putProactivePolicy(relationshipId, body) {
     return storyRequest('PUT', `/api/v1/relationships/${relationshipId}/proactive-policy`, body);
 }
 
-export async function listFollowUps(relationshipId) {
-    if (!DECIMAL.test(relationshipId)) throw invalid('请求内容未通过校验，请检查表单。');
-    const data = await storyRequest('GET', `/api/v1/relationships/${relationshipId}/follow-ups`);
-    return Array.isArray(data) ? data : [];
-}
 
 export async function cancelFollowUp(followUpId) {
     if (!DECIMAL.test(followUpId)) throw invalid('请求内容未通过校验，请检查表单。');
@@ -114,10 +111,6 @@ export async function listInbox() {
     return Array.isArray(data) ? data : [];
 }
 
-export async function markInboxRead(eventId) {
-    if (!EVENT.test(eventId)) throw invalid('请求内容未通过校验，请检查表单。');
-    return storyRequest('POST', `/api/v1/inbox/${eventId}/read`);
-}
 
 export async function listChannels() {
     const data = await storyRequest('GET', '/api/v1/notification-channels');

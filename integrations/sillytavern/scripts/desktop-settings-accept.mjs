@@ -510,6 +510,14 @@ export async function sceneDesktopProductSettings(ctx) {
     };
     try {
         await openDesktopFixture(page,ctx.w05.stBase,fixture);
+        const voiceAsset='**/desktop/settings-voice.js';
+        await page.route(voiceAsset,route=>route.abort());
+        await open('voice');await page.getByText('页面没有加载出来，请重新打开。',{exact:true}).waitFor();
+        await page.unroute(voiceAsset);
+        await Promise.all([page.waitForNavigation({waitUntil:'domcontentloaded'}),page.getByRole('button',{name:'重新加载',exact:true}).click()]);
+        await page.waitForFunction(()=>document.documentElement.dataset.vcApp==='ready');
+        await page.locator(`[data-convo-list] [data-relationship-id="${fixture.chat[0].chat_metadata.vc_binding.relationshipId}"]`).click();
+        await page.waitForFunction(()=>document.querySelectorAll('#chat>.mes').length===24);
         await page.locator('#send_textarea').fill('NF06 保留草稿');
         await selectProvider();
         const before=await models();await page.locator('#vcms-f-display').fill('NF06 合成聊天服务');

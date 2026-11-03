@@ -1,12 +1,10 @@
 // 桌面角色面板：原控制器保留服务/记忆语义，React 只渲染自有区域。
 import { fetchRelationships, storyRequest } from '../api.js';
-import { createMemoryPage, FORGET_NOTICE, requestOpenMemory } from '../memory-page.js';
+import { createMemoryPage, FORGET_NOTICE, requestOpenMemory } from '../memory-controller.js';
 import { recalledItems, safeAvatarUrl } from '../chat-view.js';
-import { listFollowUps } from '../inbox-page.js';
+import { listFollowUps } from '../inbox-client.js';
 import { mountChatSearch } from '../chat-search.js';
 import { chatSnapshotFromContext } from '../conversations.js';
-import { mountInstancePage } from '../instance-page.js';
-import { openRelationshipVoiceSettings } from '../voice-settings.js';
 import { confirmAlert } from '../ui/alert.js';
 import { openSheet } from '../ui/sheet.js';
 import { showToast } from '../ui/toast.js';
@@ -26,9 +24,9 @@ export function mountCharacterPanel({ shell, getContext, beforeSearch, aurora, g
     const p = { sprite: iconSpriteUrl(), name: '', avatar: '', displayName: '', mood: '', open: innerWidth >= 1600, memories: [], followups: [],
         events: {
             toggle: () => setOpen(panel.hidden), close: () => { setOpen(false); toggle.focus(); },
-            voice: opener => { if (!dead) void openRelationshipVoiceSettings(id, { opener }); },
+            voice: async opener => { if (dead) return; const scope = id; const { openRelationshipVoiceSettings } = await import('../voice-settings.js'); if (!dead && id === scope) void openRelationshipVoiceSettings(id, { opener }); },
             memory: opener => { if (!dead) requestOpenMemory(opener); },
-            settings: async opener => { if (dead) return; const scope = id; instancePage ||= mountInstancePage({ getContext, ...getInstanceOptions?.() }); await instancePage.open(opener); if (!dead && id === scope) instancePage.page.selectInstance(scope); },
+            settings: async opener => { if (dead) return; const scope = id; const { mountInstancePage } = await import('../instance-page.js'); if (dead || id !== scope) return; instancePage ||= mountInstancePage({ getContext, ...getInstanceOptions?.() }); await instancePage.open(opener); if (!dead && id === scope) instancePage.page.selectInstance(scope); },
             edit, forget,
         },
     };

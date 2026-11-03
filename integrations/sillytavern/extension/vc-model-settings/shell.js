@@ -10,7 +10,7 @@ import { readViewport } from './ui/viewport.js';
 import { fetchRelationships } from './api.js';
 import { sharedTransition } from './desktop/transition.js';
 import { loadInboxEvents, pendingInboxWrites, unreadInboxEvents } from './chat-shell.js';
-import { markInboxRead } from './inbox-page.js';
+import { markInboxRead } from './inbox-client.js';
 import { createNotifier, POLL_MS } from './desktop/notify.js';
 import {
     avatarUrl,

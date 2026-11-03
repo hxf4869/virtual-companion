@@ -1,8 +1,7 @@
 // UI-P01：只给原生聊天增加导航、身份摘要和状态条，不接管生成、消息 DOM 或卡内 iframe。
 import { storyRequest } from './api.js';
-import { mountInstancePage } from './instance-page.js';
 import { BUDGET_COPY } from './model-logic.js';
-import { requestOpenMemory } from './memory-page.js';
+import { requestOpenMemory } from './memory-controller.js';
 
 export const CHAT_EMPTY_COPY = '这段会话还没有消息。';
 export const CHAT_OFFLINE_COPY = '聊天通道已断开';
@@ -86,7 +85,8 @@ function visibleMessages(chat) {
 }
 
 let charactersPage;
-function fallbackOpenCharacters(opener) {
+async function fallbackOpenCharacters(opener) {
+    const { mountInstancePage } = await import('./instance-page.js');
     if (!charactersPage) charactersPage = mountInstancePage();
     charactersPage.open(opener);
 }

@@ -29,6 +29,8 @@ test('用量摘要不能当成预算不足；显式原因才关闭测试与发�
 });
 
 test('预算不足门禁对宿主发送控件标 aria-disabled，并拦住点击', async () => {
+    // 先在 bootstrap 的真实 DOM 中加载 React，再安装本项的宿主控件替身。
+    const { mountModelSettings } = await import('../extension/vc-model-settings/page.js');
     const send = {
         id: 'send_but',
         disabled: false,
@@ -53,7 +55,6 @@ test('预算不足门禁对宿主发送控件标 aria-disabled，并拦住点击
         body: { appendChild() {}, classList: { add() {}, remove() {} } },
     };
     try {
-        const { mountModelSettings } = await import('../extension/vc-model-settings/page.js');
         const page = mountModelSettings();
         page.applyBudget({ reason: 'OVER_LIMIT' });
         assert.equal(send.disabled, true);

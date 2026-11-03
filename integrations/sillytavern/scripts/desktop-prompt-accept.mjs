@@ -108,7 +108,8 @@ async function scenePromptParity(ctx) {
                     context.extensionSettings.character_allowed_regex ||= [];
                     context.extensionSettings.character_allowed_regex.push(context.characters[context.characterId].avatar);
                     // 复用原设置入口设置递归，不使用临时DOM值来替代计算输入。
-                    const worldSettings = { ...world.getWorldInfoSettings(), world_info_recursive: true };
+                    const worldSettings = { ...world.getWorldInfoSettings(), world_info_recursive: true,
+                        world_info: { ...world.getWorldInfoSettings().world_info, globalSelect: [] } };
                     world.setWorldInfoSettings(worldSettings, { world_names: [book] });
                     // 纯计算的外部输入保持固定；清除原生UI待保存项，并预热实际tokenizer。
                     // 各计算检查点取消新排入的UI元数据计时器，真实F2写入由nf-chat/f2-chat-ui验。
@@ -207,6 +208,7 @@ async function scenePromptParity(ctx) {
                     nativeMemory: Boolean(expected.vc_memory), candidateMemory: Boolean(actual.packet?.body.vc_memory), stateDiff,
                     revisionBefore: input.context.chatMetadata.vc_f2?.revision, nativeRevision: expectedState.metadata.vc_f2?.revision,
                     candidateRevision: actual.state.metadata.vc_f2?.revision,
+                    ejsDelimiters: [expected,actual.packet?.body].map(body=>(body?.messages?.[0]?.content?.match?.(/<%/g)||[]).length),
                 }));
                 assert.deepEqual(stateDiff, [], '最终状态不等价：' + stateDiff.join(','));
                 completed.push({ id: test.id, request: true, state: true, nativeRequests: nativePaths.length, modelRequests: 0 });

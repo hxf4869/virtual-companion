@@ -24,6 +24,8 @@ import { applyInputMarkdown } from './input-markdown.js';
 import { ensureCharacterReferences, importDesktopCharacter, resolveDesktopConversation } from './business.js';
 import { openMessageSource } from '../../message-source.js';
 import { saveNativePersona, openCompanionStyle } from '../../persona.js';
+// 角色是首个主导航，和壳层一起准备，避免首个搜索操作排在聊天模块的资源请求之后。
+import * as instancePage from '../../instance-page.js';
 
 let modelSettings, preferences, preferencesAccepted = false, budget, catalogSavedWhilePreparing = false;
 const client = createDesktopClient({ onGenerateResponse: response => observeGenerateBudget(response, signal => modelSettings.applyBudget(signal)) });
@@ -199,7 +201,7 @@ async function start() {
     modelSettings = mountModelSettings({ onBudgetChange });
     void mountConsentGate({ ready: Promise.resolve() });
     registerShellTabs({
-        characters: lazyPage(() => import('../../instance-page.js'), (module, container, args) => module.mountCharactersTab(container, {
+        characters: lazyPage(() => Promise.resolve(instancePage), (module, container, args) => module.mountCharactersTab(container, {
             ...args, ...characterPageOptions(),
         })),
         memory: lazyPage(() => import('../../memory-page.js'), (module, container, args) => module.mountMemoryTab(container, {

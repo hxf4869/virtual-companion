@@ -28,10 +28,21 @@ const loadScript = src => new Promise((resolve, reject) => {
 
 export async function initializeCards(options) {
     const { context, settings, client } = options;
-    const version = await fetch('/version').then(response => response.json()).then(value => value.pkgVersion);
-    if (!globalThis.jQuery) await loadScript('/lib/jquery-3.5.1.min.js');
-    if (!globalThis.jQuery.ui) await loadScript('/lib/jquery-ui.min.js');
-    if (!globalThis.toastr) { await loadScript('/lib/toastr.min.js'); const css = document.createElement('link'); css.rel = 'stylesheet'; css.href = '/css/toastr.min.css'; document.head.append(css); }
+    const [version] = await Promise.all([
+        fetch('/version').then(response => response.json()).then(value => value.pkgVersion),
+        (async () => {
+            if (!globalThis.jQuery) await loadScript('/lib/jquery-3.5.1.min.js');
+            // 两个插件都需要 jQuery；toastr 不依赖 jQuery UI。
+            await Promise.all([
+                globalThis.jQuery.ui ? undefined : loadScript('/lib/jquery-ui.min.js'),
+                (async () => {
+                    if (globalThis.toastr) return;
+                    await loadScript('/lib/toastr.min.js');
+                    const css = document.createElement('link'); css.rel = 'stylesheet'; css.href = '/css/toastr.min.css'; document.head.append(css);
+                })(),
+            ]);
+        })(),
+    ]);
     Object.assign(globalThis, { _: lodash, YAML: yaml, showdown, klona });
     const nodes = new Map(), pending = new Set(), frameUrls = new Map();
     let ejs, serial = 0, activeMetadata, renderQueue = Promise.resolve();

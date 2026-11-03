@@ -1,19 +1,14 @@
 // 桌面设置表现层；控制器与协议继续来自公共生产模块。
 import { iconSpriteUrl } from '../ui/icons.js';
-import { mountSettingsFrameView, mountDrawerEntryView, mountVoiceFormView, voiceFormValues, mountSettingsOverviewView } from './build/index.js';
+import { mountSettingsFrameView, mountDrawerEntryView, mountSettingsOverviewView } from './build/index.js';
 import { confirmDiscard } from '../ui/alert.js';
 import { popMenu } from '../ui/menu.js';
 import { showToast } from '../ui/toast.js';
 import { TAVERN_ENTRIES } from '../shell.js';
 import { openDrawerPage, closeDrawerPage } from '../drawers.js';
 import { mountModelSettings } from '../page.js';
-import { readGlobalVoiceSettings } from '../voice-settings.js';
-import { fetchVoiceSettings, fetchVoiceEngines, saveVoiceSettings } from '../api.js';
-import { invalidateVoicePolicy } from '../voice-chat.js';
-import { mountDataRights } from '../data-rights.js';
 import { transitionContent } from './transition.js';
 import { NOTIFY_KEY, notifySupported, requestNotifyPermission, systemNotifyEnabled } from './notify.js';
-import { mountAppearance } from './appearance.js';
 const categories = [['account','账户','user-round','gray'],['model','模型','cpu','blue'],['voice','语音','mic','orange'],['notifications','通知','bell','pink'],['appearance','外观','monitor','purple'],['data','账户与数据','shield','green']];
 export function mountSettingsShell(container, { getContext = () => ({}), onBudgetChange, onCatalogSaved, mountTavernSettings } = {}) {
     const root = document.createElement('section'); root.className = 'vc-settings-shell';
@@ -56,11 +51,21 @@ export function mountSettingsShell(container, { getContext = () => ({}), onBudge
             const persona = context.userAvatar ?? document.querySelector('#user_avatar_block .avatar-container.selected')?.getAttribute('data-avatar-id');
             return { sprite: iconSpriteUrl(), kind, ...(kind === 'account' ? {
             name, avatar: persona ? `/thumbnail?type=persona&file=${encodeURIComponent(persona)}` : undefined,
-            onOpen(screen, trigger) { (account ??= mountDataRights()).open(trigger, screen); },
-        } : kind === 'data' ? { onOpen(trigger) { (account ??= mountDataRights()).open(trigger); } } : {
+            onOpen(screen, trigger) { void openAccount(trigger, screen); },
+        } : kind === 'data' ? { onOpen(trigger) { void openAccount(trigger); } } : {
             supported: notifySupported(), enabled, pending, onToggle,
             onInbox() { window.dispatchEvent(new CustomEvent('vc-shell-navigate', { detail: { destination: 'inbox' } })); },
         }) }; };
+        async function openAccount(trigger, screen) {
+            try {
+                const { mountDataRights } = await import('../data-rights.js');
+                if (disposed || ac.signal.aborted) return;
+                (account ??= mountDataRights()).open(trigger, screen);
+            } catch {
+                if (disposed || ac.signal.aborted) return;
+                showToast('页面没有加载出来，请重新打开。', { type: 'failure' });
+            }
+        }
         const view = mountSettingsOverviewView(body, props());
         const context = getContext(), changed = () => { if (!disposed) view.update(props()); };
         const event = context.eventTypes?.PERSONA_CHANGED;
@@ -108,8 +113,29 @@ export function mountSettingsShell(container, { getContext = () => ({}), onBudge
         transitionContent(frame.content, () => frame.update(frameProps()));
         const content = frame.content, body = frame.body;
         if (key === 'model') { model.open(); return; }
-        if (key === 'voice') { voice = await mountVoice(content, body, setVoiceHeader); }
-        else if (key === 'appearance') unmountAppearance = mountAppearance(body, getContext);
+        if (key === 'voice' || key === 'appearance') {
+            const loading = new AbortController(); editorLoad = loading;
+            const active = () => !loading.signal.aborted && !ac.signal.aborted && body.isConnected;
+            try {
+                if (key === 'voice') {
+                    const { mountVoice } = await import('./settings-voice.js');
+                    if (!active()) return;
+                    const candidate = await mountVoice(content, body, setVoiceHeader);
+                    if (!active()) { candidate.destroy(); return; }
+                    voice = candidate;
+                } else {
+                    const { mountAppearance } = await import('./appearance.js');
+                    if (!active()) return;
+                    unmountAppearance = mountAppearance(body, getContext);
+                }
+            } catch {
+                if (!active()) return;
+                const status = document.createElement('p'); status.role = 'status'; status.textContent = '页面没有加载出来，请重新打开。';
+                const retry = document.createElement('button'); retry.type = 'button'; retry.className = 'vc-btn vc-btn-text'; retry.textContent = '重新加载'; retry.onclick = () => location.reload(); body.append(status, retry);
+            } finally {
+                if (editorLoad === loading) editorLoad = null;
+            }
+        }
         else if (['account', 'data', 'notifications'].includes(key)) mountOverview(body, key);
         else if (mountTavernSettings) {
             const loading = new AbortController(); editorLoad = loading;
@@ -148,42 +174,4 @@ export function mountSettingsShell(container, { getContext = () => ({}), onBudge
         resume(){ if (current === 'model') { frame.content.append(model.root); model.open(); } else if (!current) void select('account', { initial: true }); },
         close(){ if (editorLoad) { editorLoad.abort(); editorLoad = null; editor?.destroy(); editor = null; current = ''; } if (current === 'model') { model.detach(); restoreModel(); } if (voice) { voice.destroy(); voice = null; current = ''; } if (root.dataset.drawer) { leaveDrawer(); current = ''; } },
         destroy(){ac.abort();editorLoad?.abort();editor?.destroy();unregisterCatalog?.();account?.destroy();unmountOverview();voice?.destroy();unmountAppearance();unmountDrawerEntry();leaveDrawer();if(current==='model')model.detach();restoreModel();frame.unmount();root.remove();} };
-}
-async function mountVoice(content,body,setHeader) {
-    let settings, engines, baseline='', working=false, loaded=false, destroyed=false, fields=null, values={}, saveStyle={};
-    const form=document.createElement('form');form.className='vc-settings-voice';body.append(form);
-    const status=document.createElement('p');status.setAttribute('role','status');status.textContent='正在加载…';
-    const latest=document.createElement('button');latest.type='button';latest.className='vc-btn vc-btn-text';latest.textContent='加载最新';latest.hidden=true;
-    body.append(status,latest);
-    const snapshot=()=>JSON.stringify(readGlobalVoiceSettings(form,settings));
-    const isDirty=()=>!destroyed&&loaded&&snapshot()!==baseline;
-    function renderFields(){
-        if(!loaded||destroyed)return;
-        const props={mode:'global',values,engines,disabled:working,onFieldChange(key,value){values[key]=value;feedback();}};
-        if(fields)fields.update(props);else fields=mountVoiceFormView(form,props);
-    }
-    function feedback({reset=false}={}){
-        if(destroyed)return;
-        renderFields();
-        if(reset)baseline=snapshot();
-        setHeader({dirty:isDirty(),working,disabled:working||!isDirty(),style:saveStyle,onSave:()=>void submit(),onDiscard:async trigger=>{if(destroyed)return;if(await confirmDiscard({opener:trigger})&&!destroyed)paint();}});
-        latest.disabled=working;
-    }
-    function paint(){values=voiceFormValues(settings);feedback({reset:true});}
-    async function load(){
-        if(destroyed)return;
-        try{[settings,engines]=await Promise.all([fetchVoiceSettings(),fetchVoiceEngines()]);if(destroyed||!form.isConnected)return;loaded=true;paint();status.textContent='';latest.hidden=true;}
-        catch{if(!destroyed&&form.isConnected){status.textContent='没有完成，请重试。';latest.hidden=false;}}
-    }
-    latest.onclick=()=>void load();
-    async function submit(){
-        if(destroyed||working||!isDirty()||!form.reportValidity())return;
-        const save=content.querySelector('[data-voice-save]');const width=save.getBoundingClientRect().width;saveStyle={width:`${width}px`,minWidth:`${width}px`};
-        working=true;feedback();status.textContent='';
-        try{settings=await saveVoiceSettings(readGlobalVoiceSettings(form,settings));if(destroyed||!form.isConnected)return;invalidateVoicePolicy();window.dispatchEvent(new Event('vc-voice-settings-changed'));baseline=snapshot();latest.hidden=true;showToast('已保存');}
-        catch(error){if(!destroyed&&form.isConnected){status.textContent=error.kind==='conflict-revision'?'设置已在另一处更新。你的输入已保留。':'没有完成，请重试。';latest.hidden=error.kind!=='conflict-revision';}}
-        finally{working=false;if(!destroyed&&form.isConnected){saveStyle={};feedback();}}
-    }
-    feedback();form.onsubmit=event=>{event.preventDefault();void submit();};void load();
-    return {isDirty,working:()=>working,destroy(){if(destroyed)return;destroyed=true;fields?.unmount();fields=null;latest.onclick=null;form.onsubmit=null;}};
 }

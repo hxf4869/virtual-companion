@@ -1,3 +1,5 @@
+import { instancesFrom, safeImageUrl } from './instance-queries.js';
+export { instancesFrom, safeImageUrl } from './instance-queries.js';
 // UI-P02：角色卡模板来自宿主卡，陪伴实例来自已有 relationships 与 POST /api/v1/st/bindings。
 import { fetchRelationships, resolveSTBinding, storyRequest } from './api.js';
 import { saveNativePersona } from './persona.js';
@@ -117,14 +119,6 @@ function pngHasChara(bytes) {
     return false;
 }
 
-export function instancesFrom(relationships) {
-    return (Array.isArray(relationships) ? relationships : [])
-        .filter((row) => row?.personaRef === 'st-character')
-        .map((row) => ({
-            relationshipId: String(row.relationshipId),
-            name: row.companionName || '未命名实例',
-        }));
-}
 
 export function instanceLabel(item, items) {
     const same = items.filter((row) => row.name === item.name);
@@ -560,14 +554,6 @@ function formatWhen(value) {
     return `${date.getMonth() + 1}月${date.getDate()}日 ${hm}`;
 }
 
-export function safeImageUrl(value) {
-    const raw = String(value ?? '').trim();
-    if (!raw) return '';
-    if (/^https?:\/\//i.test(raw)) return raw;
-    if (/^data:image\/(png|jpeg|webp|gif)([;,].*)?$/i.test(raw)) return raw;
-    if (raw.startsWith('/') && !raw.startsWith('//')) return raw;
-    return '';
-}
 
 export function characterAvatarSrc(avatar) {
     const safe = safeImageUrl(avatar);

@@ -2,7 +2,7 @@
 // 海报是 #chat 的前一个兄弟（在 #sheld 内绝对定位）。clearChat 只移除 #chat 的子节点。
 // 流式渐清：把宿主 powerUserSettings.stream_fade_in 设为 true，不同步设置里的 input 事件，因此不调用 saveSettingsDebounced。
 import { CHAT_PICK_COPY, requestShellDestination } from './chat-shell.js';
-import { FORGET_NOTICE, createMemoryPage, requestOpenMemory } from './memory-page.js';
+import { FORGET_NOTICE, createMemoryPage, requestOpenMemory } from './memory-controller.js';
 import { MEMORY_NOTICE_EVENT, MEMORY_QUIET_COPY } from './memory-injection.js';
 import { confirmAlert } from './ui/alert.js';
 import { mountMemoryInspectorView, mountMessageToolsView } from './desktop/build/index.js';

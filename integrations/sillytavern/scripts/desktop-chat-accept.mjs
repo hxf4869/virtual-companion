@@ -1,6 +1,7 @@
 // NF-03：自有桌面真实普通聊天纵切，只调用受管合成provider。
 import assert from 'node:assert/strict';
 import path from 'node:path';
+import { writeFile } from 'node:fs/promises';
 import { createStClient, waitFor } from './managed-lib.mjs';
 import { seedDesktopBenchmark, desktopBenchmarkContext } from './desktop-startup-accept.mjs';
 import { bindForeground } from './lib/accept-scene-helpers.mjs';
@@ -33,10 +34,7 @@ export async function captureWindows(page, ctx, prefix = 'nf-chat') {
     if (!draft.trim()) await input.fill(draft);
     // NF-05可按未读/阅读位置恢复。窗口跟随场景先通过公开动作回到最新，再保留原严格几何断言。
     await page.locator('#chat').focus(); await page.keyboard.press('End');
-    const latest = page.locator('#vc-latest');
-    if (await latest.isVisible()) {
-        await latest.click(); await page.waitForFunction(() => { const chat = document.querySelector('#chat'); return chat.scrollHeight - chat.scrollTop - chat.clientHeight < 2; });
-    }
+    await page.waitForFunction(() => { const chat = document.querySelector('#chat'); return chat.scrollHeight - chat.scrollTop - chat.clientHeight < 2; });
     for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
         await page.setViewportSize(viewport);
         for (const scheme of ['light', 'dark']) {
@@ -218,6 +216,16 @@ async function sceneDesktopChat(ctx) {
                 await page.locator('#send_textarea').fill(input);
                 await page.waitForFunction(() => Boolean(document.querySelector('#send_but') && !document.querySelector('#send_but').disabled));
                 assert.equal(await ctx.fixtureHttp.count({ protocol: row.protocol }), before, '打开/配置不能调用模型');
+                await page.evaluate(reply=>{
+                    const start=performance.now();window.__nfResponseTiming={firstTextMs:null,totalMs:null};
+                    const observer=new MutationObserver(()=>{
+                        const message=window.SillyTavern.getContext().chat.at(-1),text=document.querySelector('#chat>.mes:last-child .mes_text')?.textContent || '';
+                        if(message?.is_user===false&&text.startsWith(reply[0])){
+                            window.__nfResponseTiming.firstTextMs ??= Math.round(performance.now()-start);
+                            if(text===reply&&!document.querySelector('#mes_stop')){window.__nfResponseTiming.totalMs=Math.round(performance.now()-start);observer.disconnect();}
+                        }
+                    });observer.observe(document.querySelector('.vc-desktop-chat-root'),{subtree:true,childList:true,characterData:true,attributes:true,attributeFilter:['id']});
+                },reply);
                 // 同一真实按钮连击：第二次到达旧React props时也须由唯一owner拒绝。
                 if (row.id === 'chat-stream') await page.locator('#send_but').dblclick();
                 else if (row.id === 'chat-json') await page.locator('#send_textarea').press('Enter');
@@ -226,6 +234,8 @@ async function sceneDesktopChat(ctx) {
                 await page.waitForFunction(text => !document.querySelector('#mes_stop') &&
                     (document.querySelector('#chat > .mes:last-child .mes_text')?.textContent === text || document.querySelector('#vc-chat-gen')?.textContent), reply);
                 assert.equal(await page.locator('#chat>.mes:last-child .mes_text').textContent(), reply);
+                await page.waitForFunction(()=>window.__nfResponseTiming.totalMs!==null);
+                const responseTiming=await page.evaluate(()=>window.__nfResponseTiming);
                 assert.equal(await ctx.fixtureHttp.count({ protocol: row.protocol }), before + (row.planner ? 2 : 1), '双击只允许一条回复流程（开启planner时含原有quiet规划）');
                 const saved = (await st.call('POST', '/api/chats/get', { avatar_url: fixture.avatar, file_name: fixture.file })).json;
                 assert.equal(saved.length, fixture.chat.length + 2, '原生JSONL保留24条历史并只追加一对消息');
@@ -245,7 +255,7 @@ async function sceneDesktopChat(ctx) {
                 const recovery = row.recovery ? await recoveryChecks({ ctx, st, page, fixture, other, reply }) : undefined;
                 assert.deepEqual(forbidden, []); assert.deepEqual(errors, []);
                 completed.push({ id: row.id, persisted: true, refresh: true,
-                    modelCalls: await ctx.fixtureHttp.count({ protocol: row.protocol }) - before, nativeRequests: 0, ...(recovery ? { recovery } : {}) });
+                    responseTiming,modelCalls: await ctx.fixtureHttp.count({ protocol: row.protocol }) - before, nativeRequests: 0, ...(recovery ? { recovery } : {}) });
             } catch (error) {
                 const state = await page.evaluate(() => ({ app: document.documentElement.dataset.vcApp,
                     runtime: document.documentElement.dataset.vcRuntime, messages: document.querySelectorAll('#chat>.mes').length,
@@ -268,6 +278,11 @@ async function sceneDesktopChat(ctx) {
                 throw new Error(`${row.id}/${stage}: ${error.message}; ${JSON.stringify({ state, errors })}`);
             } finally { await context.close(); await ctx.fixtureHttp.setOverride(row.model, null); }
         }
+        await writeFile(path.join(ctx.artifactsDir,'nf-response-time.json'),JSON.stringify({
+            fixture:{firstMs:30,perChunkMs:30,chunks:3},
+            note:'从发送动作到首段文字/完成，含前端组装、保存和受管传输；仅合成provider，不是实际模型推理耗时。',
+            cases:completed.map(({id,responseTiming})=>({id,...responseTiming})),
+        },null,2)+'\n');
         return { cases: completed };
     } finally { await browser.close(); }
 }

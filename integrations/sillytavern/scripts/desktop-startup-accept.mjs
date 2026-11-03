@@ -75,8 +75,8 @@ export async function ensureNativeConnection(page) {
     await page.waitForFunction(async () => (await import('/script.js')).online_status !== 'no_connection');
 }
 
-async function sceneNativeStartup(ctx) {
-    const fixture = await seedDesktopBenchmark(ctx);
+async function sceneNativeStartup(ctx, fixedFixture) {
+    const fixture = fixedFixture || await seedDesktopBenchmark(ctx);
     const { chromium } = await import('playwright-core');
     const browser = await chromium.launch({ headless: true, ...(process.env.VC_W03_CHROMIUM_PATH ? { executablePath: process.env.VC_W03_CHROMIUM_PATH } : {}) });
     try {
@@ -202,3 +202,55 @@ async function sceneIndependentDesktop(ctx) {
 }
 
 export const independentDesktopScene = { id: 'nf-desktop', title: 'NF-01 独立桌面：聊天延迟、导航/设置/历史与网络边界', needs: ['catalog', 'stack', 'browser'], default: false, run: sceneIndependentDesktop };
+
+async function sceneDesktopPerformance(ctx) {
+    const fixture=await seedDesktopBenchmark(ctx);
+    const st=createStClient({baseUrl:ctx.w05.stBase,expectedIdentity:ctx.secrets.session,extraCookies:`vc_session=${ctx.secrets.session.vcSession}; vc_csrf=${ctx.secrets.session.vcCsrf}`});
+    const settings=JSON.parse((await st.call('POST','/api/settings/get',{})).json.settings);
+    settings.firstRun=false;settings.username='合成用户';settings.extension_settings ||= {};settings.extension_settings.vc_reply_planner=false;
+    assert.equal((await st.call('POST','/api/settings/save',settings)).status,200);
+    const native=await sceneNativeStartup(ctx,fixture);
+    const {chromium}=await import('playwright-core'),browser=await chromium.launch({headless:true,...(process.env.VC_W03_CHROMIUM_PATH?{executablePath:process.env.VC_W03_CHROMIUM_PATH}:{})});
+    const samples=[],resources=[];let generated=0;
+    try {
+        for(let round=0;round<3;round++){
+            const context=await desktopBenchmarkContext(browser,ctx),page=await context.newPage();page.setDefaultTimeout(30000);
+            const forbidden=[],errors=[];page.on('pageerror',error=>errors.push(error.name));
+            page.on('request',request=>{const path=new URL(request.url()).pathname;if(path.endsWith('/generate'))generated++;if(['/', '/index.html','/script.js','/scripts/extensions.js','/scripts/st-context.js'].includes(path))forbidden.push(path);});
+            for(const cache of ['cold','warm']){
+                await page.goto(ctx.w05.stBase+'/desktop/',{waitUntil:'domcontentloaded'});
+                await page.waitForFunction(()=>document.documentElement.dataset.vcApp==='ready');
+                await page.locator('.vc-sidebar [data-nav=characters]').click();
+                await page.locator('.vc-characters [name=character-search]').fill('NF');
+                const uiMs=await page.evaluate(()=>Math.round(performance.now()));
+                await page.locator('.vc-sidebar [data-nav=chat]').click();
+                const opening=await page.evaluate(()=>performance.now());
+                await page.locator(`[data-convo-list] [data-relationship-id="${fixture.chat[0].chat_metadata.vc_binding.relationshipId}"]`).click();
+                await page.waitForFunction(()=>document.querySelectorAll('#chat>.mes').length===24);
+                const historyMs=await page.evaluate(()=>Math.round(performance.now()));
+                await page.locator('#send_textarea').fill('合成草稿');
+                await page.waitForFunction(()=>Boolean(document.querySelector('#send_but')&&!document.querySelector('#send_but').disabled));
+                const sendMs=await page.evaluate(()=>Math.round(performance.now()));
+                assert.equal(await page.locator('iframe[src="/"],iframe[src="/native/"]').count(),0);
+                samples.push({round,cache,uiMs,historyMs,openMs:Math.round(historyMs-opening),sendMs});
+                resources.push({round,cache,entries:await page.evaluate(()=>performance.getEntriesByType('resource').map(entry=>({path:new URL(entry.name).pathname,duration:Math.round(entry.duration),transfer:entry.transferSize,bytes:entry.decodedBodySize})))});
+                await page.locator('#send_textarea').fill('');
+            }
+            assert.deepEqual(forbidden,[]);assert.deepEqual(errors,[]);await context.close();
+        }
+    }finally{await browser.close();}
+    assert.equal(generated,0,'启动测量不得生成');
+    const median=values=>[...values].sort((a,b)=>a-b)[Math.floor(values.length/2)];
+    const medians=Object.fromEntries(['cold','warm'].map(cache=>[cache,Object.fromEntries(['uiMs','historyMs','openMs','sendMs'].map(key=>[key,median(samples.filter(row=>row.cache===cache).map(row=>row[key]))]))]));
+    const result={surface:'independent-desktop',viewport:'1440x900@1',messages:24,modelRequests:generated,cache:native.cache,native:native.samples,samples,medians,resources};
+    fs.writeFileSync(path.join(ctx.artifactsDir,'nf-performance.json'),JSON.stringify(result,null,2)+'\n');
+    if(process.env.VC_NF_PERFORMANCE_REFERENCE){
+        const previous=JSON.parse(fs.readFileSync(process.env.VC_NF_PERFORMANCE_REFERENCE,'utf8'));
+        for(const cache of ['cold','warm']){
+            assert.ok(medians[cache].uiMs<previous.medians[cache].uiMs,`${cache}界面可操作应改善`);
+            assert.ok(medians[cache].sendMs<previous.medians[cache].sendMs,`${cache}真实可发送应改善`);
+        }
+    }
+    return{medians,native:native.samples,modelRequests:0};
+}
+export const desktopPerformanceScene={id:'nf-performance',title:'NF-09 同条件原生与独立桌面冷/热启动与真实可发送',needs:['catalog','stack','browser'],default:false,run:sceneDesktopPerformance};

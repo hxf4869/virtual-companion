@@ -168,6 +168,7 @@ export async function runDesktopShell({ captureReference = false, compareReferen
         assertGeometry(await geometry(page));
         await page.locator('.vc-settings-category-toggle').click();
         await page.getByRole('menuitem', { name: '外观', exact: true }).click();
+        await page.locator('[data-vc-appearance]').waitFor();
         assert.equal(await page.locator('[data-vc-appearance]').count(), 1, '缩窗后分类仍可达');
         await page.setViewportSize({ width: 1440, height: 900 });
         await settle(page);
