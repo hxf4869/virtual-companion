@@ -1,13 +1,13 @@
+import { renderInstancePage } from './characters-dom.mjs';
+import { bootstrapDocument } from './react-dom-bootstrap.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import * as api from '../extension/vc-model-settings/api.js';
-import {
-    IMPORT_FAILED_COPY, UNSAVED_INSTANCE_COPY,
-    inspectCharacterFile, renderInstancePage, createInstancePage, cardsFromContext, bindingsFromContext,
+import { IMPORT_FAILED_COPY, UNSAVED_INSTANCE_COPY,
+    inspectCharacterFile, createInstancePage, cardsFromContext, bindingsFromContext,
     importNativeCharacterFile,
-    instanceLabel,
-} from '../extension/vc-model-settings/instance-page.js';
+    instanceLabel } from '../extension/vc-model-settings/instance-page.js';
 
 const prefs = {
     replyLength: 'MEDIUM', initiative: 'LOW', humor: 'LIGHT', advicePref: 'ASK_FIRST',
@@ -88,7 +88,8 @@ test('正在编辑的实例、模板卡和主次按钮可区分', async () => {
     assert.match(html, /vc-instance-avatar" aria-hidden="true">澄</);
     assert.match(html, /沿湖散步/);
     assert.match(html, /关联世界书 · 湖畔日常/);
-    assert.match(html, /data-action="select-instance" data-id="11" aria-current="true"[\s\S]*?正在编辑[\s\S]*?<\/button>/);
+    const rendered = bootstrapDocument.createElement('div'); rendered.innerHTML = html;
+    assert.match(rendered.querySelector('[data-action="select-instance"][data-id="11"][aria-current="true"]').textContent, /正在编辑/);
     assert.match(html, /正在编辑 · 澄夏·日常/);
     assert.match(html, /data-action="create" class="vc-instance-create"/);
     assert.doesNotMatch(html, /data-action="create"[^>]*vc-instance-primary/);

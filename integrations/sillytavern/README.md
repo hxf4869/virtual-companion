@@ -292,6 +292,10 @@ W03 集成收口的受管链路：ST 前台生成经 server plugin 桥接 Go 后
 - **验收边界**：以上为合成环境验收；FileVault 磁盘加密、正式备份配置、真实 provider Key、预算与
   手机等 Owner 项仍未验收，不据此声称 V2 整体完成。
 
+## 桌面 React 自有界面
+
+后台自有壳层、设置、角色/记忆/陪伴、聊天控件与剧情富内容使用React和Base UI，沿用原CSS/token与ST原生边界。构建、挂载约定和各批视觉/行为命令见[desktop-ui开发说明](desktop-ui/README.md)，完整范围与验收限制见[重构计划](../../docs/planning/2026-11-02-desktop-frontend-refactor-plan.md)。`npm test`与标准检查会先构建同源bundle；不依赖本机残留产物。
+
 ## 浏览器验收（scripts/accept.mjs）
 
 - 前置：`start.mjs` 已运行（脚本不代为启动）；本机有 Chromium 系浏览器（`VC_ST_BROWSER` 可覆盖路径）。

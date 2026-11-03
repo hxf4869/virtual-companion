@@ -41,13 +41,13 @@ body.vc-ui [data-vc-account-home] .vc-icon {
   height: 16px;
   stroke-width: 1.75;
 }
-.vc-data-dialog > .vc-scrim,
-.vc-data-dialog > .vc-alert {
+.vc-data-dialog > [data-vc-account-overlays] .vc-scrim,
+.vc-data-dialog > [data-vc-account-overlays] .vc-alert {
     position: fixed !important;
     z-index: 40;
 }
-.vc-data-dialog > .vc-scrim { inset: 0; }
-.vc-data-dialog > .vc-alert {
+.vc-data-dialog > [data-vc-account-overlays] .vc-scrim { inset: 0; }
+.vc-data-dialog > [data-vc-account-overlays] .vc-alert {
     top: 50% !important;
     left: 50% !important;
     width: min(280px, calc(100vw - 32px));
@@ -78,3 +78,5 @@ body.vc-ui [data-vc-account-home] .vc-icon {
     .vc-account-security { display: grid; grid-template-columns: 1fr 1fr; }
     .vc-account-reauth { align-items: center; }
 }
+.vc-data-dialog > [data-vc-account-overlays] { position: absolute; inset: 0; pointer-events: none; }
+.vc-data-dialog > [data-vc-account-overlays] :is(.vc-scrim,.vc-alert) { pointer-events: auto; }

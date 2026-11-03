@@ -625,17 +625,15 @@ body.vc-ui .vc-data-dialog [data-vc-account-nav] {
   box-shadow: inset 0 -0.5px 0 var(--vc-separator);
 }
 
-body.vc-ui .vc-data-dialog > .vc-scrim,
-body.vc-ui .vc-data-dialog > .vc-alert {
+body.vc-ui .vc-data-dialog > [data-vc-account-overlays] .vc-scrim,
+body.vc-ui .vc-data-dialog > [data-vc-account-overlays] .vc-alert {
   position: fixed !important;
   z-index: var(--vc-z-alert) !important;
 }
 
-body.vc-ui .vc-data-dialog > .vc-alert {
+body.vc-ui .vc-data-dialog > [data-vc-account-overlays] .vc-alert {
   left: 50% !important;
   top: 50% !important;
-  opacity: 1 !important;
-  transform: translate(-50%, -50%) !important;
 }
 
 body.vc-ui #vc-model-settings-root .vcms-keybox,

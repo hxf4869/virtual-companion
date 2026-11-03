@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { test } from 'node:test';
+import { installReactDom } from './react-dom.mjs';
 import { DRAWER_PAGES } from '../extension/vc-model-settings/drawers.js';
 
 const read = (name) => readFile(new URL(`../extension/vc-model-settings/desktop/${name}`, import.meta.url), 'utf8');
@@ -38,7 +39,7 @@ test('R4 抽屉样式不写字面颜色，!important 同行注明原因', async 
     }
 });
 
-test('桌面设置壳在内容区打开抽屉，离开分类与返回时关闭，账户页显示头像行', async () => {
+test('桌面设置壳在内容区打开抽屉，离开分类与返回时关闭，账户页显示头像行', async (t) => {
     const shell = await read('settings-shell.js');
     assert.match(shell, /import \{ openDrawerPage, closeDrawerPage \} from '\.\.\/drawers\.js'/);
     assert.match(shell, /root\.dataset\.drawer = key/);
@@ -46,7 +47,17 @@ test('桌面设置壳在内容区打开抽屉，离开分类与返回时关闭�
     assert.match(shell, /leaveDrawer\(\);\s*\n\s*voice = null/);
     assert.match(shell, /\[data-vc-drawer-back\]/);
     assert.equal(shell.includes('delete shell.dataset.settings'), false, '打开抽屉不再退出设置页');
-    assert.match(shell, /row\('password','密码'\)[\s\S]{0,40}row\('auth','身份验证器'\)/);
-    const account = shell.slice(shell.indexOf("else if (key === 'account')"), shell.indexOf("else if (key === 'data')"));
-    assert.equal(account.includes('账户与数据'), false, '账户页不再重复分类列的入口行');
+    const doc = installReactDom(t);
+    doc.body.classList.add('vc-ui');
+    const container = doc.createElement('div');doc.body.append(container);
+    const { mountSettingsShell } = await import('../extension/vc-model-settings/desktop/settings-shell.js');
+    const controller = mountSettingsShell(container, { getContext: () => ({ name1: '合成用户' }) });
+    try {
+        await controller.select('account', { initial: true });
+        const account = controller.root.querySelector('.vc-settings-profile');
+        assert.equal(account.querySelector('[data-who-avatar]').textContent, '合');
+        assert.equal(account.querySelector('strong').textContent, '合成用户');
+        assert.deepEqual([...account.querySelectorAll('[data-account-go]')].map(node => [node.dataset.accountGo, node.textContent]), [['password', '密码'], ['auth', '身份验证器']]);
+        assert.equal(account.textContent.includes('账户与数据'), false, '账户页不再重复分类列的入口行');
+    } finally { controller.destroy(); }
 });

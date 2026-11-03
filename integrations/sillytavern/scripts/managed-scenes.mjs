@@ -33,6 +33,12 @@ import { hlReplyScene } from './hl-reply-accept.mjs';
 import { consentUiScene } from './consent-accept.mjs';
 import { hlPersonaScene } from './hl-persona-accept.mjs';
 import { hlStickersScene } from './hl-stickers-accept.mjs';
+import { desktopAppearanceScene } from './desktop-appearance-accept.mjs';
+import { desktopShellScene } from './desktop-shell-accept.mjs';
+import { desktopModelsScene } from './desktop-models-accept.mjs';
+import { desktopSettingsScene } from './desktop-settings-accept.mjs';
+import { desktopOverlaysScene } from './desktop-overlays-accept.mjs';
+import { desktopPagesScene } from './desktop-pages-accept.mjs';
 
 export const ACCEPT_SCENES = [
     memoryRealModelScene,
@@ -89,4 +95,10 @@ export const ACCEPT_SCENES = [
     consentUiScene,
     hlPersonaScene,
     hlStickersScene,
+    desktopAppearanceScene,
+    desktopShellScene,
+    desktopModelsScene,
+    desktopSettingsScene,
+    desktopOverlaysScene,
+    desktopPagesScene,
 ];

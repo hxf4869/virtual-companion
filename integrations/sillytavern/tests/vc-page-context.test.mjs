@@ -1,5 +1,5 @@
 // V2-W03 · 模型设置页会话上下文变更（409 ACCOUNT_CONTEXT_CHANGED）离线测试。
-// 用最小 DOM stub 驱动 page.js 控制器（node --test，无真 DOM / 无网络）：
+// 用现有 Happy DOM 驱动 page.js 控制器与真实组件（node --test，无网络）：
 //   - load 时经桥捕获会话快照（GET /api/v1/auth/session）；
 //   - 保存命中 409 ACCOUNT_CONTEXT_CHANGED：草稿不丢、进入「显式重新加载」横幅态，
 //     且写请求携带两头逐字符等于快照（大整数 accountId 字符串原样）；
@@ -7,6 +7,7 @@
 //   - 「重新加载页面数据」显式重载：重新捕获快照（再次 GET /api/v1/auth/session）并刷新目录。
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { installReactDom } from './react-dom.mjs';
 
 const BIG_ACCOUNT_ID = '9007199254740993'; // 2^53+1：Number() 往返会变成 9007199254740992
 
@@ -24,36 +25,6 @@ globalThis.fetch = async (url, init = {}) => {
         text: async () => (res.body === undefined ? '' : JSON.stringify(res.body)),
     };
 };
-
-// ---------- 最小 DOM stub ----------
-
-function makeOverlay() {
-    const listeners = new Map();
-    return {
-        innerHTML: '',
-        hidden: false,
-        isConnected: true,
-        querySelector: () => null,
-        querySelectorAll: () => [],
-        contains: () => true,
-        addEventListener(type, fn) { listeners.set(type, fn); },
-        dispatch(type, ev) { listeners.get(type)?.(ev); },
-    };
-}
-
-globalThis.document = {
-    cookie: '',
-    addEventListener() {},
-    querySelector() { return null; },
-    createElement: () => {
-        const overlay = makeOverlay();
-        // page.js 只查询 .vcms-overlay 一个子节点；其余查询在 stub 下安全返回 null。
-        return { ...makeOverlay(), querySelector: (sel) => (sel === '.vcms-overlay' ? overlay : null), _overlay: overlay };
-    },
-    body: { appendChild() {}, classList: { add() {}, remove() {} } },
-};
-
-const { mountModelSettings } = await import('../extension/vc-model-settings/page.js');
 
 // ---------- fixture ----------
 
@@ -93,14 +64,16 @@ async function until(cond, label) {
 }
 
 function clickAction(controller, action) {
-    controller.root._overlay.dispatch('click', {
-        target: { closest: () => ({ getAttribute: (n) => (n === 'data-action' ? action : null) }) },
-    });
+    const button = controller.root.querySelector(`[data-action="${action}"]`);
+    assert.ok(button, action);
+    button.click();
 }
 
 const sessionHits = () => calls.filter((c) => c.method === 'GET' && c.url.endsWith('/api/v1/auth/session')).length;
 
-test('409 ACCOUNT_CONTEXT_CHANGED：草稿保留、进入显式重载态、写请求两头齐全；重载动作重新捕获快照', async () => {
+test('409 ACCOUNT_CONTEXT_CHANGED：草稿保留、进入显式重载态、写请求两头齐全；重载动作重新捕获快照', async (t) => {
+    installReactDom(t);
+    const { mountModelSettings } = await import('../extension/vc-model-settings/page.js');
     router = routeOk;
     const controller = mountModelSettings();
     controller.open();
@@ -109,7 +82,9 @@ test('409 ACCOUNT_CONTEXT_CHANGED：草稿保留、进入显式重载态、写�
     assert.equal(sessionHits(), 1, '页面加载时捕获一次会话快照');
 
     // 用户编辑草稿
-    controller._state.draft.displayName = '我的修改';
+    const name = controller.root.querySelector('[data-bind="provider.displayName"]');
+    Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set.call(name, '我的修改');
+    name.dispatchEvent(new Event('input', { bubbles: true }));
     assert.equal(controller.isDirty(), true);
 
     // 保存被 Go 以 409 拒绝（账号/会话上下文变更）

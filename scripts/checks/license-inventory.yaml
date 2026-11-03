@@ -21,6 +21,30 @@ exceptions: []
 # integrations/sillytavern/package.json 直接依赖（按 license-policy.yaml domainPolicies.stIntegration 核对；
 # 上游组件（含 MemoryCore MIT）与运行期自托管资源的许可直接读 upstream.lock.json / vendor.lock.json，不在此重复登记）
 integrationDirectDependencies:
+  - name: react
+    licenseFamily: MIT
+    scope: runtime
+  - name: react-dom
+    licenseFamily: MIT
+    scope: runtime
+  - name: "@base-ui/react"
+    licenseFamily: MIT
+    scope: runtime
+  - name: vite
+    licenseFamily: MIT
+    scope: dev
+  - name: "@vitejs/plugin-react"
+    licenseFamily: MIT
+    scope: dev
+  - name: typescript
+    licenseFamily: Apache-2.0
+    scope: dev
+  - name: "@types/react"
+    licenseFamily: MIT
+    scope: dev
+  - name: "@types/react-dom"
+    licenseFamily: MIT
+    scope: dev
   - name: sqlite-vec
     licenseFamily: Apache-2.0
     scope: runtime
@@ -33,3 +57,9 @@ integrationDirectDependencies:
   - name: playwright-core
     licenseFamily: Apache-2.0
     scope: dev   # 浏览器验收脚本驱动系统 Chrome；不进 check.sh
+  - name: happy-dom
+    licenseFamily: MIT
+    scope: dev   # React 壳层单测的 DOM 环境；真实布局仍由 Chrome 验收
+  - name: pngjs
+    licenseFamily: MIT
+    scope: dev   # 解码视觉对照 PNG，比较全部像素，不设容差

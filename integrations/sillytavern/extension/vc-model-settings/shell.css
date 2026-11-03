@@ -254,16 +254,20 @@ body.vc-ui .vc-side-link {
   position: relative;
 }
 
-body.vc-ui .vc-side-link .vc-badge,
-body.vc-ui .vc-tab .vc-badge {
-  position: absolute;
+/* shadcn SidebarMenuItem 的独立按钮/角标槽位；装饰不进入按钮的 Flex 排版。 */
+body.vc-ui .vc-sidebar-content { display: contents; }
+body.vc-ui .vc-side-item { position: relative; display: grid; flex: none; }
+body.vc-ui .vc-side-badge { position: absolute; inset: 0; pointer-events: none; display: flex; align-items: center; justify-content: flex-end; padding-inline: 12px; }
+body.vc-ui .vc-side-badge[hidden] { display: none; }
+body.vc-ui .vc-side-badge .vc-badge { position: static; }
+body.vc-ui .vc-circle.vc-icon-button { display: inline-flex; align-items: center; justify-content: center; flex: none; }
+@media (max-width:1179px) {
+  body.vc-ui .vc-side-badge { display: block; padding: 0; }
+  body.vc-ui .vc-side-badge .vc-badge { position: absolute; }
 }
 
-body.vc-ui .vc-sidebar:not(.is-collapsed) .vc-side-link .vc-badge {
-  position: static;
-  margin-left: auto;
-  top: auto;
-  left: auto;
+body.vc-ui .vc-tab .vc-badge {
+  position: absolute;
 }
 
 body.vc-ui .vc-convo {

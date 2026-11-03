@@ -1,5 +1,6 @@
 import { BRIDGE_PREFIX } from './api.js';
-import { icon } from './ui/icons.js';
+import { iconSpriteUrl } from './ui/icons.js';
+import { mountVoiceBubbleView } from './desktop/build/index.js';
 
 export const VOICE_COPY = Object.freeze({
     recording: '正在录音…', play: '播放语音', pause: '暂停语音',
@@ -117,187 +118,50 @@ export function createVoicePlayer({ createAudio = () => new Audio() } = {}) {
 
 export const voicePlayer = createVoicePlayer();
 
-export function createVoiceBubble({ document: doc = globalThis.document, text = '', voice, input,
-    player = voicePlayer, onPlayed } = {}) {
-    const root = doc.createElement('div');
-    root.className = 'vc-voice';
-    const pending = voice && ['queued', 'running'].includes(voice.status);
-    if (pending) {
-        root.classList.add('vc-voice-pending');
-        root.setAttribute('role', 'status');
-        root.textContent = VOICE_COPY.recording;
-        return root;
-    }
-    const seconds = voiceSeconds(voice?.durationMs ?? input?.durationMs);
-    const desk = doc.documentElement?.dataset?.vcLayout === 'desktop';
-    const bar = doc.createElement(input ? 'div' : 'button');
-    bar.className = 'vc-voice-bar';
-    bar.style.setProperty('--vc-voice-width', `${voiceWidth(seconds * 1000)}%`);
-    if (!input) {
-        bar.type = 'button';
-        bar.setAttribute('aria-label', VOICE_COPY.play);
-        bar.setAttribute('aria-pressed', 'false');
-    } else bar.setAttribute('aria-label', VOICE_COPY.input);
-    const glyph = doc.createElement('span');
-    glyph.className = 'vc-voice-glyph';
-    glyph.innerHTML = icon(input ? 'mic' : 'play');
-    const wave = doc.createElement('span');
-    wave.className = 'vc-voice-wave';
-    wave.setAttribute('aria-hidden', 'true');
-    const heights = desk ? voiceWaveHeights(voice?.clipId ?? input?.clipId ?? seconds) : null;
-    for (let i = 0; i < (desk ? VOICE_WAVE_BARS : 5); i += 1) {
-        const barEl = doc.createElement('i');
-        if (desk) barEl.style.setProperty('--h', `${heights[i]}%`);
-        wave.append(barEl);
-    }
-    if (desk) {
-        root.classList.add('vc-voice-desk');
-        root.style.setProperty('--vc-voice-w', `${voiceDeskWidth(seconds)}px`);
-    }
-    const duration = doc.createElement('span');
-    duration.className = 'vc-voice-duration';
-    duration.textContent = `${seconds}″`;
-    bar.append(glyph, wave, duration);
-    let unread;
-    if (!input && !voice?.played) {
-        unread = doc.createElement('span');
-        unread.className = 'vc-voice-unread';
-        unread.setAttribute('role', 'img');
-        unread.setAttribute('aria-label', VOICE_COPY.unread);
-        bar.append(unread);
-    }
-    const toggle = doc.createElement('button');
-    toggle.className = 'vc-voice-transcribe';
-    toggle.type = 'button';
-    const transcript = doc.createElement('p');
-    transcript.className = 'vc-voice-text';
-    transcript.textContent = voiceText(text);
-    const setOpen = (open) => {
-        transcript.hidden = !open;
-        toggle.textContent = open ? VOICE_COPY.collapse : VOICE_COPY.transcript;
-        toggle.setAttribute('aria-expanded', String(open));
-    };
-    // 桌面：展开 / 收起高度过渡（时长与曲线读 CSS 变量）；减少动效或无 Web Animations 时直接切换。
-    const expand = (open) => {
-        const motionOff = !desk || typeof transcript.animate !== 'function' || transcript.hidden === !open
-            || doc.documentElement.dataset.vcReducedMotion === 'true'
-            || globalThis.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
-        if (motionOff) { setOpen(open); return; }
-        transcript.getAnimations?.().forEach((a) => a.cancel());
-        let full = 0;
-        if (open) { setOpen(true); full = transcript.offsetHeight; } else { full = transcript.offsetHeight; setOpen(false); transcript.hidden = false; }
-        const shut = { height: '0px', paddingBlock: '0px', opacity: 0 };
-        const wide = { height: `${full}px`, opacity: 1 };
-        const css = globalThis.getComputedStyle?.(transcript);
-        const time = css?.getPropertyValue('--vc-dur-shared').trim() || '';
-        const duration = (parseFloat(time) || 0) * (time.endsWith('ms') ? 1 : 1000);
-        const easing = css?.getPropertyValue('--vc-spring').trim() || 'ease';
-        if (!duration) { setOpen(open); return; }
-        const anim = transcript.animate(open ? [shut, wide] : [wide, shut], { duration, easing });
-        transcript.style.overflow = 'hidden';
-        anim.onfinish = anim.oncancel = () => { transcript.style.overflow = ''; if (!open) transcript.hidden = true; };
-    };
-    setOpen(Boolean(input));
-    toggle.addEventListener('click', () => expand(transcript.hidden));
-    const clipId = voice?.clipId;
-    const bars = [...wave.children];
-    let shown = -1;
-    let frame = 0;
-    const paint = (fraction) => {
-        if (!desk) return;
-        const n = Math.round(Math.min(1, Math.max(0, fraction)) * VOICE_WAVE_BARS);
-        if (n === shown) return;
-        shown = n;
-        bars.forEach((el, i) => el.classList.toggle('on', i < n));
-    };
-    const fractionNow = () => {
-        const info = player.peek?.(clipId);
-        if (!info) return 0;
-        if (info.ended) return 0;
-        const total = info.duration || seconds;
-        return total ? info.currentTime / total : 0;
-    };
-    const stopLoop = () => { if (frame) globalThis.cancelAnimationFrame?.(frame); frame = 0; };
-    const loop = () => {
-        paint(fractionNow());
-        frame = globalThis.requestAnimationFrame ? globalThis.requestAnimationFrame(loop) : 0;
-    };
-    let speed;
-    if (desk && !input) {
-        player.setRate?.(readVoiceRate());
-        speed = doc.createElement('button');
-        speed.className = 'vc-voice-speed';
-        speed.type = 'button';
-        speed.setAttribute('aria-label', VOICE_COPY.speed);
-        const showRate = () => { speed.textContent = formatVoiceRate(readVoiceRate()); };
-        showRate();
-        speed.addEventListener('click', () => {
-            const next = nextVoiceRate(readVoiceRate());
-            writeVoiceRate(next);
-            player.setRate?.(next);
-            globalThis.dispatchEvent?.(new Event('vc-voice-rate'));
+const voiceViews = new WeakMap(), voiceOwners = new WeakMap();
+function ownVoiceView(doc, root, unmount) {
+    let owner = voiceOwners.get(doc);
+    if (!owner) {
+        const roots = new Map();
+        const observer = new doc.defaultView.MutationObserver(records => {
+            for (const [node, dispose] of roots) {
+                if (!node.isConnected && records.some(record => [...record.removedNodes].some(removed => removed === node || removed.contains?.(node)))) dispose();
+            }
         });
-        const onRate = () => {
-            if (!speed.isConnected) { globalThis.removeEventListener?.('vc-voice-rate', onRate); return; }
-            showRate();
-        };
-        globalThis.addEventListener?.('vc-voice-rate', onRate);
+        observer.observe(doc.body, { childList: true, subtree: true });
+        owner = { roots, observer }; voiceOwners.set(doc, owner);
     }
-    let dragged = false;
-    const seekTo = (time) => { if (player.seek?.(clipId, time)) paint(fractionNow()); };
-    const ratioAt = (event) => {
-        const box = wave.getBoundingClientRect?.();
-        return box?.width ? Math.min(1, Math.max(0, (event.clientX - box.left) / box.width)) : 0;
+    let dead = false;
+    const dispose = () => {
+        if (dead) return; dead = true;
+        owner.roots.delete(root); voiceViews.delete(root); unmount();
+        if (!owner.roots.size) { owner.observer.disconnect(); voiceOwners.delete(doc); }
     };
-    if (desk && !input) {
-        wave.addEventListener('pointerdown', (event) => {
-            if (!player.isCurrent?.(clipId)) return;
-            const info = player.peek(clipId);
-            const total = info?.duration || seconds;
-            dragged = true;
-            wave.setPointerCapture?.(event.pointerId);
-            seekTo(ratioAt(event) * total);
-            const move = (e) => seekTo(ratioAt(e) * total);
-            const up = () => {
-                wave.removeEventListener('pointermove', move);
-                wave.removeEventListener('pointerup', up);
-                wave.removeEventListener('pointercancel', up);
-                setTimeout(() => { dragged = false; }, 0);
-            };
-            wave.addEventListener('pointermove', move);
-            wave.addEventListener('pointerup', up);
-            wave.addEventListener('pointercancel', up);
-        });
-        bar.addEventListener('keydown', (event) => {
-            if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
-            const info = player.peek(clipId);
-            if (!info || !player.isCurrent(clipId)) return;
-            event.preventDefault();
-            seekTo(info.currentTime + (event.key === 'ArrowRight' ? 1 : -1));
-        });
+    owner.roots.set(root, dispose); voiceViews.set(root, dispose);
+}
+
+export function createVoiceBubble({ document: doc = globalThis.document, text = '', voice, input, player = voicePlayer, onPlayed } = {}) {
+    const root = doc.createElement('div'); root.className = 'vc-voice';
+    if (voice && ['queued', 'running'].includes(voice.status)) {
+        root.classList.add('vc-voice-pending'); root.setAttribute('role', 'status'); root.textContent = VOICE_COPY.recording; return root;
     }
-    if (!input) bar.addEventListener('click', () => {
-        if (dragged) return;
-        void player.toggle(voice?.clipId, {
-            onState(playing) {
-                root.classList.toggle('vc-voice-playing', playing);
-                glyph.innerHTML = icon(playing ? 'pause' : 'play');
-                bar.setAttribute('aria-label', playing ? VOICE_COPY.pause : VOICE_COPY.play);
-                bar.setAttribute('aria-pressed', String(playing));
-                if (!desk) return;
-                stopLoop();
-                if (playing) loop(); else paint(fractionNow());
-            },
-            onPlayed() { unread?.remove(); onPlayed?.(); },
-            onError() { expand(true); },
-        });
+    const seconds = voiceSeconds(voice?.durationMs ?? input?.durationMs), desktop = doc.documentElement?.dataset?.vcLayout === 'desktop';
+    if (desktop) { root.classList.add('vc-voice-desk'); root.style.setProperty('--vc-voice-w', `${voiceDeskWidth(seconds)}px`); }
+    const unmount = mountVoiceBubbleView(root, {
+        input: Boolean(input), desktop, text: voiceText(text), seconds, width: voiceWidth(seconds * 1000),
+        heights: desktop ? voiceWaveHeights(voice?.clipId ?? input?.clipId ?? seconds) : [40, 75, 100, 75, 40],
+        clipId: voice?.clipId, played: Boolean(voice?.played), sprite: iconSpriteUrl(), player,
+        readRate: readVoiceRate, rateText: formatVoiceRate,
+        cycleRate() { const next = nextVoiceRate(readVoiceRate()); writeVoiceRate(next); player.setRate?.(next); globalThis.dispatchEvent?.(new Event('vc-voice-rate')); },
+        onPlaying(playing) { root.classList.toggle('vc-voice-playing', playing); }, onPlayed: () => onPlayed?.(),
     });
-    root.append(...(speed ? [bar, speed, toggle, transcript] : [bar, toggle, transcript]));
+    ownVoiceView(doc, root, unmount);
     return root;
 }
 
 export function clearMessageVoice(mes) {
-    mes?.querySelector?.('.vc-voice')?.remove();
+    const bubble = mes?.querySelector?.('.vc-voice');
+    if (bubble) { voiceViews.get(bubble)?.(); bubble.remove(); }
     mes?.classList?.remove('vc-voice-message');
     mes?.removeAttribute?.('data-vc-voice');
     mes?.querySelector?.('.mes_text')?.removeAttribute?.('aria-hidden');

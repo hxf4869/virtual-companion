@@ -733,8 +733,9 @@ export async function sceneF2ChatUi(ctx) {
                     if (chat && box.top < limit + 12) chat.scrollTop += (box.top - limit - 24);
                 });
                 await message.click({ button: 'right' });
-                const menu = page.locator('[role="menu"].vc-menu');
-                await menu.waitFor();
+                const menu = page.locator('.vc-menu:has([role="menu"])');
+                await menu.waitFor({ timeout: 8000 });
+                if (await menu.getByRole('menu').count() !== 1) fail(new Error('菜单列表缺少menu语义'));
                 if (mode === 'light' && viewport.name === '390') {
                     const labels = await menu.locator('.vc-menu-label').allTextContents();
                     for (const need of ['复制', '编辑', '重新生成', '选择文本', '删除']) {

@@ -3,9 +3,10 @@ import * as api from './api.js';
 import * as actions from './story-action.js';
 import { STORY_SYNC_PENDING } from './story-projection.js';
 import { confirmAlert } from './ui/alert.js';
-import { icon } from './ui/icons.js';
+import { iconSpriteUrl } from './ui/icons.js';
+import { mountStoryView } from './desktop/build/index.js';
 import { readVcUiFlag } from './ui/theme.js';
-import { desktopLayout, presentStory } from './desktop/presentation.js';
+import { desktopLayout } from './desktop/presentation.js';
 import { popMenu } from './ui/menu.js';
 import { animate, EASE_IN_OUT, EASE_OUT, prefersReducedMotion, SPRING } from './ui/motion.js';
 import { showToast } from './ui/toast.js';
@@ -17,7 +18,6 @@ const START_FAILED = '开局未完成，请重试。';
 const ACTION_FAILED = '这步行动没有完成，请重试。';
 const ACTION_CONFLICT = '这步行动与当前进度不一致，没有另开分支。';
 const CONFIG_MISSING = '剧情导演或 NPC 尚未绑定可用模型。';
-const GENERATING = '正在生成这一步';
 const REWIND_RECALC = '公开线索和角色私密知情范围会重新计算。备份不会因此全部删除。';
 const REWIND_DEVICES = '同一局的其他设备需要加载最新状态，不会自动合并。';
 const REWIND_BLOCKED = '当前聊天还不能回档';
@@ -66,9 +66,8 @@ const STAGE_MOTION = {
     flipMs: 800,
     reducedMs: 150,
 };
-const spriteLoads = new Map();
 
-const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
 
 function shown(value) {
     return typeof value === 'string' && value !== '' && !HIDDEN.test(value) ? value : '';
@@ -140,10 +139,6 @@ function allowView(raw) {
     return { setting: shown(lore.setting), knownEvent: shown(lore.knownEvent), locations, knowledge, events, participants };
 }
 
-function list(items) {
-    return items.map((item) => `<li>${esc(item)}</li>`).join('');
-}
-
 function initial(name) {
     const text = String(name || '').replace(/[^\p{L}\p{N}]/gu, '');
     return [...text][0] || '人';
@@ -196,71 +191,31 @@ function viewState(state) {
     return 'playing';
 }
 
-function configBanner(state) {
-    if (!state.configNote) return '';
-    return `<div class="vc-story-config" data-config="missing" role="status"><p>${esc(state.configNote)}</p><button type="button" class="vcms-btn" data-action="configure">打开模型设置</button></div>`;
-}
-
-function rewindDialog(ask) {
-    if (!ask) return '';
-    const title = ask.version === 0 ? '回到调查开始？' : `回到版本 ${ask.version}？`;
-    return `<dialog class="vc-story-rewind-dialog" aria-labelledby="vc-story-rewind-title"><h2 id="vc-story-rewind-title" tabindex="-1">${esc(title)}</h2><p>${esc(rewindCopy(ask))}</p><p>${esc(REWIND_RECALC)}</p><p>${esc(REWIND_DEVICES)}</p><div class="vc-story-rewind-actions"><button type="button" class="vcms-btn" data-action="cancel-rewind">取消</button><button type="button" class="vcms-btn" data-action="confirm-rewind">确认回档</button></div></dialog>`;
-}
-
-export function renderStoryPage(state) {
-    const playing = Boolean(state.run && state.view);
-    if (!playing) {
-        return `<div class="vc-story" data-state="unstarted">
-      <header class="vc-story-bar"><h1 tabindex="-1">雨夜旅馆</h1><button type="button" class="vcms-btn vcms-btn-ghost" data-action="close">关闭</button></header>
-      ${configBanner(state)}
-      <section class="vc-story-gate"><h2>${CASE_TITLE}</h2>${state.error ? `<p role="alert">${esc(state.error)}</p>` : ''}<button type="button" class="vcms-btn vcms-btn-primary" data-action="start" ${state.busy ? 'disabled' : ''}>开局</button></section>
-    </div>`;
-    }
-    const mode = viewState(state);
-    const ended = state.run.stage === 'resolved';
-    const stage = stageWord(state.run.stage);
-    const version = state.turn?.worldVersion ?? 0;
-    const hold = state.busy ? ' disabled' : '';
-    const selected = state.view.participants.find((person) => person.actorId === state.actorId);
-    const people = state.view.participants.map((person) => {
-        const pressed = state.actorId === person.actorId;
-        return `<button type="button" class="vc-story-person" data-action="select-actor" data-actor="${esc(person.actorId)}" aria-pressed="${pressed ? 'true' : 'false'}"><span class="vc-story-person-mark" aria-hidden="true">${esc(initial(person.name))}</span><span class="vc-story-person-copy"><h3>${esc(person.name)}</h3>${pressed ? '<span class="vc-story-badge">当前</span>' : ''}${person.persona ? `<p>${esc(person.persona)}</p>` : ''}</span></button>`;
-    }).join('');
-    const versions = new Set();
-    if (version > 0) versions.add(0);
-    for (const event of state.view.events) {
-        if (typeof event.worldVersion === 'number' && event.worldVersion < version) versions.add(event.worldVersion);
-    }
-    const rewind = [...versions].sort((a, b) => a - b).map((item) => `<button type="button" class="vcms-btn" data-action="ask-rewind" data-version="${item}"${hold}>回到版本 ${item}</button>`).join('');
-    const steps = ended ? '' : ACTION_GROUPS.map((group) => {
-        const buttons = STEPS.filter((step) => actionGroup(step) === group.id).map((step) => `<button type="button" class="${actionClass(step)}" data-action="act" data-step="${esc(step.id)}"${hold}>${esc(step.label)}</button>`).join('');
-        return buttons ? `<div class="vc-story-action-group" data-group="${group.id}"><h3>${esc(group.title)}</h3>${buttons}</div>` : '';
-    }).join('');
-    const sayPlaceholder = selected ? `对${selected.name}说` : '先选择一位角色';
-    const companions = state.companions ? state.companions.map((row) => CASTABLE.map((actorId) => {
-        const person = state.view.participants.find((item) => item.actorId === actorId);
-        const label = person?.name || actorId;
-        return `<button type="button" class="vcms-btn" data-action="map-companion" data-actor="${esc(actorId)}" data-relationship="${esc(row.relationshipId)}">${esc(row.name)} 入局为${esc(label)}</button>`;
-    }).join('')).join('') : '<button type="button" class="vcms-btn" data-action="show-companions">选择陪伴入局</button>';
-    const evidence = state.notice ? `<p class="vc-story-evidence" data-evidence="show">${esc(state.notice)}</p>` : '';
-    return `<div class="vc-story" data-state="${mode}" data-world-version="${version}">
-      <header class="vc-story-bar"><h1 tabindex="-1">${esc(state.run.caseId === 'rainy-inn-v1' ? CASE_TITLE : '剧情')}</h1>${stage ? `<p class="vc-story-stage"><span class="vc-story-badge">${esc(stage)}</span></p>` : ''}<button type="button" class="vcms-btn vcms-btn-ghost vc-story-close" data-action="close">关闭</button></header>
-      ${configBanner(state)}
-      ${mode === 'generating' ? `<p class="vc-story-generating" role="status">${esc(GENERATING)}</p>` : ''}
-      ${state.syncPending ? `<p class="vc-story-sync">${esc(STORY_SYNC_PENDING)}</p>` : ''}
-      ${state.reason ? `<p role="alert">${esc(state.reason)}</p>` : ''}
-      ${evidence}
-      <section class="vc-story-panel" aria-label="公开设定"><h2>公开设定</h2><p class="vc-story-setting">${esc(state.view.setting)}</p></section>
-      <section class="vc-story-cast">${people}</section>
-      <section class="vc-story-panel" aria-label="地点"><h2>地点</h2><ul class="vc-story-places">${list(state.view.locations)}</ul></section>
-      <section class="vc-story-panel" aria-label="线索"><h2>线索</h2><ul class="vc-story-clues">${list(state.view.knowledge)}</ul></section>
-      <section class="vc-story-panel" aria-label="公开时间线"><h2>公开时间线</h2>${state.view.knownEvent ? `<p class="vc-story-known">${esc(state.view.knownEvent)}</p>` : ''}<ul class="vc-story-events">${list(state.view.events.map((event) => event.line))}</ul></section>
-      ${ended ? '' : `<section class="vc-story-actions">${steps}<div class="vc-story-say"><label class="vc-story-say-row"><input data-field="say" maxlength="4000" aria-label="对所选角色说" placeholder="${esc(sayPlaceholder)}"${hold}><button type="button" class="vcms-btn vcms-btn-primary" data-action="say"${hold}>对所选角色说</button></label></div></section>`}
-      ${rewind ? `<section class="vc-story-rewind">${rewind}</section>` : ''}
-      ${rewindDialog(state.rewindAsk)}
-      <section class="vc-story-companions">${companions}</section>
-      ${ended ? `<section class="vc-story-ending"><h2>结局</h2>${state.epilogue ? `<p>${esc(state.epilogue)}</p>` : ''}<textarea data-field="summary" maxlength="2000" aria-label="共同游玩摘要"></textarea><button type="button" class="vcms-btn" data-action="save-epilogue">保存共同游玩摘要</button><button type="button" class="vcms-btn" data-action="discard-epilogue">放弃共同游玩摘要</button></section>` : ''}
-    </div>`;
+// 只投影允许显示的状态；服务/分支/投影命令仍由原控制器执行。
+export function storyViewProps(state, options = {}) {
+    const legacy = options.legacy === true, playing = Boolean(state.run && state.view);
+    const mode = storyMode(state), stage = stageWord(state.run?.stage), view = state.view || {};
+    const people = (view.participants || []).map(person => ({ id: person.actorId, name: person.name, initial: initial(person.name), persona: person.persona || '', selected: person.actorId === state.actorId }));
+    const selected = people.find(person => person.selected);
+    const clue = freshClueName(state);
+    return {
+        legacy, desktop: desktopLayout(), gate: options.view !== 'stage' || !playing, loading: options.loading === true,
+        mode, stage, title: legacy ? (state.run?.caseId === 'rainy-inn-v1' ? CASE_TITLE : '剧情') : (state.run?.caseId === 'rainy-inn-v1' ? '雨夜旅馆' : '剧情'), caseTitle: CASE_TITLE,
+        busy: Boolean(state.busy), playing, ended: state.run?.stage === 'resolved', version: state.turn?.worldVersion ?? 0, percent: progressPercent(state),
+        config: state.configNote || '', error: state.error || '', reason: state.reason || '', notice: state.notice || '', sync: state.syncPending ? STORY_SYNC_PENDING : '', epilogue: state.epilogue || '',
+        people, cover: coverPeople(state).map(person => ({ id: person.actorId, name: person.name, initial: initial(person.name), persona: '', selected: false })),
+        setting: view.setting || '', known: view.knownEvent || '', locations: view.locations || [], knowledge: view.knowledge || [],
+        lines: (view.events || []).map((event, index, events) => ({ id: event.worldEventId || String(index), text: event.line, say: /[“"「]/.test(event.line), fresh: Boolean(options.fresh && index === events.length - 1) })),
+        cards: evidenceItems(state).map(item => ({ ...item, glyph: evidenceIcon(item.name), fresh: item.name === clue, flipped: options.flipped?.has(item.name) || false })),
+        steps: STEPS.map(step => ({ id: step.id, label: step.label, visible: Boolean(selected) && step.target === selected.id, group: actionGroup(step), className: legacy ? actionClass(step) : step.action === 'accuse' ? 'vc-btn vc-btn-danger' : 'vc-btn vc-btn-gray' })),
+        versions: rewindTargets(state), selected: selected?.name || '',
+        companions: state.companions ? state.companions.flatMap(row => CASTABLE.map(actor => ({ actor, relationship: String(row.relationshipId), label: `${row.name} 入局为${people.find(person => person.id === actor)?.name || actor}` }))) : null,
+        draftSay: options.draftSay || '', draftSummary: options.draftSummary || '', sprite: iconSpriteUrl(),
+        rewind: state.rewindAsk ? { version: state.rewindAsk.version, title: state.rewindAsk.version === 0 ? '回到调查开始？' : `回到版本 ${state.rewindAsk.version}？`, message: rewindCopy(state.rewindAsk), recalc: REWIND_RECALC, devices: REWIND_DEVICES } : null,
+        rewindHost: options.rewindHost,
+        motion: { reduced: prefersReducedMotion(), duration: STAGE_MOTION.flipMs, easing: SPRING },
+        reveal: options.reveal || (() => {}), field: options.field || (() => {}), cancelRewind: options.cancelRewind || (() => {}),
+    };
 }
 
 export function createStoryPage({
@@ -668,49 +623,20 @@ export function mountStoryPage({
     let draftSay = '';
     let draftSummary = '';
     const sheetOf = () => root.querySelector('.vc-story-rewind-dialog');
-    const restoreDrafts = () => {
-        const sayField = dialog.querySelector('[data-field="say"]');
-        if (sayField) sayField.value = draftSay;
-        const summaryField = dialog.querySelector('[data-field="summary"]');
-        if (summaryField) summaryField.value = draftSummary;
-    };
-    const render = (next) => {
+    let view = null;
+    const fields = (name, value) => { if (name === 'say') draftSay = value; if (name === 'summary') draftSummary = value; render(page.state); };
+    const render = next => {
         if (!next.open) return;
         const previous = rewindVersion;
-        const stale = sheetOf();
-        if (stale?.open) stale.close();
-        stale?.remove();
-        dialog.innerHTML = `<div class="vc-story-page">${renderStoryPage(next)}</div>`;
-        restoreDrafts();
-        const sheet = dialog.querySelector('.vc-story-rewind-dialog');
-        if (next.rewindAsk && sheet) {
-            root.append(sheet);
-            sheet.addEventListener('cancel', (event) => {
-                event.preventDefault();
-                event.stopPropagation();
-                page.cancelRewind();
-            });
-            if (!sheet.open) sheet.showModal();
-            sheet.querySelector('#vc-story-rewind-title')?.focus();
-            rewindVersion = next.rewindAsk.version;
-            return;
-        }
-        rewindVersion = null;
-        if (previous !== null && !next.rewindAsk) {
-            const back = dialog.querySelector(`[data-action="ask-rewind"][data-version="${previous}"]`);
-            (back || dialog.querySelector('h1'))?.focus();
-        }
+        const props = storyViewProps(next, { legacy: true, draftSay, draftSummary, rewindHost: root, field: fields, cancelRewind: () => page.cancelRewind() });
+        if (view) view.update(props); else view = mountStoryView(dialog, props, root);
+        rewindVersion = next.rewindAsk?.version ?? null;
+        if (previous !== null && !next.rewindAsk) (dialog.querySelector(`[data-action="ask-rewind"][data-version="${previous}"]`) || dialog.querySelector('h1'))?.focus();
     };
     const page = createStoryPage({ getConversation, onRun, onActor, onAdvance, getChatIdentity, project, onChange: render });
     const close = () => {
-        const sheet = sheetOf();
-        if (sheet?.open) sheet.close();
-        sheet?.remove();
-        rewindVersion = null;
-        page.close();
-        dialog.close();
-        dialog.innerHTML = '';
-        opener?.focus();
+        rewindVersion = null; page.close(); view?.unmount(); view = null;
+        dialog.close(); opener?.focus();
     };
     dialog.addEventListener('cancel', (event) => {
         event.preventDefault();
@@ -719,11 +645,6 @@ export function mountStoryPage({
             return;
         }
         close();
-    });
-    root.addEventListener('input', (event) => {
-        const field = event.target?.dataset?.field;
-        if (field === 'say') draftSay = event.target.value;
-        if (field === 'summary') draftSummary = event.target.value;
     });
     root.addEventListener('click', (event) => {
         const target = event.target.closest('button');
@@ -785,13 +706,6 @@ function storyMode(state) {
     return viewState(state);
 }
 
-function storyAttrs(state) {
-    const mode = storyMode(state);
-    const version = state.turn?.worldVersion ?? 0;
-    const held = mode === 'unstarted' ? '' : ` data-world-version="${version}"`;
-    return `class="vc-story" data-state="${mode}"${held}`;
-}
-
 function rewindTargets(state) {
     const version = state.turn?.worldVersion ?? 0;
     const versions = new Set();
@@ -840,85 +754,6 @@ function progressPercent(state) {
     if (state.run?.stage === 'resolved') return 100;
     const version = state.turn?.worldVersion ?? 0;
     return Math.max(0, Math.min(100, Math.round((version / STEPS.length) * 100)));
-}
-
-function narrativeBlocks(state, fresh) {
-    const setting = state.view?.setting ? `<p class="vc-dim vc-story-setting">${esc(state.view.setting)}</p>` : '';
-    const known = state.view?.knownEvent ? `<p class="vc-story-known">${esc(state.view.knownEvent)}</p>` : '';
-    const events = state.view?.events || [];
-    const lines = events.map((event, index) => {
-        const say = /[“"「]/.test(event.line);
-        const mark = fresh && index === events.length - 1 ? ' vc-stream' : '';
-        return `<li class="${say ? 'vc-say' : ''}${mark}">${esc(event.line)}</li>`;
-    }).join('');
-    return { setting, known, lines };
-}
-
-export function renderStoryTab(state, options = {}) {
-    const view = options.view === 'stage' && state.run && state.view ? 'stage' : 'gate';
-    const loading = options.loading === true;
-    const mode = storyMode(state);
-    const stage = stageWord(state.run?.stage);
-    const people = coverPeople(state);
-    const percent = progressPercent(state);
-    const config = configBanner(state).replace('class="vc-story-config"', 'class="vc-story-config vc-note vc-glass"');
-    const error = state.error ? `<p class="vc-note vc-glass" role="alert">${esc(state.error)}</p>` : '';
-    const faces = people.map((person) => `<span class="vc-case-face" aria-label="${esc(person.name)}">${esc(initial(person.name))}</span>`).join('');
-    const gateButton = state.run
-        ? `<button type="button" class="vc-btn vc-btn-fill" data-action="enter" ${state.busy ? 'disabled' : ''}>${icon('play', { size: 18 })}继续</button>`
-        : `<button type="button" class="vc-btn vc-btn-fill" data-action="start" ${state.busy ? 'disabled' : ''}>${icon('play', { size: 18 })}开局</button>`;
-    if (loading || view === 'gate') {
-        const skeleton = loading
-            ? `<div class="vc-skeleton-row" aria-busy="true"><span class="vc-skeleton vc-skeleton-avatar"></span><span class="vc-grow"><span class="vc-skeleton vc-skeleton-line"></span><span class="vc-skeleton vc-skeleton-line is-short"></span></span></div>`
-            : '';
-        return `<header class="vc-navbar"><div class="vc-nav-title">剧情</div><div class="vc-nav-spacer"></div></header><div class="vc-scroll"><h1 class="vc-large-title" tabindex="-1">剧情</h1><div ${storyAttrs(loading ? { run: null, view: null } : state)}>${config}${error}${skeleton}<article class="vc-case"><div class="vc-case-cover"><div class="vc-case-fog"></div>${faces}</div><div class="vc-case-info"><h3>${esc(CASE_TITLE)}</h3>${stage ? `<span class="vc-meta">${esc(stage)}</span>` : ''}<div class="vc-case-bar" aria-hidden="true"><i style="width:${percent}%"></i></div>${loading ? '' : gateButton}</div></article></div></div>`;
-    }
-    const hold = state.busy ? ' disabled' : '';
-    const selected = state.view.participants.find((person) => person.actorId === state.actorId);
-    const focused = state.view.participants.some((person) => person.actorId === state.actorId);
-    const npcs = state.view.participants.filter((person) => person.actorId !== 'player').map((person) => {
-        const pressed = state.actorId === person.actorId;
-        const accessible = person.persona ? `${person.name}，${person.persona}` : person.name;
-        return `<button type="button" class="vc-npc vc-story-person${pressed ? ' is-on' : ''}" data-action="select-actor" data-actor="${esc(person.actorId)}" aria-pressed="${pressed ? 'true' : 'false'}" aria-label="${esc(accessible)}"><span class="vc-npc-avatar" aria-hidden="true">${esc(initial(person.name))}</span><span class="vc-npc-name">${esc(person.name)}</span></button>`;
-    }).join('');
-    const versions = rewindTargets(state);
-    const primary = versions[0];
-    const extraRewind = versions.map((item) => `<button type="button" class="vc-cell" data-action="ask-rewind" data-version="${item}"${hold}>回到版本 ${item}</button>`).join('');
-    const blocks = narrativeBlocks(state, options.fresh === true);
-    const clue = freshClueName(state);
-    const cards = evidenceItems(state).map((item) => {
-        const fresh = item.name === clue;
-        return `<article class="vc-evi${fresh ? ' is-back' : ''}" ${fresh ? 'data-evidence="show"' : ''}><div class="vc-evi-face">${icon(evidenceIcon(item.name), { size: 18 })}<b>${esc(item.name)}</b>${item.detail ? `<span>${esc(item.detail)}</span>` : ''}</div><div class="vc-evi-back">${icon('sparkles', { size: 22 })}</div></article>`;
-    }).join('');
-    const steps = state.run.stage === 'resolved' ? '' : STEPS.map((step) => {
-        const visible = Boolean(selected) && step.target === selected.actorId;
-        const face = step.action === 'accuse' ? 'vc-btn vc-btn-danger' : 'vc-btn vc-btn-gray';
-        return `<button type="button" class="${face}" data-action="act" data-step="${esc(step.id)}"${visible ? '' : ' hidden'}${hold}>${esc(step.label)}</button>`;
-    }).join('');
-    const sayPlaceholder = selected ? `对${selected.name}说` : '先选择一位角色';
-    const sayValue = esc(options.draftSay || '');
-    const thinking = mode === 'generating'
-        ? `<p class="vc-note vc-glass vc-story-generating" role="status"><span class="vc-thinking" aria-hidden="true"><i></i><i></i><i></i></span>${esc(GENERATING)}</p>`
-        : '';
-    const sync = state.syncPending ? `<p class="vc-note vc-glass vc-story-sync" role="status">${esc(STORY_SYNC_PENDING)}</p>` : '';
-    const reason = state.reason ? `<p class="vc-note vc-glass" role="alert">${esc(state.reason)}</p>` : '';
-    const notes = `${config}<div class="vc-story-notes">${thinking}${sync}${reason}</div>`;
-    const field = `<label class="vc-story-say-row vc-field vc-composer-field vc-glass"><textarea data-field="say" maxlength="4000" rows="1" aria-label="对所选角色说" placeholder="${esc(sayPlaceholder)}"${hold}>${sayValue}</textarea><button type="button" class="vc-send" data-action="${mode === 'generating' ? 'stop' : 'say'}" aria-label="${mode === 'generating' ? '停止' : '发送'}"${mode === 'generating' || !String(options.draftSay || '').trim() ? ' disabled' : ''}>${icon(mode === 'generating' ? 'square' : 'arrow-up', { size: 18 })}</button></label>`;
-    const dock = state.run.stage === 'resolved' ? '' : `<div class="vc-dock vc-glass"><div class="vc-acts">${steps}</div><div class="vc-story-say">${field}</div></div>`;
-    const companions = state.companions
-        ? state.companions.map((row) => CASTABLE.map((actorId) => {
-            const person = state.view.participants.find((item) => item.actorId === actorId);
-            const label = person?.name || actorId;
-            return `<button type="button" class="vc-cell" data-action="map-companion" data-actor="${esc(actorId)}" data-relationship="${esc(row.relationshipId)}">${esc(row.name)} 入局为${esc(label)}</button>`;
-        }).join('')).join('')
-        : '<button type="button" class="vc-cell" data-action="show-companions">选择陪伴入局</button>';
-    const ending = state.run.stage === 'resolved'
-        ? `<section class="vc-group vc-story-ending"><h2>结局</h2>${state.epilogue ? `<p>${esc(state.epilogue)}</p>` : ''}<textarea data-field="summary" maxlength="2000" aria-label="共同游玩摘要">${esc(options.draftSummary || '')}</textarea><div class="vc-ending-actions"><button type="button" class="vc-btn vc-btn-fill" data-action="save-epilogue">保存共同游玩摘要</button><button type="button" class="vc-btn vc-btn-text is-danger" data-action="discard-epilogue">放弃共同游玩摘要</button></div></section>`
-        : '';
-    const rewindButton = primary == null
-        ? `<button type="button" class="vc-circle vc-glass" aria-label="回档" disabled>${icon('history')}</button>`
-        : `<button type="button" class="vc-circle vc-glass" data-action="ask-rewind" data-version="${primary}" aria-label="回档"${hold}>${icon('history')}</button>`;
-    return `<header class="vc-navbar" style="--vc-nav-p:1"><button type="button" class="vc-circle vc-glass" data-action="close" aria-label="离开剧情">${icon('x')}</button><h1 class="vc-nav-title" tabindex="-1">${esc(state.run.caseId === 'rainy-inn-v1' ? '雨夜旅馆' : '剧情')}${stage ? `<span class="vc-meta">${esc(stage)}</span>` : ''}</h1><div class="vc-nav-spacer"></div>${rewindButton}</header><div class="vc-scroll"><div ${storyAttrs(state)}><p class="vc-sr">${esc(CASE_TITLE)}</p>${notes}<div class="vc-npcs${focused ? ' is-focus' : ''}">${npcs}</div><div class="vc-narr"><section aria-label="公开设定">${blocks.setting}${blocks.known}</section><section aria-label="地点"><ul class="vc-story-places">${list(state.view.locations)}</ul></section><section aria-label="公开时间线"><ul class="vc-story-events">${blocks.lines}</ul></section></div><section aria-label="线索">${cards ? `<div class="vc-meta vc-evi-label">证物</div><div class="vc-evis">${cards}</div>` : ''}</section>${ending}${extraRewind ? `<section class="vc-group" aria-label="回档">${extraRewind}</section>` : ''}<section class="vc-group" aria-label="陪伴">${companions}</section></div></div>${dock}`;
 }
 
 function stampAlert(root, cancelAction, okAction) {
@@ -993,68 +828,6 @@ function beginLetterbox(host, title, stageLabel) {
     };
 }
 
-function flipEvidence(card) {
-    if (!card) return;
-    if (prefersReducedMotion()) {
-        card.classList.remove('is-back');
-        if (!card.querySelector('.vc-evi-new')) card.insertAdjacentHTML('beforeend', '<span class="vc-evi-new">+1</span>');
-        return;
-    }
-    const anim = animate(card, [
-        { transform: 'rotateY(180deg)' },
-        { transform: 'rotateY(0deg)' },
-    ], { duration: STAGE_MOTION.flipMs, easing: SPRING });
-    animationDone(anim).then(() => {
-        if (!card.isConnected) return;
-        card.classList.remove('is-back');
-        if (!card.querySelector('.vc-evi-new')) card.insertAdjacentHTML('beforeend', '<span class="vc-evi-new">+1</span>');
-    });
-}
-
-function hydrateIcons(scope) {
-    const doc = scope?.ownerDocument;
-    if (!doc || typeof fetch !== 'function') return;
-    const groups = new Map();
-    for (const use of scope.querySelectorAll('use[href]')) {
-        const href = use.getAttribute('href') || '';
-        const hash = href.indexOf('#');
-        if (hash <= 0) continue;
-        const url = href.slice(0, hash);
-        const id = href.slice(hash + 1);
-        if (!url.endsWith('.svg') || !id) continue;
-        if (!groups.has(url)) groups.set(url, []);
-        groups.get(url).push({ use, id });
-    }
-    for (const [url, items] of groups) {
-        const task = spriteLoads.get(url) || fetch(url).then((response) => {
-            if (!response.ok) throw new Error('sprite');
-            return response.text();
-        }).then((text) => {
-            if (!text.includes('<symbol')) throw new Error('sprite');
-            let host = doc.getElementById('vc-icon-sprite');
-            if (!host) {
-                host = doc.createElement('div');
-                host.id = 'vc-icon-sprite';
-                host.setAttribute('aria-hidden', 'true');
-                host.style.cssText = 'position:absolute;width:0;height:0;overflow:hidden';
-                doc.body.append(host);
-            }
-            if (host.dataset.url !== url) {
-                host.innerHTML = text.replace(/<\?xml[\s\S]*?\?>/, '').trim();
-                host.dataset.url = url;
-            }
-            return true;
-        }).catch(() => false);
-        spriteLoads.set(url, task);
-        task.then((ok) => {
-            if (!ok) return;
-            for (const item of items) {
-                if (item.use.isConnected) item.use.setAttribute('href', `#${item.id}`);
-            }
-        });
-    }
-}
-
 export function focusIfDetached(opener, title) {
     const live = opener?.isConnected === true || (opener?.isConnected == null && opener?.parent);
     if (live) return false;
@@ -1091,7 +864,6 @@ export function mountStoryTab(container, options = {}) {
     const flipped = new Set();
     let draftSay = '';
     let draftSummary = '';
-    let letterbox = null;
     let lastNotice = '';
     let desktop = desktopLayout();
     const resize = () => {
@@ -1124,58 +896,23 @@ export function mountStoryTab(container, options = {}) {
             if (shell.dataset.settings === 'page') delete shell.dataset.settings;
         } else if (shell.dataset.cover === 'story') delete shell.dataset.cover;
     }
+    let storyView = null;
+    const reveal = name => flipped.add(name);
+    const field = (name, value) => { if (dead) return; if (name === 'say') draftSay = value; if (name === 'summary') draftSummary = value; paint(); };
     function paint(state = page.state) {
-        const prevScroll = body.querySelector('.vc-scroll');
-        const scrollTop = prevScroll ? prevScroll.scrollTop : 0;
-        const active = doc.activeElement;
-        const savedFocus = active && active !== doc.body && body.contains(active)
-            ? {
-                field: active.getAttribute?.('data-field') || '',
-                action: active.getAttribute?.('data-action') || '',
-                start: Number.isInteger(active.selectionStart) ? active.selectionStart : null,
-                end: Number.isInteger(active.selectionEnd) ? active.selectionEnd : null,
-            }
-            : null;
+        if (dead) return;
         const pushing = view === 'stage' && root.dataset.view !== 'stage';
         root.dataset.view = view;
         root.classList.toggle('vc-desktop-story', view === 'gate');
         container.classList.toggle('vc-desktop-story-stage', view === 'stage');
         syncCover();
-        if (pushing) {
-            root.classList.add('is-push');
-            root.addEventListener('animationend', () => root.classList.remove('is-push'), { once: true });
-        }
-        const version = state.turn?.worldVersion ?? -1;
-        const fresh = seenVersion >= 0 && version > seenVersion;
+        if (pushing) { root.classList.add('is-push'); root.addEventListener('animationend', () => root.classList.remove('is-push'), { once: true }); }
+        const version = state.turn?.worldVersion ?? -1, fresh = seenVersion >= 0 && version > seenVersion;
         if (version >= 0) seenVersion = version;
-        body.innerHTML = renderStoryTab(state, { view, loading, fresh, draftSay, draftSummary });
-        if (view === 'gate' && desktopLayout()) presentStory(body);
-        hydrateIcons(body);
-        const scroll = body.querySelector('.vc-scroll');
-        if (scroll && prevScroll) scroll.scrollTop = scrollTop;
-        if (savedFocus && (savedFocus.field || savedFocus.action)) {
-            const next = savedFocus.field
-                ? body.querySelector(`[data-field="${savedFocus.field}"]`)
-                : body.querySelector(`[data-action="${savedFocus.action}"]`);
-            next?.focus?.();
-            if (next && Number.isInteger(savedFocus.start) && Number.isInteger(savedFocus.end) && typeof next.setSelectionRange === 'function') {
-                next.setSelectionRange(savedFocus.start, savedFocus.end);
-            }
-        }
-        if (state.notice && state.notice !== lastNotice) {
-            lastNotice = state.notice;
-            showToast(state.notice, { root, icon: 'sparkles' });
-            hydrateIcons(root);
-        } else if (!state.notice) lastNotice = '';
-        const card = body.querySelector('.vc-evi.is-back');
-        const name = card?.querySelector('b')?.textContent || '';
-        if (card && name && !flipped.has(name)) {
-            flipped.add(name);
-            flipEvidence(card);
-        } else if (card && flipped.has(name)) {
-            card.classList.remove('is-back');
-            if (!card.querySelector('.vc-evi-new')) card.insertAdjacentHTML('beforeend', '<span class="vc-evi-new">+1</span>');
-        }
+        const props = storyViewProps(state, { view, loading, fresh, draftSay, draftSummary, flipped, reveal, field });
+        if (storyView) storyView.update(props); else storyView = mountStoryView(body, props, root);
+        if (state.notice && state.notice !== lastNotice) { lastNotice = state.notice; showToast(state.notice, { root, icon: 'sparkles' }); }
+        else if (!state.notice) lastNotice = '';
     }
     async function maybeRewind(state) {
         if (!state.rewindAsk || alertOpen || dead) return;
@@ -1203,7 +940,6 @@ export function mountStoryTab(container, options = {}) {
         if (entering || dead) return;
         entering = true;
         const intro = beginLetterbox(root, '雨夜旅馆', stageWord(page.state.run?.stage));
-        letterbox = intro.box;
         try {
             if (!page.state.run) await page.start();
             intro.setStage(stageWord(page.state.run?.stage));
@@ -1219,7 +955,6 @@ export function mountStoryTab(container, options = {}) {
             await intro.finish();
         } finally {
             entering = false;
-            letterbox = null;
         }
     }
     function leaveStage() {
@@ -1319,15 +1054,6 @@ export function mountStoryTab(container, options = {}) {
         if (action === 'discard-epilogue') void page.discardEpilogue();
         if (action === 'configure') configure();
     });
-    root.addEventListener('input', (event) => {
-        const field = event.target?.dataset?.field;
-        if (field === 'say') {
-            draftSay = event.target.value;
-            const send = event.target.closest('.vc-field')?.querySelector('.vc-send');
-            if (send && page.state && storyMode(page.state) !== 'generating') send.disabled = !draftSay.trim();
-        }
-        if (field === 'summary') draftSummary = event.target.value;
-    });
     root.addEventListener('keydown', (event) => {
         if (event.key !== 'Enter' || event.shiftKey || event.isComposing) return;
         if (event.target?.dataset?.field !== 'say') return;
@@ -1337,6 +1063,8 @@ export function mountStoryTab(container, options = {}) {
     });
     async function refresh() {
         if (dead) return;
+        const active = doc.activeElement;
+        const focusAction = body.contains(active) ? active.getAttribute('data-action') : '';
         loading = true;
         view = 'gate';
         suppress = true;
@@ -1346,7 +1074,10 @@ export function mountStoryTab(container, options = {}) {
         } finally {
             suppress = false;
             loading = false;
-            if (!dead) paint();
+            if (!dead) {
+                paint();
+                if (focusAction && !active.isConnected && doc.activeElement === doc.body) [...body.querySelectorAll('[data-action]')].find(node => node.getAttribute('data-action') === focusAction)?.focus();
+            }
         }
     }
     function destroy() {
@@ -1356,6 +1087,7 @@ export function mountStoryTab(container, options = {}) {
         globalThis.removeEventListener('resize', resize);
         syncCover('gate');
         page.close();
+        storyView?.unmount(); storyView = null;
         root.remove();
     }
     void refresh();

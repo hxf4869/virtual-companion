@@ -35,16 +35,18 @@ import { verifyMemorycoreUpstream, assembleMemorycore } from './lib/memorycore-m
 function die(msg) { fail(msg, 4); }
 
 // ---------- main ----------
-function main() {
+async function main() {
     process.umask(0o077);
     assertManagedDevIsolated();
     verifyMemorycoreUpstream();
     if (process.argv.includes('--memorycore-only')) {
         assembleMemorycore(); ok('MemoryCore foundation assembled; persistent data retained'); return;
     }
+    const { buildDesktop } = await import('./build-desktop.mjs');
+    await buildDesktop();
     const contentStamp = assembleSourceStamp({
-        dirs: [SERVER_PLUGIN_SRC, EXTENSION_SRC, MEMORYCORE_SERVICE_SRC, path.join(INTEG, 'patches'), path.join(INTEG, 'scripts/lib')],
-        files: [UPSTREAM_LOCK, VENDOR_LOCK, path.join(INTEG, 'scripts/assemble-managed.mjs'), path.join(INTEG, 'scripts/bootstrap.mjs'), ...CORE_PATCH_SPECS],
+        dirs: [SERVER_PLUGIN_SRC, EXTENSION_SRC, MEMORYCORE_SERVICE_SRC, path.join(INTEG, 'patches'), path.join(INTEG, 'scripts/lib'), path.join(INTEG, 'desktop-ui/src')],
+        files: [UPSTREAM_LOCK, VENDOR_LOCK, path.join(INTEG, 'scripts/assemble-managed.mjs'), path.join(INTEG, 'scripts/bootstrap.mjs'), path.join(INTEG, 'scripts/build-desktop.mjs'), path.join(INTEG, 'desktop-ui/vite.config.mjs'), path.join(INTEG, 'desktop-ui/tsconfig.json'), path.join(INTEG, 'package.json'), path.join(INTEG, 'package-lock.json'), ...CORE_PATCH_SPECS],
         gitDirs: [ST_DIR, HELPER_DIR, EJS_DIR, MVU_DIR, MEMORYCORE_DIR],
     });
     const stampPath = path.join(MANAGED_DEV, 'assemble-content.stamp');
@@ -120,4 +122,4 @@ function main() {
     ok('assemble-managed 完成：启动用 VC_ST_GO_BASE_URL=… VC_ST_PLUGIN_SERVICE_TOKEN=… node scripts/start-managed.mjs');
 }
 
-try { main(); } catch (e) { die(e.stack || String(e)); }
+main().catch(e => die(e.stack || String(e)));

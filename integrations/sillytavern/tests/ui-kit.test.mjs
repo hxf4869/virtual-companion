@@ -1,11 +1,10 @@
-import test from 'node:test';
+import test, { after } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
 import {
     EASE_IN_OUT, EASE_OUT, SPRING, SPRING_FALLBACK, integrateSpring, spring,
 } from '../extension/vc-model-settings/ui/motion.js';
-import { selectDetent, SHEET_HALF_RATIO, SHEET_TOP_GAP } from '../extension/vc-model-settings/ui/sheet.js';
 import {
     parseThemeMode, readThemeMode, readVcUiFlag, resolveTheme, writeThemeMode, writeVcUiFlag,
 } from '../extension/vc-model-settings/ui/theme.js';
@@ -13,8 +12,10 @@ import { NEUTRAL_TINT, tintFromPixels } from '../extension/vc-model-settings/ui/
 import { icon, iconSpriteUrl } from '../extension/vc-model-settings/ui/icons.js';
 import { readViewport } from '../extension/vc-model-settings/ui/viewport.js';
 import { bindSegment } from '../extension/vc-model-settings/ui/controls.js';
-import { popMenu } from '../extension/vc-model-settings/ui/menu.js';
-import { installMiniDom } from './mini-dom.mjs';
+import { installReactDom } from './react-dom.mjs';
+const document = installReactDom({ after });
+const { selectDetent, SHEET_HALF_RATIO, SHEET_TOP_GAP } = await import('../extension/vc-model-settings/ui/sheet.js');
+const { popMenu } = await import('../extension/vc-model-settings/ui/menu.js');
 
 const cssUrl = new URL('../extension/vc-model-settings/vc-ui.css', import.meta.url);
 const indexUrl = new URL('../extension/vc-model-settings/index.js', import.meta.url);
@@ -304,47 +305,18 @@ test('分段控件 dispose 后不再听窗口缩放', () => {
     api.dispose();
 });
 
-test('弹出菜单把 Tab 圈在菜单项里', () => {
-    const document = installMiniDom();
-    const keys = [];
-    document.addEventListener = (type, fn) => { if (type === 'keydown') keys.push(fn); };
-    document.removeEventListener = () => {};
-    document.defaultView = { innerWidth: 800, innerHeight: 600 };
-    const prevRaf = globalThis.requestAnimationFrame;
-    globalThis.requestAnimationFrame = (fn) => { fn(); return 1; };
+test('弹出菜单保留库的焦点入口与出口，标准Tab离开由dr-overlays真实浏览器覆盖', async () => {
+    const anchor = document.createElement('button'); document.body.append(anchor);
+    anchor.getBoundingClientRect = () => ({ left: 20, top: 20, right: 64, bottom: 64, width: 44, height: 44 });
+    const opened = popMenu(anchor, [{ label: '复制', run() {} }, { label: '删除', danger: true, run() {} }]);
     try {
-        const anchor = document.createElement('button');
-        anchor.getBoundingClientRect = () => ({ left: 20, top: 20, right: 64, bottom: 64, width: 44, height: 44 });
-        document.body.append(anchor);
-        const opened = popMenu(anchor, [
-            { label: '复制', run() {} },
-            { label: '删除', danger: true, run() {} },
-        ]);
-        const items = opened.menu.querySelectorAll('[role="menuitem"]');
-        assert.equal(items.length, 2);
-        items[1].focus();
-        let prevented = false;
-        keys.at(-1)({
-            key: 'Tab',
-            shiftKey: false,
-            preventDefault() { prevented = true; },
-            stopPropagation() {},
-        });
-        assert.equal(prevented, true);
-        assert.equal(document.activeElement, items[0]);
-        prevented = false;
-        keys.at(-1)({
-            key: 'Tab',
-            shiftKey: true,
-            preventDefault() { prevented = true; },
-            stopPropagation() {},
-        });
-        assert.equal(prevented, true);
-        assert.equal(document.activeElement, items[1]);
-    } finally {
-        if (prevRaf) globalThis.requestAnimationFrame = prevRaf;
-        else delete globalThis.requestAnimationFrame;
-    }
+        for (let i = 0; i < 40 && !document.querySelector('[data-base-ui-focus-guard]'); i++) await new Promise(resolve => setTimeout(resolve, 0));
+        const items = opened.menu.querySelectorAll('[role="menuitem"]'); assert.equal(items.length, 2);
+        assert.equal(items[0].tabIndex, -1); assert.equal(items[1].tabIndex, -1);
+        const guards = [...document.querySelectorAll('[data-base-ui-focus-guard][data-type="inside"]')]; assert.equal(guards.length, 2);
+        assert.equal(document.querySelectorAll('[data-base-ui-focus-guard][data-type="outside"]').length, 2, 'Portal 的原生 Tab 出口必须在文档内');
+        // Owner已选择标准菜单行为；Happy DOM不仿造原生Tab默认动作。
+    } finally { opened.close(); }
 });
 
 function makeSegment({ pressed = -1, checked = -1 } = {}) {

@@ -143,11 +143,6 @@ export function fitStyleField(area) {
     if (next > 0) area.style.height = `${next}px`;
 }
 
-export function renderPersonaEditor(fields = {}) {
-    const row = (key, label) => `<label class="vc-cell vc-persona-field"><span class="vc-grow">${label}</span><textarea data-persona="${key}" aria-label="${label}">${esc(fields[key] || '')}</textarea></label>`;
-    return `<header class="vc-navbar" style="--vc-nav-p:1"><button type="button" class="vc-circle vc-glass" data-action="close-persona" aria-label="返回">${icon('chevron-left')}</button><h1 class="vc-nav-title" tabindex="-1">人设</h1><div class="vc-nav-spacer"></div></header><div class="vc-scroll"><div class="vc-column"><div class="vc-group">${row('description', '介绍')}${row('personality', '性格')}${row('scenario', '情景')}${row('first_mes', '开场')}${row('mes_example', '例句')}</div><p data-persona-error role="alert"></p><button type="button" class="vc-btn vc-btn-fill" data-action="save-persona">保存</button></div></div>`;
-}
-
 export function ensureCompanionStyles(doc = globalThis.document) {
     if (!doc?.getElementById || doc.getElementById('vc-companion-persona-css')) return;
     const link = doc.createElement('link');

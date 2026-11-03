@@ -4,6 +4,7 @@
 // 用途绑定与计价显示。不测 DOM 结构。
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { installReactDom } from './react-dom.mjs';
 import {
     PROTOCOLS,
     normalizeEndpoint,
@@ -309,6 +310,9 @@ test('克隆：整体替换子对象，VERIFIED 降级为 DECLARED，不影响�
         capabilities: { toolCalls: 'VERIFIED' }, boundPurposes: ['FOREGROUND_CHAT'],
     });
     const clone = cloneModelDraft(source, { profileKey: 'src-copy', displayName: '原配置（副本）' });
+    assert.equal(clone.capabilities.toolCalls, 'DECLARED', '副本草稿不能继承原配置的验证状态');
+    assert.equal(validateModelForm(clone).capabilities, undefined, '副本不会因不可声明的验证状态而无法保存');
+    assert.equal(source.capabilities.toolCalls, 'VERIFIED', '原配置核验结果保持不变');
     const put = buildProviderPut(providerDraftWithModels([source, clone]));
     assert.equal(put.models.find((m) => m.profileKey === 'src-copy').capabilities.toolCalls, 'DECLARED');
     assert.deepEqual(clone.boundPurposes, []);
@@ -425,36 +429,10 @@ test('采样参数能力在其他能力编辑中保留 VERIFIED，克隆降为 D
     assert.equal(cloned.capabilities.temperature, 'DECLARED'); assert.equal(cloned.capabilities.topP, 'DECLARED');
 });
 
-test('模型页呈现空供应商、停用徽章、缺密钥、未知能力、检查中和共享配置提示', async () => {
-    const listeners = new Map();
-    const overlay = {
-        innerHTML: '',
-        hidden: true,
-        isConnected: true,
-        querySelector: () => null,
-        querySelectorAll: () => [],
-        contains: () => true,
-        addEventListener(type, fn) { listeners.set(type, fn); },
-        dispatch(type, event) { listeners.get(type)?.(event); },
-    };
-    const previousDocument = globalThis.document;
+test('模型页呈现空供应商、停用徽章、缺密钥、未知能力、检查中和共享配置提示', async (t) => {
+    const doc = installReactDom(t);
+    doc.cookie = 'vc_csrf=synthetic-token';
     const previousFetch = globalThis.fetch;
-    globalThis.document = {
-        cookie: 'vc_csrf=token',
-        addEventListener() {},
-        querySelector() { return null; },
-        querySelectorAll() { return []; },
-        createElement() {
-            return {
-                id: '',
-                className: '',
-                innerHTML: '',
-                querySelector: (sel) => (sel === '.vcms-overlay' ? overlay : null),
-                querySelectorAll: () => [],
-            };
-        },
-        body: { appendChild() {}, classList: { add() {}, remove() {} } },
-    };
     let providers = [];
     let hangDiscover = false;
     globalThis.fetch = async (url) => {
@@ -494,6 +472,7 @@ test('模型页呈现空供应商、停用徽章、缺密钥、未知能力、�
     try {
         const { mountModelSettings } = await import('../extension/vc-model-settings/page.js');
         const page = mountModelSettings();
+        const overlay = page.root.querySelector('.vcms-overlay');
         const ready = async (pred) => {
             for (let i = 0; i < 30; i += 1) {
                 if (pred()) return;
@@ -507,7 +486,9 @@ test('模型页呈现空供应商、停用徽章、缺密钥、未知能力、�
         assert.match(overlay.innerHTML, /已停用/);
         assert.match(overlay.innerHTML, /缺密钥/);
         assert.match(overlay.innerHTML, /该供应商尚未配置 API Key。可以先保存为停用草稿；配置密钥并启用后才能用于生成。/);
-        assert.match(overlay.innerHTML, /aria-pressed="true">未知/);
+        const unknown = overlay.querySelector('[data-cap-key="toolCalls"][data-cap-state="UNKNOWN"]');
+        assert.equal(unknown?.getAttribute('aria-pressed'), 'true');
+        assert.equal(unknown?.textContent, '未知');
         assert.match(overlay.innerHTML, new RegExp(TOOL_CALLS_UNVERIFIED_NOTE));
         assert.match(overlay.innerHTML, new RegExp(TOOL_CALLS_VERIFY_ACTION));
         assert.match(overlay.innerHTML, new RegExp(TOOL_CALLS_VERIFY_HINT));
@@ -519,13 +500,7 @@ test('模型页呈现空供应商、停用徽章、缺密钥、未知能力、�
         page._state.phase = 'idle';
         page.open();
         await ready(() => page._state.phase === 'ready' && page._state.draft?.credentialConfigured === true);
-        overlay.dispatch('click', {
-            target: {
-                closest: (sel) => (sel === '[data-action]'
-                    ? { getAttribute: (name) => (name === 'data-action' ? 'check-connection' : null) }
-                    : null),
-            },
-        });
+        overlay.querySelector('[data-action="check-connection"]').click();
         assert.match(overlay.innerHTML, /检查中…/);
 
         providers = [];
@@ -536,7 +511,6 @@ test('模型页呈现空供应商、停用徽章、缺密钥、未知能力、�
         assert.match(overlay.innerHTML, /还没有供应商/);
         assert.match(overlay.innerHTML, /新建供应商，选择一种接口协议并填写 Base URL 与密钥，再添加模型配置。/);
     } finally {
-        globalThis.document = previousDocument;
         globalThis.fetch = previousFetch;
     }
 });

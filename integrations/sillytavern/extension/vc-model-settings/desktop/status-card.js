@@ -4,6 +4,7 @@ import { storyRequest } from '../api.js';
 import { requestShellDestination } from '../chat-shell.js';
 import { celebrate, patCharacter } from '../chat-react.js';
 import { reducedMotion } from './transition.js';
+import { mountStatusCardView } from './build/index.js';
 
 export const COPY = Object.freeze({
     today: (vibe) => `今天：${vibe}`,
@@ -105,187 +106,71 @@ export async function insertMilestone({ ctx, createdAt, relationshipId, now = ne
 // ---- 挂载 ----
 
 export function mountStatusCard({
-    getContext, document: doc = globalThis.document, who, avatar, sub,
+    getContext, document: doc = globalThis.document, who, avatar, onSubtitle, onTriggerState,
     fetchState = (id) => storyRequest('GET', `/api/v1/relationships/${id}/companion-state`),
     openMemory = (opener) => requestShellDestination('memory', opener),
     pat = patCharacter, now = () => new Date(),
 } = {}) {
-    if (!doc?.body || !avatar || !sub) return null;
+    if (!doc?.body || !avatar || !onSubtitle) return null;
     const root = doc.defaultView || globalThis;
     const desktop = () => doc.documentElement?.dataset?.vcLayout === 'desktop';
     const context = () => { try { return getContext?.() || null; } catch { return null; } };
     const rm = () => { try { return reducedMotion(); } catch { return false; } };
     let row = null;
     let state = null;
-    let card = null;
+    let card = null, entry = null;
     let fetchedAt = 0;
     let token = 0;
 
     function paintSub() {
         const text = desktop() ? subtitleOf(state, now()) : '';
-        sub.textContent = text;
-        sub.hidden = !text;
+        onSubtitle(text);
     }
 
-    function makeAvatar(src, letter) {
-        const node = doc.createElement(src ? 'img' : 'span');
-        node.className = 'vc-sc-face';
-        if (src) { node.alt = ''; node.src = src; node.draggable = false; } else node.textContent = letter;
-        return node;
+    function cardProps(record) {
+        const day = dayCount(row?.createdAt, now()), hint = milestoneHint(day);
+        return {
+            label: who.getAttribute('aria-label') || '', name: row?.name || row?.instanceName || '', instance: row?.name && row?.instanceName ? row.instanceName : '',
+            avatar: avatar.querySelector('img')?.getAttribute('src') || '', letter: [...(row?.name || row?.instanceName || '')][0] || '', reducedMotion: rm(), style: record.style,
+            mood: state?.mood?.vibe ? COPY.today(state.mood.vibe) : '', line: state?.mood?.line || state?.emotion?.line || '', activity: state?.activity || '',
+            bars: state?.emotion ? [['closeness', COPY.closeness], ['mood', COPY.mood], ['energy', COPY.energy]].map(([key, label]) => ({ label, value: barPercent(state.emotion[key]) })) : [],
+            day: day ? COPY.day(day) : '', next: day ? COPY.next(hint.left, hint.day) : '', anchor: avatar,
+            ...record.events,
+        };
     }
-
-    // 头像换图（心情变化）时 0.5s 交叉淡化：新图叠在旧图上淡入，完成后移除旧图。
-    function swapFace(holder, next) {
-        const old = holder.querySelector('.vc-sc-face');
-        if (!old || rm()) { holder.replaceChildren(next); return; }
-        next.classList.add('is-incoming');
-        holder.append(next);
-        const done = () => { old.remove(); next.classList.remove('is-incoming'); };
-        next.addEventListener('animationend', done, { once: true });
-        setTimeout(done, 700);
-    }
-
-    function faceOf() {
-        const img = avatar.querySelector('img');
-        const letter = [...(row?.name || row?.instanceName || '')][0] || '';
-        return makeAvatar(img?.getAttribute('src') || '', letter);
-    }
-
-    function line(className, text) {
-        const node = doc.createElement('p');
-        node.className = className;
-        node.textContent = text;
-        return node;
-    }
-
-    function bar(label, value) {
-        const wrap = doc.createElement('div');
-        wrap.className = 'vc-sc-bar';
-        const name = doc.createElement('span');
-        name.textContent = label;
-        const track = doc.createElement('i');
-        track.setAttribute('role', 'progressbar');
-        track.setAttribute('aria-label', label);
-        track.setAttribute('aria-valuemin', '0');
-        track.setAttribute('aria-valuemax', '100');
-        track.setAttribute('aria-valuenow', String(barPercent(value)));
-        const fill = doc.createElement('b');
-        fill.style.setProperty('--v', String(barPercent(value)));
-        track.append(fill);
-        wrap.append(name, track);
-        return wrap;
-    }
-
-    function button(className, label, onClick) {
-        const node = doc.createElement('button');
-        node.type = 'button';
-        node.className = className;
-        node.textContent = label;
-        node.addEventListener('click', onClick);
-        return node;
-    }
-
-    function build() {
-        const el = doc.createElement('div');
-        el.id = 'vc-status-card';
-        el.className = 'vc-glass';
-        el.setAttribute('role', 'dialog');
-        el.setAttribute('aria-label', who.getAttribute('aria-label') || '');
-        el.tabIndex = -1;
-        const head = doc.createElement('div');
-        head.className = 'vc-sc-head';
-        const holder = doc.createElement('span');
-        holder.className = 'vc-sc-avatar';
-        holder.append(faceOf());
-        const names = doc.createElement('div');
-        const name = doc.createElement('b');
-        name.textContent = row?.name || row?.instanceName || '';
-        names.append(name);
-        const inst = row?.name && row?.instanceName ? row.instanceName : '';
-        if (inst) names.append(Object.assign(doc.createElement('small'), { textContent: inst }));
-        head.append(holder, names);
-        el.append(head);
-        if (state?.mood?.vibe) {
-            const mood = doc.createElement('div');
-            mood.className = 'vc-sc-mood';
-            mood.append(line('vc-sc-title', COPY.today(state.mood.vibe)));
-            const text = state.mood.line || state.emotion?.line;
-            if (text) mood.append(line('vc-sc-sub', text));
-            el.append(mood);
-        }
-        if (state?.activity) {
-            const doing = doc.createElement('div');
-            doing.className = 'vc-sc-doing';
-            doing.append(line('vc-sc-label', COPY.doing), line('vc-sc-text', state.activity));
-            el.append(doing);
-        }
-        if (state?.emotion) {
-            const bars = doc.createElement('div');
-            bars.className = 'vc-sc-bars';
-            bars.append(bar(COPY.closeness, state.emotion.closeness), bar(COPY.mood, state.emotion.mood), bar(COPY.energy, state.emotion.energy));
-            el.append(bars);
-        }
-        const day = dayCount(row?.createdAt, now());
-        if (day) {
-            const days = doc.createElement('div');
-            days.className = 'vc-sc-days';
-            const { left, day: target } = milestoneHint(day);
-            days.append(line('vc-sc-title', COPY.day(day)), line('vc-sc-next', COPY.next(left, target)));
-            el.append(days);
-        }
-        const actions = doc.createElement('div');
-        actions.className = 'vc-sc-actions';
-        actions.append(
-            button('vc-btn vc-sc-action', COPY.pat, () => { close(false); void pat(); }),
-            button('vc-btn vc-sc-action', COPY.memory, () => { close(false); openMemory(avatar); }),
-        );
-        el.append(actions);
-        return el;
-    }
-
     function place() {
-        const rect = avatar.getBoundingClientRect();
-        const width = card.offsetWidth;
-        card.style.left = `${Math.max(8, Math.min(rect.left, root.innerWidth - width - 8))}px`;
-        card.style.top = `${rect.bottom + 8}px`;
+        if (!entry || !card) return;
+        const rect = avatar.getBoundingClientRect(), width = card.offsetWidth;
+        entry.style = { left: Math.max(8, Math.min(rect.left, root.innerWidth - width - 8)), top: rect.bottom + 8 };
+        entry.view.update(cardProps(entry));
     }
-
     function open() {
         if (card || !desktop() || !row) return;
-        card = build();
-        doc.body.append(card);
-        place();
-        avatar.setAttribute('aria-expanded', 'true');
-        card.focus();
+        const host = doc.createElement('div'); host.style.display = 'contents'; doc.body.append(host);
+        const record = { host, view: null, style: {}, restoreFocus: false, events: null };
+        entry = record;
+        record.events = {
+            close: restore => { if (entry === record) close(restore); },
+            returnFocus: () => record.restoreFocus && avatar,
+            pat: () => { if (entry !== record) return; close(false); void pat(); },
+            memory: () => { if (entry !== record) return; close(false); openMemory(avatar); },
+            dispose: () => { host.remove(); if (entry !== record) return; entry = card = null; onTriggerState?.({ interactive: desktop(), expanded: false }); },
+        };
+        record.view = mountStatusCardView(host, cardProps(record)); card = record.view.el;
+        place(); onTriggerState?.({ interactive: true, expanded: true });
     }
-
     function close(restoreFocus = true) {
-        if (!card) return;
-        card.remove();
-        card = null;
-        avatar.setAttribute('aria-expanded', 'false');
-        if (restoreFocus) avatar.focus?.();
+        if (!entry) return;
+        const previous = entry; previous.restoreFocus = restoreFocus;
+        entry = card = null; previous.view.unmount(); previous.host.remove();
+        onTriggerState?.({ interactive: desktop(), expanded: false });
     }
-
-    function refreshCard() {
-        if (!card) return;
-        const holder = card.querySelector('.vc-sc-avatar');
-        const fresh = build();
-        const next = fresh.querySelector('.vc-sc-face');
-        const old = holder?.querySelector('.vc-sc-face');
-        card.replaceChildren(...fresh.childNodes);
-        if (old && next && old.getAttribute('src') !== next.getAttribute('src')) {
-            const newHolder = card.querySelector('.vc-sc-avatar');
-            newHolder.replaceChildren(old);
-            swapFace(newHolder, next);
-        }
-        place();
-    }
+    function refreshCard() { if (!entry) return; entry.view.update(cardProps(entry)); place(); }
 
     async function load() {
+        const mine = ++token;
         const id = row?.relationshipId;
         if (id == null || id === '' || !desktop()) { state = null; paintSub(); return; }
-        const mine = ++token;
         try {
             const next = await fetchState(id);
             if (mine !== token) return;
@@ -298,13 +183,7 @@ export function mountStatusCard({
         refreshCard();
     }
 
-    function dress() {
-        if (!desktop()) { avatar.removeAttribute('role'); avatar.removeAttribute('tabindex'); return; }
-        avatar.setAttribute('role', 'button');
-        avatar.tabIndex = 0;
-        avatar.setAttribute('aria-haspopup', 'dialog');
-        avatar.setAttribute('aria-expanded', card ? 'true' : 'false');
-    }
+    function dress() { onTriggerState?.({ interactive: desktop(), expanded: Boolean(card) }); }
 
     // 外壳每次画标题栏都会调用；只有换了会话才重新取状态并检查里程碑。
     function setRelationship(next) {
@@ -333,15 +212,6 @@ export function mountStatusCard({
         event.preventDefault();
         if (card) close(); else open();
     });
-    doc.addEventListener('keydown', (event) => {
-        if (event.key !== 'Escape' || !card) return;
-        event.preventDefault();
-        event.stopPropagation();
-        close();
-    }, true);
-    doc.addEventListener('pointerdown', (event) => {
-        if (card && !card.contains(event.target) && !avatar.contains(event.target)) close(false);
-    }, true);
     root.addEventListener?.('resize', () => { if (!desktop()) close(false); paintSub(); dress(); });
     const tick = () => {
         if (doc.hidden || !row) return;

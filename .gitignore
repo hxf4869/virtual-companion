@@ -90,6 +90,8 @@ integrations/sillytavern/.local/
 # V2-W03-S1 本切片专用开发运行目录（dataRoot/config/pid/日志/vendor 缓存/验收产物）与集成脚本依赖
 integrations/sillytavern/dev/
 integrations/sillytavern/node_modules/
+# DR-1 桌面 React 同源资源：固定一份输出，由 build:desktop / 受管装配重建。
+integrations/sillytavern/extension/vc-model-settings/desktop/build/
 # V2-W03 受管（managed）运行装配目录（受管 dataRoot/st-run 运行副本/pid/日志/manifest）
 integrations/sillytavern/dev-managed/
 

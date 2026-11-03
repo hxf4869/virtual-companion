@@ -1,3 +1,5 @@
+import './react-dom-bootstrap.mjs';
+import { accountFixture } from './account-dom.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
@@ -189,11 +191,11 @@ test('恢复码进入按钮在保存前关闭，手动密钥按 4 位分组', as
     assert.equal(rawManualKey('abcd efgh'), 'ABCDEFGH');
 });
 
-test('账户页信任设备分组默认隐藏，空列表不显示', async () => {
-    const { renderAccountShell, trustedDeviceGroupVisible, formatTrustedDeviceLine } = await import('../extension/vc-model-settings/data-rights.js');
-    const html = renderAccountShell();
-    assert.match(html, /aria-label="已信任的设备"/);
-    assert.match(html, /data-trusted-devices hidden/);
+test('账户页信任设备分组默认隐藏，空列表不显示', async (t) => {
+    const { trustedDeviceGroupVisible, formatTrustedDeviceLine } = await import('../extension/vc-model-settings/data-rights.js');
+    const { root } = await accountFixture(t);
+    assert.ok(root.querySelector('[aria-label="已信任的设备"]'));
+    assert.equal(root.querySelector('[data-trusted-devices]').hidden, true);
     assert.equal(trustedDeviceGroupVisible([]), false);
     assert.equal(trustedDeviceGroupVisible(null), false);
     assert.equal(trustedDeviceGroupVisible([{ id: '4', displayName: 'Mac · Chrome' }]), true);

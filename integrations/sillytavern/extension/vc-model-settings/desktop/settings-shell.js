@@ -1,33 +1,34 @@
 // 桌面设置表现层；控制器与协议继续来自公共生产模块。
-import { icon } from '../ui/icons.js';
+import { iconSpriteUrl } from '../ui/icons.js';
+import { mountSettingsFrameView, mountDrawerEntryView, mountVoiceFormView, voiceFormValues, mountSettingsOverviewView } from './build/index.js';
 import { confirmDiscard } from '../ui/alert.js';
 import { popMenu } from '../ui/menu.js';
 import { showToast } from '../ui/toast.js';
-import { bindSegment, bindSwitch } from '../ui/controls.js';
-import { readThemeMode, setThemeMode } from '../ui/theme.js';
 import { TAVERN_ENTRIES } from '../shell.js';
 import { openDrawerPage, closeDrawerPage } from '../drawers.js';
-import { readReplyStyle, writeReplyStyle } from '../chat-view.js';
 import { mountModelSettings } from '../page.js';
-import { renderGlobalVoiceSettings, readGlobalVoiceSettings } from '../voice-settings.js';
+import { readGlobalVoiceSettings } from '../voice-settings.js';
 import { fetchVoiceSettings, fetchVoiceEngines, saveVoiceSettings } from '../api.js';
 import { invalidateVoicePolicy } from '../voice-chat.js';
 import { mountDataRights } from '../data-rights.js';
-import { readReducedMotion, writeReducedMotion, transitionContent } from './transition.js';
-import { SUGGEST_KEY, suggestEnabled } from './suggest.js';
-import { EFFECTS_KEY, effectsEnabled } from '../chat-react.js';
+import { transitionContent } from './transition.js';
 import { NOTIFY_KEY, notifySupported, requestNotifyPermission, systemNotifyEnabled } from './notify.js';
-import { DESKTOP_THEMES } from './themes/index.js';
-import { readThemePreferences, setGlobalThemePreference, setCharacterThemePreference, characterThemeKey } from './theme.js';
-const esc = value => String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+import { mountAppearance } from './appearance.js';
 const categories = [['account','账户','user-round','gray'],['model','模型','cpu','blue'],['voice','语音','mic','orange'],['notifications','通知','bell','pink'],['appearance','外观','monitor','purple'],['data','账户与数据','shield','green']];
 export function mountSettingsShell(container, { getContext = () => ({}) } = {}) {
     const root = document.createElement('section'); root.className = 'vc-settings-shell';
-    const nav = document.createElement('nav'); nav.className = 'vc-settings-categories vc-desk-panel'; nav.setAttribute('aria-label','设置分类');
-    const category = (key, title, glyph, tile) => `<button type="button" data-category="${key}" data-vc-light><span class="vc-tile vc-tile-${tile}">${icon(glyph,{size:18})}</span><span>${esc(title)}</span></button>`;
-    nav.innerHTML = `<h1>设置</h1>${categories.map(row=>category(...row)).join('')}<h2>酒馆</h2>${TAVERN_ENTRIES.map(row=>category(row.panel,row.label,row.icon,row.tile)).join('')}`;
-    const content = document.createElement('div'); content.className = 'vc-settings-content vc-desk-panel'; root.append(nav,content);container.replaceChildren(root);
-    const model = mountModelSettings(); let account; let current = '', voice = null;
+    container.replaceChildren(root);
+    const model = mountModelSettings(); let account; let current = '', voice = null, detailHidden = false;
+    let unmountOverview = () => {};
+    let unmountAppearance = () => {};
+    let unmountDrawerEntry = () => {}, voiceHeader;
+    const titleFor = key => categories.find(row => row[0] === key)?.[1] || TAVERN_ENTRIES.find(row => row.panel === key)?.label || '';
+    const frameProps = () => ({ sprite: iconSpriteUrl(), categories, tavern: TAVERN_ENTRIES, current, title: titleFor(current), model: model.root, voice: voiceHeader, detailHidden,
+        onSelect: key => void select(key), onCategories: openCategories });
+    const frame = mountSettingsFrameView(root, frameProps());
+    root.setDetailVisibility = hidden => { detailHidden = Boolean(hidden); frame.update(frameProps()); };
+    const setVoiceHeader = next => { voiceHeader = next; frame.update(frameProps()); };
+    function openCategories(trigger) { popMenu(trigger, [...categories.map(([key, label]) => ({ label, run: () => void select(key) })), '-', ...TAVERN_ENTRIES.map(row => ({ label: row.label, run: () => void select(row.panel) }))]); }
     const modelHome = model.root.parentNode;
     function restoreModel() { if (root.contains(model.root)) (modelHome || document.body).append(model.root); }
     const ac = new AbortController();
@@ -46,18 +47,31 @@ export function mountSettingsShell(container, { getContext = () => ({}) } = {}) 
         for (const animation of node?.getAnimations?.() || []) animation.cancel();
         if (node) transitionContent(node, () => {});
     }
-    function mountAccount(body) {
+    function mountOverview(body, kind) {
+        let disposed = false, pending = false;
+        let enabled = notifySupported() && Notification.permission === 'granted' && systemNotifyEnabled();
         const name = String(getContext().name1 || '').trim() || '账户';
         const persona = document.querySelector('#user_avatar_block .avatar-container.selected')?.getAttribute('data-avatar-id');
-        const row = (screen, label) => `<button type="button" class="vc-cell" data-account-go="${screen}"><span class="vc-grow">${label}</span>${icon('chevron-right',{size:16})}</button>`;
-        body.innerHTML = `<div class="vc-desk-group vc-settings-profile"><div class="vc-cell vc-settings-profile-head"><span data-who-avatar>${persona?`<img alt="" src="/thumbnail?type=persona&file=${encodeURIComponent(persona)}">`:esc([...name][0]||'')}</span><strong>${esc(name)}</strong></div>${row('password','密码')}${row('auth','身份验证器')}</div>`;
-        body.querySelector('.vc-settings-profile').addEventListener('click', event => {
-            const go = event.target.closest('[data-account-go]'); if (!go) return;
-            (account ??= mountDataRights()).open(go);
-            document.querySelector(`[data-vc-account-go="${go.dataset.accountGo}"]`)?.click();
-        });
+        const props = () => ({ sprite: iconSpriteUrl(), kind, ...(kind === 'account' ? {
+            name, avatar: persona ? `/thumbnail?type=persona&file=${encodeURIComponent(persona)}` : undefined,
+            onOpen(screen, trigger) { (account ??= mountDataRights()).open(trigger); document.querySelector(`[data-vc-account-go="${screen}"]`)?.click(); },
+        } : kind === 'data' ? { onOpen(trigger) { (account ??= mountDataRights()).open(trigger); } } : {
+            supported: notifySupported(), enabled, pending, onToggle,
+            onInbox() { window.dispatchEvent(new CustomEvent('vc-shell-navigate', { detail: { destination: 'inbox' } })); },
+        }) });
+        const view = mountSettingsOverviewView(body, props());
+        unmountOverview = () => { disposed = true; view.unmount(); };
+        async function onToggle(on) {
+            enabled = on;
+            try { localStorage.setItem(NOTIFY_KEY, on ? 'on' : 'off'); } catch { /* 隐私模式下仅本次有效 */ }
+            if (!on) { view.update(props()); return; }
+            pending = true; view.update(props());
+            const permission = await requestNotifyPermission();
+            if (disposed) return;
+            pending = false; enabled = permission === 'granted'; view.update(props());
+            if (!enabled) showToast('浏览器没有允许通知，可在浏览器的网站设置里打开');
+        }
     }
-    const header = title => `<header class="vc-settings-header"><button type="button" class="vc-circle vc-settings-category-toggle" data-settings-categories aria-label="设置">${icon('settings')}</button><h1 tabindex="-1">${esc(title)}</h1></header>`;
     async function requestLeave() {
         if (current === 'model') return model.requestLeave();
         if (voice?.working()) return false;
@@ -68,41 +82,31 @@ export function mountSettingsShell(container, { getContext = () => ({}) } = {}) 
         if (key === current && !initial) return;
         if (!initial && !await requestLeave()) return;
         if (current === 'model') { model.close(); restoreModel(); }
+        unmountOverview();
+        unmountOverview = () => {};
+        unmountAppearance();
+        unmountAppearance = () => {};
+        unmountDrawerEntry();
+        unmountDrawerEntry = () => {};
+        voice?.destroy();
         leaveDrawer();
-        voice = null; current = key; root.dataset.category = key;root.dataset.categoriesOpen = 'false';
-        for (const row of nav.querySelectorAll('[data-category]')) { row.setAttribute('aria-current',row.dataset.category===key?'page':'false'); }
-        transitionContent(content, () => { content.replaceChildren(); });
-        if (key === 'model') { content.append(model.root); model.open(); return; }
-        const title = categories.find(row=>row[0]===key)?.[1] || TAVERN_ENTRIES.find(row=>row.panel===key)?.label;
-        content.innerHTML = header(title);
-        const body = document.createElement('div'); body.className='vc-settings-body';content.append(body);
-        if (key === 'voice') { voice = await mountVoice(content,body); }
-        else if (key === 'appearance') mountAppearance(body, getContext);
-        else if (key === 'account') mountAccount(body);
-        else if (key === 'data') {
-            body.innerHTML = `<div class="vc-desk-group"><button type="button" class="vc-cell vc-settings-open-account"><span class="vc-grow">账户与数据</span>${icon('chevron-right',{size:16})}</button></div>`;
-            body.querySelector('button').onclick = event => (account ??= mountDataRights()).open(event.currentTarget);
-        } else if (key === 'notifications') {
-            const granted = notifySupported() && Notification.permission === 'granted';
-            body.innerHTML = `<div class="vc-desk-group"><button type="button" class="vc-cell" data-open-inbox><span class="vc-grow">陪伴</span>${icon('chevron-right',{size:16})}</button></div>${notifySupported()?`<section class="vc-desk-group"><div class="vc-desk-field"><span>桌面通知</span><button type="button" class="vc-switch" role="switch" aria-label="桌面通知" aria-checked="${granted && systemNotifyEnabled()}"><span></span></button></div></section>`:''}`;
-            body.querySelector('[data-open-inbox]').onclick = () => window.dispatchEvent(new CustomEvent('vc-shell-navigate',{detail:{destination:'inbox'}}));
-            const notifySwitch = body.querySelector('[role="switch"]');
-            if (notifySwitch) bindSwitch(notifySwitch,{onChange:async on=>{
-                try{localStorage.setItem(NOTIFY_KEY,on?'on':'off');}catch{/* 隐私模式下仅本次有效 */}
-                if(!on)return;
-                if(await requestNotifyPermission()!=='granted'){notifySwitch.setAttribute('aria-checked','false');showToast('浏览器没有允许通知，可在浏览器的网站设置里打开');}
-            }});
-        } else {
-            body.innerHTML = `<div class="vc-desk-group"><button type="button" class="vc-cell"><span class="vc-grow">${esc(title)}</span>${icon('chevron-right',{size:16})}</button></div>`;
-            body.querySelector('button').onclick = () => void openDrawer(key);
+        voice = null; current = key; detailHidden = false; root.dataset.category = key;root.dataset.categoriesOpen = 'false';
+        voiceHeader = undefined;
+        transitionContent(frame.content, () => frame.update(frameProps()));
+        const content = frame.content, body = frame.body;
+        if (key === 'model') { model.open(); return; }
+        if (key === 'voice') { voice = await mountVoice(content, body, setVoiceHeader); }
+        else if (key === 'appearance') unmountAppearance = mountAppearance(body, getContext);
+        else if (['account', 'data', 'notifications'].includes(key)) mountOverview(body, key);
+        else {
+            unmountDrawerEntry = mountDrawerEntryView(body, { title: titleFor(key), sprite: iconSpriteUrl(), onOpen: () => void openDrawer(key) });
             await openDrawer(key);
         }
         content.querySelector('h1')?.focus();
     }
     root.addEventListener('click',event=>{
         const toggle=event.target.closest('[data-settings-categories]');
-        if(toggle){popMenu(toggle,[...categories.map(([key,label])=>({label,run:()=>void select(key)})),'-',...TAVERN_ENTRIES.map(row=>({label:row.label,run:()=>void select(row.panel)}))]);return;}
-        const row=event.target.closest('[data-category]');if(row)void select(row.dataset.category);
+        if(toggle && model.root.contains(toggle)){openCategories(toggle);return;}
         const close=event.target.closest('[data-action="close"]');
         if(close && model.root.contains(close)){event.preventDefault();event.stopImmediatePropagation();void select('account');return;}
         const back=event.target.closest('[data-action="vc-back"]');
@@ -116,66 +120,49 @@ export function mountSettingsShell(container, { getContext = () => ({}) } = {}) 
     shell?.addEventListener('click',async event=>{
         const target=event.target.closest('[data-nav],[data-settings-done]');
         if(!target || root.closest('#vc-shell')?.dataset.settings!=='page')return;
-        if(!voice?.isDirty() && !(current==='model'&&model.isDirty()))return;
-        event.preventDefault();event.stopImmediatePropagation();if(await requestLeave()){voice=null;current='';target.click();}
+        if(!voice?.isDirty() && !voice?.working() && !(current==='model'&&(model.isDirty()||model.isBusy())))return;
+        event.preventDefault();event.stopImmediatePropagation();if(await requestLeave()){voice?.destroy();voice=null;current='';target.click();}
     },{capture:true,signal:ac.signal});
     return { root, model, select, requestLeave,
-        resume(){ if (current === 'model') { content.append(model.root); model.open(); } else if (!current) void select('account', { initial: true }); },
+        resume(){ if (current === 'model') { frame.content.append(model.root); model.open(); } else if (!current) void select('account', { initial: true }); },
         close(){ if (current === 'model') { model.close(); restoreModel(); } if (root.dataset.drawer) { leaveDrawer(); current = ''; } },
-        destroy(){ac.abort();leaveDrawer();if(current==='model')model.close();restoreModel();root.remove();} };
+        destroy(){ac.abort();account?.destroy();unmountOverview();voice?.destroy();unmountAppearance();unmountDrawerEntry();leaveDrawer();if(current==='model')model.detach();restoreModel();frame.unmount();root.remove();} };
 }
-async function mountVoice(content,body) {
-    let settings, engines, baseline='', working=false, loaded=false;
+async function mountVoice(content,body,setHeader) {
+    let settings, engines, baseline='', working=false, loaded=false, destroyed=false, fields=null, values={}, saveStyle={};
     const form=document.createElement('form');form.className='vc-settings-voice';body.append(form);
     const status=document.createElement('p');status.setAttribute('role','status');status.textContent='正在加载…';
     const latest=document.createElement('button');latest.type='button';latest.className='vc-btn vc-btn-text';latest.textContent='加载最新';latest.hidden=true;
     body.append(status,latest);
-    const discard=document.createElement('button');discard.className='vc-btn vc-btn-text';discard.textContent='放弃修改';discard.hidden=true;
-    const save=document.createElement('button');save.className='vc-btn vc-btn-fill';save.textContent='保存';save.disabled=true;
-    content.querySelector('header').append(discard,save);
     const snapshot=()=>JSON.stringify(readGlobalVoiceSettings(form,settings));
-    const isDirty=()=>loaded&&snapshot()!==baseline;
-    const feedback=()=>{discard.hidden=!isDirty();save.disabled=working||!isDirty();save.innerHTML=working?`${icon('refresh-cw',{size:16})}保存中…`:'保存';latest.disabled=working;};
-    const paint=()=>{form.innerHTML=renderGlobalVoiceSettings(settings,engines);for(const control of form.querySelectorAll('[role="switch"]')){control.setAttribute('aria-label',control.parentElement.querySelector('.vc-grow')?.textContent||'语音');bindSwitch(control,{onChange:feedback});}baseline=snapshot();feedback();};
-    async function load(){try{[settings,engines]=await Promise.all([fetchVoiceSettings(),fetchVoiceEngines()]);if(!form.isConnected)return;loaded=true;paint();status.textContent='';latest.hidden=true;}catch{if(form.isConnected){status.textContent='没有完成，请重试。';latest.hidden=false;}}}
-    latest.onclick=()=>void load();form.addEventListener('input',feedback);form.addEventListener('change',feedback);
-    discard.onclick=async()=>{if(await confirmDiscard({opener:discard}))paint();};
+    const isDirty=()=>!destroyed&&loaded&&snapshot()!==baseline;
+    function renderFields(){
+        if(!loaded||destroyed)return;
+        const props={mode:'global',values,engines,disabled:working,onFieldChange(key,value){values[key]=value;feedback();}};
+        if(fields)fields.update(props);else fields=mountVoiceFormView(form,props);
+    }
+    function feedback({reset=false}={}){
+        if(destroyed)return;
+        renderFields();
+        if(reset)baseline=snapshot();
+        setHeader({dirty:isDirty(),working,disabled:working||!isDirty(),style:saveStyle,onSave:()=>void submit(),onDiscard:async trigger=>{if(destroyed)return;if(await confirmDiscard({opener:trigger})&&!destroyed)paint();}});
+        latest.disabled=working;
+    }
+    function paint(){values=voiceFormValues(settings);feedback({reset:true});}
+    async function load(){
+        if(destroyed)return;
+        try{[settings,engines]=await Promise.all([fetchVoiceSettings(),fetchVoiceEngines()]);if(destroyed||!form.isConnected)return;loaded=true;paint();status.textContent='';latest.hidden=true;}
+        catch{if(!destroyed&&form.isConnected){status.textContent='没有完成，请重试。';latest.hidden=false;}}
+    }
+    latest.onclick=()=>void load();
     async function submit(){
-        if(working||!isDirty()||!form.reportValidity())return;
-        const width=save.getBoundingClientRect().width;save.style.width=`${width}px`;save.style.minWidth=`${width}px`;
-        working=true;feedback();for(const field of form.elements)field.disabled=true;discard.disabled=true;status.textContent='';
-        try{settings=await saveVoiceSettings(readGlobalVoiceSettings(form,settings));if(!form.isConnected)return;invalidateVoicePolicy();window.dispatchEvent(new Event('vc-voice-settings-changed'));baseline=snapshot();latest.hidden=true;showToast('已保存');}
-        catch(error){if(form.isConnected){status.textContent=error.kind==='conflict-revision'?'设置已在另一处更新。你的输入已保留。':'没有完成，请重试。';latest.hidden=error.kind!=='conflict-revision';}}
-        finally{working=false;if(form.isConnected){for(const field of form.elements)field.disabled=false;for(const control of form.querySelectorAll('[role="switch"]')){const key=control.dataset.voiceField;const engine=key==='kokoroEnabled'?engines.tts.find(e=>e.engine==='kokoro'):key==='cosyVoiceEnabled'?engines.tts.find(e=>e.engine==='cosyvoice'):engines.asr;control.disabled=!engine?.configured;}discard.disabled=false;save.style.width='';save.style.minWidth='';feedback();}}
+        if(destroyed||working||!isDirty()||!form.reportValidity())return;
+        const save=content.querySelector('[data-voice-save]');const width=save.getBoundingClientRect().width;saveStyle={width:`${width}px`,minWidth:`${width}px`};
+        working=true;feedback();status.textContent='';
+        try{settings=await saveVoiceSettings(readGlobalVoiceSettings(form,settings));if(destroyed||!form.isConnected)return;invalidateVoicePolicy();window.dispatchEvent(new Event('vc-voice-settings-changed'));baseline=snapshot();latest.hidden=true;showToast('已保存');}
+        catch(error){if(!destroyed&&form.isConnected){status.textContent=error.kind==='conflict-revision'?'设置已在另一处更新。你的输入已保留。':'没有完成，请重试。';latest.hidden=error.kind!=='conflict-revision';}}
+        finally{working=false;if(!destroyed&&form.isConnected){saveStyle={};feedback();}}
     }
-    save.onclick=()=>void submit();form.onsubmit=event=>{event.preventDefault();void submit();};void load();return {isDirty,working:()=>working};
-}
-function mountAppearance(body, getContext) {
-    const segment=(key,labels,index)=>`<div class="vc-segment" data-preference="${key}"><i class="vc-segment-thumb"></i>${labels.map((label,i)=>`<button type="button" aria-pressed="${i===index}">${label}</button>`).join('')}</div>`;
-    body.innerHTML=`<section class="vc-desk-group"><h2>外观</h2><div class="vc-desk-field"><span>外观</span>${segment('theme',['跟随系统','浅色','深色'],['auto','light','dark'].indexOf(readThemeMode()))}</div><div class="vc-desk-field"><span>回复样式</span>${segment('reply',['铺开','气泡'],readReplyStyle()==='bubble'?1:0)}</div><div class="vc-desk-field"><span>减弱动态效果</span><button type="button" class="vc-switch" role="switch" data-preference="motion" aria-label="减弱动态效果" aria-checked="${readReducedMotion()}"><span></span></button></div><div class="vc-desk-field"><span>建议回复</span><button type="button" class="vc-switch" role="switch" data-preference="suggest" aria-label="建议回复" aria-checked="${suggestEnabled()}"><span></span></button></div><div class="vc-desk-field"><span>关键词特效</span><button type="button" class="vc-switch" role="switch" data-preference="effects" aria-label="关键词特效" aria-checked="${effectsEnabled()}"><span></span></button></div></section>`;
-    bindSegment(body.querySelector('[data-preference="theme"]'),{onChange:index=>setThemeMode(['auto','light','dark'][index])});
-    bindSegment(body.querySelector('[data-preference="reply"]'),{onChange:index=>{writeReplyStyle(index?'bubble':'spread');}});
-    bindSwitch(body.querySelector('[data-preference="motion"]'),{onChange:writeReducedMotion});
-    const writePref=(key)=>(on)=>{try{localStorage.setItem(key,on?'on':'off');}catch{/* 隐私模式下仅本次有效 */}};
-    bindSwitch(body.querySelector('[data-preference="suggest"]'),{onChange:writePref(SUGGEST_KEY)});
-    bindSwitch(body.querySelector('[data-preference="effects"]'),{onChange:writePref(EFFECTS_KEY)});
-    // 首版只有极光时不显示无意义的单选；新增主题登记后自动出现选择器。
-    if (DESKTOP_THEMES.length > 1) {
-        const preferences = readThemePreferences();
-        const character = characterThemeKey(getContext());
-        const addSelect = (label, selected, inherited, onChange) => {
-            const row = document.createElement('label'); row.className = 'vc-desk-field';
-            const name = document.createElement('span'); name.textContent = label;
-            const select = document.createElement('select'); select.setAttribute('aria-label', label);
-            const entries = inherited ? [{ id: '', name: '跟随全局' }, ...DESKTOP_THEMES] : DESKTOP_THEMES;
-            for (const entry of entries) {
-                const option = document.createElement('option'); option.value = entry.id; option.textContent = entry.name; select.append(option);
-            }
-            select.value = entries.some(entry => entry.id === selected) ? selected : entries[0].id;
-            select.addEventListener('change', () => onChange(select.value));
-            row.append(name, select); body.querySelector('.vc-desk-group').append(row);
-        };
-        addSelect('主题', preferences.global, false, setGlobalThemePreference);
-        if (character) addSelect('当前角色主题', preferences.characters[character] || '', true, id => setCharacterThemePreference(character, id));
-    }
+    feedback();form.onsubmit=event=>{event.preventDefault();void submit();};void load();
+    return {isDirty,working:()=>working,destroy(){if(destroyed)return;destroyed=true;fields?.unmount();fields=null;latest.onclick=null;form.onsubmit=null;}};
 }

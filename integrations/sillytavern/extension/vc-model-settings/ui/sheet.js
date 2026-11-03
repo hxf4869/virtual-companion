@@ -1,13 +1,14 @@
 // 两档可拖拽 sheet：约 56% 与全高，内部可推入下一层，Esc 关闭并归还焦点。
 import { animate, prefersReducedMotion, spring, PROJECT_SECONDS } from './motion.js';
 import { confirmDiscard } from './alert.js';
-import { icon } from './icons.js';
+import { iconSpriteUrl } from './icons.js';
+import { mountSheetView, mountSheetLayerView } from '../desktop/build/index.js';
 
 export const SHEET_TOP_GAP = 54;
 export const SHEET_HALF_RATIO = 0.56;
 export const DRAG_SLOP = 8;
-
-let seq = 0;
+const sheetHeaders = new WeakMap();
+export function setSheetHeader(element, header) { const update = sheetHeaders.get(element); if (!update) return false; update(header); return true; }
 
 export function selectDetent({
     y,
@@ -31,43 +32,24 @@ export function selectDetent({
     return { action: 'move', translateY: target, detents, H, M, proj, closeLine };
 }
 
-function focusable(root) {
-    return [...root.querySelectorAll('button, [href], input, select, textarea, [tabindex]')].filter((el) => {
-        if (el.hasAttribute('disabled') || el.getAttribute('aria-hidden') === 'true') return false;
-        if (el.tabIndex < 0) return false;
-        return true;
-    });
-}
-
-export function openSheet({ title = '', body, root, large = false, initial, onDone, opener, isDirty = () => false, onSubmit, canClose = () => true } = {}) {
+export function openSheet({ title = '', body, content, root, large = false, initial, onDone, opener, owner, isDirty = () => false, onSubmit, canClose = () => true, ariaLabel } = {}) {
     const doc = (root || document.body).ownerDocument || document;
     const host = root || doc.body;
     const view = doc.defaultView || globalThis;
     const previous = opener || doc.activeElement;
-    const scrim = doc.createElement('div');
-    scrim.className = 'vc-scrim';
-    const el = doc.createElement('div');
-    el.className = 'vc-sheet';
-    el.setAttribute('role', 'dialog');
-    el.setAttribute('aria-modal', 'true');
-    const titleId = `vc-sheet-title-${++seq}`;
-    el.setAttribute('aria-labelledby', titleId);
-    el.tabIndex = -1;
-    el.innerHTML = `<div class="vc-sheet-grab"></div><div class="vc-sheet-head"><h3 id="${titleId}"></h3><button type="button" class="vc-sheet-done">完成</button></div><div class="vc-sheet-body"></div>`;
-    el.querySelector('h3').textContent = title;
-    const bodyEl = el.querySelector('.vc-sheet-body');
-    const bodyNode = typeof Node === 'function' && body instanceof Node || body?.nodeType === 1;
-    if (bodyNode) bodyEl.append(body);
-    else if (body != null) {
-        const text = doc.createElement('p');
-        text.textContent = String(body);
-        bodyEl.append(text);
-    }
     const fixed = host === doc.body;
-    scrim.style.position = fixed ? 'fixed' : 'absolute';
-    el.style.position = fixed ? 'fixed' : 'absolute';
     if (!fixed && getComputedStyle(host).position === 'static') host.style.position = 'relative';
-    host.append(scrim, el);
+    let covered = false, resumeFocus = null;
+    let header = {}, doneProps = {}, sheetStyle = { position: fixed ? 'fixed' : 'absolute' }, scrimStyle = { position: fixed ? 'fixed' : 'absolute' };
+    const props = () => ({ host, title: header.title ?? title, body, content, open: !covered, resumeFocus, opener: previous, style: sheetStyle, scrimStyle, ariaLabel, headerActions: header.actions, doneProps,
+        onRequestClose(reason) { if (reason !== 'escape-key' || !popLayer()) void close(); }, onComplete() { void complete(); } });
+    const component = mountSheetView(props(), owner);
+    const { el, scrim } = component;
+    const bodyEl = el.querySelector('.vc-sheet-body');
+    const setCovered = next => { if (closed || covered === Boolean(next)) return; covered = Boolean(next); if (covered) resumeFocus = el.contains(doc.activeElement) ? doc.activeElement : null; component.update(props()); };
+    const setHeader = (next) => { header = { ...header, ...next }; if (next.done) doneProps = { ...doneProps, ...next.done }; component.update(props()); };
+    sheetHeaders.set(el, setHeader);
+    const setContent = next => { if (closed) return; content = next; component.update(props()); };
 
     const geometry = () => {
         const containerHeight = fixed
@@ -82,8 +64,10 @@ export function openSheet({ title = '', body, root, large = false, initial, onDo
     let y = 0;
     let stopSpring = () => {};
     let closed = false;
+    let finished = false, closingAnimation = null;
     let springToken = 0;
     const layers = [];
+    const leavingLayers = new Set();
     const ac = new AbortController();
 
     const set = (value, token) => {
@@ -92,24 +76,13 @@ export function openSheet({ title = '', body, root, large = false, initial, onDo
         const { containerHeight, H, M, desktop } = geometry();
         // 宿主 html 有 -webkit-transform，fixed 包含块高度会变成 0。
         // 这时 bottom: 0 把整张 sheet 摆到视口上方，弹簧停稳后就看不见。
-        el.style.top = `${desktop ? (containerHeight - H) / 2 : SHEET_TOP_GAP}px`;
-        el.style.bottom = 'auto';
-        el.style.left = desktop ? '50%' : '0';
-        el.style.right = desktop ? 'auto' : '0';
-        el.style.width = desktop ? 'min(720px, calc(100vw - 64px))' : 'auto';
-        el.style.height = `${Math.max(0, H)}px`;
-        el.style.transform = desktop
-            ? `translate(-50%, ${Math.max(-12, Math.min(24, value / H * 24))}px)`
-            : `translateY(${Math.max(value, -60)}px)`;
+        sheetStyle = { ...sheetStyle, top: `${desktop ? (containerHeight - H) / 2 : SHEET_TOP_GAP}px`, bottom: 'auto', left: desktop ? '50%' : '0', right: desktop ? 'auto' : '0',
+            width: desktop ? 'min(720px, calc(100vw - 64px))' : 'auto', height: `${Math.max(0, H)}px`,
+            transform: desktop ? `translate(-50%, ${Math.max(-12, Math.min(24, value / H * 24))}px)` : `translateY(${Math.max(value, -60)}px)` };
         const opacity = M > 0 ? Math.max(0, Math.min(1, 1 - (value - (H - M)) / M)) : 1;
-        el.style.opacity = desktop ? String(opacity) : '1';
-        scrim.style.top = '0';
-        scrim.style.right = '0';
-        scrim.style.bottom = 'auto';
-        scrim.style.left = '0';
-        scrim.style.height = `${Math.max(0, containerHeight)}px`;
-        scrim.style.opacity = String(opacity);
-        scrim.classList.add('is-on');
+        sheetStyle.opacity = desktop ? String(opacity) : '1';
+        scrimStyle = { ...scrimStyle, top: '0', right: '0', bottom: 'auto', left: '0', height: `${Math.max(0, containerHeight)}px`, opacity: String(opacity) };
+        component.update(props());
     };
     const to = (target, v0 = 0, done) => {
         const token = ++springToken;
@@ -123,10 +96,13 @@ export function openSheet({ title = '', body, root, large = false, initial, onDo
     };
 
     function finish() {
-        el.remove();
-        scrim.remove();
+        if (finished) return;
+        finished = true;
+        sheetHeaders.delete(el);
+        for (const layer of [...layers.splice(0), ...leavingLayers]) layer.dispose();
+        leavingLayers.clear();
         onDone?.();
-        if (previous && typeof previous.focus === 'function') previous.focus();
+        component.unmount();
     }
     function finishClose() {
         if (closed) return;
@@ -135,8 +111,8 @@ export function openSheet({ title = '', body, root, large = false, initial, onDo
         stopSpring();
         const { H } = geometry();
         if (prefersReducedMotion()) {
-            const leaving = animate(el, [{ opacity: 1 }, { opacity: 0 }], { duration: 150, reduced: false });
-            leaving.finished?.then(finish, finish);
+            closingAnimation = animate(el, [{ opacity: 1 }, { opacity: 0 }], { duration: 150, reduced: false });
+            closingAnimation.finished?.then(finish, finish);
             return;
         }
         to(H + 20, 0, finish);
@@ -159,18 +135,20 @@ export function openSheet({ title = '', body, root, large = false, initial, onDo
         } else await close();
     }
     function dismiss() {
-        if (closed) return;
+        if (finished) return;
         closed = true;
         ac.abort();
         stopSpring();
-        el.remove();
-        scrim.remove();
-        onDone?.();
+        closingAnimation?.cancel();
+        finish();
     }
     function popLayer() {
-        const pane = layers.pop();
-        if (!pane) return false;
-        const done = () => pane.remove();
+        const layer = layers.pop();
+        if (!layer) return false;
+        const pane = layer.el;
+        leavingLayers.add(layer);
+        const done = () => { layer.dispose(); leavingLayers.delete(layer); syncLayerInert(); };
+        syncLayerInert();
         const leaving = animate(pane, [
             { opacity: 1, transform: 'none' },
             { opacity: 0, transform: 'translateX(100%)' },
@@ -178,66 +156,30 @@ export function openSheet({ title = '', body, root, large = false, initial, onDo
         leaving.finished?.then(done, done);
         return true;
     }
+    function syncLayerInert() {
+        const top = layers.at(-1)?.el;
+        for (const node of bodyEl.children) node.inert = Boolean(top && node !== top);
+    }
     function push(layer = {}) {
         const pane = doc.createElement('div');
         pane.className = 'vc-sheet-pane';
-        const head = doc.createElement('div');
-        head.className = 'vc-sheet-head';
-        const parentTitle = (layers.at(-1)?.querySelector('h3') || el.querySelector('.vc-sheet-head h3'))?.textContent?.trim() || '';
+        const parentTitle = (layers.at(-1)?.el.querySelector('h3') || el.querySelector('.vc-sheet-head h3'))?.textContent?.trim() || '';
         const backText = layer.backLabel ?? parentTitle;
-        const back = doc.createElement('button');
-        back.type = 'button';
-        back.className = 'vc-btn vc-btn-text vc-sheet-back';
-        back.setAttribute('aria-label', backText ? `返回${backText}` : '返回');
-        const glyph = doc.createElement('span');
-        glyph.innerHTML = icon('chevron-left', { size: 22 });
-        const label = doc.createElement('span');
-        label.textContent = backText;
-        back.replaceChildren(glyph.firstElementChild || glyph, label);
-        const heading = doc.createElement('h3');
-        heading.textContent = layer.title || '';
-        head.append(back, heading);
-        pane.append(head);
-        if (layer.body instanceof Node) pane.append(layer.body);
         bodyEl.append(pane);
-        layers.push(pane);
-        animate(pane, [
+        const unmount = mountSheetLayerView(pane, { title: layer.title || '', backLabel: backText, body: layer.body, sprite: iconSpriteUrl(), onBack: () => popLayer() });
+        const back = pane.querySelector('button');
+        let disposed = false;
+        layers.push({ el: pane, dispose() { if (disposed) return; disposed = true; unmount(); pane.remove(); } });
+        syncLayerInert();
+        const entering = animate(pane, [
             { opacity: 0, transform: 'translateX(100%)' },
             { opacity: 1, transform: 'none' },
         ], { duration: 560 });
-        back.addEventListener('click', () => popLayer());
+        // 最终值就是 CSS 默认值；结束后释放 fill，避免保留动画合成层。
+        entering.finished?.then(() => entering.cancel?.(), () => {});
         back.focus({ preventScroll: true });
         return { el: pane, close: () => popLayer() };
     }
-
-    scrim.addEventListener('click', () => close(), { signal: ac.signal });
-    el.querySelector('.vc-sheet-done').addEventListener('click', () => void complete(), { signal: ac.signal });
-    el.addEventListener('keydown', (event) => {
-        if (event.defaultPrevented || doc.querySelector('.vc-alert')) return;
-        if (event.key === 'Escape') {
-            event.preventDefault();
-            event.stopPropagation();
-            if (!popLayer()) close();
-            return;
-        }
-        if (event.key !== 'Tab') return;
-        const items = focusable(el);
-        if (!items.length) {
-            event.preventDefault();
-            return;
-        }
-        const first = items[0];
-        const last = items[items.length - 1];
-        const active = doc.activeElement;
-        const outside = active === el || !el.contains(active);
-        if (event.shiftKey && (active === first || outside)) {
-            event.preventDefault();
-            last.focus({ preventScroll: true });
-        } else if (!event.shiftKey && (active === last || outside)) {
-            event.preventDefault();
-            first.focus({ preventScroll: true });
-        }
-    }, { signal: ac.signal });
 
     let pending = false;
     let drag = false;
@@ -298,7 +240,7 @@ export function openSheet({ title = '', body, root, large = false, initial, onDo
     const { H, M, desktop } = geometry();
     const openAt = desktop || large || initial === 'full' ? 0 : H - M;
     set(H);
-    scrim.style.transition = 'none';
+    scrimStyle.transition = 'none';
     to(openAt);
     const resize = () => {
         stopSpring();
@@ -310,5 +252,5 @@ export function openSheet({ title = '', body, root, large = false, initial, onDo
     view.visualViewport?.addEventListener('resize', resize, { signal: ac.signal });
     // 宿主若还能滚动，focus 会把 scrollTop 加到和 translateY 一样，半档被拉回全高，拖动也被抵消。
     el.focus({ preventScroll: true });
-    return { el, scrim, close, dismiss, push, done: el.querySelector('.vc-sheet-done') };
+    return { el, scrim, close, dismiss, push, setHeader, setContent, setCovered, done: el.querySelector('.vc-sheet-done') };
 }

@@ -407,7 +407,8 @@ body.vc-ui .vc-capsule {
   align-items: center;
 }
 
-body.vc-ui .vc-capsule > button {
+body.vc-ui .vc-capsule > button,
+body.vc-ui .vc-capsule > :is(.vc-capsule-tools, .vc-chat-search-tools) > button {
   width: 44px;
   height: 44px;
   padding: 0;
@@ -649,7 +650,9 @@ body.vc-ui .vc-cell:active,
 body.vc-ui .vc-cell.is-pressed { background: var(--vc-fill); }
 body.vc-ui .vc-cell:disabled,
 body.vc-ui .vc-cell[aria-disabled="true"] { opacity: 0.35; pointer-events: none; }
-body.vc-ui .vc-cell + .vc-cell::before {
+/* Base UI Radio 之间包含隐藏表单 input，模式列表按可见行分隔。 */
+body.vc-ui .vc-cell + .vc-cell::before,
+body.vc-ui .vc-proactive-modes .vc-cell ~ .vc-cell::before {
   content: "";
   position: absolute;
   top: 0;
@@ -710,6 +713,10 @@ body.vc-ui .vc-segment-thumb {
   transition: transform var(--vc-dur-standard) var(--vc-spring);
   pointer-events: none;
 }
+
+/* 原生 button 承担焦点/无障碍语义；保留库的表单代理和事件，
+   避免 fixed 隐藏盒子改变玻璃容器中文字的合成结果。 */
+body.vc-ui .vc-segment input[type="radio"][aria-hidden="true"] { display: none; }
 
 body.vc-ui .vc-segment button {
   position: relative;
@@ -851,6 +858,8 @@ body.vc-ui .vc-menu button {
   font-size: var(--vc-fs-body);
   text-align: left;
 }
+body.vc-ui .vc-menu[data-ending-style] { opacity: 0; transform: scale(.6); }
+body.vc-ui .vc-menu { transition: opacity 260ms ease-in, transform 260ms ease-in; }
 body.vc-ui .vc-menu button:hover,
 body.vc-ui .vc-menu button:active,
 body.vc-ui .vc-menu button.is-pressed { background: color-mix(in srgb, var(--vc-ink) 8%, transparent); }
@@ -975,6 +984,9 @@ body.vc-ui .vc-alert {
   text-align: center;
   transform: translate(-50%, -50%);
 }
+body.vc-ui .vc-alert-icon { display: none; }
+body.vc-ui .vc-alert[data-ending-style] { opacity: 0; transform: translate(-50%, -50%) scale(.95); }
+body.vc-ui .vc-alert { transition: opacity 200ms ease-in, transform 200ms ease-in; }
 body.vc-ui .vc-alert-copy { padding: 20px 18px 16px; }
 body.vc-ui .vc-alert h4 {
   margin: 0 0 4px;

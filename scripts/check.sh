@@ -48,6 +48,7 @@ run paid-features    "${PY[@]}" scripts/checks/check_paid_features.py
 run licenses         "${PY[@]}" scripts/checks/check_licenses.py
 
 if [ "$QUICK" -eq 0 ]; then
+  run desktop-build    bash -c 'command -v node >/dev/null || { echo "需要 Node 22 与已安装的集成依赖（npm ci --prefix integrations/sillytavern）" >&2; exit 1; }; node integrations/sillytavern/scripts/build-desktop.mjs >&2'
   run go-test          bash -c 'command -v go >/dev/null || { echo "需要 Go（版本以 backend/go.mod 为准，当前 go 1.26.10）" >&2; exit 1; }; GOPROXY=off go test -C backend -count=1 ./... >&2'
   run st-integration-test bash -c 'command -v node >/dev/null || { echo "需要 Node 22（integrations/sillytavern 测试）" >&2; exit 1; }; node --test "integrations/sillytavern/tests/*.test.mjs" >&2'
 fi

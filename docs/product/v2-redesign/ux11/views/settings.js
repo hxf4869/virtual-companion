@@ -60,7 +60,7 @@ export async function check({params,source}) {
         if(settings.model.root.querySelector('.vcms-panel').getAttribute('aria-modal'))throw Error('嵌入模型仍错误地声明模态');
         if(screen==='model'){settings.model.root.querySelector('[data-action="select-provider"]').click();await wait('#vcms-f-display');}
         const input=settings.model.root.querySelector(screen==='profile'?'#vcms-m-display':'#vcms-f-display');
-        const initial=input.value;input.value+='（草稿）';input.dispatchEvent(new Event('input',{bubbles:true}));
+        const initial=input.value;Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,input.value+'（草稿）');input.dispatchEvent(new Event('input',{bubbles:true}));
         const leave=settings.select('appearance');await wait('.vc-alert');
         if(document.activeElement.textContent!=='继续编辑')throw Error('模型分类退出默认焦点错误');
         window.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));await leave;
@@ -70,7 +70,7 @@ export async function check({params,source}) {
     }
     if(screen==='voice') {
         const input=document.querySelector('[data-voice-field="dailyChatLimit"]'),save=document.querySelector('.vc-settings-header .vc-btn-fill');
-        if(!save.disabled)throw Error('语音干净态保存未禁用');input.value='61';input.dispatchEvent(new Event('input',{bubbles:true}));
+        if(!save.disabled)throw Error('语音干净态保存未禁用');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,'61');input.dispatchEvent(new Event('input',{bubbles:true}));
         const leave=settings.select('appearance');await wait('.vc-alert');if(document.activeElement.textContent!=='继续编辑')throw Error('语音退出默认焦点错误');
         window.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));await leave;if(input.value!=='61')throw Error('语音 Esc 丢草稿');
         window.VC_PREVIEW_DELAY=200;const width=save.getBoundingClientRect().width;save.click();

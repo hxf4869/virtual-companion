@@ -2,6 +2,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
+import { installReactDom } from './react-dom.mjs';
 import { usagePurposeLabel } from '../extension/vc-model-settings/model-logic.js';
 
 const root = new URL('../extension/vc-model-settings/', import.meta.url);
@@ -22,15 +23,32 @@ test('用量三行改成用户能懂的名字', () => {
     assert.equal(usagePurposeLabel('TOOL_TURN'), '工具回合');
 });
 
-test('模型首页供应商是分组行，新建在列表末行', async () => {
-    const page = await text('page.js');
+test('模型首页供应商是分组行，新建在列表末行', async (t) => {
+    const doc = installReactDom(t);
+    doc.body.classList.add('vc-ui');
+    const previousFetch = globalThis.fetch;
+    t.after(() => { globalThis.fetch = previousFetch; });
+    globalThis.fetch = async url => {
+        const body = String(url).endsWith('/auth/session') ? { accountId: '1', sessionId: '2' }
+            : String(url).endsWith('/admin/providers') ? [{ providerId: 'main', displayName: '合成供应商', protocol: 'OPENAI_CHAT_COMPLETIONS', baseUrl: 'https://example.test/v1', state: 'ENABLED', credentialConfigured: true, revision: 1, models: [] }] : [];
+        return { ok: true, status: 200, text: async () => JSON.stringify(body) };
+    };
+    const { mountModelSettings } = await import('../extension/vc-model-settings/page.js');
+    const page = mountModelSettings();
+    page.open();
+    for (let i = 0; i < 30 && page._state.phase !== 'ready'; i++) await new Promise(resolve => setTimeout(resolve, 0));
+    assert.equal(page._state.phase, 'ready');
+    const list = page.root.querySelector('#vcms-provider-list');
+    assert.equal(list.lastElementChild.getAttribute('data-action'), 'new-provider');
+    assert.equal(list.lastElementChild.textContent, '新建供应商');
+    assert.ok(page.root.textContent.includes('未配置单价时仍会发送，费用显示为未知'));
+    assert.equal(page.root.textContent.includes('默认当月（UTC）'), false);
+    list.querySelector('[data-action="select-provider"]').click();
+    await Promise.resolve();
+    assert.ok(page.root.querySelector('.vcms-state-row'));
+    assert.ok(page.root.querySelector('.vc-circle.vc-glass[data-action="vc-back"]'));
+    assert.ok(page.root.querySelector('#vcms-save[data-action="save"]'));
     const css = stripCssComments(await text('settings-pages.css'));
-    assert.match(page, /data-action="new-provider"[^>]*>[\s\S]{0,80}新建供应商/);
-    assert.match(page, /未配置单价时仍会发送，费用显示为未知/);
-    assert.doesNotMatch(page, /默认当月（UTC）/);
-    assert.match(page, /vcms-state-row/);
-    assert.match(page, /class="vc-circle vc-glass" data-action="vc-back"/);
-    assert.match(page, /id="vcms-save" data-action="save"/);
     assert.match(css, /\.vcms-provider-card\s*\{[^}]*flex-direction:\s*row\s*!important/);
     assert.match(css, /\.vcms-header\s*\{[^}]*border-bottom:\s*0\s*!important/);
     assert.match(css, /#vcms-save\s*\{[^}]*border-radius:\s*var\(--vc-radius-pill\)/);

@@ -1,3 +1,4 @@
+import './react-dom-bootstrap.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { interpretUsageBudget, modelPriceMissing, NO_PRICE_COPY, BUDGET_COPY, budgetSignalFromGenerateBody, isGenerateRequestUrl } from '../extension/vc-model-settings/model-logic.js';
@@ -6,7 +7,7 @@ import {
 } from '../extension/vc-model-settings/account-logic.js';
 import { planOpenCreatedChat } from '../extension/vc-model-settings/instance-open.js';
 import { mountChatShell } from '../extension/vc-model-settings/chat-shell.js';
-import { mountDataRights } from '../extension/vc-model-settings/data-rights.js';
+import { accountFixture } from './account-dom.mjs';
 import { buttonByText, installMiniDom } from './mini-dom.mjs';
 
 test('用量摘要不能当成预算不足；显式原因才关闭测试与发送', () => {
@@ -104,17 +105,13 @@ test('账户状态只描述验证器、删除进度和备份，不生成密钥',
     assert.equal(JSON.stringify(sessions).includes('otpauth'), false);
 });
 
-test('数据页说明删除前快照不能恢复，导出处理中显示副本生成中', async () => {
-    const document = installMiniDom();
+test('数据页说明删除前快照不能恢复，导出处理中显示副本生成中', async (t) => {
+    const { document, account } = await accountFixture(t);
     const realFetch = globalThis.fetch;
-    const realFrame = globalThis.requestAnimationFrame;
-    globalThis.requestAnimationFrame = (fn) => { fn(); return 0; };
     globalThis.fetch = async () => new Response(JSON.stringify({
         accountId: '7', sessionId: '8', authenticatorEnabled: false,
     }), { status: 200 });
-    let account;
     try {
-        account = mountDataRights();
         account.open();
         await new Promise((resolve) => setTimeout(resolve, 0));
         account.showExportState({ status: 'PENDING', exportId: 'ex-1', errorMessage: 'ST_UNAVAILABLE' });
@@ -130,8 +127,6 @@ test('数据页说明删除前快照不能恢复，导出处理中显示副本�
     } finally {
         account?.close();
         globalThis.fetch = realFetch;
-        if (realFrame) globalThis.requestAnimationFrame = realFrame;
-        else delete globalThis.requestAnimationFrame;
     }
 });
 

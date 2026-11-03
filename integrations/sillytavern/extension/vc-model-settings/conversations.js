@@ -13,9 +13,7 @@ export const CONVERSATIONS_ERROR_COPY = '会话没有加载出来';
 export const CONVERSATIONS_RETRY_LABEL = '重试';
 export const CONVERSATIONS_EMPTY_ACTION = '去角色页';
 
-const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (ch) => ({
-    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
-}[ch]));
+
 
 // 打开角色时可能在这一小段里连打两次绑定，后一次才写进聊天文件。
 const SHADOW_TWIN_MS = 5000;
@@ -349,30 +347,14 @@ export function conversationTitle(row) {
     return { name: title, inst: mark ? `${inst} · ${mark}` : inst };
 }
 
-function avatarHtml(row, title) {
-    const src = avatarUrl(row?.avatar);
-    if (src) return `<img class="vc-convo-avatar" alt="" src="${esc(src)}" data-fly-from>`;
-    const letter = [...title.name][0] || '';
-    return `<span class="vc-convo-avatar" aria-hidden="true" data-fly-from>${esc(letter)}</span>`;
-}
-
-export function renderConversationRow(row) {
-    const title = conversationTitle(row);
-    const label = [title.name, title.inst, row?.unread ? '未读' : ''].filter(Boolean).join('，');
-    const time = textField(row?.time);
-    // 预览只显示正文：去掉 <voice/>、表情包等标记。
-    const preview = textField(row?.preview).replace(/<[^<>]*>/g, '').trim() || '暂无消息';
-    return `<button type="button" class="vc-cell vc-convo" data-relationship-id="${esc(row?.relationshipId || '')}"${title.inst && title.inst === title.name ? ' data-same-name' : ''} aria-label="${esc(label)}"><span class="vc-convo-avatar-slot">${avatarHtml(row, title)}</span><span class="vc-grow"><span class="vc-convo-top"><span class="vc-convo-name">${esc(title.name)}</span>${title.inst ? `<span class="vc-convo-inst">${esc(title.inst)}</span>` : ''}${time ? `<span class="vc-convo-time vc-num"${Number.isFinite(row?.timeMs) ? ` data-time="${row.timeMs}"` : ''}>${esc(time)}</span>` : ''}</span><span class="vc-convo-preview">${esc(preview)}</span></span>${row?.unread ? `<i class="vc-convo-unread" aria-hidden="true"${row.unreadCount > 0 ? ` data-count="${row.unreadCount > 99 ? '99+' : row.unreadCount}"` : ''}></i>` : ''}</button>`;
-}
-
-export function renderConversationRows(rows) {
-    return (Array.isArray(rows) ? rows : []).map((row) => renderConversationRow(row)).join('');
-}
-
-export function renderConversationEmpty() {
-    return `<div class="vc-empty"><span data-empty-icon></span><p>${EMPTY_CONVERSATIONS_COPY}</p><button type="button" class="vc-btn vc-btn-fill" data-goto="characters">${CONVERSATIONS_EMPTY_ACTION}</button></div>`;
-}
-
-export function renderConversationError() {
-    return `<div class="vc-empty"><span data-empty-icon></span><p>${CONVERSATIONS_ERROR_COPY}</p><button type="button" class="vc-btn vc-btn-fill" data-retry>${CONVERSATIONS_RETRY_LABEL}</button></div>`;
+// 与壳层共享数据投影，UI只由生产React组件渲染。
+export function conversationViewItems(rows, { desktop = false, current = '' } = {}) {
+    return rows.map(row => {
+        const title = conversationTitle(row);
+        return { id: row.relationshipId, name: title.name, instance: desktop ? instanceTail(title.name, title.inst) : title.inst,
+            label: [title.name, title.inst, row.unread ? '未读' : ''].filter(Boolean).join('，'), sameName: Boolean(title.inst && title.inst === title.name),
+            avatar: avatarUrl(row.avatar), preview: String(row.preview || '').trim().replace(/<[^<>]*>/g, '').trim() || '暂无消息',
+            time: desktop && Number.isFinite(row.timeMs) ? desktopConversationTime(row.timeMs) || row.time : row.time || '', timeMs: row.timeMs,
+            unread: Boolean(row.unread), unreadCount: row.unreadCount || 0, current: row.relationshipId === current, desktop };
+    });
 }

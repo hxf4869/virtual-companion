@@ -1,8 +1,10 @@
+import { bootstrapDocument } from './react-dom-bootstrap.mjs';
+import { renderMemoryPage } from './memory-dom.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import * as api from '../extension/vc-model-settings/api.js';
-import { createMemoryPage, renderMemoryPage, FORGET_NOTICE } from '../extension/vc-model-settings/memory-page.js';
+import { createMemoryPage, FORGET_NOTICE } from '../extension/vc-model-settings/memory-page.js';
 
 const item = (extra = {}) => ({ memoryId: '101', version: 2, summary: '喜欢傍晚沿湖散步', type: 'PREFERENCE', mode: 'DAILY', relationshipId: '11', lifecycle: 'ACTIVE', sourceStatus: 'VALID', recallEligible: true, time: { eventDate: '2026-10-27', eventTime: null, eventTimezone: null, recordedAt: '2026-10-28T06:20:00Z' }, history: [], cleanup: { state: 'NONE' }, ...extra });
 const realFetch = globalThis.fetch;
@@ -19,7 +21,8 @@ test.beforeEach(() => {
         : url.includes('/relationships/') ? { body: [item()] }
         : url.endsWith('/evidence') ? { body: [{ chatDisplayName: '湖边散步', messageId: 'm1', revision: 3, status: 'VALID', sourceTimestamp: '2026-10-27T10:00:00Z', sourceTimezone: 'Asia/Shanghai', excerpt: '喜欢散步' }] }
         : { body: item() };
-    globalThis.document = { cookie: 'vc_csrf=go-token' };
+    bootstrapDocument.cookie = 'vc_csrf=go-token';
+    globalThis.document = bootstrapDocument;
     api.setStHeadersProvider(() => ({ 'X-CSRF-Token': 'st-token' }));
     globalThis.fetch = async (url, init) => {
         calls.push({ url, ...init });

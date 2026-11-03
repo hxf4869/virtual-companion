@@ -88,6 +88,10 @@ jobs:
       - name: Pull PostgreSQL test image
         # backup-pg.test.mjs 的真库用例要求本地已有该镜像，且测试自己不拉取。
         run: docker pull pgvector/pgvector:0.8.5-pg18
+      - name: Install locked integration dependencies
+        run: npm ci --prefix integrations/sillytavern --include=dev --ignore-scripts --no-audit --no-fund
+      - name: Build desktop UI
+        run: npm --prefix integrations/sillytavern run build:desktop
       - name: Run SillyTavern offline tests
         # integrations/sillytavern/upstream/ 与 node_modules/ 被 gitignore。
         # bootstrap.mjs 发现上游目录缺失即退出，且明确不克隆（避免隐式网络写），

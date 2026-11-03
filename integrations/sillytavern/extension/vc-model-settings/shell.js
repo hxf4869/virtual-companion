@@ -1,5 +1,6 @@
 // F1 外壳：五目的地导航、会话列表、对话页定位、设置入口。vc-ui 为 off 时不挂载。
-import { icon } from './ui/icons.js';
+import { icon, iconSpriteUrl } from './ui/icons.js';
+import { mountSidebarView, mountShellFrameView, mountChatIdentityView, mountConversationsView } from './desktop/build/index.js';
 import { flyAvatar } from './ui/nav.js';
 import { openSheet } from './ui/sheet.js';
 import { bindSegment } from './ui/controls.js';
@@ -17,9 +18,8 @@ import {
     conversationRows,
     conversationTitle,
     loadRecentChatSnapshots,
-    renderConversationEmpty,
-    renderConversationError,
-    renderConversationRows,
+    desktopConversationTime,
+    conversationViewItems,
 } from './conversations.js';
 
 export const REPLY_STYLE_KEY = 'vc-reply-style';
@@ -526,213 +526,50 @@ export function mountShell(options = {}) {
     const sidebar = doc.createElement('aside');
     sidebar.className = 'vc-sidebar';
     sidebar.setAttribute('aria-label', '陪伴导航');
-    const collapse = doc.createElement('button');
-    collapse.type = 'button';
-    collapse.className = 'vc-side-link vc-side-collapse';
-    collapse.setAttribute('data-collapse', '');
-    collapse.setAttribute('aria-label', '收起侧边栏');
-    collapse.append(iconEl('chevron-left', 22));
-    sidebar.append(collapse);
+    // 镜片由既有桌面动效控制，置于 React 边界外；侧栏内容只由 React 渲染。
+    const sidebarContent = doc.createElement('div');
+    sidebarContent.className = 'vc-sidebar-content';
+    sidebar.append(sidebarContent);
+    const sidebarState = { items: DESTINATIONS, sprite: iconSpriteUrl(), active: 'chat', collapsed: false,
+        unreadCount: 0, chatUnread: false, avatar: { fallback: '' } };
+    const sidebarView = mountSidebarView(sidebarContent, sidebarState);
     const tabbar = doc.createElement('nav');
     tabbar.className = 'vc-tabbar vc-glass';
     tabbar.setAttribute('aria-label', '陪伴导航');
-    const lens = doc.createElement('i');
-    lens.className = 'vc-tab-lens';
-    tabbar.append(lens);
-
-    const makeSettingsButton = () => {
-        const button = doc.createElement('button');
-        button.type = 'button';
-        button.className = 'vc-circle vc-glass';
-        button.setAttribute('aria-label', '设置');
-        button.setAttribute('data-settings', '');
-        button.append(iconEl('user-round', 22));
-        return button;
-    };
-
-    for (const item of DESTINATIONS) {
-        const side = doc.createElement('button');
-        side.type = 'button';
-        side.className = 'vc-side-link';
-        side.setAttribute('data-nav', item.nav);
-        side.append(iconEl(item.icon, 24));
-        const label = doc.createElement('span');
-        label.className = 'vc-side-label';
-        label.textContent = item.label;
-        const badge = doc.createElement('span');
-        badge.setAttribute('data-badge', 'inbox');
-        side.append(label, badge);
-        if (item.nav !== 'inbox') badge.remove();
-        if (item.nav === 'chat') {
-            // UX-30 侧栏「聊天」未读点，只在桌面侧栏里；有未读时显示。
-            const dot = doc.createElement('i');
-            dot.className = 'vc-side-dot';
-            dot.setAttribute('data-dot', 'chat');
-            dot.setAttribute('aria-hidden', 'true');
-            dot.hidden = true;
-            side.append(dot);
-        }
-        sidebar.append(side);
-
-        const tab = doc.createElement('button');
-        tab.type = 'button';
-        tab.className = 'vc-tab';
-        tab.setAttribute('data-nav', item.nav);
-        tab.append(iconEl(item.icon, 24));
-        const tabLabel = doc.createElement('span');
-        tabLabel.textContent = item.label;
-        tab.append(tabLabel);
-        if (item.nav === 'inbox') {
-            const tabBadge = doc.createElement('span');
-            tabBadge.setAttribute('data-badge', 'inbox');
-            tab.append(tabBadge);
-        }
-        tabbar.append(tab);
-    }
-    const foot = doc.createElement('div');
-    foot.className = 'vc-side-foot';
-    const settingsLink = makeSettingsButton();
-    settingsLink.className = 'vc-side-link';
-    const settingsLabel = doc.createElement('span');
-    settingsLabel.className = 'vc-side-label';
-    settingsLabel.textContent = '设置';
-    settingsLink.replaceChildren(iconEl('settings', 24), settingsLabel);
-    const sideAvatar = doc.createElement('span');
-    sideAvatar.className = 'vc-side-avatar';
-    sideAvatar.setAttribute('aria-hidden', 'true');
-    foot.append(sideAvatar, settingsLink);
-    sidebar.append(foot);
-
-    const body = doc.createElement('div');
-    body.className = 'vc-shell-body';
-    const pages = doc.createElement('div');
-    pages.className = 'vc-shell-pages';
+    const body = doc.createElement('div'); body.className = 'vc-shell-body';
+    root.append(sidebar, body, tabbar); doc.body.append(root);
+    const frameState = { items: DESTINATIONS, sprite: iconSpriteUrl(), active: '', entering: '', listLabel: '隐藏会话列表', searchOpen: false, labels: options.navigationTitles || {} };
+    const frame = mountShellFrameView(body, tabbar, frameState);
+    const pages = body.querySelector('.vc-shell-pages');
     let convoList = null;
+    // 业务页挂载点没有React children，页面控制器与ST保持其内部节点的唯一owner。
     for (const item of DESTINATIONS) {
-        const page = doc.createElement('section');
-        page.className = 'vc-shell-page';
-        page.setAttribute('data-page', item.nav);
-        const navbar = doc.createElement('header');
-        navbar.className = 'vc-navbar';
-        const navTitle = doc.createElement('span');
-        navTitle.className = 'vc-nav-title';
-        navTitle.textContent = item.label;
-        const spacer = doc.createElement('span');
-        spacer.className = 'vc-nav-spacer';
-        navbar.append(spacer, navTitle, makeSettingsButton());
-        const scroll = doc.createElement('div');
-        scroll.className = 'vc-shell-scroll';
-        const heading = doc.createElement('h1');
-        heading.className = 'vc-large-title';
-        heading.setAttribute('data-shell-title', '');
-        heading.textContent = item.label;
-        scroll.append(heading);
-        if (item.nav === 'chat') {
-            convoList = doc.createElement('div');
-            convoList.setAttribute('data-convo-list', '');
-            convoList.setAttribute('aria-label', '会话');
-            scroll.append(convoList);
-        }
-        page.append(navbar, scroll);
-        bindNavScroll(scroll, navbar);
-        pages.append(page);
+        const page = pages.querySelector(`[data-page="${item.nav}"]`), scroll = page.querySelector('.vc-shell-scroll');
+        const heading = doc.createElement('h1'); heading.className = 'vc-large-title'; heading.setAttribute('data-shell-title', ''); heading.textContent = item.label; scroll.append(heading);
+        if (item.nav === 'chat') { convoList = doc.createElement('div'); convoList.setAttribute('data-convo-list', ''); convoList.setAttribute('aria-label', '会话'); scroll.append(convoList); }
+        bindNavScroll(scroll, page.querySelector('header'));
     }
-
-    const chatPane = doc.createElement('section');
-    chatPane.className = 'vc-shell-chat';
-    chatPane.setAttribute('aria-label', '对话');
-    const chatNav = doc.createElement('header');
-    chatNav.className = 'vc-navbar';
-    const back = doc.createElement('button');
-    back.type = 'button';
-    back.className = 'vc-circle vc-glass vc-chat-back';
-    back.setAttribute('aria-label', '返回');
-    back.setAttribute('data-back', '');
-    back.append(iconEl('chevron-left', 22));
-    const listToggle = doc.createElement('button');
-    listToggle.type = 'button';
-    listToggle.className = 'vc-circle vc-glass vc-list-toggle';
-    listToggle.setAttribute('aria-label', '隐藏会话列表');
-    listToggle.setAttribute('data-list-toggle', '');
-    listToggle.append(iconEl('message-circle', 22));
-    const whoSlot = doc.createElement('div');
-    whoSlot.className = 'vc-who-slot';
-    const who = doc.createElement('div');
-    who.className = 'vc-who vc-glass';
-    const whoAvatar = doc.createElement('span');
-    whoAvatar.setAttribute('data-who-avatar', '');
-    const whoCopy = doc.createElement('span');
-    whoCopy.className = 'vc-who-copy';
-    const whoName = doc.createElement('b');
-    whoName.setAttribute('data-who-name', '');
-    const whoInst = doc.createElement('small');
-    whoInst.setAttribute('data-who-inst', '');
-    whoInst.hidden = true;
-    // UX-29 桌面副标题（心情 · 在做什么）；有内容时盖过实例名，手机不显示。
-    const whoSub = doc.createElement('small');
-    whoSub.setAttribute('data-who-sub', '');
-    whoSub.hidden = true;
-    whoCopy.append(whoName, whoSub, whoInst);
-    who.append(whoAvatar, whoCopy);
-    whoSlot.append(who);
-    const capsule = doc.createElement('div');
-    capsule.className = 'vc-capsule vc-glass';
-    const memoryBtn = doc.createElement('button');
-    memoryBtn.type = 'button';
-    memoryBtn.setAttribute('aria-label', '记忆');
-    memoryBtn.setAttribute('data-memory', '');
-    memoryBtn.append(iconEl('brain', 22));
-    const moreBtn = doc.createElement('button');
-    moreBtn.type = 'button';
-    moreBtn.setAttribute('aria-label', '更多');
-    moreBtn.setAttribute('data-more', '');
-    moreBtn.append(iconEl('ellipsis', 22));
-    capsule.append(memoryBtn, moreBtn);
-    const chatSpacer = doc.createElement('span');
-    chatSpacer.className = 'vc-nav-spacer';
-    chatNav.append(back, listToggle, whoSlot, chatSpacer, capsule);
-    const chatBody = doc.createElement('div');
-    chatBody.className = 'vc-shell-chat-body';
-    const chatEmpty = doc.createElement('div');
-    chatEmpty.className = 'vc-empty vc-chat-empty';
-    const emptyIcon = doc.createElement('span');
-    emptyIcon.setAttribute('data-empty-icon', '');
-    const emptyCopy = doc.createElement('p');
-    emptyCopy.textContent = CHAT_EMPTY_COPY;
-    chatEmpty.append(emptyIcon, emptyCopy);
-    fillIcon(chatEmpty, 'message-circle');
-    chatBody.append(chatEmpty);
-    chatPane.append(chatNav, chatBody);
-
-    const settingsPane = doc.createElement('section');
-    settingsPane.className = 'vc-shell-settings';
-    settingsPane.setAttribute('aria-label', '设置');
-    const settingsNav = doc.createElement('header');
-    settingsNav.className = 'vc-navbar';
-    const done = doc.createElement('button');
-    done.type = 'button';
-    done.className = 'vc-btn vc-btn-text';
-    done.setAttribute('data-settings-done', '');
-    done.textContent = '完成';
-    const settingsTitle = doc.createElement('span');
-    settingsTitle.className = 'vc-nav-title';
-    settingsTitle.textContent = '设置';
-    const settingsSpacer = doc.createElement('span');
-    settingsSpacer.className = 'vc-nav-spacer';
-    settingsNav.append(done, settingsTitle, settingsSpacer);
-    const settingsScroll = doc.createElement('div');
-    settingsScroll.className = 'vc-shell-scroll';
-    const settingsHeading = doc.createElement('h1');
-    settingsHeading.className = 'vc-large-title';
-    settingsHeading.textContent = '设置';
-    settingsScroll.append(settingsHeading);
+    const conversationState = { rows: [], status: 'loading', sprite: iconSpriteUrl() };
+    const conversationView = mountConversationsView(convoList, conversationState);
+    function paintConversations() {
+        const desktop = doc.documentElement.dataset.vcLayout === 'desktop';
+        const current = String(getContext().chatMetadata?.vc_binding?.relationshipId ?? '');
+        conversationState.rows = conversationViewItems([...rowById.values()], { desktop, current });
+        conversationView.update(conversationState);
+    }
+    const chatPane = body.querySelector('.vc-shell-chat'), chatNav = chatPane.querySelector('header'), chatBody = chatPane.querySelector('.vc-shell-chat-body');
+    const whoSlot = chatNav.querySelector('.vc-who-slot');
+    const identityState = { sprite: iconSpriteUrl(), name: '', instance: '', avatar: '', subtitle: '', interactive: false, expanded: false };
+    const identityView = mountChatIdentityView(whoSlot, identityState);
+    const who = whoSlot.querySelector('.vc-who'), whoAvatar = who.querySelector('[data-who-avatar]');
+    const chatEmpty = doc.createElement('div'); chatEmpty.className = 'vc-empty vc-chat-empty';
+    const emptyIcon = doc.createElement('span'); emptyIcon.setAttribute('data-empty-icon', '');
+    const emptyCopy = doc.createElement('p'); emptyCopy.textContent = CHAT_EMPTY_COPY;
+    chatEmpty.append(emptyIcon, emptyCopy); fillIcon(chatEmpty, 'message-circle'); chatBody.append(chatEmpty);
+    const settingsPane = body.querySelector('.vc-shell-settings'), settingsNav = settingsPane.querySelector('header'), settingsScroll = settingsPane.querySelector('.vc-shell-scroll');
+    const settingsHeading = doc.createElement('h1'); settingsHeading.className = 'vc-large-title'; settingsHeading.textContent = '设置'; settingsScroll.append(settingsHeading);
     let desktopSettings = null;
-    settingsPane.append(settingsNav, settingsScroll);
     bindNavScroll(settingsScroll, settingsNav, settingsPane);
-
-    body.append(pages, chatPane, settingsPane);
-    root.append(sidebar, body, tabbar);
-    doc.body.append(root);
 
     let collapsed = readSidebarCollapsed(options.storage);
     let entered = false;
@@ -757,7 +594,7 @@ export function mountShell(options = {}) {
         if (typeof doc.addEventListener !== 'function' || typeof whoAvatar.addEventListener !== 'function') return;
         statusLoading = true;
         import('./desktop/status-card.js').then(({ mountStatusCard }) => {
-            statusCard = mountStatusCard({ getContext, document: doc, who, avatar: whoAvatar, sub: whoSub });
+            statusCard = mountStatusCard({ getContext, document: doc, who, avatar: whoAvatar, onSubtitle(text) { identityState.subtitle = text; identityView.update(identityState); }, onTriggerState(next) { Object.assign(identityState, next); identityView.update(identityState); } });
             if (lastIdentityRow) statusCard?.setRelationship(lastIdentityRow);
         }).catch(() => { statusLoading = false; });
     }
@@ -779,40 +616,16 @@ export function mountShell(options = {}) {
     });
 
     function paintBadge(count) {
-        const text = count > 99 ? '99+' : String(count);
-        for (const slot of root.querySelectorAll('[data-badge="inbox"]')) {
-            slot.replaceChildren();
-            if (count > 0) {
-                const badge = doc.createElement('span');
-                badge.className = 'vc-badge';
-                badge.textContent = text;
-                slot.append(badge);
-            }
-        }
+        sidebarState.unreadCount = count;
+        sidebarState.chatUnread = unreadInboxEvents(inboxRows).length > 0;
+        sidebarView.update(sidebarState);
+        frame.updateTabs({ ...frameState, unreadCount: count });
     }
 
     function paintIdentity(row) {
         const title = titlesOf(row);
-        whoName.textContent = title.name;
-        whoInst.textContent = title.inst;
-        whoInst.hidden = !title.inst;
-        who.setAttribute('aria-label', title.name || '对话');
-        whoAvatar.replaceChildren();
-        const src = avatarUrl(row?.avatar);
-        if (src) {
-            const image = doc.createElement('img');
-            image.className = 'vc-convo-avatar';
-            image.alt = '';
-            image.src = src;
-            image.setAttribute('data-fly-target', '');
-            whoAvatar.append(image);
-        } else {
-            const letter = doc.createElement('span');
-            letter.className = 'vc-convo-avatar';
-            letter.setAttribute('data-fly-target', '');
-            letter.textContent = [...title.name][0] || '';
-            whoAvatar.append(letter);
-        }
+        Object.assign(identityState, { name: title.name, instance: title.inst, avatar: avatarUrl(row?.avatar) || '' });
+        identityView.update(identityState);
         lastIdentityRow = row;
         if (statusCard) statusCard.setRelationship(row);
         else loadStatusCard();
@@ -850,11 +663,10 @@ export function mountShell(options = {}) {
         if (!mediumChat) root.dataset.list = 'open';
         else if (listHeld) root.dataset.list = 'open';
         else root.dataset.list = 'hidden';
-        listToggle.setAttribute('aria-label', root.dataset.list === 'hidden' ? '显示会话列表' : '隐藏会话列表');
+        frameState.listLabel = root.dataset.list === 'hidden' ? '显示会话列表' : '隐藏会话列表';
+        frame.update(frameState);
         sidebar.classList.toggle('is-collapsed', chrome.collapsible && collapsed);
-        collapse.setAttribute('aria-label', collapsed && chrome.collapsible ? '展开侧边栏' : '收起侧边栏');
-        const iconName = collapsed && chrome.collapsible ? 'chevron-right' : 'chevron-left';
-        collapse.replaceChildren(iconEl(iconName, 22));
+        sidebarState.collapsed = chrome.collapsible && collapsed;
         const sidebarPx = sidebarCssWidth(globalThis.innerWidth, collapsed);
         doc.documentElement?.style?.setProperty?.('--vc-sidebar', `${sidebarPx}px`);
         if (chrome.nav !== 'tabbar') chatPane.classList.remove('is-push', 'is-pop');
@@ -867,6 +679,7 @@ export function mountShell(options = {}) {
         releaseCoveredSettings();
         if (chrome.nav === 'tabbar' && desktopSettings && root.dataset.settings === 'page') closeSettings({ immediate: true });
         syncSidebarCurrent();
+        paintConversations();
     }
 
     function syncKeyboard() {
@@ -913,20 +726,13 @@ export function mountShell(options = {}) {
         root.dataset.destination = nav;
         globalThis.dispatchEvent?.(new Event('vc-shell-destination'));
         tabbar.style.setProperty('--vc-tab', String(index));
-        for (const button of root.querySelectorAll('[data-nav]')) {
-            if (button.getAttribute('data-nav') === nav) button.setAttribute('aria-current', 'page');
-            else button.removeAttribute('aria-current');
+        if (frameState.active !== nav) {
+            frameState.active = nav; frameState.entering = ''; frame.update(frameState);
+            void pages.querySelector(`[data-page="${nav}"]`)?.offsetWidth;
+            frameState.entering = nav;
         }
+        frame.update(frameState); frame.updateTabs({ ...frameState, unreadCount: sidebarState.unreadCount });
         syncSidebarCurrent();
-        for (const page of root.querySelectorAll('.vc-shell-page')) {
-            const on = page.getAttribute('data-page') === nav;
-            const wasOn = page.classList.contains('is-on');
-            page.classList.toggle('is-on', on);
-            if (on && !wasOn) {
-                page.classList.remove('is-enter');
-                if (page.offsetWidth >= 0) page.classList.add('is-enter');
-            }
-        }
         const phone = chromeForWidth(globalThis.innerWidth).nav === 'tabbar';
         if (nav === 'chat') {
             if (phone && entered) hideChat();
@@ -1070,8 +876,6 @@ export function mountShell(options = {}) {
             }
         }
         paintBadge(pendingInboxWrites(inboxRows, inboxScope(getContext())).length);
-        const dot = root.querySelector('[data-dot="chat"]');
-        if (dot) dot.hidden = unreadInboxEvents(inboxRows).length === 0;
         notifier.ingest(inboxRows, { viewing: viewingRelationship() });
     }
 
@@ -1099,18 +903,12 @@ export function mountShell(options = {}) {
                 characters: context.characters,
             });
             rowById = new Map(rows.map((row) => [row.relationshipId, row]));
-            if (!rows.length) {
-                convoList.innerHTML = renderConversationEmpty();
-                fillIcon(convoList, 'message-circle');
-            } else {
-                convoList.innerHTML = renderConversationRows(rows);
-            }
+            conversationState.status = 'ready'; paintConversations();
             const current = snap && rowById.get(snap.relationshipId);
             if (current && entered) paintIdentity(current);
         } catch {
             if (token !== reloadToken) return;
-            convoList.innerHTML = renderConversationError();
-            fillIcon(convoList, 'circle-alert');
+            conversationState.status = 'error'; paintConversations();
         }
     }
 
@@ -1132,28 +930,17 @@ export function mountShell(options = {}) {
     function syncSidebarCurrent() {
         const settingsOn = root.dataset.chrome !== 'tabbar'
             && (root.dataset.settings === 'page' || doc.body?.classList?.contains('vc-host-drawer') === true);
-        for (const button of sidebar.querySelectorAll('button')) {
-            if (!button.hasAttribute('data-nav') && !button.hasAttribute('data-settings')) continue;
-            const on = button.hasAttribute('data-settings')
-                ? settingsOn
-                : !settingsOn && button.getAttribute('data-nav') === root.dataset.destination;
-            if (on) button.setAttribute('aria-current', 'page');
-            else button.removeAttribute('aria-current');
-        }
+        sidebarState.active = settingsOn ? 'settings' : root.dataset.destination;
         if (root.dataset.chrome !== 'tabbar') syncSideAvatar();
+        sidebarView.update(sidebarState);
         globalThis.dispatchEvent?.(new Event('vc-shell-destination'));
     }
 
     function syncSideAvatar() {
         const name = String(getContext()?.name1 || '').trim();
         const persona = doc.querySelector?.('#user_avatar_block .avatar-container.selected')?.getAttribute?.('data-avatar-id');
-        sideAvatar.replaceChildren();
-        if (persona) {
-            const image = doc.createElement('img');
-            image.src = `/thumbnail?type=persona&file=${encodeURIComponent(persona)}`;
-            image.alt = '';
-            sideAvatar.append(image);
-        } else sideAvatar.textContent = [...name][0] || '';
+        sidebarState.avatar = { src: persona ? `/thumbnail?type=persona&file=${encodeURIComponent(persona)}` : undefined,
+            fallback: [...name][0] || '' };
     }
 
     function closeSettings({ immediate = false } = {}) {
@@ -1230,15 +1017,23 @@ export function mountShell(options = {}) {
         });
         if (chromeForWidth(globalThis.innerWidth).nav === 'tabbar') {
             closeSettings();
+            let coverWatch;
             const handle = openSheet({
                 title: '设置',
                 large: true,
                 body: form,
                 opener,
                 root: doc.body,
-                onDone: () => { if (sheetHandle === handle) sheetHandle = null; },
+                onDone: () => { coverWatch?.disconnect(); if (sheetHandle === handle) sheetHandle = null; },
             });
             sheetHandle = handle;
+            // 独立账户/模型页保留返回用的设置DOM，覆盖期间暂停后层的Dialog状态，避免跨Root抢Escape/焦点。
+            if (typeof MutationObserver === 'function') {
+                const syncCover = () => { if (sheetHandle === handle) handle.setCovered(coveringPageOpen()); };
+                coverWatch = new MutationObserver(syncCover);
+                coverWatch.observe(doc.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['open', 'hidden'] });
+                syncCover();
+            }
             return;
         }
         settingsScroll.replaceChildren(settingsHeading, form);
@@ -1277,7 +1072,8 @@ export function mountShell(options = {}) {
             const opening = root.dataset.list === 'hidden';
             root.dataset.list = opening ? 'open' : 'hidden';
             listHeld = opening && root.dataset.destination === 'chat' && entered;
-            listToggle.setAttribute('aria-label', root.dataset.list === 'hidden' ? '显示会话列表' : '隐藏会话列表');
+            frameState.listLabel = root.dataset.list === 'hidden' ? '显示会话列表' : '隐藏会话列表';
+        frame.update(frameState);
             return;
         }
         if (node.hasAttribute('data-back')) {
@@ -1364,7 +1160,7 @@ export function mountShell(options = {}) {
         return Promise.resolve(null);
     }
 
-    convoList.innerHTML = '<div class="vc-skeleton-row"><span class="vc-skeleton vc-skeleton-avatar"></span><span class="vc-grow"><span class="vc-skeleton vc-skeleton-line"></span><span class="vc-skeleton vc-skeleton-line is-short"></span></span></div>'.repeat(3);
+
     destinationHost = createDestinationHost({
         enabled: true,
         registry: true,
@@ -1378,8 +1174,8 @@ export function mountShell(options = {}) {
             || doc.documentElement?.style?.getPropertyValue?.('--vc-tint')
             || '';
         const next = whoTintBackground(raw);
-        if (next) who.style.background = next;
-        else if (typeof who.style.removeProperty === 'function') who.style.removeProperty('background');
+        identityState.tint = next || undefined;
+        identityView.update(identityState);
     }
     const routeExternal = (nav, opener) => {
         if (nav === 'settings') {
@@ -1417,6 +1213,21 @@ export function mountShell(options = {}) {
     selectDestination('chat', null, { legacy: false });
     applyChrome();
     schedule();
+    root.setChatSearchOpen = on => { frameState.searchOpen = on; frame.update(frameState); };
+    root.registerCharacterImport = onClick => {
+        frameState.characterImport = onClick; frame.update(frameState);
+        return () => {
+            if (frameState.characterImport !== onClick) return;
+            frameState.characterImport = undefined; frame.update(frameState);
+        };
+    };
+    root.updateConversationSnapshot = snap => {
+        const row = snap?.preview && rowById.get(snap.relationshipId);
+        if (!row) return;
+        row.preview = snap.preview;
+        if (desktopConversationTime(snap.time)) row.timeMs = Date.parse(snap.time) || snap.time;
+        paintConversations();
+    };
     root.openConversation = (instance, opener) => openFromInstance(instance, opener);
     return root;
 }

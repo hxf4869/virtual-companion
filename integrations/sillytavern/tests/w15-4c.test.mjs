@@ -1,3 +1,4 @@
+import './react-dom-bootstrap.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
@@ -8,7 +9,8 @@ import {
 import {
     SESSION_EMPTY_COPY, sessionRowText,
 } from '../extension/vc-model-settings/account-logic.js';
-import { executeSensitiveAction, renderAccountShell } from '../extension/vc-model-settings/data-rights.js';
+import { executeSensitiveAction } from '../extension/vc-model-settings/data-rights.js';
+import { accountFixture } from './account-dom.mjs';
 import { ACCOUNT_UI_ROUTES } from '../extension/vc-model-settings/account-ui-routes.js';
 import { ADMIN_BRIDGE_ROUTES } from '../server-plugin/virtual-companion/lib/admin-bridge.js';
 
@@ -60,8 +62,9 @@ test('保存请求不回写 ledgerPrice，克隆配置不沿用原状态', () =>
     assert.equal(modelDraftFromApi({ profileKey: 'x', modelId: 'x', displayName: 'x', maxOutputTokens: 1, ledgerPrice: 'NO_PRICE' }).ledgerPrice, '');
 });
 
-test('账户页分区不再重复当前密码，密码不进静态属性', () => {
-    const html = renderAccountShell();
+test('账户页分区不再重复当前密码，密码不进静态属性', async (t) => {
+    const { root } = await accountFixture(t);
+    const html = root.innerHTML;
     const reauthAt = html.indexOf('vc-account-reauth');
     assert.ok(reauthAt > 0);
     const page = html.slice(0, reauthAt);

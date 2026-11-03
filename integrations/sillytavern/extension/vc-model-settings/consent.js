@@ -2,7 +2,8 @@
 import {
     captureSessionContext, listConsents, logoutCurrent, reauth, recordConsent,
 } from './api.js';
-import { icon } from './ui/icons.js';
+import { iconSpriteUrl } from './ui/icons.js';
+import { mountConsentGateView } from './desktop/build/index.js';
 
 export const CONSENT_VERSION = '2026-10-30';
 export const CONSENT_ERROR_COPY = '没有完成，请重试。';
@@ -40,10 +41,6 @@ export const REQUIRED_CONSENTS = [
     },
 ];
 
-function esc(value) {
-    return String(value).replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
-}
-
 function stamp(value) {
     const parsed = Date.parse(value || '');
     return Number.isFinite(parsed) ? parsed : 0;
@@ -80,46 +77,6 @@ export function consentStatusText(row) {
     }
     const when = formatConsentWhen(row?.revokedAt);
     return when ? `未同意 ${when}` : '未同意';
-}
-
-export function renderConsentSheet() {
-    const items = REQUIRED_CONSENTS.map((item) => `<div class="vc-consent-item">
-      <button type="button" class="vc-cell" data-consent-toggle="${item.type}" aria-expanded="false">
-        ${icon(item.icon, { size: 22 })}
-        <span class="vc-grow">${esc(item.label)}</span>
-        <span class="vc-consent-chevron">${icon('chevron-right', { size: 18 })}</span>
-      </button>
-      <p class="vc-consent-copy" hidden>${esc(item.body)}</p>
-    </div>`).join('');
-    return `<div class="vc-consent-scroll">
-      <h1 id="vc-consent-title" class="vc-large-title" tabindex="-1">开始之前</h1>
-      <div class="vc-group">${items}</div>
-      <p class="vc-consent-error" data-consent-error role="alert" hidden></p>
-    </div>
-    <div class="vc-consent-bar">
-      <button type="button" class="vc-btn vc-btn-fill" data-consent-accept>同意并继续</button>
-      <button type="button" class="vc-btn vc-btn-text" data-consent-logout>退出登录</button>
-    </div>
-    <form data-consent-reauth hidden>
-      <h2>重新验证身份</h2>
-      <label>当前密码<input type="password" autocomplete="current-password" data-consent-reauth-password></label>
-      <p class="vc-consent-error" data-consent-reauth-status role="alert" hidden></p>
-      <button type="submit" class="vc-btn vc-btn-fill">验证并继续</button>
-      <button type="button" class="vc-btn vc-btn-text" data-consent-reauth-cancel>取消</button>
-    </form>`;
-}
-
-export function renderConsentAccount(records) {
-    const map = effectiveConsents(records);
-    const rows = REQUIRED_CONSENTS.map((item) => {
-        const row = map.get(item.type);
-        return `<div class="vc-consent-account-row" data-consent-type="${item.type}">
-          ${icon(item.icon, { size: 22 })}
-          <span class="vc-grow"><span class="vc-consent-name">${esc(item.label)}</span><span class="vc-consent-meta">${esc(consentStatusText(row))}</span></span>
-          <button type="button" class="vc-btn vc-btn-text is-danger" data-consent-revoke="${item.type}">撤回</button>
-        </div>`;
-    }).join('');
-    return `<div class="vc-consent-account">${rows}</div>`;
 }
 
 export async function submitConsentGrants({ record, version = CONSENT_VERSION } = {}) {
@@ -181,11 +138,6 @@ async function waitOutOnboarding(doc) {
     }
 }
 
-function showError(errorEl) {
-    errorEl.textContent = CONSENT_ERROR_COPY;
-    errorEl.removeAttribute('hidden');
-}
-
 export async function mountConsentGate(options = {}) {
     const doc = options.document || globalThis.document;
     if (!doc?.body || !doc.createElement) return null;
@@ -202,119 +154,45 @@ export async function mountConsentGate(options = {}) {
     if (Array.isArray(records) && consentOutstanding(records).length === 0) return null;
 
     ensureConsentStyles(doc);
-    const dialog = doc.createElement('dialog');
-    dialog.id = 'vc-consent';
-    dialog.className = 'vc-consent';
-    dialog.setAttribute('aria-modal', 'true');
-    dialog.setAttribute('aria-labelledby', 'vc-consent-title');
-    dialog.innerHTML = renderConsentSheet();
-    doc.body.append(dialog);
-    if (typeof dialog.showModal === 'function') dialog.showModal();
-    else dialog.open = true;
-    // showModal 会把焦点交给第一行并画出焦点环；初始焦点放在标题上。
-    dialog.querySelector('#vc-consent-title')?.focus?.({ preventScroll: true });
-
     const record = options.recordConsent || recordConsent;
     const verify = options.reauth || reauth;
     const capture = options.captureSession || captureSessionContext;
     const leave = options.logout || logoutCurrent;
-    const assign = options.assign || ((url) => globalThis.location?.assign?.(url));
-    const errorEl = dialog.querySelector('[data-consent-error]');
-    const acceptBtn = dialog.querySelector('[data-consent-accept]');
-    const reauthForm = dialog.querySelector('[data-consent-reauth]');
-    const reauthInput = dialog.querySelector('[data-consent-reauth-password]');
-    const reauthStatus = dialog.querySelector('[data-consent-reauth-status]');
-    let busy = false;
-
-    dialog.addEventListener('cancel', (event) => {
-        event.preventDefault();
+    const assign = options.assign || (url => globalThis.location?.assign?.(url));
+    let dialog, busy = false, closed = false, error = records == null ? CONSENT_ERROR_COPY : '', reauthOpen = false, reauthError = '', reset = 0;
+    const props = () => ({ host: doc.body, sprite: iconSpriteUrl(), items: REQUIRED_CONSENTS, open: !closed, busy, error, reauthOpen, reauthError, reset,
+        onAccept: () => void accept(), onLogout: () => { void (async () => { try { await leave(); } catch { /* 退出失败也离开 */ } assign('/auth/'); })(); },
+        onVerify: form => void checkPassword(form), onCancelReauth() { if(busy)return;reset++;reauthError='';reauthOpen=false;render(); },
     });
-    for (const button of dialog.querySelectorAll('[data-consent-toggle]')) {
-        button.addEventListener('click', () => {
-            const copy = button.parentNode?.querySelector?.('.vc-consent-copy');
-            if (!copy) return;
-            const open = button.getAttribute('aria-expanded') === 'true';
-            button.setAttribute('aria-expanded', open ? 'false' : 'true');
-            if (open) {
-                copy.setAttribute('hidden', '');
-                button.parentNode.classList?.remove?.('is-open');
-            } else {
-                copy.removeAttribute('hidden');
-                button.parentNode.classList?.add?.('is-open');
-            }
-        });
-    }
-
+    const view = mountConsentGateView(props());
+    dialog = await view.ready;
+    function render() { if (!closed) view.update(props()); }
+    function finish() { closed = true; reset++; view.update(props()); view.unmount(); }
     async function accept() {
-        if (busy) return;
-        busy = true;
-        acceptBtn.disabled = true;
-        errorEl.textContent = '';
-        errorEl.setAttribute('hidden', '');
+        if (busy || closed) return;
+        busy = true; error = ''; render();
         try {
             await capture();
+            if (closed || !dialog.isConnected) return;
             const result = await submitConsentGrants({ record });
-            if (!dialog.isConnected) return;
-            if (result.reauth) {
-                reauthStatus.textContent = '';
-                reauthStatus.setAttribute('hidden', '');
-                reauthInput.value = '';
-                reauthForm.removeAttribute('hidden');
-                reauthInput.focus?.();
-                return;
-            }
-            if (!result.ok) {
-                showError(errorEl);
-                return;
-            }
-            dialog.close?.();
-            dialog.open = false;
-            dialog.remove();
-        } catch {
-            if (dialog.isConnected) showError(errorEl);
-        } finally {
-            busy = false;
-            if (dialog.isConnected) acceptBtn.disabled = false;
-        }
+            if (closed || !dialog.isConnected) return;
+            if (result.reauth) { reauthError='';reset++;reauthOpen=true;render();dialog.querySelector('[data-consent-reauth-password]')?.focus();return; }
+            if (!result.ok) { error=CONSENT_ERROR_COPY;return; }
+            finish();
+        } catch { if (dialog.isConnected) error=CONSENT_ERROR_COPY; }
+        finally { busy=false;render(); }
     }
-
-    acceptBtn.addEventListener('click', () => { void accept(); });
-    dialog.querySelector('[data-consent-logout]').addEventListener('click', () => {
-        void (async () => {
-            try { await leave(); } catch { /* 退出请求失败也离开当前页 */ }
-            assign('/auth/');
-        })();
-    });
-    reauthForm.addEventListener('submit', (event) => {
-        event.preventDefault();
-        if (busy) return;
-        const password = reauthInput.value;
-        reauthInput.value = '';
-        if (!password) {
-            showError(reauthStatus);
-            return;
-        }
-        void (async () => {
-            busy = true;
-            try {
-                await verify(password);
-                if (!dialog.isConnected) return;
-                reauthForm.setAttribute('hidden', '');
-                busy = false;
-                await accept();
-            } catch {
-                busy = false;
-                if (dialog.isConnected) showError(reauthStatus);
-            }
-        })();
-    });
-    dialog.querySelector('[data-consent-reauth-cancel]')?.addEventListener('click', () => {
-        if (busy) return;
-        reauthInput.value = '';
-        reauthStatus.textContent = '';
-        reauthStatus.setAttribute('hidden', '');
-        reauthForm.setAttribute('hidden', '');
-    });
-    if (records == null) showError(errorEl);
+    async function checkPassword(form) {
+        if (busy || closed) return;
+        const input = form.querySelector('[data-consent-reauth-password]');
+        const password = input.value; input.value = ''; reset++;
+        if (!password) { reauthError=CONSENT_ERROR_COPY;render();return; }
+        busy=true;render();
+        try {
+            await verify(password);
+            if (closed || !dialog.isConnected) return;
+            reauthOpen=false;busy=false;render();await accept();
+        } catch { busy=false;if(dialog.isConnected){reauthError=CONSENT_ERROR_COPY;render();} }
+    }
     return dialog;
 }

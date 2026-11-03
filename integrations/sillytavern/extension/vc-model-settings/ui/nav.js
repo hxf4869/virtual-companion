@@ -43,7 +43,7 @@ export function flyAvatar(fromImg, toImg, { container, fromRect, toRect } = {}) 
     return anim;
 }
 
-export function createNav(container, { stacked = () => true } = {}) {
+export function createNav(container, { stacked = () => true, onRemove = () => {} } = {}) {
     if (!container) throw new Error('createNav requires a container');
     const stack = [];
 
@@ -88,8 +88,10 @@ export function createNav(container, { stacked = () => true } = {}) {
         commit(top.incoming);
         commit(top.under);
         const { el, base } = top;
+        el.inert = true;
+        const remove = () => { onRemove(el); el.remove(); };
         if (!stacked()) {
-            el.remove();
+            remove();
             syncLayout();
             el.dispatchEvent(new Event('popped'));
             return true;
@@ -104,7 +106,6 @@ export function createNav(container, { stacked = () => true } = {}) {
             { opacity: 1, transform: 'none' },
             { opacity: 0, transform: 'translateX(100%)' },
         ], { duration: 480 });
-        const remove = () => el.remove();
         leaving.finished?.then(remove, remove);
         el.dispatchEvent(new Event('popped'));
         return true;

@@ -2,6 +2,7 @@
 // 规格 docs/planning/2026-11-02-ux24-desktop-experience.md §1 UX-28。
 // chip 容器放在 #form_sheld 内、#send_form 之前，不碰 #chat；请求失败静默。
 import { fetchReplySuggestions } from '../api.js';
+import { mountSuggestionsView } from './build/index.js';
 
 export const SUGGEST_KEY = 'vc-reply-suggestions';
 export const META_KEY = 'vc_suggestions';
@@ -59,7 +60,7 @@ export function mountSuggest({ getContext, document: doc = globalThis.document, 
     const desktop = () => doc.documentElement?.dataset?.vcLayout === 'desktop';
     const box = () => doc.querySelector('#send_textarea');
     const enabled = () => suggestEnabled(storage ?? globalThis.localStorage);
-    let el = null;
+    let el = null, view = null;
     let token = 0;
     let generating = false;
 
@@ -67,36 +68,28 @@ export function mountSuggest({ getContext, document: doc = globalThis.document, 
         const form = doc.querySelector('#send_form');
         if (!form?.parentElement) return null;
         if (!el || !el.isConnected) {
+            view?.unmount(); view = null;
             el = doc.createElement('div');
             el.id = 'vc-suggest';
             el.setAttribute('role', 'group');
             el.setAttribute('aria-label', LABEL);
             el.hidden = true;
-            el.addEventListener('click', (event) => {
-                const chip = event.target.closest?.('.vc-suggest-chip');
-                if (chip) fill(chip.textContent);
-            });
+
         }
         if (el.nextElementSibling !== form) form.parentElement.insertBefore(el, form);
+        view ||= mountSuggestionsView(el, { items: [], pick: fill });
         return el;
     }
 
     function hide() {
-        if (el) { el.hidden = true; el.replaceChildren(); }
+        if (el) { el.hidden = true; view?.update({ items: [], pick: fill }); }
     }
 
     function show(items) {
         const host = ensureEl();
         if (!host) return;
         if (!items.length || !desktop() || !enabled()) { hide(); return; }
-        host.replaceChildren(...items.map((text, index) => {
-            const chip = doc.createElement('button');
-            chip.type = 'button';
-            chip.className = 'vc-suggest-chip';
-            chip.style.setProperty('--i', String(index));
-            chip.textContent = text;
-            return chip;
-        }));
+        view.update({ items, pick: fill });
         host.hidden = false;
     }
 

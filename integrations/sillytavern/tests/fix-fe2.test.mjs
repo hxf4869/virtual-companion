@@ -1,13 +1,15 @@
+import { renderCharactersTab } from './characters-dom.mjs';
 // FIX-FE 第二轮：外壳导航、列表保持、剧情滚动、头像白名单、分段释放与详情布局。
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import { avatarUrl } from '../extension/vc-model-settings/conversations.js';
-import { renderCharactersTab } from '../extension/vc-model-settings/instance-page.js';
+
 import { bindOpenMemory, requestOpenMemory } from '../extension/vc-model-settings/memory-page.js';
 import { mountShell } from '../extension/vc-model-settings/shell.js';
 import { mountStoryTab } from '../extension/vc-model-settings/story-page.js';
 import { installMiniDom } from './mini-dom.mjs';
+import { installReactDom } from './react-dom.mjs';
 
 const shellCssUrl = new URL('../extension/vc-model-settings/shell.css', import.meta.url);
 const shellJsUrl = new URL('../extension/vc-model-settings/shell.js', import.meta.url);
@@ -19,8 +21,8 @@ const indexUrl = new URL('../extension/vc-model-settings/index.js', import.meta.
 const storyJsUrl = new URL('../extension/vc-model-settings/story-page.js', import.meta.url);
 const pageUrl = new URL('../extension/vc-model-settings/page.js', import.meta.url);
 
-function shellHost() {
-    const doc = installMiniDom();
+function shellHost(t) {
+    const doc = installReactDom(t);
     globalThis.innerWidth = 900;
     const ctx = {
         characterId: 0,
@@ -42,8 +44,8 @@ function shellHost() {
     return { doc, root };
 }
 
-function click(root, node) {
-    root.dispatch('click', { target: node });
+function click(_root, node) {
+    node.click();
 }
 
 test('头像只接受 http(s)、站内单斜杠和位图 data', () => {
@@ -150,9 +152,9 @@ test('角色卡描述是左对齐分组，默认四行并带展开', () => {
     assert.match(open, />收起</);
 });
 
-test('新外观事件只切换目的地，不调用旧对话框', async () => {
+test('新外观事件只切换目的地，不调用旧对话框', async (t) => {
     const opened = [];
-    const { root } = shellHost();
+    const { root } = shellHost(t);
     assert.ok(root);
     const shell = await import('../extension/vc-model-settings/shell.js');
     root.openCharacters = () => opened.push('characters');
@@ -172,8 +174,8 @@ test('新外观事件只切换目的地，不调用旧对话框', async () => {
     assert.equal(shell.whoTintBackground(''), '');
 });
 
-test('中等宽度手动打开的会话列表在缩放后保留，换目的地或会话后收起', async () => {
-    const { root } = shellHost();
+test('中等宽度手动打开的会话列表在缩放后保留，换目的地或会话后收起', async (t) => {
+    const { root } = shellHost(t);
     await root.openConversation({ relationshipId: '9', characterIndex: 0, file: 'file', name: '林' });
     assert.equal(root.dataset.list, 'hidden');
     const toggle = root.querySelector('[data-list-toggle]');
@@ -186,8 +188,8 @@ test('中等宽度手动打开的会话列表在缩放后保留，换目的地�
     globalThis.dispatchEvent(new Event('resize'));
     assert.equal(root.dataset.list, 'open');
 
-    const memory = root.querySelectorAll('[data-nav]').find((node) => node.getAttribute('data-nav') === 'memory');
-    const chat = root.querySelectorAll('[data-nav]').find((node) => node.getAttribute('data-nav') === 'chat');
+    const memory = [...root.querySelectorAll('[data-nav]')].find((node) => node.getAttribute('data-nav') === 'memory');
+    const chat = [...root.querySelectorAll('[data-nav]')].find((node) => node.getAttribute('data-nav') === 'chat');
     click(root, memory);
     click(root, chat);
     assert.equal(root.dataset.list, 'hidden');
@@ -198,9 +200,9 @@ test('中等宽度手动打开的会话列表在缩放后保留，换目的地�
     assert.equal(root.dataset.list, 'hidden');
 });
 
-test('设置账户行名字与副标题分成两行', () => {
+test('设置账户行名字与副标题分成两行', (t) => {
     globalThis.innerWidth = 1000;
-    const { root } = shellHost();
+    const { root } = shellHost(t);
     const settings = root.querySelector('[data-settings]');
     click(root, settings);
     const copy = root.querySelector('.vc-settings-copy');
@@ -229,8 +231,18 @@ test('旧外观记忆入口事件仍打开对话框', () => {
     assert.equal(opened[0], button);
 });
 
-test('剧情重绘保留滚动和焦点，滚动只绑一次，销毁清掉长按', async () => {
-    installMiniDom();
+test('剧情重绘保留滚动和焦点，滚动只绑一次，销毁清掉长按', async (t) => {
+    const doc = installReactDom(t);
+    const listeners = new WeakMap(), create = doc.createElement;
+    doc.createElement = function(...args) {
+        const node = create.apply(this, args), add = node.addEventListener;
+        node.addEventListener = function(type, callback, options) {
+            if (this.classList?.contains('vc-story-tab')) { const byType = listeners.get(this) || {}; (byType[type] ||= []).push(callback); listeners.set(this, byType); }
+            return add.call(this, type, callback, options);
+        };
+        return node;
+    };
+    t.after(() => { doc.createElement = create; });
     document.body.classList.add('vc-ui');
     const previousFetch = globalThis.fetch;
     globalThis.fetch = async () => { throw new Error('offline'); };
@@ -247,11 +259,11 @@ test('剧情重绘保留滚动和焦点，滚动只绑一次，销毁清掉长�
         await handle.refresh();
         const nextScroll = container.querySelector('.vc-scroll');
         assert.equal(nextScroll.scrollTop, 140);
-        const again = container.querySelectorAll('button').find((node) => node.getAttribute('data-action') === action);
-        assert.equal(document.activeElement, again);
+        const again = [...container.querySelectorAll('button')].find((node) => node.getAttribute('data-action') === action);
+        assert.equal(document.activeElement === again, true, '刷新后焦点保留在同一动作');
         const story = container.querySelector('.vc-story-tab');
-        assert.equal(story.listeners.scroll?.length || 0, 1);
-        assert.equal(nextScroll.listeners?.scroll?.length || 0, 0);
+        assert.equal(listeners.get(story)?.scroll?.length || 0, 1);
+        assert.equal(listeners.get(nextScroll)?.scroll?.length || 0, 0);
 
         const jobs = new Map();
         let seq = 0;
@@ -264,10 +276,8 @@ test('剧情重绘保留滚动和焦点，滚动只绑一次，销毁清掉长�
         };
         globalThis.clearTimeout = (id) => { jobs.delete(id); };
         try {
-            story.listeners.pointerdown[0]({
-                target: { closest: (sel) => (String(sel).includes('vc-npc') ? { dataset: {} } : null), dataset: {} },
-                button: 0,
-            });
+            const npc = doc.createElement('button'); npc.className = 'vc-npc'; story.append(npc);
+            npc.dispatchEvent(new doc.defaultView.PointerEvent('pointerdown', { button: 0, bubbles: true }));
             const id = [...jobs.keys()].at(-1);
             assert.ok(id);
             handle.destroy();
@@ -304,24 +314,47 @@ test('回档确认带回打开者，节点替换后聚焦舞台标题', async ()
     assert.match(src.slice(src.indexOf('function destroy')), /clearTimeout\(holdTimer\)/);
 });
 
-test('记忆和陪伴重绘前释放上一段分段控件', async () => {
+test('记忆和陪伴重绘、卸载不累积分段控件监听', async t => {
     const memory = await import('../extension/vc-model-settings/memory-page.js');
     const inbox = await import('../extension/vc-model-settings/inbox-page.js');
-    assert.equal(typeof memory.releaseSegment, 'function');
-    assert.equal(typeof inbox.releaseSegment, 'function');
-    if (typeof memory.releaseSegment !== 'function' || typeof inbox.releaseSegment !== 'function') return;
-    let calls = 0;
-    memory.releaseSegment({ dispose() { calls += 1; } });
-    inbox.releaseSegment({ dispose() { calls += 1; } });
-    memory.releaseSegment(null);
-    inbox.releaseSegment({});
-    assert.equal(calls, 2);
-    const memorySrc = await readFile(memoryJsUrl, 'utf8');
-    const inboxSrc = await readFile(inboxJsUrl, 'utf8');
-    const memoryPaint = memorySrc.slice(memorySrc.indexOf('function paint(state)'), memorySrc.indexOf('container.addEventListener'));
-    const inboxPaint = inboxSrc.slice(inboxSrc.indexOf('function paint(state)'), inboxSrc.indexOf('function syncConflict'));
-    assert.ok(memoryPaint.indexOf('releaseSegment') !== -1 && memoryPaint.indexOf('releaseSegment') < memoryPaint.indexOf('bindSegment'));
-    assert.ok(inboxPaint.indexOf('releaseSegment') !== -1 && inboxPaint.indexOf('releaseSegment') < inboxPaint.indexOf('bindSegment'));
+    const doc = installReactDom(t), host = doc.createElement('div'); doc.body.append(host);
+    const { mountMemoryListView, mountInboxListView } = await import('../extension/vc-model-settings/desktop/build/index.js');
+    const state = memory.createMemoryPage().state, values = [];
+    const props = memory.memoryViewProps(state, {}, {
+        action() {}, draft() {}, filter() {}, submit() {}, incognito() {},
+        status(value) { values.push(value); state.filters.status = value; view.update(props); },
+    });
+    const view = mountMemoryListView(host, props); let mounted = true;
+    t.after(() => { if (mounted) view.unmount(); host.remove(); });
+    const retired = host.querySelectorAll('[role="radio"]')[1];
+    view.update(props); view.update(props);
+    assert.equal(host.querySelectorAll('[role="radio"]')[1], retired, '重绘保留同一控件');
+    retired.click();
+    assert.deepEqual(values, ['PENDING_VERIFICATION'], '一次动作只有一次回调');
+    host.querySelectorAll('[role="radio"]')[2].click();
+    assert.deepEqual(values, ['PENDING_VERIFICATION', 'INVALID']);
+    view.unmount(); mounted = false; retired.click();
+    assert.deepEqual(values, ['PENDING_VERIFICATION', 'INVALID'], '卸载后旧节点不再处理动作');
+    const inboxState = inbox.createInboxPage().state, filters = [];
+    Object.assign(inboxState, { open: true, relationships: [{ relationshipId: '11', name: '合成角色' }], relationshipId: '11' });
+    let inboxView;
+    const inboxProps = inbox.inboxViewProps(inboxState, host, {
+        action() {}, policy() {}, channel() {}, relationship() {}, mode() {}, authenticate() {},
+        readSecret: () => '', voice: () => null, layerDismiss() {}, returnFocus: () => null,
+        filter(value) { filters.push(value); inboxState.inboxFilter = value; inboxView.update(inboxProps); },
+    });
+    inboxView = mountInboxListView(host, inboxProps); let inboxMounted = true;
+    t.after(() => { if (inboxMounted) inboxView.unmount(); });
+    const pending = host.querySelectorAll('[role="radio"]')[1];
+    inboxView.update(inboxProps); inboxView.update(inboxProps);
+    assert.equal(host.querySelectorAll('[role="radio"]')[1], pending, '陪伴重绘保留同一分段控件');
+    pending.click();
+    assert.deepEqual(filters, ['pending'], '陪伴一次动作只有一次回调');
+    host.querySelectorAll('[role="radio"]')[2].click();
+    assert.deepEqual(filters, ['pending', 'written']);
+    inboxView.unmount(); inboxMounted = false; pending.click();
+    assert.deepEqual(filters, ['pending', 'written'], '陪伴卸载后旧节点不再处理动作');
+
 });
 
 test('生成预算 clone 失败时原样返回，init 只登记一次', async () => {

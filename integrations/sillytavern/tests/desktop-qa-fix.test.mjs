@@ -1,3 +1,5 @@
+import { renderDesktopMemory } from './memory-dom.mjs';
+import { createMemoryPage } from '../extension/vc-model-settings/memory-page.js';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { test } from 'node:test';
@@ -8,7 +10,8 @@ const strip = (css) => css.replace(/\/\*[\s\S]*?\*\//g, '');
 test('UX-22 QA P1-7 陪伴页离开守卫：与设置页相同的捕获阶段拦截，默认焦点来自 confirmDiscard', async () => {
     const source = await ext('inbox-page.js');
     assert.match(source, /import \{ confirmAlert, confirmDiscard \} from '\.\/ui\/alert\.js'/);
-    assert.match(source, /shell\?\.addEventListener\('click', async \(event\) => \{[\s\S]*?\[data-nav\],\[data-settings\][\s\S]*?inboxPolicyDirty\(page\.state\)[\s\S]*?stopImmediatePropagation\(\)[\s\S]*?confirmDiscard\(\{ opener: target \}\)[\s\S]*?\{ capture: true, signal \}/);
+    assert.match(source, /shell\?\.addEventListener\('click', async \(?event\)? => \{[\s\S]*?\[data-nav\],\[data-settings\][\s\S]*?inboxPolicyDirty\(page\.state\)[\s\S]*?stopImmediatePropagation\(\)[\s\S]*?requestLeave\(target\)[\s\S]*?\{ capture: true, signal \}/);
+    assert.match(source, /async function requestLeave\(opener\)[\s\S]*?confirmDiscard\(\{ opener, owner: listScreen \}\)/);
 });
 
 test('UX-22 QA P1-9 陪伴模式分段：有底色轨道 + 白色滑块，且只在桌面', async () => {
@@ -36,7 +39,11 @@ test('UX-22 QA P2-17 记忆 / 陪伴 / 剧情共用 1052 盒左缘；剧情舞�
 
 test('UX-22 QA P2-15 记忆：桌面无筛选的空状态不放「清除筛选」，纠正时操作区常驻', async () => {
     const source = await ext('memory-page.js');
-    assert.match(source, /filtered \|\| !desktopLayout\(\) \? tabBtn\('clear-filters'/);
+    const state = createMemoryPage().state;
+    state.relationships = [{ relationshipId: '11', name: '合成角色' }]; state.relationshipId = '11';
+    assert.doesNotMatch(renderDesktopMemory(state), /data-action="clear-filters"/);
+    state.filters.q = '合成检索';
+    assert.match(renderDesktopMemory(state), /data-action="clear-filters"/);
     assert.match(source, /desktopLayout\(\)\) detailEl\?\.querySelector\('\[data-form="edit"\]'\)\?\.scrollIntoView/);
     const css = strip(await ext('desktop/memory.css'));
     assert.match(css, /form\[data-form="edit"\] \.vc-memory-actions \{ position:sticky; bottom:/);

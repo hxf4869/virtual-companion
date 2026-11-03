@@ -1,13 +1,16 @@
+import { renderStoryTab } from './story-dom.mjs';
+import { renderInboxTab, renderInboxChannel } from './inbox-dom.mjs';
+import { renderMemoryDetailTab, renderMemoryTab } from './memory-dom.mjs';
+import { renderCharactersTab } from './characters-dom.mjs';
 // UI-PAGES 视觉验收：静默时段、二级页、阅读列、胶囊、提示条、抬起态与列表文案。
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { renderInboxTab, renderInboxChannel, quietZoneValue } from '../extension/vc-model-settings/inbox-page.js';
+import { quietZoneValue } from '../extension/vc-model-settings/inbox-page.js';
 import { createInboxPage } from '../extension/vc-model-settings/inbox-page.js';
-import { renderMemoryTab, renderMemoryDetailTab } from '../extension/vc-model-settings/memory-page.js';
+
 import { createMemoryPage } from '../extension/vc-model-settings/memory-page.js';
-import { renderStoryTab } from '../extension/vc-model-settings/story-page.js';
-import { renderCharactersTab } from '../extension/vc-model-settings/instance-page.js';
+
 import { prepareLiftGhost } from '../extension/vc-model-settings/chat-view.js';
 import { installMiniDom } from './mini-dom.mjs';
 

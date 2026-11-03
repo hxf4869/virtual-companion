@@ -1,3 +1,5 @@
+import { bootstrapDocument } from './react-dom-bootstrap.mjs';
+import { renderInboxPage, renderInboxTab, renderInboxChannel } from './inbox-dom.mjs';
 // W15-2：通知与 inbox 页。假 fetch，不启浏览器、不发真实邮件或飞书。
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -6,7 +8,7 @@ import * as api from '../extension/vc-model-settings/api.js';
 import { ADMIN_BRIDGE_ROUTES } from '../server-plugin/virtual-companion/lib/admin-bridge.js';
 import * as inboxRoutes from '../server-plugin/virtual-companion/lib/inbox-ui-routes.js';
 const { INBOX_UI_ROUTES } = inboxRoutes;
-import { createInboxPage, renderInboxChannel, renderInboxPage, readForm, inboxPolicyDirty } from '../extension/vc-model-settings/inbox-page.js';
+import { createInboxPage, inboxPolicyDirty } from '../extension/vc-model-settings/inbox-page.js';
 
 const SECRET = 'super-secret-value';
 const WEBHOOK = 'https://hooks.example.test/secret-path';
@@ -21,7 +23,9 @@ test('陪伴页加载中离开：尚未渲染的表单不清空策略，也不�
     const page = createInboxPage();
     page.state.relationshipId = '11';
     const draft = structuredClone(page.state.policyDraft);
-    page.applyForm(readForm({ querySelector: () => null, querySelectorAll: () => [] }));
+    page.state.loading = true;
+    const rendered = bootstrapDocument.createElement('div'); rendered.innerHTML = renderInboxTab(page.state);
+    assert.equal(rendered.querySelector('[data-field]'), null, '加载骨架没有可回写的策略控件');
     assert.deepEqual(page.state.policyDraft, draft);
     assert.equal(inboxPolicyDirty(page.state), false);
     page.setPolicy({ dailyLimit: 3 });
@@ -100,7 +104,8 @@ function install(next) {
     calls = [];
     storage = new Map();
     route = next;
-    globalThis.document = { cookie: 'vc_csrf=go-token', body: { innerHTML: '' } };
+    bootstrapDocument.cookie = 'vc_csrf=go-token';
+    globalThis.document = bootstrapDocument;
     globalThis.localStorage = {
         get length() { return storage.size; },
         key: (index) => [...storage.keys()][index] ?? null,
@@ -356,8 +361,14 @@ test('未配置的渠道默认关闭正文预览，空凭据不覆盖已保存�
 test('开关、状态徽标、静默摘要卡和凭据占位表达当前状态', async () => {
     const page = await opened();
     const text = html(page);
-    assert.match(text, /class="vc-inbox-switch" role="switch" data-action="toggle-enabled" data-field="enabled" aria-checked="true" aria-pressed="true"/);
-    assert.match(text, /class="vc-inbox-switch" role="switch" data-action="toggle-preview" data-key="7" data-field="previewBody" aria-checked="false" aria-pressed="false"/);
+    const dom = bootstrapDocument.createElement('div'); dom.innerHTML = text;
+    for (const [selector, checked] of [['[data-action="toggle-enabled"][data-field="enabled"]', 'true'], ['[data-action="toggle-preview"][data-key="7"][data-field="previewBody"]', 'false']]) {
+        const control = dom.querySelector(selector);
+        assert.ok(control.classList.contains('vc-inbox-switch'));
+        assert.equal(control.getAttribute('role'), 'switch');
+        assert.equal(control.getAttribute('aria-checked'), checked);
+        assert.equal(control.getAttribute('aria-pressed'), checked);
+    }
     assert.match(text, /主动问候<\/span>/);
     assert.match(text, /正文预览<\/span>/);
     assert.doesNotMatch(text, /主动问候开|主动问候关|正文预览 开|正文预览 关/);
@@ -474,7 +485,10 @@ test('渠道页清除凭据是整行危险按钮，内容与页头之间有顶�
     }];
     page.state.relationships = [{ relationshipId: '11', name: '澄夏', mode: 'COMPANION' }];
     const email = renderInboxChannel(page.state, '7');
-    assert.match(email, /<button type="button" class="vc-cell is-danger" data-action="clear-credential" data-key="7">清除凭据<\/button>/);
+    const dom = bootstrapDocument.createElement('div'); dom.innerHTML = email;
+    const clear = dom.querySelector('button[type="button"][data-action="clear-credential"][data-key="7"]');
+    assert.equal(clear?.className, 'vc-cell is-danger');
+    assert.equal(clear.textContent, '清除凭据');
     assert.doesNotMatch(email, /data-action="clear-credential"[^>]*class="[^"]*vc-btn-text/);
     assert.doesNotMatch(email, /class="[^"]*vc-btn-text[^"]*"[^>]*data-action="clear-credential"/);
     assert.match(email, /data-action="save-channel"[^>]*class="vc-btn vc-btn-fill"|class="vc-btn vc-btn-fill"[^>]*data-action="save-channel"/);
@@ -484,4 +498,23 @@ test('渠道页清除凭据是整行危险按钮，内容与页头之间有顶�
     assert.match(ui, /body\.vc-ui \.vc-inbox-tab\.is-detail \.vc-column\s*\{[^}]*padding-top:\s*var\(--vc-space-xl\)/);
     const kit = await readFile(new URL('../extension/vc-model-settings/vc-ui.css', import.meta.url), 'utf8');
     assert.match(kit, /body\.vc-ui \.vc-cell\s*\{[^}]*min-height:\s*48px/);
+});
+
+test('查看最新的旧请求不能覆盖重新打开后另一角色的策略', async () => {
+    const page = await opened();
+    const base = route; let hold = true, release, started;
+    const waiting = new Promise(resolve => { started = resolve; });
+    route = (url, init) => {
+        if (hold && url.endsWith('/proactive-policy')) {
+            hold = false;
+            return new Promise(resolve => { release = resolve; started(); });
+        }
+        return base(url, init);
+    };
+    const old = page.viewLatestPolicy(); await waiting;
+    page.close(); await page.open(); await page.selectRelationship('12');
+    const latest = structuredClone(page.state.policyDraft);
+    release({ body: { ...policy, quietHoursStart: '03:30', quietHoursEnd: '06:30' } });
+    await old;
+    assert.deepEqual(page.state.policyDraft, latest);
 });

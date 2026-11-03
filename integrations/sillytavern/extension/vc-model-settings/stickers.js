@@ -3,8 +3,10 @@
 // 表情段：{ type:'sticker', tag, kind:'image'|'kaomoji', src, text, id }，放在本轮文字之后。
 // 频控写在 chat_metadata.vc_sticker_gate，按会话持久化。
 
-import { bindSwitch } from './ui/controls.js';
-import { icon } from './ui/icons.js';
+import { mountStickerContentsView, mountStickerEntryView } from './desktop/build/index.js';
+import { setSheetHeader } from './ui/sheet.js';
+import { showToast } from './ui/toast.js';
+import { iconSpriteUrl } from './ui/icons.js';
 
 export const GATE_KEY = 'vc_sticker_gate';
 export const SETTINGS_KEY = 'vc_stickers';
@@ -442,161 +444,19 @@ function displayRows() {
     return rows;
 }
 
-export function renderStickerPage(doc, options = {}) {
+export function stickerViewProps(options = {}) {
     const settings = options.settings || { enabled: true, frequency: 'normal' };
-    const rows = options.rows || [];
-    const page = doc.createElement('div');
-    page.className = 'vc-sticker-page';
-    page.setAttribute('data-vc-sticker-page', '');
-
-    const nav = doc.createElement('div');
-    nav.className = 'vc-navbar';
-    const back = doc.createElement('button');
-    back.type = 'button';
-    back.className = 'vc-btn vc-btn-text';
-    back.setAttribute('data-vc-sticker-back', '');
-    back.setAttribute('aria-label', '返回设置');
-    back.textContent = '设置';
-    back.addEventListener('click', () => options.onBack?.());
-    const title = doc.createElement('div');
-    title.className = 'vc-nav-title';
-    title.setAttribute('data-vc-sticker-title', '');
-    title.textContent = '表情包';
-    nav.append(back, title);
-
-    const sendGroup = doc.createElement('div');
-    sendGroup.className = 'vc-group';
-    const send = doc.createElement('div');
-    send.className = 'vc-cell vc-sticker-row';
-    const sendLabel = doc.createElement('span');
-    sendLabel.className = 'vc-grow';
-    sendLabel.textContent = '发送';
-    const toggle = doc.createElement('button');
-    toggle.type = 'button';
-    toggle.className = 'vc-switch';
-    toggle.setAttribute('data-vc-sticker-enabled', '');
-    toggle.setAttribute('aria-checked', settings.enabled === false ? 'false' : 'true');
-    toggle.setAttribute('aria-label', '发送');
-    send.append(sendLabel, toggle);
-    sendGroup.append(send);
-    bindSwitch(toggle, { onChange: (value) => options.onEnabled?.(value) });
-
-    const freqTitle = doc.createElement('div');
-    freqTitle.className = 'vc-group-title';
-    freqTitle.textContent = '频率';
-    const segment = doc.createElement('div');
-    segment.className = 'vc-segment';
-    segment.setAttribute('aria-label', '频率');
-    const thumb = doc.createElement('i');
-    thumb.className = 'vc-segment-thumb';
-    segment.append(thumb);
-    const selected = Math.max(0, FREQUENCIES.findIndex((item) => item.id === (settings.frequency || 'normal')));
-    thumb.style.width = `calc((100% - 4px) / ${FREQUENCIES.length})`;
-    thumb.style.transform = `translateX(${selected * 100}%)`;
-    for (const item of FREQUENCIES) {
-        const button = doc.createElement('button');
-        button.type = 'button';
-        button.textContent = item.label;
-        button.setAttribute('data-value', item.id);
-        if (item.id === (settings.frequency || 'normal')) button.setAttribute('aria-pressed', 'true');
-        button.addEventListener('click', () => options.onFrequency?.(item.id));
-        segment.append(button);
-    }
-
-    const list = doc.createElement('div');
-    list.className = 'vc-group';
-    list.setAttribute('data-vc-sticker-list', '');
-    const file = doc.createElement('input');
-    file.className = 'vc-sticker-file';
-    file.setAttribute('type', 'file');
-    file.setAttribute('data-vc-sticker-file', '');
-    file.setAttribute('accept', 'image/png,image/jpeg,image/webp,image/gif');
-    file.addEventListener('change', () => {
-        const picked = file.files?.[0];
-        if (picked) options.onUpload?.(picked);
-    });
-    const armUpload = (button) => {
-        button.addEventListener('click', () => file.click?.());
+    return {
+        enabled: settings.enabled !== false, frequency: settings.frequency || 'normal', frequencies: FREQUENCIES.map(row => ({ value: row.id, label: row.label })),
+        rows: options.rows || [], sprite: iconSpriteUrl(),
+        enabledChange: value => options.onEnabled?.(value), frequencyChange: value => options.onFrequency?.(value),
+        tag: (id, value) => options.onTag?.(id, value), upload: file => options.onUpload?.(file), back: () => options.onBack?.(),
+        dispose: options.onDispose || (() => {}),
+        async remove(id, opener) {
+            const ok = await (options.confirm || confirmDelete)({ title: '删除这张表情包？', message: '删除后不能恢复。', action: '删除', owner: options.owner, opener });
+            if (ok && options.active?.() !== false) options.onDelete?.(id);
+        },
     };
-
-    const makeUpload = () => {
-        const upload = doc.createElement('button');
-        upload.type = 'button';
-        upload.className = 'vc-btn vc-btn-fill vc-sticker-upload';
-        upload.setAttribute('data-vc-sticker-upload', '');
-        upload.textContent = '上传';
-        armUpload(upload);
-        return upload;
-    };
-    const notes = [];
-    const seenNotes = new Set();
-    if (!rows.length) {
-        const empty = doc.createElement('div');
-        empty.className = 'vc-empty';
-        empty.setAttribute('data-vc-sticker-empty', '');
-        const mark = doc.createElement('span');
-        mark.innerHTML = icon('image', { size: 32 });
-        const copy = doc.createElement('p');
-        copy.textContent = '还没有表情包';
-        empty.append(mark, copy, makeUpload());
-        list.append(empty);
-    } else {
-        const actions = doc.createElement('div');
-        actions.className = 'vc-cell vc-sticker-actions';
-        actions.append(makeUpload());
-        list.append(actions);
-        for (const row of rows) {
-            const cell = doc.createElement('div');
-            cell.className = 'vc-cell vc-sticker-row';
-            cell.setAttribute('data-vc-sticker-id', row.id);
-            if (row.src) {
-                const img = doc.createElement('img');
-                img.className = 'vc-sticker-thumb';
-                img.alt = '';
-                img.src = row.src;
-                cell.append(img);
-            }
-            const input = doc.createElement('input');
-            input.className = 'vc-sticker-tag';
-            input.setAttribute('data-vc-sticker-tag', '');
-            input.setAttribute('aria-label', '标签');
-            input.value = row.tag || '';
-            if (row.builtin) input.setAttribute('readonly', '');
-            input.addEventListener('change', () => options.onTag?.(row.id, input.value));
-            cell.append(input);
-            if (!row.builtin) {
-                const del = doc.createElement('button');
-                del.type = 'button';
-                del.className = 'vc-btn vc-btn-text';
-                del.setAttribute('data-vc-sticker-delete', '');
-                del.setAttribute('aria-label', '删除');
-                del.innerHTML = icon('trash-2', { size: 18 });
-                del.addEventListener('click', async () => {
-                    const ask = options.confirm || confirmDelete;
-                    const ok = await ask({ title: '删除这张表情包？', message: '删除后不能恢复。', action: '删除' });
-                    if (ok) options.onDelete?.(row.id);
-                });
-                cell.append(del);
-            }
-            list.append(cell);
-            const note = String(row.attribution || '').trim();
-            if (note && !seenNotes.has(note)) {
-                seenNotes.add(note);
-                notes.push(note);
-            }
-        }
-    }
-
-    page.append(nav, sendGroup, freqTitle, segment, list);
-    for (const note of notes) {
-        const meta = doc.createElement('p');
-        meta.className = 'vc-footnote';
-        meta.setAttribute('data-vc-sticker-attribution', '');
-        meta.textContent = note;
-        page.append(meta);
-    }
-    page.append(file);
-    return page;
 }
 
 async function confirmDelete(options) {
@@ -613,23 +473,7 @@ export function mountStickerSettingsEntry(doc, { open } = {}) {
         const group = models?.parent || models?.parentElement
             || form.querySelector?.('[data-preference="theme"]')?.closest('.vc-desk-group');
         if (!group) continue;
-        const button = doc.createElement('button');
-        button.type = 'button';
-        button.className = 'vc-cell';
-        button.setAttribute('data-vc-sticker-entry', '');
-        button.setAttribute('data-action', 'stickers');
-        const mark = doc.createElement('span');
-        mark.className = 'vc-tile vc-tile-orange';
-        mark.innerHTML = icon('image', { size: 18 });
-        const label = doc.createElement('span');
-        label.className = 'vc-grow';
-        label.textContent = '表情包';
-        button.append(mark, label);
-        button.addEventListener('click', (event) => {
-            event.stopPropagation?.();
-            open?.(button);
-        });
-        group.append(button);
+        mountStickerEntryView(group, { sprite: iconSpriteUrl(), open: button => open?.(button) });
     }
 }
 
@@ -701,59 +545,50 @@ function openStickerPage(button) {
     const previousTitle = titleNode?.textContent || '';
     const previousHeading = heading?.textContent || '';
     const desktopHeader = parent.querySelector?.('.vc-settings-header');
-    if (desktopHeader) desktopHeader.hidden = true;
-    if (titleNode) titleNode.textContent = '表情包';
+    if (form.closest('.vc-settings-shell')?.setDetailVisibility) form.closest('.vc-settings-shell').setDetailVisibility(true);
+    else if (desktopHeader) desktopHeader.hidden = true;
+    if (host?.classList.contains('vc-sheet')) setSheetHeader(host, { title: '表情包' });
+    else if (!form.closest('.vc-settings-shell') && titleNode) titleNode.textContent = '表情包';
     if (heading && heading !== titleNode) {
         heading.hidden = true;
         heading.setAttribute?.('hidden', '');
     }
-    let page = null;
+    let page = null, view = null, closed = false, observer = null;
+    const desktopShell = form.closest('.vc-settings-shell');
     const close = () => {
-        page?.remove();
+        if (closed) return;
+        closed = true; observer?.disconnect(); view?.unmount(); page?.remove();
+        if (!parent.isConnected) return;
         parent.append(form);
-        if (desktopHeader) desktopHeader.hidden = false;
-        if (titleNode) titleNode.textContent = previousTitle || '设置';
-        if (heading) {
-            heading.textContent = previousHeading || '设置';
-            heading.hidden = false;
-            heading.removeAttribute?.('hidden');
+        if (desktopShell?.setDetailVisibility) desktopShell.setDetailVisibility(false);
+        else if (desktopHeader) desktopHeader.hidden = false;
+        if (host?.classList.contains('vc-sheet')) setSheetHeader(host, { title: previousTitle || '设置' });
+        else if (!desktopShell && titleNode) titleNode.textContent = previousTitle || '设置';
+        if (heading) { heading.textContent = previousHeading || '设置'; heading.hidden = false; heading.removeAttribute('hidden'); }
+    };
+    const active = () => !closed && Boolean(page?.isConnected);
+    const failed = () => { if (active()) showToast('没有完成，请重试。', { type: 'failure' }); };
+    const events = {
+        active, onDispose() { closed = true; observer?.disconnect(); page?.remove(); },
+        onEnabled(value) { if (!active()) return; writeSettings({ ...readSettings(), enabled: value }); show(); },
+        onFrequency(value) { if (!active() || !FREQUENCIES.some(item => item.id === value)) return; writeSettings({ ...readSettings(), frequency: value }); show(); },
+        onTag(id, value) { if (!active()) return; const tag = String(value || '').trim(); if (tag && !isSendableTag(tag)) return; const current = readSettings(); current.uploads = current.uploads.map(item => item.id === id ? { ...item, tag } : item); writeSettings(current); show(); },
+        onDelete(id) { if (active()) void deleteUserFile(id).then(show, failed); },
+        onUpload(file) { if (active()) void uploadUserFile(file).then(show, failed); },
+        onBack: close,
+    };
+    function show() {
+        if (closed) return;
+        if (!page) {
+            page = doc.createElement('div'); page.className = 'vc-sticker-page'; page.setAttribute('data-vc-sticker-page', '');
+            form.remove(); parent.append(page);
         }
-    };
-    const show = () => {
-        const next = renderStickerPage(doc, {
-            settings: readSettings(),
-            rows: displayRows(),
-            onEnabled(value) {
-                writeSettings({ ...readSettings(), enabled: value });
-                show();
-            },
-            onFrequency(value) {
-                if (!FREQUENCIES.some((item) => item.id === value)) return;
-                writeSettings({ ...readSettings(), frequency: value });
-                show();
-            },
-            onTag(id, value) {
-                const tag = String(value || '').trim();
-                if (tag && !isSendableTag(tag)) return;
-                const current = readSettings();
-                current.uploads = current.uploads.map((item) => (item.id === id ? { ...item, tag } : item));
-                writeSettings(current);
-                show();
-            },
-            onDelete(id) {
-                void deleteUserFile(id).then(show);
-            },
-            onUpload(file) {
-                void uploadUserFile(file).then(show);
-            },
-            onBack: close,
-        });
-        if (page) page.remove();
-        else form.remove();
-        parent.append(next);
-        page = next;
-    };
+        const props = stickerViewProps({ ...events, owner: page, settings: readSettings(), rows: displayRows() });
+        if (view) view.update(props); else view = mountStickerContentsView(page, props, button);
+    }
     show();
+    observer = new MutationObserver(() => { if (!closed && !page.isConnected) { observer.disconnect(); view.unmount(); } });
+    observer.observe(doc.body, { childList: true, subtree: true });
 }
 
 function ensureCss(doc) {

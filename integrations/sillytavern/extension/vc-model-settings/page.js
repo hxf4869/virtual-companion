@@ -1,12 +1,12 @@
-// Virtual Companion · 模型设置页 — 页面控制器（原生 DOM，无框架）。
+// Virtual Companion · 模型设置控制器；React 独占可见页面子树，原业务状态与 API 保持单一来源。
 // 入口由 ST 扩展 index.js 或独立 harness 调用 mountModelSettings()。
 // 样式作用域 .vcms-*；主题 tokens 见 style.css（v2-design §3）。
 import { confirmAlert, confirmDiscard } from './ui/alert.js';
 import { showToast } from './ui/toast.js';
 import * as logic from './model-logic.js';
 import * as api from './api.js';
-import { bindSwitch } from './ui/controls.js';
-import { icon } from './ui/icons.js';
+import { iconSpriteUrl } from './ui/icons.js';
+import { mountModelPageView } from './desktop/build/index.js';
 import { registerModelOpener, vcUiEnabled } from './drawers.js';
 
 let extensionInitClaimed = false;
@@ -51,15 +51,6 @@ const NEW_KEY_PLACEHOLDER_RE = /^__new_\d+__$/;
 
 let mounted = null;
 
-function esc(value) {
-    return String(value ?? '')
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;');
-}
-
 function fmtTime(iso) {
     if (!iso) return '—';
     const d = new Date(iso);
@@ -85,6 +76,14 @@ export function mountModelSettings() {
     document.body.appendChild(root);
 
     const overlay = root.querySelector('.vcms-overlay');
+    let view = null;
+    let navigationCopy = null;
+    let localRerankSaving = false;
+    const modelIdentities = new WeakMap();
+    let nextModelIdentity = 0;
+    let usageRequest = 0;
+    let providerRequest = 0;
+    let activeModel = null;
 
     const state = {
         phase: 'idle', // idle | loading | ready | load-error
@@ -95,7 +94,8 @@ export function mountModelSettings() {
         creatingNew: false, // 当前编辑的是未持久化的新供应商（与 selectedProviderId 区分）
         draft: null, // 当前供应商草稿
         originalDraft: null, // 选中时的草稿快照
-        selectedProfileKey: null,
+        // 草稿对象保持编辑身份；可编辑的配置标识只作为派生观察值。
+        get selectedProfileKey() { return activeModel?.profileKey ?? null; },
         tab: 'provider', // provider | bindings
         saving: false,
         saveError: null,
@@ -127,6 +127,7 @@ export function mountModelSettings() {
     };
 
     function isDirty() {
+        if (state.stash) return true;
         if (state.draft && state.originalDraft && logic.draftDiffers(state.draft, state.originalDraft)) return true;
         for (const b of state.bindingsDraft.values()) if (b.dirty) return true;
         return false;
@@ -151,6 +152,9 @@ export function mountModelSettings() {
         requestLeave,
         isOpen: () => !overlay.hidden,
         isDirty,
+        isBusy: () => state.saving || state.bindingsSaving || localRerankSaving || state.reauth.busy,
+        // 容器销毁仅卸载视图、失效迟到请求和敏感输入；草稿留在原控制器，不弹出新的离开确认。
+        detach: close,
         onCatalogSaved(cb) {
             if (typeof cb === 'function') catalogSavedCallbacks.push(cb);
         },
@@ -167,6 +171,8 @@ export function mountModelSettings() {
     // ---------- 数据 ----------
 
     async function load() {
+        usageRequest += 1;
+        invalidateProviderRequests();
         state.phase = 'loading';
         state.loadError = null;
         state.contextChanged = null;
@@ -215,11 +221,20 @@ export function mountModelSettings() {
         render();
     }
 
+    function invalidateProviderRequests() {
+        providerRequest += 1;
+        state.discoverBusy = false;
+        state.discoverError = null;
+        state.check = { busy: false, error: null, result: null };
+        state.toolVerify = { busy: false, profileKey: null, error: null };
+        state.reauth = { open: false, busy: false, error: null, password: '', retry: null };
+    }
+
     function clearProviderDraft() {
         state.creatingNew = false;
         state.draft = null;
         state.originalDraft = null;
-        state.selectedProfileKey = null;
+        activeModel = null;
         state.keyEditing = false;
         state.keyClearing = false;
         state.conflict = null;
@@ -229,11 +244,10 @@ export function mountModelSettings() {
         state.cloneFor = null;
         state.deleteFor = null;
         state.saveError = null;
-        state.discoverError = null;
-        state.check = { busy: false, error: null, result: null };
     }
 
     function selectProvider(providerId, { silent = false } = {}) {
+        invalidateProviderRequests();
         state.selectedProviderId = providerId;
         const found = state.providers.find((p) => p.providerId === providerId) ?? null;
         // 目录为空时不是「正在新建」。空状态由列表自己呈现，点「新建」才进入草稿。
@@ -245,7 +259,7 @@ export function mountModelSettings() {
         state.creatingNew = !found;
         state.draft = found ? logic.providerDraftFromApi(found) : logic.newProviderDraft();
         state.originalDraft = deepClone(state.draft);
-        state.selectedProfileKey = state.draft.models[0]?.profileKey ?? null;
+        activeModel = state.draft.models[0] ?? null;
         state.keyEditing = false;
         state.keyClearing = false;
         state.conflict = null;
@@ -255,13 +269,11 @@ export function mountModelSettings() {
         state.cloneFor = null;
         state.deleteFor = null;
         state.saveError = null;
-        state.discoverError = null;
-        state.check = { busy: false, error: null, result: null }; // 连接检查结果随供应商切换失效
         if (!silent) render();
     }
 
     function currentModel() {
-        return state.draft?.models.find((m) => m.profileKey === state.selectedProfileKey) ?? null;
+        return activeModel;
     }
 
     function normalizeDraftKeys() {
@@ -348,6 +360,7 @@ export function mountModelSettings() {
             if (!accepted) return;
         }
         const isNew = state.creatingNew;
+        const keepProfileKey = state.selectedProfileKey;
         const payload = logic.buildProviderPut(state.draft, { isNew });
         state.saving = true;
         state.saveError = null;
@@ -381,6 +394,7 @@ export function mountModelSettings() {
             }
             state.selectedProviderId = keepId;
             selectProvider(keepId, { silent: true });
+            activeModel = state.draft.models.find(model => model.profileKey === keepProfileKey) ?? activeModel;
             state.saving = false;
             render();
             notifyCatalogSaved(); // 目录已更新 → 前台投影刷新
@@ -415,8 +429,10 @@ export function mountModelSettings() {
     }
 
     async function viewLatestAfterConflict() {
+        const request = providerRequest;
         try {
             const providers = await api.fetchProviders();
+            if (request !== providerRequest) return;
             state.providers = Array.isArray(providers) ? providers : [];
             const latest = state.providers.find((p) => p.providerId === state.draft.providerId);
             if (!latest) {
@@ -431,12 +447,15 @@ export function mountModelSettings() {
                 draft: deepClone(state.draft),
                 selectedProfileKey: state.selectedProfileKey,
             };
+            invalidateProviderRequests();
             state.draft = logic.providerDraftFromApi(latest);
+            state.originalDraft = deepClone(state.draft);
             state.conflict = null;
             state.stashBanner = true;
-            state.selectedProfileKey = state.draft.models[0]?.profileKey ?? null;
+            activeModel = state.draft.models[0] ?? null;
             render();
         } catch (err) {
+            if (request !== providerRequest) return;
             state.conflict = {
                 message: `加载最新内容失败：${err?.message ?? '网络错误'}。你的输入仍已保留。`,
                 currentRevision: state.conflict?.currentRevision ?? null,
@@ -450,12 +469,10 @@ export function mountModelSettings() {
         const values = state.stash.draft;
         const latestRevision = state.draft.revision;
         // 以最新为基准恢复草稿值：重新应用修改基于最新 revision。
+        invalidateProviderRequests();
         state.draft = values;
         state.draft.revision = latestRevision;
-        state.selectedProfileKey = state.stash.selectedProfileKey
-            && state.draft.models.some((m) => m.profileKey === state.stash.selectedProfileKey)
-            ? state.stash.selectedProfileKey
-            : state.draft.models[0]?.profileKey ?? null;
+        activeModel = state.draft.models.find(model => model.profileKey === state.stash.selectedProfileKey) ?? state.draft.models[0] ?? null;
         state.stash = null;
         state.stashBanner = false;
         render();
@@ -544,7 +561,7 @@ export function mountModelSettings() {
 
     let confirmingLeave = false;
     async function requestLeave() {
-        if (state.saving || state.bindingsSaving || confirmingLeave) return false;
+        if (state.saving || state.bindingsSaving || localRerankSaving || state.reauth.busy || confirmingLeave) return false;
         if (!isDirty()) return true;
         confirmingLeave = true;
         const discard = await confirmDiscard({ opener: document.activeElement });
@@ -561,6 +578,9 @@ export function mountModelSettings() {
     }
 
     function close() {
+        invalidateProviderRequests();
+        view?.unmount();
+        view = null;
         overlay.hidden = true;
         state.closing = false;
         document.body.classList.remove('vcms-no-scroll');
@@ -621,43 +641,52 @@ export function mountModelSettings() {
         send.removeAttribute('data-vc-budget-gate');
     }
 
-    function render() {
+    function render({ feedbackOnly = false } = {}) {
+        if (overlay.hidden) return;
+        // 保留既有导航文案更新时机：输入只刷新字段反馈，提交/切屏等动作才刷新标题。
+        if (!feedbackOnly) navigationCopy = vcNavCopy();
         const oldScreen = overlay.querySelector('[data-vc-screen]')?.getAttribute('data-vc-screen');
-        const active = document.activeElement;
-        const waitingWidth = active?.getBoundingClientRect?.().width;
-        const activeAction = active?.getAttribute?.('data-action');
-        overlay.innerHTML = renderShell();
-        refreshFeedback();
+        const props = pageViewProps();
+        if (view) view.update(props);
+        else view = mountModelPageView(overlay, props);
         syncSendGate();
-        const providerSwitch = overlay.querySelector('[data-action="toggle-provider-state"].vc-switch');
-        if (providerSwitch) bindSwitch(providerSwitch);
-        if (waitingWidth && activeAction && (state.saving || state.check.busy || state.discoverBusy)) {
-            const waiting = overlay.querySelector(`[data-action="${activeAction}"]`);
-            if (waiting) { waiting.style.width = `${waitingWidth}px`; waiting.style.minWidth = `${waitingWidth}px`; }
+        if ((vcUiEnabled() && oldScreen !== state.vcScreen) || document.activeElement === document.body) overlay.querySelector('.vc-nav-title, .vcms-title')?.focus({ preventScroll: true });
+    }
+
+    function pageViewProps() {
+        const errors = collectErrors();
+        const dirty = isDirty();
+        const anyError = hasErrors(errors);
+        const ready = state.phase === 'ready';
+        let title = '无法加载模型配置';
+        let message = state.loadError?.message ?? '请稍后重试。';
+        if (state.loadError instanceof api.ApiError && state.loadError.kind === 'unauthenticated') {
+            title = '需要登录';
+            message = '登录后才能管理模型配置，请先登录再打开此页。';
+        } else if (state.loadError instanceof api.ApiError && state.loadError.kind === 'forbidden') {
+            title = '没有管理权限';
+            message = '当前身份无权管理模型配置，或需要重新验证身份。';
         }
-        if (oldScreen !== state.vcScreen || document.activeElement === document.body) overlay.querySelector('.vc-nav-title, .vcms-title')?.focus({ preventScroll: true });
+        return {
+            vc: vcUiEnabled(), desktop: desktopView(), sprite: iconSpriteUrl(), inSettings: Boolean(overlay.closest?.('.vc-settings-shell')),
+            phase: state.phase, screen: state.vcScreen, tab: state.tab, nav: navigationCopy,
+            providerCount: state.providers.length, modelCount: state.providers.reduce((sum, provider) => sum + (provider.models?.length ?? 0), 0), purposeCount: state.purposes.length,
+            saving: state.saving, dirty, hasErrors: anyError,
+            saveDisabled: ready ? !dirty || anyError || state.saving || state.bindingsSaving : desktopView(),
+            clean: ready && !dirty && !anyError && !state.saving && !state.bindingsSaving,
+            loadError: { title, message }, budgetInsufficient: state.budget.insufficient, budgetCopy: logic.BUDGET_COPY,
+            reauth: state.reauth, toast: state.toast || undefined,
+            providers: providersViewProps(), provider: providerPaneViewProps(), bindings: bindingsViewProps(), usage: usageViewProps(), local: localViewProps(),
+            events: {
+                disabled: state.saving || state.bindingsSaving || state.reauth.busy,
+                onAction: (action, target) => { void handleAction(action, target); },
+                onEdit(bind, value, checked) { applyBind({ value, checked }, bind); render(); },
+            },
+        };
     }
 
     function desktopView() {
         return vcUiEnabled() && document.documentElement?.getAttribute?.('data-vc-layout') === 'desktop' && Boolean(overlay.closest?.('.vc-settings-shell'));
-    }
-
-    function renderShell() {
-        const vcAttr = vcUiEnabled() ? ` data-vc-screen="${esc(state.vcScreen || 'home')}"` : '';
-        return `
-        <div class="vcms-panel"${vcAttr} tabindex="-1" ${overlay.closest?.('.vc-settings-shell') ? 'role="region"' : 'role="dialog" aria-modal="true"'} aria-label="模型设置">
-            ${renderHeader()}
-            <div class="vcms-body">
-                ${state.reauth.open ? renderReauthBar() : ''}
-                ${state.phase === 'loading' ? renderSkeleton() : ''}
-                ${state.phase === 'load-error' ? renderLoadError() : ''}
-                ${state.budget.insufficient ? `<p class="vcms-callout vcms-callout-warning" role="status" id="vcms-budget">${logic.BUDGET_COPY}</p>` : ''}
-            ${state.phase === 'ready' ? renderContent() : ''}
-            </div>
-            ${renderFooter()}
-        </div>
-        ${state.toast ? `<div class="vcms-toast vcms-toast-${esc(state.toast.kind)}" data-action="toast-dismiss">${esc(state.toast.message)}</div>` : ''}
-        `;
     }
 
     function vcNavCopy() {
@@ -675,120 +704,40 @@ export function mountModelSettings() {
         return { back: '设置', title: '模型' };
     }
 
-    function renderHeader() {
-        const providerCount = state.providers.length;
-        const modelCount = state.providers.reduce((sum, p) => sum + (p.models?.length ?? 0), 0);
-        if (vcUiEnabled()) {
-            const nav = vcNavCopy();
-            return `
-        <header class="vcms-header vc-navbar" style="--vc-nav-p:1">
-            ${overlay.closest?.('.vc-settings-shell') ? `<button type="button" class="vc-circle vc-settings-category-toggle" data-settings-categories aria-label="设置">${icon('settings')}</button>` : ''}
-            <button type="button" class="vc-circle vc-glass" data-action="vc-back" aria-label="返回${esc(nav.back)}">${icon('chevron-left', { size: 22 })}</button>
-            <div class="vc-nav-title" tabindex="-1">${esc(nav.title)}</div>
-            <div class="vc-nav-spacer"></div>
-
-            <button type="button" class="vc-btn vc-btn-text" id="vcms-discard" data-action="discard" hidden>放弃修改</button>
-            <button type="button" class="vc-btn vc-btn-fill" id="vcms-save" data-action="save"${desktopView() && state.phase !== 'ready' ? ' disabled' : ''}>保存更改</button>
-            <button type="button" class="vcms-dismiss" data-action="close" aria-hidden="true" tabindex="-1">关闭</button>
-            <h2 class="vcms-title" tabindex="-1">模型设置</h2>
-            <p class="vcms-subtitle">供应商 ${providerCount} · 模型配置 ${modelCount} · 用途绑定 ${state.purposes.length}</p>
-        </header>`;
-        }
-        return `
-        <header class="vcms-header">
-            <div class="vcms-header-titles">
-                <h2 class="vcms-title" tabindex="-1">模型设置</h2>
-                <p class="vcms-subtitle">供应商 ${providerCount} · 模型配置 ${modelCount} · 用途绑定 ${state.purposes.length}</p>
-            </div>
-            <div class="vcms-header-actions">
-
-                <button type="button" class="vcms-btn vcms-btn-ghost" id="vcms-discard" data-action="discard" hidden>放弃修改</button>
-                <button type="button" class="vcms-btn vcms-btn-primary" id="vcms-save" data-action="save"${desktopView() && state.phase !== 'ready' ? ' disabled' : ''}>保存更改</button>
-                <button type="button" class="vcms-iconbtn" data-action="close" aria-label="关闭模型设置" title="关闭（Esc）"><i class="fa-solid fa-xmark"></i></button>
-            </div>
-        </header>`;
-    }
-
-    function renderSkeleton() {
-        return `
-        <div class="vcms-skeleton">
-            <div class="vcms-sk-col">${'<div class="vcms-sk-card"></div>'.repeat(3)}</div>
-            <div class="vcms-sk-main">${'<div class="vcms-sk-line"></div>'.repeat(8)}</div>
-        </div>`;
-    }
-
-    function renderLoadError() {
-        const err = state.loadError;
-        let title = '无法加载模型配置';
-        let message = err?.message ?? '请稍后重试。';
-        if (err instanceof api.ApiError && err.kind === 'unauthenticated') {
-            title = '需要登录';
-            message = '登录后才能管理模型配置，请先登录再打开此页。';
-        } else if (err instanceof api.ApiError && err.kind === 'forbidden') {
-            title = '没有管理权限';
-            message = '当前身份无权管理模型配置，或需要重新验证身份。';
-        }
-        return `
-        <div class="vcms-stateblock">
-            <i class="fa-solid fa-plug-circle-xmark vcms-stateblock-icon"></i>
-            <h3>${esc(title)}</h3>
-            <p>${esc(message)}</p>
-            <button type="button" class="vcms-btn vcms-btn-primary" data-action="retry-load"><i class="fa-solid fa-rotate-right"></i> 重试</button>
-        </div>`;
-    }
-
     function usageMeta(row) {
         return `调用 ${row.calls ?? 0} · 输入 ${logic.formatTokenCount(row.inputTokens)} · 输出 ${logic.formatTokenCount(row.outputTokens)} · 缓存命中率 ${logic.formatCacheHitRate(row.cacheHitRate)} · 费用 ${logic.formatUsageFee(row)}`;
     }
 
-    function renderUsagePanel() {
-        const rows = Array.isArray(state.usage.rows) ? state.usage.rows : [];
-        const table = rows.length === 0
-            ? '<p class="vcms-muted">这个月还没有用量。</p>'
-            : `<table class="vcms-usage-table">
-                <thead><tr>
-                    <th>用途</th><th>调用</th><th>未定价</th><th>输入</th><th>输出</th><th>缓存命中</th><th>命中率</th><th>费用</th>
-                </tr></thead>
-                <tbody>
-                ${rows.map((row) => `<tr>
-                    <td>${esc(logic.usagePurposeLabel(row.purpose))}</td>
-                    <td>${esc(row.calls ?? 0)}</td>
-                    <td>${esc(row.unpricedCalls ?? 0)}</td>
-                    <td>${esc(logic.formatTokenCount(row.inputTokens))}</td>
-                    <td>${esc(logic.formatTokenCount(row.outputTokens))}</td>
-                    <td>${esc(logic.formatTokenCount(row.cachedInputTokens))}</td>
-                    <td>${esc(logic.formatCacheHitRate(row.cacheHitRate))}</td>
-                    <td>${esc(logic.formatUsageFee(row))}</td>
-                </tr>`).join('')}
-                </tbody>
-            </table>`;
-        const cards = `<div class="vc-group vcms-usage-cards">${rows.map((row) => `<div class="vc-cell vcms-usage-card"><span class="vc-grow"><b>${esc(logic.usagePurposeLabel(row.purpose))}</b><span class="vcms-usage-meta">${esc(usageMeta(row))}</span></span></div>`).join('')}</div>`;
-        const ready = vcUiEnabled() ? `${cards}<div class="vcms-usage-scroll">${table}</div>` : table;
-        const body = state.usage.loading
-            ? '<p class="vcms-muted">正在读取用量…</p>'
-            : state.usage.error
-                ? `<p class="vcms-callout vcms-callout-warn" role="status">${esc(state.usage.error)}</p>`
-                : ready;
-        return `
-        <section class="vcms-usage" aria-label="用量">
-            <div class="vcms-usage-head">
-                <span class="vcms-section-label">用量</span>
-                <div class="vcms-usage-month">
-                    ${vcUiEnabled()
-        ? `<button type="button" class="vc-circle" data-action="usage-month" data-delta="-1" aria-label="上个月">${icon('chevron-left', { size: 22 })}</button><span class="vc-num" data-usage-month-label>${esc(state.usage.month)}</span><button type="button" class="vc-circle" data-action="usage-month" data-delta="1" aria-label="下个月">${icon('chevron-right', { size: 22 })}</button>`
-        : `<button type="button" class="vcms-btn vcms-btn-ghost vcms-btn-sm" data-action="usage-month" data-delta="-1">上个月</button><span data-usage-month-label>${esc(state.usage.month)}</span><button type="button" class="vcms-btn vcms-btn-ghost vcms-btn-sm" data-action="usage-month" data-delta="1">下个月</button>`}
-                </div>
-            </div>
-            <p class="vcms-muted vcms-usage-note">未配置单价时仍会发送，费用显示为未知。</p>
-            ${body}
-        </section>`;
+    function usageViewProps() {
+        return {
+            vc: vcUiEnabled(),
+            sprite: iconSpriteUrl(),
+            month: state.usage.month,
+            loading: state.usage.loading,
+            error: state.usage.error || undefined,
+            rows: (Array.isArray(state.usage.rows) ? state.usage.rows : []).map(row => ({
+                purpose: row.purpose,
+                label: logic.usagePurposeLabel(row.purpose),
+                calls: row.calls ?? 0,
+                unpriced: row.unpricedCalls ?? 0,
+                input: logic.formatTokenCount(row.inputTokens),
+                output: logic.formatTokenCount(row.outputTokens),
+                cached: logic.formatTokenCount(row.cachedInputTokens),
+                rate: logic.formatCacheHitRate(row.cacheHitRate),
+                fee: logic.formatUsageFee(row),
+                meta: usageMeta(row),
+            })),
+            onAction: (action, target) => { void handleAction(action, target); },
+        };
     }
 
     async function reloadUsage(month) {
+        const request = ++usageRequest;
         state.usage = { ...state.usage, month, loading: true, error: null };
         render();
         try {
             const data = await api.fetchUsageSummary(month);
+            if (request !== usageRequest) return;
             state.usage = {
                 month: data?.month || month,
                 rows: Array.isArray(data?.purposes) ? data.purposes : [],
@@ -796,88 +745,25 @@ export function mountModelSettings() {
                 loading: false,
             };
         } catch (err) {
+            if (request !== usageRequest) return;
             state.usage = { month, rows: [], error: err?.message || '用量暂时无法读取', loading: false };
         }
         render();
     }
 
-    function renderContent() {
-        if (vcUiEnabled()) return renderContentVc();
-        return renderContentClassic();
-    }
-
-    function renderContentClassic() {
-        return `
-        ${renderUsagePanel()}
-        <div class="vcms-layout">
-            <aside class="vcms-providers" aria-label="供应商列表">
-                <div class="vcms-providers-head">
-                    <span class="vcms-section-label">接入的供应商</span>
-                    <button type="button" class="vcms-btn vcms-btn-ghost vcms-btn-sm" data-action="new-provider"><i class="fa-solid fa-plus"></i> 新建</button>
-                </div>
-                <div class="vcms-provider-list" id="vcms-provider-list">${renderProviderCards()}</div>
-            </aside>
-            <main class="vcms-main">
-                <div class="vcms-tabs" role="tablist">
-                    <button type="button" role="tab" class="vcms-tab ${state.tab === 'provider' ? 'is-active' : ''}" aria-selected="${state.tab === 'provider'}" data-action="tab" data-tab="provider">供应商与模型</button>
-                    <button type="button" role="tab" class="vcms-tab ${state.tab === 'bindings' ? 'is-active' : ''}" aria-selected="${state.tab === 'bindings'}" data-action="tab" data-tab="bindings">用途绑定</button>
-                </div>
-                <div class="vcms-tabpanes">
-                    ${state.tab === 'provider' ? renderProviderPane() : renderBindingsPane()}
-                </div>
-            </main>
-        </div>`;
-    }
-
-    function renderContentVc() {
-        const screen = state.vcScreen || 'home';
-        const pane = screen === 'provider' || screen === 'model' ? renderProviderPane() : renderBindingsPane();
-        return `
-        <div class="vcms-layout">
-            <aside class="vcms-providers" aria-label="供应商列表">
-                ${screen === 'home' && !desktopView() ? '<h2 class="vcms-providers-title">供应商</h2>' : ''}
-                <div class="vcms-provider-list" id="vcms-provider-list">${renderProviderCards()}</div>
-            </aside>
-            <main class="vcms-main">
-                <div class="vcms-tabs" role="tablist">
-                    <button type="button" role="tab" class="vcms-tab ${state.tab === 'provider' ? 'is-active' : ''}" aria-selected="${state.tab === 'provider'}" data-action="tab" data-tab="provider">供应商与模型</button>
-                    <button type="button" role="tab" class="vcms-tab ${state.tab === 'bindings' ? 'is-active' : ''}" aria-selected="${state.tab === 'bindings'}" data-action="tab" data-tab="bindings">用途绑定</button>
-                </div>
-                <div class="vcms-tabpanes">${pane}</div>
-            </main>
-        </div>
-        ${renderLocalModels()}
-        ${renderUsagePanel()}`;
-    }
-
-    function localRow(kind, service, extra = '') {
-        const fallback = kind === '向量' ? logic.LOCAL_EMBEDDING_MODEL : logic.LOCAL_RERANK_MODEL;
-        const name = service?.name || fallback;
-        const label = service?.label || logic.LOCAL_RUNTIME_LABELS.UNAVAILABLE;
-        const tone = service?.tone || 'danger';
-        return `<div class="vc-cell" style="--vc-inset:16px"><span class="vc-grow"><b>${esc(kind)} · ${esc(name)}</b></span><span class="vc-status vc-status-${tone}"><i class="vc-dot vc-dot-${tone}"></i>${esc(label)}</span>${extra}</div>`;
-    }
-
-    function renderLocalModels() {
-        if (!vcUiEnabled()) return '';
+    function localViewProps() {
         const local = state.localModels;
         const loading = !local || local.phase === 'idle' || local.phase === 'loading';
-        const view = loading
-            ? {
-                embedding: { name: logic.LOCAL_EMBEDDING_MODEL, label: logic.LOCAL_RUNTIME_LABELS.LOADING, tone: 'neutral' },
-                rerank: { name: logic.LOCAL_RERANK_MODEL, label: logic.LOCAL_RUNTIME_LABELS.LOADING, tone: 'neutral', enabled: false, switchDisabled: true },
-            }
-            : (local.embedding && local.rerank ? local : logic.localModelsUnavailable());
-        const disabled = view.rerank?.switchDisabled ? ' disabled aria-disabled="true"' : '';
-        const toggle = `<button type="button" class="vc-switch" role="switch" data-action="local-rerank" aria-checked="${view.rerank?.enabled === true ? 'true' : 'false'}" aria-label="重排"${disabled}></button>`;
-        return `
-        <section class="vcms-local" aria-label="本机模型">
-            ${desktopView() ? '' : '<div class="vc-group-title">本机模型</div>'}
-            <div class="vc-group">${desktopView() ? '<h2 class="vcms-desktop-group-title">本机模型</h2>' : ''}
-                ${localRow('向量', view.embedding)}
-                ${localRow('重排', view.rerank, toggle)}
-            </div>
-        </section>`;
+        const view = loading ? {
+            embedding: { name: logic.LOCAL_EMBEDDING_MODEL, label: logic.LOCAL_RUNTIME_LABELS.LOADING, tone: 'neutral' },
+            rerank: { name: logic.LOCAL_RERANK_MODEL, label: logic.LOCAL_RUNTIME_LABELS.LOADING, tone: 'neutral', enabled: false, switchDisabled: true },
+        } : local.embedding && local.rerank ? local : logic.localModelsUnavailable();
+        return {
+            desktop: desktopView(),
+            embedding: { name: view.embedding?.name || logic.LOCAL_EMBEDDING_MODEL, label: view.embedding?.label || logic.LOCAL_RUNTIME_LABELS.UNAVAILABLE, tone: view.embedding?.tone || 'danger' },
+            rerank: { name: view.rerank?.name || logic.LOCAL_RERANK_MODEL, label: view.rerank?.label || logic.LOCAL_RUNTIME_LABELS.UNAVAILABLE, tone: view.rerank?.tone || 'danger', enabled: view.rerank?.enabled === true, disabled: localRerankSaving || state.reauth.busy || Boolean(view.rerank?.switchDisabled) },
+            onToggle: enabled => { void saveLocalRerank(enabled); },
+        };
     }
 
     async function loadLocalModels({ quiet = false } = {}) {
@@ -896,7 +782,8 @@ export function mountModelSettings() {
 
     async function saveLocalRerank(enabled) {
         const previous = state.localModels?.rerank ? { ...state.localModels.rerank } : null;
-        if (previous?.switchDisabled) return;
+        if (localRerankSaving || previous?.switchDisabled) return;
+        localRerankSaving = true;
         const revision = Number.isFinite(previous?.revision) ? previous.revision : 0;
         if (state.localModels?.rerank) state.localModels.rerank.enabled = enabled;
         render();
@@ -918,523 +805,97 @@ export function mountModelSettings() {
             }
             toast(err?.message || '本机模型不可用', 'error');
             render();
+        } finally {
+            localRerankSaving = false;
+            render();
         }
     }
 
-    function renderProviderCards() {
-        const heading = desktopView() && state.vcScreen === 'home' ? '<h2 class="vcms-providers-title">供应商</h2>' : '';
-        const creatingNew = state.creatingNew;
-        if (!state.providers.length && !creatingNew) {
-            return `${heading}
-            <div class="vcms-empty-providers${vcUiEnabled() ? ' vc-empty' : ''}">
-                <p>还没有供应商。</p>
-                <p class="vcms-muted">新建供应商，选择一种接口协议并填写 Base URL 与密钥，再添加模型配置。</p>
-                <button type="button" class="vcms-btn vcms-btn-primary vcms-btn-sm" data-action="new-provider"><i class="fa-solid fa-plus"></i> 新建供应商</button>
-            </div>`;
-        }
-        const cards = state.providers.map((p) => {
-            const keyMissing = !p.credentialConfigured;
-            const tone = keyMissing ? 'danger' : (p.state === 'ENABLED' ? 'ok' : 'warn');
-            const status = keyMissing ? '缺密钥' : (logic.PROVIDER_STATE_LABELS[p.state] ?? p.state);
-            const vcStatus = vcUiEnabled()
-                ? `<span class="vc-status vc-status-${tone}"><i class="vc-dot vc-dot-${tone}"></i>${esc(status)}</span><span class="vc-chevron">${icon('chevron-right', { size: 16 })}</span>`
-                : '';
-            return `
-            <button type="button" class="vcms-provider-card${vcUiEnabled() ? ' vc-cell' : ''} ${p.providerId === state.selectedProviderId ? 'is-selected' : ''} ${p.state === 'DISABLED' ? 'is-disabled' : ''}" data-action="select-provider" data-id="${esc(p.providerId)}">
-                <span class="vcms-provider-name">${esc(p.displayName || p.providerId)}</span>
-                ${vcStatus}
-                <span class="vcms-provider-meta">
-                    <span class="vcms-badge ${p.state === 'ENABLED' ? 'vcms-badge-ok' : 'vcms-badge-muted'}">${logic.PROVIDER_STATE_LABELS[p.state] ?? p.state}</span>
-                    <span class="vcms-badge ${p.credentialConfigured ? 'vcms-badge-ok' : 'vcms-badge-warn'}">${p.credentialConfigured ? '密钥已配置' : '缺密钥'}</span>
-                </span>
-                <span class="vcms-provider-sub">${esc(logic.protocolMeta(p.protocol)?.label ?? p.protocol)} · ${p.models?.length ?? 0} 个模型</span>
-            </button>`;
-        }).join('');
-        const newCard = creatingNew
-            ? `<button type="button" class="vcms-provider-card is-selected is-new" data-action="select-provider" data-id="">
-                   <span class="vcms-provider-name">新建供应商（未保存）</span>
-                   <span class="vcms-provider-sub">草稿</span>
-               </button>`
-            : '';
-        const addRow = vcUiEnabled() && !creatingNew
-            ? `<button type="button" class="vcms-provider-card vc-cell" data-action="new-provider"><span class="vcms-provider-name">新建供应商</span></button>`
-            : '';
-        return heading + cards + newCard + addRow;
+    function providersViewProps() {
+        return {
+            vc: vcUiEnabled(),
+            heading: desktopView() && state.vcScreen === 'home',
+            sprite: iconSpriteUrl(),
+            creatingNew: state.creatingNew,
+            rows: state.providers.map(provider => {
+                const keyMissing = !provider.credentialConfigured;
+                return {
+                    id: provider.providerId,
+                    name: provider.displayName || provider.providerId,
+                    selected: provider.providerId === state.selectedProviderId,
+                    enabled: provider.state === 'ENABLED',
+                    disabled: provider.state === 'DISABLED',
+                    credentialConfigured: provider.credentialConfigured,
+                    stateLabel: logic.PROVIDER_STATE_LABELS[provider.state] ?? provider.state,
+                    tone: keyMissing ? 'danger' : provider.state === 'ENABLED' ? 'ok' : 'warn',
+                    status: keyMissing ? '缺密钥' : logic.PROVIDER_STATE_LABELS[provider.state] ?? provider.state,
+                    protocol: logic.protocolMeta(provider.protocol)?.label ?? provider.protocol,
+                    modelCount: provider.models?.length ?? 0,
+                };
+            }),
+            onAction: (action, target) => { void handleAction(action, target); },
+        };
     }
 
-    function renderProviderPane() {
-        if (!state.draft) return '<div class="vcms-stateblock"><p>请选择或新建一个供应商。</p></div>';
+    function modelIdentity(model) {
+        if (!modelIdentities.has(model)) modelIdentities.set(model, ++nextModelIdentity);
+        return modelIdentities.get(model);
+    }
+
+    function providerPaneViewProps() {
         const d = state.draft;
-        const isNew = state.creatingNew;
-        const key = logic.keyPlan(d, d.credentialConfigured);
-        const providerIdField = `                    <div class="${desktopView() ? 'vc-desk-field' : 'vcms-field'}">
-                        <label for="vcms-f-id">供应商 ID</label>
-                        ${isNew
-            ? `<input id="vcms-f-id" type="text" data-bind="provider.providerId" value="${esc(d.providerId)}" placeholder="小写字母 / 数字 / - / _" autocomplete="off" spellcheck="false">`
-            : `<input id="vcms-f-id" type="text" class="vcms-mono" value="${esc(d.providerId)}" readonly aria-readonly="true">`}
-                        <p class="vcms-field-err" data-err-for="providerId"></p>
-                    </div>`;
-        return `
-        ${renderConflictBanners()}
-        ${renderContextBanner()}
-        <div class="vcms-form">
-            ${!d.credentialConfigured && key.finalKey === 'none' ? `
-            <div class="vcms-callout vcms-callout-warn" role="alert">
-                <i class="fa-solid fa-triangle-exclamation"></i>
-                <div>该供应商尚未配置 API Key。可以先保存为停用草稿；配置密钥并启用后才能用于生成。</div>
-            </div>` : ''}
-            <section class="${desktopView() ? 'vcms-desktop-section' : 'vcms-section'}">
-                <h3 class="vcms-section-title">基本信息</h3>
-                <div class="${desktopView() ? 'vcms-desktop-grid' : 'vcms-grid2'}">
-                    <div class="${desktopView() ? 'vc-desk-field' : 'vcms-field'}">
-                        <label for="vcms-f-display">显示名称</label>
-                        <input id="vcms-f-display" type="text" data-bind="provider.displayName" value="${esc(d.displayName)}" placeholder="例如：我的模型服务" maxlength="60">
-                        <p class="vcms-field-err" data-err-for="displayName"></p>
-                    </div>
-                    ${desktopView() ? '' : providerIdField}
-                </div>
-                <div class="${desktopView() ? 'vc-desk-field' : 'vcms-field'}${vcUiEnabled() ? ' vcms-state-row' : ''}">
-                    <span class="vcms-field-label">${vcUiEnabled() ? esc(logic.PROVIDER_STATE_LABELS[d.state] ?? d.state) : '状态'}</span>
-                    <div class="vcms-switch-row">
-                        ${vcUiEnabled()
-        ? `<button type="button" class="vc-switch" data-action="toggle-provider-state" role="switch" aria-checked="${d.state === 'ENABLED'}" aria-label="启用或停用该供应商"></button>`
-        : `<button type="button" class="vcms-switch ${d.state === 'ENABLED' ? 'is-on' : ''}" data-action="toggle-provider-state" role="switch" aria-checked="${d.state === 'ENABLED'}" aria-label="启用或停用该供应商"><span class="vcms-switch-knob"></span></button>`}
-                        ${vcUiEnabled() ? '' : `<span>${logic.PROVIDER_STATE_LABELS[d.state] ?? d.state}</span>`}
-                    </div>
-                    <p class="vcms-field-err" data-err-for="state"></p>
-                </div>
-                <div class="${desktopView() ? 'vc-desk-field' : 'vcms-field'}">
-                    <label for="vcms-f-base">Base URL</label>
-                    <input id="vcms-f-base" type="url" data-bind="provider.baseUrl" value="${esc(d.baseUrl)}" placeholder="https://api.example.com" spellcheck="false">
-                    <p class="vcms-field-err" data-err-for="baseUrl"></p>
-                </div>
-                <div class="${desktopView() ? 'vc-desk-field' : 'vcms-field'}">
-                    <span class="vcms-field-label">接口协议</span>
-                    <div class="vcms-protocols" role="radiogroup" aria-label="接口协议">
-                        ${logic.PROTOCOLS.map((p) => `
-                        <label class="vcms-protocol ${d.protocol === p.id ? 'is-selected' : ''}">
-                            <input type="radio" name="vcms-protocol" value="${p.id}" ${d.protocol === p.id ? 'checked' : ''} data-bind="provider.protocol">
-                            <span class="vcms-protocol-name">${esc(p.label)}</span>
-                            <span class="vcms-protocol-endpoint vcms-mono">${esc(p.endpoint)}</span>
-                            ${vcUiEnabled() && d.protocol === p.id ? icon('check', { size: 18 }) : ''}
-                        </label>`).join('')}
-                    </div>
-                    <p class="vcms-field-err" data-err-for="protocol"></p>
-                </div>
-                <div class="vcms-endpoint-line" id="vcms-endpoint-line"></div>
-            </section>
-
-            <section class="${desktopView() ? 'vcms-desktop-section' : 'vcms-section'}">
-                <h3 class="vcms-section-title">API 密钥</h3>
-                ${renderKeySection(key)}
-            </section>
-
-            <section class="${desktopView() ? 'vcms-desktop-section' : 'vcms-section'}">
-                <div class="vcms-section-head">
-                    <h3 class="vcms-section-title">模型配置</h3>
-                    <div class="vcms-section-tools">
-                        <button type="button" class="vcms-btn vcms-btn-ghost vcms-btn-sm" data-action="discover" ${state.discoverBusy || state.budget.insufficient ? 'disabled' : ''}>
-                            <i class="fa-solid fa-cloud-arrow-down ${state.discoverBusy ? 'fa-spin' : ''}"></i>
-                            ${state.discoverBusy ? '拉取中…' : '拉取模型列表'}
-                        </button>
-                        <button type="button" class="vcms-btn vcms-btn-ghost vcms-btn-sm" data-action="add-model"><i class="fa-solid fa-plus"></i> 新增模型</button>
-                    </div>
-                </div>
-                <p class="vcms-muted vcms-section-note">拉取是显式操作，只在你点击时访问服务商接口；保存不会自动拉取、试连或生成。模型 ID 始终可以手填。</p>
-                ${state.discoverError ? `<div class="vcms-callout vcms-callout-danger" role="alert"><i class="fa-solid fa-triangle-exclamation"></i><div>${esc(state.discoverError)}</div></div>` : ''}
-                ${d.models.length ? `<div class="vcms-model-list" id="vcms-model-list">${renderModelList()}</div>` : `
-                <div class="vcms-empty-models">
-                    <p>还没有模型配置。</p>
-                    <p class="vcms-muted">手填新增，或先配置密钥后从服务商拉取列表。</p>
-                </div>`}
-                ${currentModel() ? renderModelForm(currentModel()) : ''}
-            </section>
-
-            ${renderTestSection()}
-
-            ${state.saveError ? `<div class="vcms-callout vcms-callout-danger" role="alert" id="vcms-save-error"><i class="fa-solid fa-triangle-exclamation"></i><div>${esc(state.saveError)} <button type="button" class="vcms-btn vcms-btn-ghost vcms-btn-sm" data-action="save">重试保存</button></div></div>` : ''}
-            ${desktopView() && state.vcScreen !== 'model' ? `<details class="vcms-internal"${isNew ? ' open' : ''}><summary>${icon('chevron-right', { size: 16 })}高级</summary>${providerIdField}</details>` : ''}
-            <div class="vcms-update-meta vcms-muted">更新于 ${fmtTime(d.updatedAt)} · 配置版本 v${d.revision}${d.endpointUrl ? ` · 最终地址 ${esc(d.endpointUrl)}` : ''}</div>
-        </div>`;
-    }
-
-    function renderConflictBanners() {
-        let html = '';
-        if (state.conflict) {
-            html += `
-            <div class="vcms-callout vcms-callout-warn vcms-conflict" role="alert">
-                <i class="fa-solid fa-code-merge"></i>
-                <div>
-                    <p>${esc(state.conflict.message)}${state.conflict.currentRevision !== null ? `（最新配置版本 v${state.conflict.currentRevision}）` : ''}</p>
-                    <div class="vcms-callout-actions">
-                        <button type="button" class="vcms-btn vcms-btn-primary vcms-btn-sm" data-action="conflict-view-latest">查看最新</button>
-                        <button type="button" class="vcms-btn vcms-btn-ghost vcms-btn-sm" data-action="conflict-keep">保留草稿</button>
-                    </div>
-                </div>
-            </div>`;
-        }
-        if (state.stashBanner) {
-            html += `
-            <div class="vcms-callout vcms-callout-info" role="status">
-                <i class="fa-solid fa-circle-info"></i>
-                <div>
-                    <p>已加载最新内容（配置版本 v${state.draft?.revision ?? '—'}），未保存的输入已暂存。</p>
-                    <div class="vcms-callout-actions">
-                        <button type="button" class="vcms-btn vcms-btn-primary-outline vcms-btn-sm" data-action="restore-stash">恢复未保存的草稿</button>
-                        <button type="button" class="vcms-btn vcms-btn-ghost vcms-btn-sm" data-action="dismiss-stash-banner">保留最新内容</button>
-                    </div>
-                </div>
-            </div>`;
-        }
-        return html;
-    }
-
-    /** 会话上下文变更横幅：保留草稿，要求显式重新加载（复用 conflict callout 形态）。 */
-    function renderContextBanner() {
-        if (!state.contextChanged) return '';
-        return `
-        <div class="vcms-callout vcms-callout-warn vcms-conflict" role="alert">
-            <i class="fa-solid fa-user-shield"></i>
-            <div>
-                <p>${esc(state.contextChanged)}</p>
-                <div class="vcms-callout-actions">
-                    <button type="button" class="vcms-btn vcms-btn-primary vcms-btn-sm" data-action="context-reload">重新加载页面数据</button>
-                    <button type="button" class="vcms-btn vcms-btn-ghost vcms-btn-sm" data-action="context-keep">保留草稿，暂不重载</button>
-                </div>
-            </div>
-        </div>`;
-    }
-
-    function renderKeySection(key) {
-        const d = state.draft;
-        if (key.action === 'keep' && state.keyEditing) {
-            return `
-            <div class="${desktopView() ? 'vc-desk-field' : 'vcms-field'}">
-                <label for="vcms-f-key">新密钥（保存后替换）</label>
-                <input id="vcms-f-key" type="password" data-bind="provider.credential" value="" placeholder="粘贴新密钥；留空则不替换" autocomplete="new-password" spellcheck="false">
-                <p class="vcms-muted">保存后只显示“已配置”，不会回显原值，也不会写入聊天记录或日志。</p>
-                <button type="button" class="vcms-btn vcms-btn-ghost vcms-btn-sm" data-action="key-undo">取消替换</button>
-            </div>`;
-        }
-        if (key.action === 'keep') {
-            return `
-            <div class="vcms-keybox">
-                <div class="vcms-keybox-state">
-                    <i class="fa-solid fa-key"></i>
-                    <span>${logic.KEY_STATE_LABELS.configured}</span>
-                    <span class="vcms-muted">密钥不回显、不写入页面数据；只在本页替换或清除。</span>
-                </div>
-                <div class="vcms-keybox-actions">
-                    <button type="button" class="vcms-btn vcms-btn-ghost vcms-btn-sm" data-action="key-replace">替换密钥</button>
-                    <button type="button" class="vcms-btn vcms-btn-danger-ghost vcms-btn-sm" data-action="key-clear">清除密钥</button>
-                </div>
-            </div>
-            ${state.keyClearing ? `
-            <div class="vcms-keyclear-confirm" role="alertdialog" aria-label="确认清除密钥">
-                <p>清除后供应商将保持停用，后续请求不再携带该密钥。确认清除？</p>
-                <div class="vcms-callout-actions">
-                    <button type="button" class="vcms-btn vcms-btn-danger vcms-btn-sm" data-action="key-clear-confirm">确认清除</button>
-                    <button type="button" class="vcms-btn vcms-btn-ghost vcms-btn-sm" data-action="key-clear-cancel">取消</button>
-                </div>
-            </div>` : ''}`;
-        }
-        if (key.action === 'will-clear') {
-            return `
-            <div class="vcms-keybox">
-                <div class="vcms-keybox-state"><i class="fa-solid fa-key"></i><span class="vcms-badge vcms-badge-danger">${logic.KEY_STATE_LABELS['will-clear']}</span></div>
-                <div class="vcms-keybox-actions">
-                    <button type="button" class="vcms-btn vcms-btn-ghost vcms-btn-sm" data-action="key-undo">撤销</button>
-                </div>
-            </div>`;
-        }
-        return `
-            <div class="${desktopView() ? 'vc-desk-field' : 'vcms-field'}">
-                <label for="vcms-f-key">${key.action === 'will-replace' ? '新密钥（保存后替换）' : 'API 密钥'}</label>
-                <input id="vcms-f-key" type="password" data-bind="provider.credential" value="${esc(d.credential)}" placeholder="粘贴服务方提供的密钥" autocomplete="new-password" spellcheck="false">
-                <p class="vcms-muted">保存后只显示“已配置”，不回显原值，也不会写入聊天记录或日志。</p>
-            </div>
-            ${key.action === 'will-replace' ? '<button type="button" class="vcms-btn vcms-btn-ghost vcms-btn-sm" data-action="key-undo">撤销替换</button>' : ''}`;
-    }
-
-    function renderModelList() {
-        const errors = collectErrors();
-        return state.draft.models.map((m) => {
-            const err = errors.models.get(m.profileKey);
-            const selected = m.profileKey === state.selectedProfileKey;
-            return `
-            <div class="vcms-model-row ${selected ? 'is-selected' : ''}" data-action="select-model" data-key="${esc(m.profileKey)}" role="button" tabindex="0" aria-pressed="${selected}">
-                <div class="vcms-model-row-main">
-                    <span class="vcms-model-name">${esc(m.displayName || m.modelId || '未命名模型')}</span>
-                    <span class="vcms-model-id vcms-mono">${esc(m.modelId || '（未填 ID）')}</span>
-                </div>
-                <div class="vcms-model-row-badges">
-                    ${isBlank(m.contextWindowTokens) ? '<span class="vcms-badge vcms-badge-warn">配置不完整</span>' : ''}
-                    ${m.boundPurposes?.length ? `<span class="vcms-badge vcms-badge-info">${m.boundPurposes.length} 个用途在用</span>` : ''}
-                    ${err ? `<span class="vcms-badge vcms-badge-danger" title="${esc(Object.values(err)[0])}">有校验错误</span>` : ''}
-                </div>
-            </div>`;
-        }).join('');
-    }
-
-    function renderModelForm(m) {
-        const errors = logic.validateModelForm(m);
-        const err = (field) => `<p class="vcms-field-err" data-err-for="${field}">${esc(errors[field] ?? '')}</p>`;
-        const isShared = m.boundPurposes?.length > 0;
-        const profileField = `            <div class="${desktopView() ? 'vc-desk-field' : 'vcms-field'}">
-                <label for="vcms-m-profile">配置标识</label>
-                ${m.isNew || m.isClone
-        ? `<input id="vcms-m-profile" type="text" class="vcms-mono" data-bind="model.profileKey" value="${esc(m.profileKey)}" placeholder="默认同模型 ID">`
-        : `<input id="vcms-m-profile" type="text" class="vcms-mono" value="${esc(m.profileKey)}" readonly aria-readonly="true">`}
-                <p class="vcms-muted">同一模型 ID 可以有多份配置（不同参数 / 计价）；「另存为新配置」会生成新的配置标识，不覆盖原配置。</p>
-                ${err('profileKey')}
-            </div>`;
-        return `
-        <div class="vcms-model-form" data-profile="${esc(m.profileKey)}">
-            ${logic.ledgerCalloutHtml(m)}
-            ${isShared ? desktopView() ? `<div class="vc-desk-field vcms-used-by"><span class="vcms-field-label">用于</span><span>${m.boundPurposes.map(p => esc(logic.purposeMeta(p).label)).join('、')}</span></div>` : `<div class="vcms-callout vcms-callout-info"><i class="fa-solid fa-share-nodes"></i><div>该配置正被这些用途使用：${m.boundPurposes.map((p) => esc(logic.purposeMeta(p).label)).join('、')}。此处的修改保存后会影响它们；如需不影响，请用「另存为新配置」。</div></div>` : ''}
-            <div class="${desktopView() ? 'vcms-desktop-grid' : 'vcms-grid2'}">
-                <div class="${desktopView() ? 'vc-desk-field' : 'vcms-field'}">
-                    <label for="vcms-m-display">模型显示名称</label>
-                    <input id="vcms-m-display" type="text" data-bind="model.displayName" value="${esc(m.displayName)}" maxlength="80">
-                    ${err('displayName')}
-                </div>
-                <div class="${desktopView() ? 'vc-desk-field' : 'vcms-field'}">
-                    <label for="vcms-m-id">模型 ID</label>
-                    <input id="vcms-m-id" type="text" class="vcms-mono" data-bind="model.modelId" value="${esc(m.modelId)}" placeholder="服务方的模型 ID，可手填" spellcheck="false">
-                    ${err('modelId')}
-                </div>
-            </div>
-            ${desktopView() ? '' : profileField}
-            <div class="${desktopView() ? 'vcms-desktop-grid' : 'vcms-grid2'}">
-                <div class="${desktopView() ? 'vc-desk-field' : 'vcms-field'}">
-                    <label for="vcms-m-ctx">上下文窗口（token）</label>
-                    <input id="vcms-m-ctx" type="number" min="1" step="1" data-bind="model.contextWindowTokens" value="${esc(m.contextWindowTokens)}" placeholder="例如 200000">
-                    ${err('contextWindowTokens')}
-                </div>
-                <div class="${desktopView() ? 'vc-desk-field' : 'vcms-field'}">
-                    <label for="vcms-m-max">最大输出（token 预留）</label>
-                    <input id="vcms-m-max" type="number" min="1" step="1" data-bind="model.maxOutputTokens" value="${esc(m.maxOutputTokens)}" placeholder="例如 8192">
-                    ${err('maxOutputTokens')}
-                </div>
-            </div>
-            <p class="vcms-muted">上下文窗口包含历史消息、角色卡、世界书、记忆与工具结果；输出与工具结果需要预留空间。</p>
-            <p class="vcms-callout vcms-callout-warn vcms-inline-note" data-note="ctx" role="alert"${logic.contextWindowMissing(m) ? '' : ' hidden'}><i class="fa-solid fa-triangle-exclamation"></i>未填写上下文窗口：配置不完整，绑定前台聊天前需要补齐。</p>
-
-            <details class="vcms-advanced"${state.advancedOpen ? ' open' : ''}>
-                <summary>${desktopView() ? `${icon('chevron-right', { size: 16 })}高级设置` : '高级设置（推理 · 参数 · 能力 · 计价）'}</summary>
-                <div class="vcms-advanced-body">
-                    <h4 class="vcms-subsection-title">推理</h4>
-                    <div class="${desktopView() ? 'vc-desk-field' : 'vcms-field'}">
-                        <span class="vcms-field-label">声明可用推理等级</span>
-                        <div class="vcms-checks">
-                            ${logic.REASONING_LEVELS.map((lv) => `
-                            <label class="vcms-check"><input type="checkbox" data-bind="model.reasoningLevels" value="${lv}" ${m.reasoningLevels.includes(lv) ? 'checked' : ''}>${logic.reasoningLevelLabel(lv)}</label>`).join('')}
-                            ${logic.extraReasoningLevels(m.reasoningLevels).map((lv) => `
-                            <label class="vcms-check" title="已保存的等级，继续保留"><input type="checkbox" checked disabled>${esc(lv)}</label>`).join('')}
-                        </div>
-                        <p class="vcms-muted">等级按当前协议映射为对应参数；未知映射保持待配置，不硬发统一字段。</p>
-                    </div>
-                    <div class="${desktopView() ? 'vc-desk-field' : 'vcms-field'}">
-                        <label for="vcms-m-effort">默认推理等级</label>
-                        <select id="vcms-m-effort" data-bind="model.generationParams.reasoningEffort">
-                            <option value="" ${!m.generationParams.reasoningEffort ? 'selected' : ''}>未设置</option>
-                            ${m.reasoningLevels.map((lv) => `<option value="${esc(lv)}" ${m.generationParams.reasoningEffort === lv ? 'selected' : ''}>${esc(logic.reasoningLevelLabel(lv))}</option>`).join('')}
-                        </select>
-                        ${err('reasoningEffort')}
-                    </div>
-                    <h4 class="vcms-subsection-title">生成参数</h4>
-                    <div class="${desktopView() ? 'vcms-desktop-grid' : 'vcms-grid2'}">
-                        <div class="${desktopView() ? 'vc-desk-field' : 'vcms-field'}">
-                            <label for="vcms-m-temp">温度 temperature（0–2）</label>
-                            <input id="vcms-m-temp" type="number" min="0" max="2" step="0.1" data-bind="model.generationParams.temperature" value="${esc(m.generationParams.temperature)}">
-                            ${err('temperature')}
-                        </div>
-                        <div class="${desktopView() ? 'vc-desk-field' : 'vcms-field'}">
-                            <label for="vcms-m-topp">top P（0–1）</label>
-                            <input id="vcms-m-topp" type="number" min="0" max="1" step="0.05" data-bind="model.generationParams.topP" value="${esc(m.generationParams.topP)}">
-                            ${err('topP')}
-                        </div>
-                    </div>
-
-                    <h4 class="vcms-subsection-title">能力与输入类型</h4>
-                    ${desktopView() ? '' : '<p class="vcms-muted">每项独立标记；「已验证」只能来自后端核验，不能手动选择。声明不代表实际可用。</p>'}
-                    ${err('capabilities')}
-                    <div class="vcms-capgrid">
-                        ${logic.CAPABILITY_FIELDS.map((f) => {
-        const value = m.capabilities[f.key] ?? 'UNKNOWN';
-        return `
-                        <div class="vcms-caprow">
-                            <span class="vcms-capname">${esc(f.label)}</span>
-                            <div class="vcms-seg${desktopView() ? ' vc-segment' : ''}" role="group" aria-label="${esc(f.label)}状态">
-                                ${desktopView() ? `<i class="vc-segment-thumb" style="width:calc((100% - 4px) / ${logic.CAPABILITY_STATES.length});transform:translateX(${Math.max(0, logic.CAPABILITY_STATES.indexOf(value)) * 100}%)"></i>` : ''}
-                                ${logic.CAPABILITY_STATES.map((s) => {
-            const isVerified = s === 'VERIFIED';
-            const active = value === s;
-            return `<button type="button" class="vcms-seg-btn vcms-cap-${s.toLowerCase()} ${active ? 'is-active' : ''}" data-action="cap" data-cap-key="${f.key}" data-cap-state="${s}" ${isVerified && !active ? 'disabled' : ''} title="${isVerified ? '已验证状态来自后端核验，不能手动设置' : ''}" aria-pressed="${active}">${logic.CAPABILITY_STATE_LABELS[s]}</button>`;
-        }).join('')}
-                            </div>
-                        </div>
-                        ${f.key === 'toolCalls' ? renderToolCallVerification(m, value) : ''}`;
-    }).join('')}
-                    </div>
-
-                    <h4 class="vcms-subsection-title">计价（可选元数据）</h4>
-                    <p class="vcms-muted">当前显示：${esc(logic.formatPricing(m.pricing))}。价格未知显示「未配置」，不会当作免费。</p>
-                    <div class="vcms-grid3">
-                        <div class="${desktopView() ? 'vc-desk-field' : 'vcms-field'}">
-                            <label for="vcms-m-currency">币种</label>
-                            <select id="vcms-m-currency" data-bind="model.pricing.currency">
-                                <option value="" ${!m.pricing.currency ? 'selected' : ''}>未配置</option>
-                                ${logic.CURRENCIES.map((c) => `<option value="${c}" ${m.pricing.currency === c ? 'selected' : ''}>${logic.CURRENCY_LABELS[c]}</option>`).join('')}
-                            </select>
-                            ${err('pricingCurrency')}
-                        </div>
-                        <div class="${desktopView() ? 'vc-desk-field' : 'vcms-field'}">
-                            <label for="vcms-m-pin">输入价格 / 百万 token</label>
-                            <input id="vcms-m-pin" type="number" min="0" step="0.01" data-bind="model.pricing.inputPerMillionTokens" value="${esc(m.pricing.inputPerMillionTokens)}" placeholder="未知">
-                            ${err('pricingInput')}
-                        </div>
-                        <div class="${desktopView() ? 'vc-desk-field' : 'vcms-field'}">
-                            <label for="vcms-m-pout">输出价格 / 百万 token</label>
-                            <input id="vcms-m-pout" type="number" min="0" step="0.01" data-bind="model.pricing.outputPerMillionTokens" value="${esc(m.pricing.outputPerMillionTokens)}" placeholder="未知">
-                            ${err('pricingOutput')}
-                        </div>
-                    </div>
-                </div>
-            </details>
-
-            ${desktopView() ? `<details class="vcms-internal"${m.isNew || m.isClone ? ' open' : ''}><summary>${icon('chevron-right', { size: 16 })}高级</summary>${profileField}</details>` : ''}
-            <div class="vcms-model-actions">
-                <button type="button" class="vcms-btn vcms-btn-ghost vcms-btn-sm" data-action="clone-model"><i class="fa-solid fa-copy"></i> 另存为新配置</button>
-                ${state.deleteFor === m.profileKey ? `
-                <span class="vcms-inline-confirm">删除该模型配置？
-                    <button type="button" class="vcms-btn vcms-btn-danger vcms-btn-sm" data-action="delete-model-confirm">删除</button>
-                    <button type="button" class="vcms-btn vcms-btn-ghost vcms-btn-sm" data-action="delete-model-cancel">取消</button>
-                </span>` : `
-                <button type="button" class="vcms-btn vcms-btn-danger-ghost vcms-btn-sm" data-action="delete-model" ${m.boundPurposes?.length ? 'disabled title="该配置仍被用途绑定引用，先解除绑定"' : ''}><i class="fa-solid fa-trash-can"></i> 删除</button>`}
-            </div>
-            ${state.cloneFor?.profileKey === m.profileKey ? renderCloneForm(m) : ''}
-        </div>`;
-    }
-
-    function renderToolCallVerification(model, value) {
-        if (value === 'VERIFIED') {
-            return `<p class="vcms-muted vcms-tool-verify" data-tool-calls-note>${esc(logic.TOOL_CALLS_VERIFIED_NOTE)}</p>`;
-        }
-        const mine = state.toolVerify.profileKey === model.profileKey;
-        const busy = mine && state.toolVerify.busy;
-        const failure = mine && state.toolVerify.error ? `<p class="vcms-field-err is-visible" data-tool-calls-error>${esc(state.toolVerify.error)}</p>` : '';
-        return `
-        <div class="vcms-tool-verify" data-tool-calls-note>
-            <p>${esc(logic.TOOL_CALLS_UNVERIFIED_NOTE)}</p>
-            <p class="vcms-muted">${esc(logic.TOOL_CALLS_VERIFY_HINT)}</p>
-            <button type="button" class="vcms-btn vcms-btn-primary-outline vcms-btn-sm" data-action="verify-tool-calls" ${busy ? 'disabled' : ''}>${busy ? '验证中…' : esc(logic.TOOL_CALLS_VERIFY_ACTION)}</button>
-            ${failure}
-        </div>`;
-    }
-
-    function renderCloneForm() {
-        const c = state.cloneFor;
-        return `
-        <div class="vcms-clone-form">
-            <p class="vcms-field-label">另存为新配置（不影响现有用途绑定）</p>
-            <div class="${desktopView() ? 'vcms-desktop-grid' : 'vcms-grid2'}">
-                <div class="${desktopView() ? 'vc-desk-field' : 'vcms-field'}">
-                    <label for="vcms-clone-key">新配置标识 profileKey</label>
-                    <input id="vcms-clone-key" type="text" class="vcms-mono" data-bind="clone.newProfileKey" value="${esc(c.newProfileKey)}" spellcheck="false">
-                </div>
-                <div class="${desktopView() ? 'vc-desk-field' : 'vcms-field'}">
-                    <label for="vcms-clone-name">新显示名称</label>
-                    <input id="vcms-clone-name" type="text" data-bind="clone.newDisplayName" value="${esc(c.newDisplayName)}" maxlength="80">
-                </div>
-            </div>
-            ${c.error ? `<p class="vcms-field-err is-visible">${esc(c.error)}</p>` : ''}
-            <div class="vcms-callout-actions">
-                <button type="button" class="vcms-btn vcms-btn-primary vcms-btn-sm" data-action="clone-confirm">创建副本</button>
-                <button type="button" class="vcms-btn vcms-btn-ghost vcms-btn-sm" data-action="clone-cancel">取消</button>
-            </div>
-        </div>`;
-    }
-
-    function renderTestSection() {
         const m = currentModel();
-        const d = state.draft;
-        const target = m ? `${d.displayName || d.providerId} · ${m.displayName || m.modelId}` : '未选择模型';
         const errors = collectErrors();
-        const url = d.endpointUrl ?? (errors.endpoint?.ok ? errors.endpoint.finalUrl : '—');
-        const check = state.check;
-        const resultBlock = check.result
-            ? `
-            <div class="vcms-check-result">
-                <p class="vcms-check-line"><i class="fa-solid fa-circle-check"></i> 已连通：服务方返回 ${check.result.total} 个模型，其中 ${check.result.unrecorded.length} 个未收录。</p>
-                ${check.result.unrecorded.length ? `
-                <ul class="vcms-check-list">
-                    ${check.result.unrecorded.map((item) => `<li><span class="vcms-mono">${esc(item.modelId)}</span><span class="vcms-muted">${esc(item.displayName)}</span></li>`).join('')}
-                </ul>
-                <div class="vcms-callout-actions">
-                    <button type="button" class="vcms-btn vcms-btn-primary-outline vcms-btn-sm" data-action="check-add-models">把未收录模型加入列表（可选）</button>
-                </div>` : '<p class="vcms-muted">返回的模型都已收录；如需其他模型可继续手填模型 ID。</p>'}
-            </div>` : '';
-        return `
-        <section class="${desktopView() ? 'vcms-desktop-section' : 'vcms-section'}">
-            <h3 class="vcms-section-title">连接检查</h3>
-            <div class="vcms-testbox">
-                <div class="vcms-test-target">
-                    <span class="vcms-muted">目标</span>
-                    <span class="vcms-test-name">${esc(target)}</span>
-                    <span class="vcms-mono vcms-test-url">${esc(url)}</span>
-                </div>
-                <p class="vcms-callout vcms-callout-info vcms-inline-note"><i class="fa-solid fa-circle-info"></i>连接检查只调用一次「拉取模型列表」接口：仅验证所选供应商的模型列表与鉴权，不发起生成调用，也不代表生成可用；真实生成以聊天为准。检查不会修改当前草稿。</p>
-                ${check.error ? `<div class="vcms-callout vcms-callout-danger" role="alert"><i class="fa-solid fa-triangle-exclamation"></i><div>${esc(check.error)}</div></div>` : ''}
-                ${resultBlock}
-                <div class="vcms-callout-actions">
-                    ${state.budget.insufficient ? `<p class="vcms-callout vcms-callout-warning" role="status">${logic.BUDGET_COPY}</p>` : ''}
-                    <button type="button" class="vcms-btn vcms-btn-primary" data-action="check-connection" ${check.busy || state.budget.insufficient ? 'disabled' : ''}>
-                        <i class="fa-solid fa-plug-circle-check ${check.busy ? 'fa-spin' : ''}"></i>
-                        ${check.busy ? '检查中…' : '检查连接'}
-                    </button>
-                    <span class="vcms-muted">模型 ID 始终可以手填新增，检查不是必经步骤。</span>
-                </div>
-            </div>
-        </section>`;
-    }
-
-    function renderReauthBar() {
-        if (!state.reauth.open) return '';
-        const r = state.reauth;
-        return `
-        <div class="vcms-reauth-bar" role="alertdialog" aria-label="重新验证身份">
-            <div class="vcms-reauth-main">
-                <i class="fa-solid fa-user-shield"></i>
-                <p>写入前需要重新验证身份。输入当前登录密码完成验证，${r.retry === 'verify-tool-calls' ? '验证成功后将继续验证工具调用。' : '验证成功后将继续未完成的保存。'}</p>
-            </div>
-            <div class="vcms-reauth-form">
-                <input id="vcms-reauth-password" type="password" data-bind="reauth.password" value="${esc(r.password)}" placeholder="当前登录密码" autocomplete="current-password" spellcheck="false">
-                ${r.error ? `<p class="vcms-field-err is-visible">${esc(r.error)}</p>` : ''}
-                <div class="vcms-callout-actions">
-                    <button type="button" class="vcms-btn vcms-btn-primary vcms-btn-sm" data-action="reauth-submit" ${r.busy ? 'disabled' : ''}>${r.busy ? '验证中…' : (r.retry === 'verify-tool-calls' ? '验证并继续' : '验证并继续保存')}</button>
-                    <button type="button" class="vcms-btn vcms-btn-ghost vcms-btn-sm" data-action="reauth-cancel" ${r.busy ? 'disabled' : ''}>取消</button>
-                </div>
-            </div>
-        </div>`;
-    }
-
-    function renderImpactPanel() {
-        if (!state.impact?.length) return '';
-        const items = state.impact.map((i) => `
-            <li><strong>${esc(i.displayName)}</strong> 正被 ${i.usages.map((u) => esc(u.label)).join('、')} 使用</li>`).join('');
-        return `
-        <div class="vcms-callout vcms-callout-warn" role="alert" id="vcms-impact">
-            <i class="fa-solid fa-share-nodes"></i>
-            <div>
-                <p>保存将影响正在共用这些配置的用途：</p>
-                <ul>${items}</ul>
-                <div class="vcms-callout-actions">
-                    <button type="button" class="vcms-btn vcms-btn-primary vcms-btn-sm" data-action="save-anyway">仍要保存</button>
-                    <button type="button" class="vcms-btn vcms-btn-ghost vcms-btn-sm" data-action="impact-cancel">先不保存，我再检查</button>
-                </div>
-            </div>
-        </div>`;
+        const events = {
+            disabled: state.saving || state.reauth.busy,
+            onAction: (action, target) => { void handleAction(action, target); },
+            onEdit(bind, value, checked) {
+                if (['provider.baseUrl', 'provider.protocol', 'provider.credential'].includes(bind)) invalidateProviderRequests();
+                applyBind({ value, checked }, bind);
+                refreshFeedback();
+            },
+        };
+        const ledger = logic.normalizeLedgerPrice(m?.ledgerPrice);
+        return {
+            desktop: desktopView(), vc: vcUiEnabled(), sprite: iconSpriteUrl(), screen: state.vcScreen,
+            draft: d, creatingNew: state.creatingNew, updated: fmtTime(d?.updatedAt),
+            stateLabel: d ? logic.PROVIDER_STATE_LABELS[d.state] ?? d.state : '',
+            errors: { ...errors.provider, ...errors.credential }, protocols: logic.PROTOCOLS,
+            endpoint: { ...errors.endpoint, blank: isBlank(d?.baseUrl) },
+            keyPlan: d ? logic.keyPlan(d, d.credentialConfigured) : { action: 'none', finalKey: 'none' },
+            keyEditing: state.keyEditing, keyClearing: state.keyClearing, keyLabels: logic.KEY_STATE_LABELS,
+            conflict: state.conflict || undefined, stashBanner: state.stashBanner, contextChanged: state.contextChanged || undefined,
+            discoverBusy: state.discoverBusy, discoverError: state.discoverError || undefined,
+            budgetInsufficient: state.budget.insufficient, budgetCopy: logic.BUDGET_COPY,
+            models: (d?.models ?? []).map((model, index) => ({
+                key: modelIdentity(model), index, profileKey: model.profileKey, selected: model === m,
+                name: model.displayName || model.modelId || '未命名模型', id: model.modelId || '（未填 ID）',
+                incomplete: isBlank(model.contextWindowTokens), bound: model.boundPurposes?.length ?? 0,
+                error: Object.values(errors.models.get(model.profileKey) ?? {})[0],
+            })),
+            model: m ? {
+                identity: modelIdentity(m), desktop: desktopView(), sprite: iconSpriteUrl(), model: m,
+                errors: errors.models.get(m.profileKey) ?? {}, ledger: { status: ledger, copy: logic.ledgerPriceCopy(ledger) },
+                shared: (m.boundPurposes ?? []).map(purpose => logic.purposeMeta(purpose).label).join('、'),
+                contextMissing: logic.contextWindowMissing(m), advancedOpen: state.advancedOpen, onAdvancedChange: open => { state.advancedOpen = open; },
+                reasoning: logic.REASONING_LEVELS.map(id => ({ id, label: logic.reasoningLevelLabel(id) })),
+                extraReasoning: logic.extraReasoningLevels(m.reasoningLevels),
+                capabilities: logic.CAPABILITY_FIELDS.map(field => ({ id: field.key, label: field.label, value: m.capabilities[field.key] ?? 'UNKNOWN' })),
+                capabilityStates: logic.CAPABILITY_STATES.map(id => ({ id, label: logic.CAPABILITY_STATE_LABELS[id] })),
+                currencies: logic.CURRENCIES.map(id => ({ id, label: logic.CURRENCY_LABELS[id] })), pricingLabel: logic.formatPricing(m.pricing),
+                verification: {
+                    busy: state.toolVerify.profileKey === m.profileKey && state.toolVerify.busy,
+                    error: state.toolVerify.profileKey === m.profileKey ? state.toolVerify.error || '' : '',
+                    verifiedNote: logic.TOOL_CALLS_VERIFIED_NOTE, note: logic.TOOL_CALLS_UNVERIFIED_NOTE,
+                    hint: logic.TOOL_CALLS_VERIFY_HINT, action: logic.TOOL_CALLS_VERIFY_ACTION,
+                },
+                deleting: state.deleteFor === m.profileKey, deleteDisabled: Boolean(m.boundPurposes?.length),
+                clone: state.cloneFor?.profileKey === m.profileKey ? state.cloneFor : undefined, events,
+            } : undefined,
+            check: state.check, testTarget: m ? `${d.displayName || d.providerId} · ${m.displayName || m.modelId}` : '未选择模型',
+            testUrl: d?.endpointUrl ?? (errors.endpoint?.ok ? errors.endpoint.finalUrl : '—'),
+            saveError: state.saveError || undefined, events,
+        };
     }
 
     function bindingTargetLabel(providerId, profileKey) {
@@ -1444,250 +905,54 @@ export function mountModelSettings() {
         return `${provider?.displayName ?? providerId} · ${model?.displayName ?? model?.modelId ?? profileKey}`;
     }
 
-    function renderBindingsConflict() {
-        const c = state.bindingsConflict;
-        if (!c) return '';
-        const label = esc(logic.purposeMeta(c.purpose).label);
-        if (!c.latest) {
-            return `
-            <div class="vcms-callout vcms-callout-warn" role="alert">
-                <i class="fa-solid fa-code-merge"></i>
-                <div>
-                    <p>「${label}」的绑定已在另一处更新。你的选择已保留，未被覆盖。</p>
-                    <div class="vcms-callout-actions">
-                        <button type="button" class="vcms-btn vcms-btn-primary vcms-btn-sm" data-action="bindings-view-latest">查看最新</button>
-                        <button type="button" class="vcms-btn vcms-btn-ghost vcms-btn-sm" data-action="bindings-keep">暂不处理</button>
-                    </div>
-                </div>
-            </div>`;
-        }
-        const draft = state.bindingsDraft.get(c.purpose);
-        const mine = draft ? bindingTargetLabel(draft.providerId, draft.profileKey) : '未绑定（待配置）';
-        const latest = bindingTargetLabel(c.latest.providerId, c.latest.profileKey);
-        return `
-        <div class="vcms-callout vcms-callout-warn" role="alert">
-            <i class="fa-solid fa-code-merge"></i>
-            <div>
-                <p>「${label}」的绑定已在另一处更新（最新配置版本 v${c.latest.revision ?? '—'}）。请对比后选择：</p>
-                <div class="vcms-conflict-compare">
-                    <div><span class="vcms-muted">最新内容</span><br>${esc(latest)}</div>
-                    <div><span class="vcms-muted">我的选择（未保存）</span><br>${esc(mine)}</div>
-                </div>
-                <div class="vcms-callout-actions">
-                    <button type="button" class="vcms-btn vcms-btn-ghost vcms-btn-sm" data-action="bindings-adopt-latest" data-purpose="${esc(c.purpose)}">采用最新，放弃我的修改</button>
-                    <button type="button" class="vcms-btn vcms-btn-primary vcms-btn-sm" data-action="bindings-retry-latest" data-purpose="${esc(c.purpose)}">基于最新重试我的选择</button>
-                    <button type="button" class="vcms-btn vcms-btn-ghost vcms-btn-sm" data-action="bindings-keep">暂不处理</button>
-                </div>
-            </div>
-        </div>`;
+    function bindingsViewProps() {
+        const desktop = desktopView();
+        const conflict = state.bindingsConflict;
+        const mine = conflict && state.bindingsDraft.get(conflict.purpose);
+        return {
+            desktop,
+            options: logic.buildBindingOptions(state.providers),
+            rows: logic.PURPOSES.map(purpose => {
+                const original = state.purposes.find(row => row.purpose === purpose.id);
+                const draft = state.bindingsDraft.get(purpose.id);
+                const status = original?.status ?? 'PENDING_CONFIGURATION';
+                return {
+                    id: purpose.id,
+                    label: desktop && purpose.id === 'EMBEDDING' ? '向量检索' : purpose.label,
+                    description: purpose.desc,
+                    bindable: logic.canBindPurpose(purpose.id),
+                    current: draft ? `${draft.providerId}::${draft.profileKey}` : '',
+                    enabled: draft?.state !== 'DISABLED',
+                    dirty: draft?.dirty === true,
+                    status,
+                    statusLabel: logic.BINDING_STATUS_LABELS[status] ?? status,
+                    statusClass: status === 'READY' ? 'vcms-badge-ok' : status === 'PENDING_CONFIGURATION' ? 'vcms-badge-warn' : 'vcms-badge-muted',
+                    revision: original?.revision,
+                    updated: fmtTime(original?.updatedAt),
+                    error: draft?.error,
+                };
+            }),
+            dirtyCount: [...state.bindingsDraft.values()].filter(row => row.dirty).length,
+            saving: state.bindingsSaving, disabled: state.reauth.busy,
+            contextChanged: state.contextChanged || undefined,
+            conflict: conflict ? {
+                purpose: conflict.purpose,
+                label: logic.purposeMeta(conflict.purpose).label,
+                latest: Boolean(conflict.latest),
+                revision: conflict.latest?.revision,
+                mine: mine ? bindingTargetLabel(mine.providerId, mine.profileKey) : '未绑定（待配置）',
+                target: conflict.latest ? bindingTargetLabel(conflict.latest.providerId, conflict.latest.profileKey) : '',
+            } : undefined,
+            onAction: (action, target) => { void handleAction(action, target); },
+            onEdit(bind, value, checked) {
+                applyBind({ value, checked }, bind);
+                refreshFeedback();
+            },
+        };
     }
 
-    function renderBindingsPane() {
-        const rows = logic.PURPOSES.map((p) => {
-            const original = state.purposes.find((b) => b.purpose === p.id);
-            const draft = state.bindingsDraft.get(p.id);
-            const bindable = logic.canBindPurpose(p.id);
-            const options = logic.buildBindingOptions(state.providers);
-            const current = draft ? `${draft.providerId}::${draft.profileKey}` : '';
-            const status = original?.status ?? 'PENDING_CONFIGURATION';
-            const statusLabel = logic.BINDING_STATUS_LABELS[status] ?? status;
-            const statusCls = status === 'READY' ? 'vcms-badge-ok' : status === 'PENDING_CONFIGURATION' ? 'vcms-badge-warn' : 'vcms-badge-muted';
-            return `
-            <tr class="vcms-binding-row ${draft?.dirty ? 'is-dirty' : ''} ${!bindable ? 'is-embed' : ''}">
-                <td class="vcms-binding-purpose">
-                    <span class="vcms-binding-name">${esc(desktopView() && p.id === 'EMBEDDING' ? '向量检索' : p.label)}</span>
-                    ${desktopView() ? '' : `<span class="vcms-muted vcms-binding-desc">${esc(p.desc)}</span>`}
-                </td>
-                <td class="vcms-binding-select">
-                    ${bindable ? `
-                    <select data-bind="binding.${p.id}" aria-label="${esc(desktopView() && p.id === 'EMBEDDING' ? '向量检索' : p.label)}绑定的模型配置">
-                        ${options.map((o) => `<option value="${esc(o.value)}" ${current === o.value ? 'selected' : ''}>${esc(o.label)}</option>`).join('')}
-                    </select>
-                    <label class="vcms-check vcms-binding-enabled"><input type="checkbox" data-bind="bindingState.${p.id}" ${draft?.state !== 'DISABLED' ? 'checked' : ''} ${!current ? 'disabled' : ''}>启用</label>` : `
-                    ${desktopView() ? '' : '<span class="vcms-badge vcms-badge-warn">待配置</span><span class="vcms-muted vcms-binding-embednote">Embedding 使用独立接口；本轮不可绑定，三种聊天协议不能用作 embedding。</span>'}`}
-                </td>
-                <td class="vcms-binding-status">${desktopView() ? `<span class="vc-status"><i class="vc-dot vc-dot-${status === 'READY' ? 'ok' : 'warn'}"></i>${esc(statusLabel)}</span>` : `<span class="vcms-badge ${statusCls}">${statusLabel}</span>`}</td>
-                <td class="vcms-binding-revision vcms-mono">v ${original?.revision ?? '—'}${draft?.dirty ? ' *' : ''}</td>
-                <td class="vcms-binding-updated vcms-muted">${fmtTime(original?.updatedAt)}</td>
-            </tr>
-            ${draft?.error ? `<tr class="vcms-binding-errorrow"><td colspan="5"><p class="vcms-field-err is-visible">${esc(draft.error)}</p></td></tr>` : ''}`;
-        }).join('');
-        const dirtyCount = [...state.bindingsDraft.values()].filter((b) => b.dirty).length;
-        return `
-        ${renderBindingsConflict()}
-        ${renderContextBanner()}
-        <div class="${desktopView() ? 'vcms-desktop-section' : 'vcms-section'}">
-            <h3 class="vcms-section-title">用途绑定</h3>
-            ${desktopView() ? '' : '<p class="vcms-muted vcms-section-note">每个用途独立绑定自己的模型配置；可以共用同一配置，但切换某一用途不影响其他用途。待配置的用途不会自动回退到其他 Key 或模型。</p>'}
-            <div class="vcms-table-wrap">
-                <table class="vcms-bindings-table">
-                    <thead>
-                        <tr><th>用途</th><th>模型配置</th><th>状态</th><th>生效版本</th><th>更新时间</th></tr>
-                    </thead>
-                    <tbody>${rows}</tbody>
-                </table>
-            </div>
-            ${dirtyCount ? `
-            <div class="vcms-bindings-save">
-                <span class="vcms-muted">${dirtyCount} 个用途待保存</span>
-                <button type="button" class="vcms-btn vcms-btn-primary" data-action="save-bindings" ${state.bindingsSaving ? 'disabled' : ''}>${state.bindingsSaving ? '保存中…' : '保存用途绑定'}</button>
-                <button type="button" class="vcms-btn vcms-btn-ghost" data-action="discard-bindings">放弃修改</button>
-            </div>` : ''}
-        </div>`;
-    }
-
-    function renderFooter() {
-        return `<footer class="vcms-footer">
-            <button type="button" class="vcms-btn vcms-btn-ghost" data-action="close">取消并返回</button>
-            <button type="button" class="vcms-btn vcms-btn-primary" id="vcms-save-footer" data-action="save">保存配置</button>
-        </footer>`;
-    }
-
-    // ---------- 反馈刷新（不重渲染表单，避免丢焦点） ----------
-
-    function refreshFeedback() {
-        if (state.phase !== 'ready' || !overlay.isConnected) return;
-        const errors = collectErrors();
-        const anyError = hasErrors(errors);
-        const dirty = isDirty();
-
-        const endpointEl = overlay.querySelector('#vcms-endpoint-line');
-        if (endpointEl) {
-            if (isBlank(state.draft.baseUrl)) {
-                endpointEl.innerHTML = '<span class="vcms-muted">填写 Base URL 后显示规范化最终请求地址。</span>';
-                endpointEl.classList.remove('is-error');
-            } else if (errors.endpoint?.ok) {
-                endpointEl.innerHTML = `
-                <span class="vcms-muted">${desktopView() ? '请求地址' : '最终请求地址'}</span>
-                <span class="vcms-mono vcms-endpoint-url">${esc(errors.endpoint.finalUrl)}</span>
-                ${desktopView() ? '' : `<span class="vcms-muted">（${esc(errors.endpoint.hint)}；最终地址以保存后的结果为准）</span>`}`;
-                endpointEl.classList.remove('is-error');
-            } else if (errors.endpoint?.kind === 'full-endpoint' && errors.endpoint.suggestedBaseUrl) {
-                endpointEl.innerHTML = `
-                <span class="vcms-field-err is-visible">${esc(errors.endpoint.error)}</span>
-                <button type="button" class="vcms-btn vcms-btn-primary-outline vcms-btn-sm" data-action="endpoint-convert" data-suggested="${esc(errors.endpoint.suggestedBaseUrl)}">转换为 Base URL</button>
-                <span class="vcms-mono vcms-endpoint-url">${esc(errors.endpoint.suggestedBaseUrl)}</span>`;
-                endpointEl.classList.add('is-error');
-            } else {
-                endpointEl.innerHTML = `<span class="vcms-field-err is-visible">${esc(errors.endpoint?.error ?? 'Base URL 未通过校验')}</span>`;
-                endpointEl.classList.add('is-error');
-            }
-        }
-
-        for (const [field, msg] of Object.entries({ ...errors.provider, ...errors.credential })) {
-            const el = overlay.querySelector(`[data-err-for="${field}"]`);
-            if (el) {
-                el.textContent = msg;
-                el.classList.toggle('is-visible', Boolean(msg));
-            }
-        }
-        const model = currentModel();
-        if (model) {
-            const modelErrors = errors.models.get(model.profileKey) ?? {};
-            overlay.querySelectorAll('.vcms-model-form [data-err-for]').forEach((el) => {
-                const field = el.getAttribute('data-err-for');
-                const msg = modelErrors[field] ?? '';
-                el.textContent = msg;
-                el.classList.toggle('is-visible', Boolean(msg));
-            });
-            const ctxNote = overlay.querySelector('.vcms-model-form [data-note="ctx"]');
-            if (ctxNote) ctxNote.hidden = !logic.contextWindowMissing(model);
-            const form = overlay.querySelector('.vcms-model-form');
-            if (form) {
-                const status = logic.normalizeLedgerPrice(model.ledgerPrice);
-                const copy = logic.ledgerPriceCopy(status);
-                let callout = form.querySelector('[data-ledger]');
-                if (copy) {
-                    if (!callout) {
-                        callout = document.createElement('p');
-                        form.prepend(callout);
-                    }
-                    callout.className = 'vcms-callout vcms-callout-warn';
-                    callout.id = status === 'UNSUPPORTED_CURRENCY' ? 'vcms-currency-price' : 'vcms-no-price';
-                    callout.setAttribute('role', 'status');
-                    callout.setAttribute('data-ledger', status);
-                    callout.textContent = copy;
-                } else if (callout) {
-                    callout.remove();
-                }
-            }
-        }
-
-        const saveDisabled = !dirty || anyError || state.saving || state.bindingsSaving;
-        for (const id of ['vcms-save', 'vcms-save-footer']) {
-            const btn = overlay.querySelector(`#${id}`);
-            if (btn) {
-                btn.disabled = saveDisabled;
-                btn.toggleAttribute('data-vc-clean', !dirty && !anyError && !state.saving && !state.bindingsSaving);
-                btn.textContent = state.saving ? '保存中…' : (id === 'vcms-save' ? '保存更改' : '保存配置');
-                if (anyError) btn.title = '存在校验错误，请先按提示修改';
-                else btn.removeAttribute('title');
-            }
-        }
-        const dirtyEl = overlay.querySelector('#vcms-dirty');
-        if (dirtyEl) dirtyEl.hidden = !dirty;
-        const discardBtn = overlay.querySelector('#vcms-discard');
-        if (discardBtn) discardBtn.hidden = !dirty;
-
-        const listEl = overlay.querySelector('#vcms-provider-list');
-        if (listEl) listEl.innerHTML = renderProviderCards();
-        const modelListEl = overlay.querySelector('#vcms-model-list');
-        if (modelListEl) modelListEl.innerHTML = renderModelList();
-    }
-
-    // ---------- 事件 ----------
-
-    overlay.addEventListener('toggle', (ev) => {
-        const details = ev.target;
-        if (!details?.classList?.contains('vcms-advanced')) return;
-        state.advancedOpen = Boolean(details.open);
-    }, true);
-
-    overlay.addEventListener('click', (ev) => {
-        const actionEl = ev.target.closest('[data-action]');
-        if (!actionEl || !overlay.contains(actionEl)) return;
-        void handleAction(actionEl.getAttribute('data-action'), actionEl);
-    });
-
-    overlay.addEventListener('keydown', (ev) => {
-        if (ev.key === 'Enter' && ev.target?.id === 'vcms-reauth-password') {
-            ev.preventDefault();
-            doReauth();
-            return;
-        }
-        const row = ev.target.closest?.('.vcms-model-row');
-        if (row && (ev.key === 'Enter' || ev.key === ' ')) {
-            ev.preventDefault();
-            void handleAction('select-model', row);
-        }
-    });
-
-    overlay.addEventListener('input', (ev) => {
-        const el = ev.target;
-        const bind = el.getAttribute('data-bind');
-        if (!bind) return;
-        applyBind(el, bind);
-        if (bind === 'model.modelId') {
-            // 新建模型未手动改过配置标识时，profileKey 跟随 modelId。
-            const model = currentModel();
-            if (model && model.isNew && NEW_KEY_PLACEHOLDER_RE.test(model.profileKey)) {
-                model.profileKey = el.value.trim();
-            }
-        }
-        refreshFeedback();
-    });
-
-    overlay.addEventListener('change', (ev) => {
-        const el = ev.target;
-        const bind = el.getAttribute('data-bind');
-        if (!bind) return;
-        applyBind(el, bind);
-        if (bind === 'provider.protocol' || bind.startsWith('binding')) {
-            render();
-        } else {
-            refreshFeedback();
-        }
-    });
+    // 所有可见节点由同一 React root 更新；控制器不再写入表单子树。
+    function refreshFeedback() { render({ feedbackOnly: true }); }
 
     function applyBind(el, bind) {
         const model = currentModel();
@@ -1735,6 +1000,19 @@ export function mountModelSettings() {
         if (bind.startsWith('model.')) {
             if (!model) return;
             const path = bind.slice('model.'.length);
+            if (path === 'modelId') {
+                model.modelId = el.value;
+                if (model.isNew && (model.autoProfileKey || NEW_KEY_PLACEHOLDER_RE.test(model.profileKey))) {
+                    model.autoProfileKey = true;
+                    model.profileKey = el.value.trim();
+                }
+                return;
+            }
+            if (path === 'profileKey') {
+                model.profileKey = el.value;
+                model.autoProfileKey = false;
+                return;
+            }
             if (path === 'reasoningLevels') {
                 // 预设档按勾选重建；已保存的额外合法等级始终保留，不静默丢弃。
                 const extras = logic.extraReasoningLevels(model.reasoningLevels);
@@ -1775,13 +1053,13 @@ export function mountModelSettings() {
                 if (!vcUiEnabled()) break;
                 const from = state.vcScreen;
                 const provider = state.selectedProviderId;
-                const profile = state.selectedProfileKey;
+                const modelIndex = state.draft?.models.indexOf(currentModel());
                 if (from === 'model') state.vcScreen = 'provider';
                 else if (from === 'provider') { state.vcScreen = 'home'; state.tab = 'bindings'; }
                 else { void requestClose({ toSettings: true }); break; }
                 render();
                 const rows = overlay.querySelectorAll(`[data-action="${from === 'model' ? 'select-model' : 'select-provider'}"]`);
-                [...rows].find((row) => row.getAttribute(from === 'model' ? 'data-key' : 'data-id') === (from === 'model' ? profile : provider))?.focus({ preventScroll: true });
+                [...rows].find((row) => row.getAttribute(from === 'model' ? 'data-model-index' : 'data-id') === (from === 'model' ? String(modelIndex) : provider))?.focus({ preventScroll: true });
                 break;
             }
             case 'local-models-retry':
@@ -1812,7 +1090,9 @@ export function mountModelSettings() {
                 load();
                 break;
             case 'new-provider':
+                invalidateProviderRequests();
                 state.draft = logic.newProviderDraft();
+                activeModel = null;
                 state.originalDraft = deepClone(state.draft);
                 state.creatingNew = true;
                 state.tab = 'provider';
@@ -1823,7 +1103,9 @@ export function mountModelSettings() {
             case 'select-provider': {
                 const id = el.getAttribute('data-id');
                 if (!id) {
+                    invalidateProviderRequests();
                     state.draft = logic.newProviderDraft();
+                    activeModel = null;
                     state.originalDraft = deepClone(state.draft);
                     state.creatingNew = true;
                     if (vcUiEnabled()) state.vcScreen = 'provider';
@@ -1837,20 +1119,13 @@ export function mountModelSettings() {
             case 'endpoint-convert': {
                 const suggested = el.getAttribute('data-suggested');
                 if (suggested) {
+                    invalidateProviderRequests();
                     state.draft.baseUrl = suggested;
                     toast('已转换为 Base URL；请检查后保存。', 'info');
                 }
                 render();
                 break;
             }
-            case 'toggle-provider-state':
-                if (el.classList.contains('vc-switch')) {
-                    state.draft.state = el.getAttribute('aria-checked') === 'true' ? 'ENABLED' : 'DISABLED';
-                } else {
-                    state.draft.state = state.draft.state === 'ENABLED' ? 'DISABLED' : 'ENABLED';
-                }
-                render();
-                break;
             case 'discard':
                 discardDrafts();
                 toast('已放弃未保存的修改。', 'info');
@@ -1898,6 +1173,7 @@ export function mountModelSettings() {
                 render();
                 break;
             case 'key-clear-confirm':
+                invalidateProviderRequests();
                 state.draft.clearCredential = true;
                 state.draft.credential = '';
                 if (state.draft.state === 'ENABLED') state.draft.state = 'DISABLED';
@@ -1909,6 +1185,7 @@ export function mountModelSettings() {
                 render();
                 break;
             case 'key-undo':
+                invalidateProviderRequests();
                 state.draft.credential = '';
                 state.draft.clearCredential = false;
                 state.keyEditing = false;
@@ -1917,15 +1194,16 @@ export function mountModelSettings() {
             case 'add-model': {
                 const model = logic.newModelDraft();
                 model.profileKey = `__new_${state.draft.models.length + 1}__`;
+                model.autoProfileKey = true;
                 state.draft.models.push(model);
-                state.selectedProfileKey = model.profileKey;
+                activeModel = model;
                 if (vcUiEnabled()) state.vcScreen = 'model';
                 render();
                 overlay.querySelector('#vcms-m-id')?.focus();
                 break;
             }
             case 'select-model':
-                state.selectedProfileKey = el.getAttribute('data-key');
+                activeModel = state.draft.models[Number(el.getAttribute('data-model-index'))] ?? null;
                 state.cloneFor = null;
                 state.deleteFor = null;
                 if (vcUiEnabled()) state.vcScreen = 'model';
@@ -1936,9 +1214,9 @@ export function mountModelSettings() {
                 render();
                 break;
             case 'delete-model-confirm': {
-                const key = state.deleteFor;
-                state.draft.models = state.draft.models.filter((m) => m.profileKey !== key);
-                if (state.selectedProfileKey === key) state.selectedProfileKey = state.draft.models[0]?.profileKey ?? null;
+                const removed = currentModel();
+                state.draft.models = state.draft.models.filter(model => model !== removed);
+                activeModel = state.draft.models[0] ?? null;
                 state.deleteFor = null;
                 render();
                 break;
@@ -1974,7 +1252,7 @@ export function mountModelSettings() {
                     displayName: c.newDisplayName.trim() || `${m.displayName || m.modelId}（副本）`,
                 });
                 state.draft.models.push(clone);
-                state.selectedProfileKey = clone.profileKey;
+                activeModel = clone;
                 state.cloneFor = null;
                 toast('已创建副本（未保存）；原配置与现有绑定不受影响。', 'info');
                 render();
@@ -2121,18 +1399,25 @@ export function mountModelSettings() {
         }
         const providerId = state.draft.providerId;
         const profileKey = model.profileKey;
+        const request = providerRequest;
         state.toolVerify = { busy: true, profileKey, error: null };
         render();
         try {
             await api.verifyModelToolCalls(providerId, profileKey);
-            state.providers = await api.fetchProviders();
-            selectProvider(providerId, { silent: true });
-            if (state.draft?.models.some((row) => row.profileKey === profileKey)) {
-                state.selectedProfileKey = profileKey;
+            if (request !== providerRequest) return;
+            const providers = await api.fetchProviders();
+            if (request !== providerRequest) return;
+            state.providers = providers;
+            // 核验期间新输入的草稿保留；只刷新仍未编辑的当前配置。
+            if (!logic.draftDiffers(state.draft, state.originalDraft)) {
+                const keepProfileKey = state.selectedProfileKey;
+                selectProvider(providerId, { silent: true });
+                activeModel = state.draft.models.find(model => model.profileKey === keepProfileKey) ?? activeModel;
             }
             state.toolVerify = { busy: false, profileKey, error: null };
             toast('已验证', 'success');
         } catch (err) {
+            if (request !== providerRequest) return;
             state.toolVerify = { busy: false, profileKey, error: null };
             if (err instanceof api.ApiError && err.kind === 'forbidden') {
                 state.reauth = { open: true, busy: false, error: null, password: '', retry: 'verify-tool-calls' };
@@ -2169,13 +1454,16 @@ export function mountModelSettings() {
         }
         state.discoverBusy = true;
         state.discoverError = null;
+        const request = providerRequest;
+        const draft = state.draft;
         render();
         try {
-            const models = await api.discoverProviderModels(state.draft.providerId, {
-                protocol: state.draft.protocol,
-                baseUrl: state.draft.baseUrl.trim(),
-                credential: state.draft.credential || undefined,
+            const models = await api.discoverProviderModels(draft.providerId, {
+                protocol: draft.protocol,
+                baseUrl: draft.baseUrl.trim(),
+                credential: draft.credential || undefined,
             });
+            if (request !== providerRequest) return;
             const found = Array.isArray(models) ? models : [];
             if (!found.length) {
                 state.discoverError = '服务商未返回任何模型；仍可手填模型 ID 新增。';
@@ -2193,13 +1481,14 @@ export function mountModelSettings() {
                     added += 1;
                 }
                 if (added) {
-                    state.selectedProfileKey = state.draft.models[state.draft.models.length - 1]?.profileKey ?? state.selectedProfileKey;
+                    activeModel = state.draft.models.at(-1) ?? currentModel();
                     toast(`拉取完成，新增 ${added} 个模型配置（未保存）。`, 'success');
                 } else {
                     state.discoverError = '拉取到的模型都已存在；仍可手填新增。';
                 }
             }
         } catch (err) {
+            if (request !== providerRequest) return;
             state.discoverError = err?.message ?? '拉取失败，请检查地址与密钥后重试。';
         }
         state.discoverBusy = false;
@@ -2229,13 +1518,17 @@ export function mountModelSettings() {
             return;
         }
         state.check = { busy: true, error: null, result: null };
+        const request = providerRequest;
+        const pending = state.check;
+        const draft = state.draft;
         render();
         try {
-            const found = await api.discoverProviderModels(state.draft.providerId, {
-                protocol: state.draft.protocol,
-                baseUrl: state.draft.baseUrl.trim(),
-                credential: state.draft.credential || undefined,
+            const found = await api.discoverProviderModels(draft.providerId, {
+                protocol: draft.protocol,
+                baseUrl: draft.baseUrl.trim(),
+                credential: draft.credential || undefined,
             });
+            if (request !== providerRequest || state.check !== pending) return;
             const items = Array.isArray(found) ? found : [];
             state.check = {
                 busy: false,
@@ -2246,6 +1539,7 @@ export function mountModelSettings() {
                 },
             };
         } catch (err) {
+            if (request !== providerRequest || state.check !== pending) return;
             state.check = { busy: false, error: err?.message ?? '连接检查失败，请检查地址与密钥后重试。', result: null };
         }
         render();
@@ -2266,7 +1560,7 @@ export function mountModelSettings() {
             added += 1;
         }
         if (added) {
-            state.selectedProfileKey = state.draft.models[state.draft.models.length - 1]?.profileKey ?? state.selectedProfileKey;
+            activeModel = state.draft.models.at(-1) ?? currentModel();
             state.check.result = { ...state.check.result, unrecorded: [] };
             toast(`已加入 ${added} 个模型配置（未保存）；请补齐参数后保存。`, 'success');
         }

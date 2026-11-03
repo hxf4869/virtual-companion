@@ -43,8 +43,8 @@ export async function sceneVoiceSettings(ctx){
         await page.evaluate(()=>{[...document.querySelectorAll('.vc-sheet-done,[data-settings-done]')].filter((el)=>el.getClientRects().length).forEach((el)=>el.click());window.dispatchEvent(new CustomEvent('vc-open-characters'));});
         await page.locator('[data-action="select-template"]').filter({hasText:card.name}).click();
         await page.locator('[data-action="edit-voice"]').click();
-        await page.waitForFunction(()=>document.querySelector('[data-voice-settings="relationship"]') || document.querySelector('.vc-menu[role="menu"]'));
-        if(await page.locator('.vc-menu[role="menu"]').count()){
+        await page.waitForFunction(()=>document.querySelector('[data-voice-settings="relationship"]') || document.querySelector('.vc-menu [role="menu"]'));
+        if(await page.locator('.vc-menu [role="menu"]').count()){
             const rows=await voiceCall(ctx,'GET','/api/v1/relationships');
             const current=rows.find((row)=>String(row.relationshipId)===relationship);
             const choices=rows.filter((row)=>row.characterRef===current.characterRef);

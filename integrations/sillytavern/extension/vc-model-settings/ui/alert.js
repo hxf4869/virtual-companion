@@ -1,102 +1,22 @@
-// 确认框：一句标题、一句后果、取消与红色动作，返回是否确认。
-import { icon } from './icons.js';
+// 保留 Promise<boolean> 入口；AlertDialog 统一管理嵌套、Escape、焦点和卸载时机。
+import { mountAlertView } from '../desktop/build/index.js';
+import { iconSpriteUrl } from './icons.js';
 import { animate } from './motion.js';
-
-let seq = 0;
-
-function focusable(root) {
-    return [...root.querySelectorAll('button, [href], input, select, textarea, [tabindex]')].filter((el) => !el.hasAttribute('disabled') && el.tabIndex >= 0);
-}
-
-export function confirmAlert({ title = '', message = '', action = '删除', cancel = '取消', root, opener } = {}) {
-    const doc = (root || document.body).ownerDocument || document;
-    const host = root || doc.body;
-    const keyTarget = doc.defaultView || doc;
-    const previous = opener || doc.activeElement;
-    return new Promise((resolve) => {
-        const scrim = doc.createElement('div');
-        scrim.className = 'vc-scrim';
-        scrim.style.zIndex = 'var(--vc-z-alert)';
-        const native = !doc.body.classList.contains('vc-ui');
-        const dialog = doc.createElement(native ? 'dialog' : 'div');
-        dialog.className = 'vc-alert vc-glass';
-        dialog.setAttribute('role', 'alertdialog');
-        dialog.setAttribute('aria-modal', 'true');
-        const titleId = `vc-alert-title-${++seq}`;
-        const textId = `vc-alert-text-${seq}`;
-        dialog.setAttribute('aria-labelledby', titleId);
-        dialog.setAttribute('aria-describedby', textId);
-        dialog.innerHTML = `<span class="vc-alert-icon" hidden aria-hidden="true">${icon('circle-alert', { size: 22 })}</span><div class="vc-alert-copy"><h4 id="${titleId}"></h4><p id="${textId}"></p></div><div class="vc-alert-actions"><button type="button" data-vc-cancel>取消</button><button type="button" class="is-danger" data-vc-ok></button></div>`;
-        dialog.querySelector('h4').textContent = title;
-        dialog.querySelector('p').textContent = message;
-        dialog.querySelector('[data-vc-ok]').textContent = action;
-        dialog.querySelector('[data-vc-cancel]').textContent = cancel;
-        const fixed = host === doc.body;
-        scrim.style.position = fixed ? 'fixed' : 'absolute';
-        dialog.style.position = fixed ? 'fixed' : 'absolute';
-        if (!fixed && getComputedStyle(host).position === 'static') host.style.position = 'relative';
-        host.append(scrim, dialog);
-        if (native && typeof dialog.showModal === 'function') {
-            dialog.style.left = '50%'; dialog.style.top = '50%'; dialog.style.margin = '0';
-            dialog.showModal();
-        }
-        let settled = false;
-        const finish = (value) => {
-            if (settled) return;
-            settled = true;
-            keyTarget.removeEventListener('keydown', onKey, true);
-            scrim.classList.remove('is-on');
-            const done = () => {
-                dialog.remove();
-                scrim.remove();
-                resolve(value);
-                if (previous && typeof previous.focus === 'function') previous.focus();
-            };
-            const leaving = animate(dialog, [
-                { opacity: 1, transform: 'translate(-50%, -50%) scale(1)' },
-                { opacity: 0, transform: 'translate(-50%, -50%) scale(0.95)' },
-            ], { duration: 200, easing: 'ease-in' });
-            leaving.finished?.then(done, done);
-        };
-        function onKey(event) {
-            if (!dialog.isConnected) return;
-            if (event.key === 'Escape') {
-                event.preventDefault();
-                event.stopImmediatePropagation();
-                finish(false);
-                return;
-            }
-            if (event.key !== 'Tab') return;
-            event.stopImmediatePropagation();
-            const items = focusable(dialog);
-            if (!items.length) {
-                event.preventDefault();
-                return;
-            }
-            const first = items[0];
-            const last = items[items.length - 1];
-            const active = doc.activeElement;
-            if (event.shiftKey && (active === first || !dialog.contains(active))) {
-                event.preventDefault();
-                last.focus();
-            } else if (!event.shiftKey && (active === last || !dialog.contains(active))) {
-                event.preventDefault();
-                first.focus();
-            }
-        }
-        keyTarget.addEventListener('keydown', onKey, true);
-        scrim.addEventListener('click', () => finish(false));
-        dialog.querySelector('[data-vc-cancel]').addEventListener('click', () => finish(false));
-        dialog.querySelector('[data-vc-ok]').addEventListener('click', () => finish(true));
-        requestAnimationFrame(() => scrim.classList.add('is-on'));
-        animate(dialog, [
-            { opacity: 0, transform: 'translate(-50%, -50%) scale(1.15)' },
-            { opacity: 1, transform: 'translate(-50%, -50%) scale(1)' },
-        ], { duration: 520 });
-        dialog.querySelector('[data-vc-cancel]').focus();
+export function confirmAlert({ title = '', message = '', action = '删除', cancel = '取消', root, opener, owner } = {}) {
+    const host = root || document.body;
+    if (host !== host.ownerDocument.body && getComputedStyle(host).position === 'static') host.style.position = 'relative';
+    const previous = opener || host.ownerDocument.activeElement;
+    return new Promise(resolve => {
+        let value = false, completed = false, opening;
+        const view = mountAlertView({ host, title, message, action, cancel, sprite: iconSpriteUrl(), opener: previous,
+            onChoose(next) { value = next; view.close(); }, onClose() { opening?.cancel(); },
+            onClosed() { completed = true; queueMicrotask(() => { view.unmount(); resolve(value); }); },
+            onDispose() { if (!completed) resolve(false); },
+        }, owner);
+        opening = animate(view.popup, [{ opacity: 0, transform: 'translate(-50%, -50%) scale(1.15)' }, { opacity: 1, transform: 'translate(-50%, -50%) scale(1)' }], { duration: 520 });
+        opening.finished?.then(() => opening.cancel(), () => {});
     });
 }
-
 export function confirmDiscard(options = {}) {
     return confirmAlert({ ...options, title: '放弃更改？', message: '关闭后本次输入将丢失。', cancel: '继续编辑', action: '放弃' });
 }

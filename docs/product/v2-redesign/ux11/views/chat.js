@@ -7,10 +7,13 @@ export async function mount({ shell, source, params, context, desktop }) {
     if (unavailable) return;
     seedTimeline(context, params);
     const { mountChatView } = await import(`${source}/chat-view.js`);
-    mountChatView({ getContext: () => context });
+    const chatView=mountChatView({ getContext: () => context });
+    globalThis.toastr ??= { error() {}, info() {} }; // 原生宿主提示接口，样板不显示外部toast。
+    const { mountChatCompose } = await import(`${source}/chat-compose.js`);
+    const compose=mountChatCompose({ getContext: () => context });
     const [{ mountChatReact }, { mountLightbox }] = await Promise.all([import(`${source}/chat-react.js`), import(`${source}/lightbox.js`)]);
-    mountChatReact({ getContext: () => context });
-    mountLightbox({ getContext: () => context });
+    const react=mountChatReact({ getContext: () => context });
+    const lightbox = mountLightbox({ getContext: () => context });
     const { fetchRelationships } = await import(`${source}/api.js`);
     const { installVoiceInput } = await import(`${source}/voice-input.js`);
     void fetchRelationships().then(rows => {
@@ -23,7 +26,7 @@ export async function mount({ shell, source, params, context, desktop }) {
     if (params.get('panel') === 'closed') panel.setOpen(false, false);
     if (innerWidth < 1180) shell.dataset.list = 'hidden';
     for (const row of shell.querySelectorAll('.vc-convo')) row.setAttribute('data-vc-light', '');
-    window.VC_CHAT_PREVIEW = { panel };
+    window.VC_CHAT_PREVIEW = { panel, context, chatView, compose, react, lightbox };
 }
 // UX-23：合成时间线（昨天 / 今天、成组、一条图片消息、末条为用户消息），send_date 取自 context.chat。每行 [用户, 今天, 时, 分, 文本, 是否 HTML]。
 function seedTimeline(context, params) {

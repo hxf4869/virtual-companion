@@ -1,9 +1,11 @@
+import { renderStoryPage, renderStoryTab } from './story-dom.mjs';
+import { renderInstancePage, renderCharactersTab } from './characters-dom.mjs';
 // F4b：vc-ui 开启时的角色页与剧情页渲染合同。不改旧对话框输出，不启浏览器。
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { UNSAVED_INSTANCE_COPY, renderInstancePage, renderCharactersTab, mountCharactersTab } from '../extension/vc-model-settings/instance-page.js';
-import { STORY_SYNC_PENDING, renderStoryPage, renderStoryTab, mountStoryTab } from '../extension/vc-model-settings/story-page.js';
+import { UNSAVED_INSTANCE_COPY, mountCharactersTab } from '../extension/vc-model-settings/instance-page.js';
+import { STORY_SYNC_PENDING, mountStoryTab } from '../extension/vc-model-settings/story-page.js';
 
 const prefs = {
     replyLength: 'MEDIUM', initiative: 'LOW', humor: 'LIGHT', advicePref: 'ASK_FIRST',

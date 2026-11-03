@@ -1,13 +1,15 @@
+import { renderConversationRow, renderConversationRows } from './conversations-dom.mjs';
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { readFile, mkdtemp, mkdir, writeFile, readdir, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import test from 'node:test';
 import { installMiniDom } from './mini-dom.mjs';
+import { installReactDom } from './react-dom.mjs';
 import {
     chatSnapshotFromContext,
     chatSnapshotsFromRecent,
     conversationRows,
-    renderConversationRow,
-    renderConversationRows,
 } from '../extension/vc-model-settings/conversations.js';
 import {
     CHAT_EMPTY_COPY,
@@ -172,8 +174,8 @@ test('外观偏好读写兜底', () => {
     }), 'spread');
 });
 
-test('新外观默认挂载，仅 off 时不挂载外壳', () => {
-    const doc = installMiniDom();
+test('新外观默认挂载，仅 off 时不挂载外壳', (t) => {
+    const doc = installReactDom(t);
     const before = doc.body.children.length;
     assert.equal(mountShell({ document: doc, storage: { getItem() { return 'off'; }, setItem() {} } }), null);
     assert.equal(doc.body.children.length, before);
@@ -181,7 +183,7 @@ test('新外观默认挂载，仅 off 时不挂载外壳', () => {
     assert.equal(doc.querySelector('#vc-shell-css'), null);
     const opened = mountShell({ document: doc, storage: { getItem() { return null; }, setItem() {} } });
     assert.equal(opened?.id, 'vc-shell');
-    const second = installMiniDom();
+    const second = doc.implementation.createHTMLDocument();
     const thrown = mountShell({ document: second, storage: { getItem() { throw new Error('closed'); } } });
     assert.equal(thrown?.id, 'vc-shell');
 });
@@ -464,15 +466,29 @@ test('外壳用完整聊天目录合并会话，避免只靠当前快照', async
     assert.match(src, /chatsComplete/);
 });
 
-test('走查场景默认不进套件', async () => {
+test('走查场景默认不进套件，产物按实际运行目录隔离并覆盖一套', async (t) => {
     const managed = await readFile(new URL('../scripts/vc-ui-walkthrough.mjs', import.meta.url), 'utf8');
     assert.match(managed, /id: 'vc-ui-walkthrough'[\s\S]{0,240}default: false/);
     assert.match(managed, /run: sceneVcUiWalkthrough/);
     const scene = await readFile(new URL('../scripts/vc-ui-walkthrough.mjs', import.meta.url), 'utf8');
     assert.match(scene, /pinVcUi\(context, 'on'\)/);
-    assert.match(scene, /'\.\.\/dev-managed'\)/);
-    assert.match(scene, /path\.join\(MANAGED, 'artifacts', `walkthrough-/);
     assert.match(scene, /index\.html/);
+    const { vcUiWalkthroughScene } = await import('../scripts/vc-ui-walkthrough.mjs');
+    assert.equal(vcUiWalkthroughScene.default, false);
+    const root = await mkdtemp(path.join(tmpdir(), 'vc-walkthrough-output-'));
+    t.after(() => rm(root, {recursive:true, force:true}));
+    const dir = path.join(root, 'artifacts', 'walkthrough-latest');
+    await mkdir(dir, {recursive:true});
+    await writeFile(path.join(dir, 'old.png'), 'old synthetic output');
+    const sibling = path.join(root, 'keep.txt');
+    await writeFile(sibling, 'keep');
+    const boundary = new Error('stop at synthetic API boundary');
+    await assert.rejects(() => vcUiWalkthroughScene.run({
+        artifactsDir: path.join(root, 'artifacts', 'accept-synthetic'),
+        admin: {async call() {throw boundary;}},
+    }), error => error === boundary);
+    assert.deepEqual(await readdir(dir), [], '只覆盖本运行目录的上一套走查产物');
+    assert.equal(await readFile(sibling, 'utf8'), 'keep', '其他文件不参与清理');
 });
 
 test('页签首次挂载、再次刷新，离开不销毁', async () => {
@@ -669,8 +685,8 @@ function walkCss(css, fn) {
     }
 }
 
-test('侧栏恰好一项 aria-current：设置页与酒馆抽屉只高亮底部设置', () => {
-    const doc = installMiniDom();
+test('侧栏恰好一项 aria-current：设置页与酒馆抽屉只高亮底部设置', (t) => {
+    const doc = installReactDom(t);
     const previous = Object.getOwnPropertyDescriptor(globalThis, 'innerWidth');
     Object.defineProperty(globalThis, 'innerWidth', { value: 1440, configurable: true, writable: true });
     try {
@@ -681,7 +697,7 @@ test('侧栏恰好一项 aria-current：设置页与酒馆抽屉只高亮底部�
             mountDesktopSettings: () => ({ resume() {}, close() {} }),
         });
         const side = shell.querySelector('.vc-sidebar');
-        const current = () => side.querySelectorAll('button').filter((node) => node.getAttribute('aria-current') === 'page');
+        const current = () => [...side.querySelectorAll('button')].filter((node) => node.getAttribute('aria-current') === 'page');
         const only = (expected) => {
             const nodes = current();
             assert.equal(nodes.length, 1);
@@ -692,7 +708,7 @@ test('侧栏恰好一项 aria-current：设置页与酒馆抽屉只高亮底部�
         only({ attr: 'data-nav', value: 'memory' });
         globalThis.dispatchEvent(new CustomEvent('vc-shell-navigate', { detail: { destination: 'settings' } }));
         assert.equal(shell.dataset.settings, 'page');
-        assert.equal(side.querySelectorAll('button').filter((node) => node.hasAttribute('data-nav') && node.hasAttribute('aria-current')).length, 0);
+        assert.equal([...side.querySelectorAll('button')].filter((node) => node.hasAttribute('data-nav') && node.hasAttribute('aria-current')).length, 0);
         assert.equal(current()[0].hasAttribute('data-settings'), true);
         assert.equal(current().length, 1);
         globalThis.dispatchEvent(new CustomEvent('vc-shell-navigate', { detail: { destination: 'characters' } }));
@@ -705,4 +721,50 @@ test('侧栏恰好一项 aria-current：设置页与酒馆抽屉只高亮底部�
         if (previous) Object.defineProperty(globalThis, 'innerWidth', previous);
         else delete globalThis.innerWidth;
     }
+});
+
+test('会话刷新与切换始终按当前宿主绑定高亮，不依赖角色面板回写', async (t) => {
+    const doc = installReactDom(t);
+    const previousWidth = Object.getOwnPropertyDescriptor(globalThis, 'innerWidth');
+    Object.defineProperty(globalThis, 'innerWidth', {value:1440, configurable:true, writable:true});
+    t.after(() => {
+        if (previousWidth) Object.defineProperty(globalThis, 'innerWidth', previousWidth);
+        else delete globalThis.innerWidth;
+    });
+    const handlers = new Map();
+    const context = {name1:'合成用户', chatMetadata:{vc_binding:{relationshipId:'1'}}, characters:[],
+        eventTypes:{CHAT_CHANGED:'CHAT_CHANGED'}, eventSource:{on(type, handler) {handlers.set(type, handler);}}};
+    const rows = [{relationshipId:'1', personaRef:'st-character', companionName:'小满'},
+        {relationshipId:'2', personaRef:'st-character', companionName:'林舟'}];
+    let hold = false, resume;
+    const shell = mountShell({document:doc, storage:{getItem(){return null;}, setItem(){}},
+        getContext:() => context, loadInbox:async () => [],
+        loadRelationships:() => hold ? new Promise(resolve => {resume=resolve;}) : Promise.resolve(rows),
+        loadNative:async () => {throw new Error('synthetic recent directory unavailable');}});
+    const current = () => [...shell.querySelectorAll('.vc-convo[aria-current="true"]')].map(el => el.dataset.relationshipId);
+    const refresh = async () => {handlers.get('CHAT_CHANGED')(); await new Promise(setImmediate);};
+    await new Promise(setImmediate);
+    assert.equal(shell.querySelectorAll('.vc-convo').length, 2);
+    assert.deepEqual(current(), ['1']);
+    await refresh();
+    assert.deepEqual(current(), ['1'], '同一会话列表刷新后保留高亮');
+    context.chatMetadata.vc_binding.relationshipId = '2';
+    await refresh();
+    assert.deepEqual(current(), ['2'], '切换后只高亮当前会话');
+    hold = true;
+    context.chatMetadata.vc_binding.relationshipId = '1';
+    await refresh();
+    hold = false;
+    context.chatMetadata.vc_binding.relationshipId = '2';
+    await refresh();
+    resume(rows); await new Promise(setImmediate);
+    assert.deepEqual(current(), ['2'], '旧列表请求晚到不能恢复旧选中');
+    for (const width of [864, 1440]) {
+        globalThis.innerWidth = width;
+        globalThis.dispatchEvent(new Event('resize'));
+        assert.deepEqual(current(), ['2'], '侧栏收展保持当前选中');
+    }
+    context.chatMetadata.vc_binding.relationshipId = '';
+    await refresh();
+    assert.deepEqual(current(), [], '无会话绑定时清除高亮');
 });

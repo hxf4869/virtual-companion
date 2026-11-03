@@ -1,9 +1,11 @@
+import './react-dom-bootstrap.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { installMiniDom } from './mini-dom.mjs';
+import { installReactDom } from './react-dom.mjs';
 import { ApiError } from '../extension/vc-model-settings/api.js';
-import { executeSensitiveAction, renderAccountShell } from '../extension/vc-model-settings/data-rights.js';
+import { executeSensitiveAction } from '../extension/vc-model-settings/data-rights.js';
+import { accountFixture } from './account-dom.mjs';
 import { ACCOUNT_UI_ROUTES } from '../extension/vc-model-settings/account-ui-routes.js';
 import { ADMIN_BRIDGE_ROUTES } from '../server-plugin/virtual-companion/lib/admin-bridge.js';
 import {
@@ -13,8 +15,6 @@ import {
     consentOutstanding,
     consentStatusText,
     mountConsentGate,
-    renderConsentAccount,
-    renderConsentSheet,
     revokeConsent,
     submitConsentGrants,
 } from '../extension/vc-model-settings/consent.js';
@@ -57,35 +57,41 @@ test('同意正文不超过两句，版本是后端接受的非空字符串', ()
     }
 });
 
-test('同意页只有标题、五项和两个按钮', () => {
-    const html = renderConsentSheet();
-    assert.match(html, /id="vc-consent-title"[^>]*>开始之前</);
-    assert.equal(html.includes('开始之前</h1>'), true);
+test('同意页只有标题、五项和两个按钮', async (t) => {
+    const document = installReactDom(t);
+    const gate = await mountConsentGate({ document, listConsents: async () => [], captureSession: async () => ({}), recordConsent: async body => body });
+    assert.equal(gate.querySelector('#vc-consent-title').textContent, '开始之前');
     for (const item of REQUIRED_CONSENTS) {
-        assert.match(html, new RegExp(`data-consent-toggle="${item.type}"`));
-        assert.match(html, new RegExp(item.label));
-        assert.match(html, new RegExp(`#${item.icon}"`));
-        assert.match(html, new RegExp(`class="vc-consent-copy"[^>]*hidden[^>]*>${item.body}`));
+        const toggle = gate.querySelector(`[data-consent-toggle="${item.type}"]`);
+        assert.ok(toggle); assert.equal(toggle.textContent, item.label);
+        assert.ok(toggle.querySelector(`use[href$="#${item.icon}"]`));
+        const copy = toggle.parentElement.querySelector('.vc-consent-copy'); assert.equal(copy.hidden, true); assert.equal(copy.textContent, item.body);
     }
-    assert.match(html, /data-consent-accept[^>]*>同意并继续</);
-    assert.match(html, /data-consent-logout[^>]*>退出登录</);
-    assert.equal((html.match(/class="vc-consent-copy"/g) || []).length, 5);
-    const scroll = html.slice(html.indexOf('vc-consent-scroll'), html.indexOf('vc-consent-bar'));
-    assert.equal((scroll.match(/<p/g) || []).length, 6);
-    assert.match(html, /data-consent-error[^>]*hidden/);
+    assert.equal(gate.querySelector('[data-consent-accept]').textContent, '同意并继续');
+    assert.equal(gate.querySelector('[data-consent-logout]').textContent, '退出登录');
+    assert.equal(gate.querySelectorAll('.vc-consent-copy').length, 5);
+    assert.equal(gate.querySelector('.vc-consent-scroll').querySelectorAll('p').length, 6);
+    assert.equal(gate.querySelector('[data-consent-error]').hidden, true);
+    gate.querySelector('[data-consent-accept]').click(); await new Promise(resolve => setTimeout(resolve, 0)); assert.equal(gate.isConnected, false);
 });
 
-test('状态行写已同意或未同意，并带上日期', () => {
+test('状态行写已同意或未同意，并带上日期', async (t) => {
     const grantedText = consentStatusText({ granted: true, grantedAt: '2026-10-30T01:02:03Z' });
     assert.match(grantedText, /^已同意 /);
     const revoked = consentStatusText({ granted: false, revokedAt: '2026-10-30T04:05:06Z', grantedAt: '2026-10-30T01:02:03Z' });
     assert.match(revoked, /^未同意 /);
     assert.equal(consentStatusText(null), '未同意');
     assert.equal(consentStatusText({ granted: false }), '未同意');
-    const account = renderConsentAccount([granted('SERVICE_TERMS'), { consentType: 'PRIVACY_POLICY', granted: false, revokedAt: '2026-10-30T04:05:06Z' }]);
-    assert.match(account, /data-consent-type="SERVICE_TERMS"[\s\S]*已同意/);
-    assert.match(account, /data-consent-type="PRIVACY_POLICY"[\s\S]*未同意/);
-    assert.match(account, /data-consent-revoke="SENSITIVE_DATA_PROCESSING"/);
+    const previousFetch = globalThis.fetch;
+    globalThis.fetch = async url => new Response(JSON.stringify(String(url).endsWith('/auth/session') ? { accountId: '1', sessionId: '2' } : String(url).endsWith('/consents') ? [granted('SERVICE_TERMS'), { consentType: 'PRIVACY_POLICY', granted: false, revokedAt: '2026-10-30T04:05:06Z' }] : []), { status: 200 });
+    const { account, root } = await accountFixture(t);
+    try {
+        account.open();
+        for (let i = 0; i < 30 && !root.querySelector('[data-consent-type]'); i++) await new Promise(resolve => setTimeout(resolve, 0));
+        assert.match(root.querySelector('[data-consent-type="SERVICE_TERMS"]').textContent, /已同意/);
+        assert.match(root.querySelector('[data-consent-type="PRIVACY_POLICY"]').textContent, /未同意/);
+        assert.ok(root.querySelector('[data-consent-revoke="SENSITIVE_DATA_PROCESSING"]'));
+    } finally { account.close(); globalThis.fetch = previousFetch; }
 });
 
 test('全部同意成功才算完成；失败留下可重试错误；403 要求重新验证', async () => {
@@ -148,8 +154,8 @@ test('撤回先重新验证，再带当前密码写入未同意', async () => {
     ]);
 });
 
-test('同意层不可关闭，展开正文，失败后留在页面并可重试', async () => {
-    const document = installMiniDom();
+test('同意层不可关闭，展开正文，失败后留在页面并可重试', async (t) => {
+    const document = installReactDom(t);
     const seen = [];
     let failOnce = true;
     const logout = [];
@@ -169,11 +175,11 @@ test('同意层不可关闭，展开正文，失败后留在页面并可重试',
         assign: (url) => { logout.push(url); },
     });
     assert.equal(gate.open, true);
-    const cancel = gate.dispatch('cancel');
+    const cancel = new document.defaultView.Event('cancel', { cancelable: true }); gate.dispatchEvent(cancel);
     assert.equal(cancel.defaultPrevented, true);
     assert.equal(gate.open, true);
     const toggle = document.querySelector('[data-consent-toggle="AI_CONTENT_NOTICE"]');
-    toggle.click();
+    toggle.click(); await new Promise(resolve => setTimeout(resolve, 0));
     const copy = toggle.parentNode.querySelector('.vc-consent-copy');
     assert.equal(copy.hidden, false);
     assert.equal(toggle.getAttribute('aria-expanded'), 'true');
@@ -197,7 +203,7 @@ test('同意层不可关闭，展开正文，失败后留在页面并可重试',
     assert.equal(again, null);
     assert.equal(document.querySelector('#vc-consent'), null);
 
-    const reauthDoc = installMiniDom();
+    const reauthDoc = document;
     let blocked = true;
     const reauthSeen = [];
     const reauthGate = await mountConsentGate({
@@ -217,7 +223,7 @@ test('同意层不可关闭，展开正文，失败后留在页面并可重试',
     assert.equal(reauthDoc.querySelector('[data-consent-reauth]').hidden, false);
     const input = reauthDoc.querySelector('[data-consent-reauth-password]');
     input.value = 'current-secret';
-    reauthDoc.querySelector('[data-consent-reauth]').dispatch('submit');
+    reauthDoc.querySelector('[data-consent-reauth]').dispatchEvent(new document.defaultView.Event('submit', { bubbles: true, cancelable: true }));
     await new Promise((resolve) => setTimeout(resolve, 0));
     assert.equal(reauthSeen[0], 'current-secret');
     assert.deepEqual(reauthSeen.slice(1), ['recorded', 'recorded', 'recorded', 'recorded', 'recorded']);
@@ -225,7 +231,7 @@ test('同意层不可关闭，展开正文，失败后留在页面并可重试',
     assert.equal(reauthGate.open, false);
 
     const loggedOut = await mountConsentGate({
-        document: installMiniDom(),
+        document, captureSession: async () => ({}), recordConsent: async body => body,
         listConsents: async () => [],
         logout: async () => { logout.push('bye'); },
         assign: (url) => { logout.push(url); },
@@ -233,20 +239,17 @@ test('同意层不可关闭，展开正文，失败后留在页面并可重试',
     loggedOut.querySelector('[data-consent-logout]').click();
     await new Promise((resolve) => setTimeout(resolve, 0));
     assert.deepEqual(logout, ['bye', '/auth/']);
+    loggedOut.querySelector('[data-consent-accept]').click(); await new Promise(resolve => setTimeout(resolve, 0));
 });
 
-test('账户页有隐私与同意入口，样式与路由只覆盖 consents', async () => {
-    const html = renderAccountShell();
+test('账户页有隐私与同意入口，样式与路由只覆盖 consents', async (t) => {
+    const { root, document, account } = await accountFixture(t, { vc: true });
+    const html = root.innerHTML;
     assert.match(html, /aria-label="隐私与同意"/);
     assert.match(html, /data-consent-account-list/);
-    const document = installMiniDom();
-    document.body.classList.add('vc-ui');
-    const { mountDataRights } = await import('../extension/vc-model-settings/data-rights.js');
     const previousFetch = globalThis.fetch;
     globalThis.fetch = async () => { throw new Error('offline'); };
-    let account;
     try {
-        account = mountDataRights();
         account.open();
         assert.match(document.body.innerHTML, /data-vc-account-go="consent"/);
         assert.match(document.body.innerHTML, /隐私与同意/);
@@ -287,5 +290,7 @@ test('账户页有隐私与同意入口，样式与路由只覆盖 consents', as
     const consentJs = await readFile(new URL('../extension/vc-model-settings/consent.js', import.meta.url), 'utf8');
     assert.equal(consentJs.includes('selectDetent'), false);
     assert.equal(consentJs.includes('openSheet'), false);
-    assert.match(consentJs, /preventDefault/);
+    const gateComponent = await readFile(new URL('../desktop-ui/src/features/settings/ConsentGate.tsx', import.meta.url), 'utf8');
+    assert.match(gateComponent, /preventDefault/);
+    assert.match(gateComponent, /details.cancel\(\)/);
 });

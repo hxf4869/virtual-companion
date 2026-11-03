@@ -814,6 +814,8 @@ export function cloneModelDraft(source, { profileKey, displayName }) {
         profileKey,
         displayName,
         ledgerPrice: '',
+        // 核验属于原 profile；在草稿阶段就降级，保持展示、校验与 PUT 语义一致。
+        capabilities: Object.fromEntries(Object.entries(source.capabilities ?? {}).map(([key, value]) => [key, value === 'VERIFIED' ? 'DECLARED' : value])),
         boundPurposes: [],
         updatedAt: null,
         editedSubs: new Set(['capabilities', 'reasoningLevels', 'generationParams', 'pricing']),

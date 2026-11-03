@@ -1,18 +1,17 @@
+import { bootstrapDocument } from './react-dom-bootstrap.mjs';
+import { renderDiary } from './memory-dom.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as api from '../extension/vc-model-settings/api.js';
-import {
-    DIARY_FONT_KEY,
+import { DIARY_FONT_KEY,
     createDiaryPage,
     diaryDayTitle,
     ensureHandwriting,
     monthDays,
     monthLabel,
     readDiaryFont,
-    renderDiary,
     shiftMonth,
-    writeDiaryFont,
-} from '../extension/vc-model-settings/diary-page.js';
+    writeDiaryFont } from '../extension/vc-model-settings/diary-page.js';
 
 const realFetch = globalThis.fetch;
 const realDocument = globalThis.document;
@@ -20,7 +19,8 @@ let calls;
 const entry = (day, extra = {}) => ({ entryId: `e${day}`, relationshipId: '11', day, body: `这一天（${day}）的日记`, vibe: '开心', moments: ['看展计划', '晚霞'], createdAt: `${day}T22:00:00+08:00`, ...extra });
 test.beforeEach(() => {
     calls = [];
-    globalThis.document = { cookie: 'vc_csrf=go-token' };
+    bootstrapDocument.cookie = 'vc_csrf=go-token';
+    globalThis.document = bootstrapDocument;
     api.setStHeadersProvider(() => ({}));
     globalThis.fetch = async (url) => {
         calls.push(String(url));

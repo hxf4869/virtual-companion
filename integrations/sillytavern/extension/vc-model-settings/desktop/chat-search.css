@@ -3,7 +3,7 @@
 html[data-vc-layout="desktop"] ::highlight(vc-search) { background-color: var(--vc-search-mark); color: var(--vc-search-mark-ink); }
 html[data-vc-layout="desktop"] ::highlight(vc-search-current) { background-color: var(--vc-search-mark-current); color: var(--vc-search-mark-ink); }
 
-html[data-vc-layout="desktop"] body.vc-ui #vc-shell .vc-shell-chat[data-search="open"] > .vc-navbar > :not(.vc-chat-search) { display: none; }
+html[data-vc-layout="desktop"] body.vc-ui #vc-shell .vc-shell-chat[data-search="open"] > .vc-navbar > :not(.vc-chat-search):not(.vc-chat-toolbar-views) { display: none; }
 html[data-vc-layout="desktop"] body.vc-ui .vc-chat-search { display: flex; flex: 1; align-items: center; gap: var(--vc-space-xs); min-width: 0; }
 html[data-vc-layout="desktop"] body.vc-ui .vc-chat-search[hidden] { display: none; }
 html[data-vc-layout="desktop"] body.vc-ui .vc-chat-search-field { display: flex; flex: 1; align-items: center; gap: var(--vc-space-xs); min-width: 0; height: 40px; padding: 0 var(--vc-space-md); border-radius: var(--vc-radius-pill); background: var(--vc-fill); box-shadow: var(--vc-shadow-inset-edge); color: var(--vc-ink-2); }

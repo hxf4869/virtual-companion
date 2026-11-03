@@ -30,8 +30,8 @@
 
     const slot = document.getElementById('slot');
     const { renderOnboarding } = await import('../onboarding.js');
-    const { buildCharacterCard, openCompanionStyle, renderPersonaEditor } = await import('../persona.js');
-    const { readProactivePolicy, renderInboxTab } = await import('../inbox-page.js');
+    const { buildCharacterCard, openCompanionStyle } = await import('../persona.js');
+    const { readProactivePolicy, inboxViewProps } = await import('../inbox-page.js');
 
     if (pageName === 'onboarding') {
       const host = document.createElement('section');
@@ -46,13 +46,15 @@
       const card = buildCharacterCard({ name: '小满', relation: '好朋友', gender: '女生' });
       const screen = document.createElement('section');
       screen.className = 'vc-screen';
-      screen.innerHTML = renderPersonaEditor({
+      const { mountPersonaView } = await import('../desktop/build/index.js');
+      const { iconSpriteUrl } = await import('../ui/icons.js');
+      mountPersonaView(screen, { busy: false, error: '', sprite: iconSpriteUrl(), back() {}, save() {}, fields: {
         description: card.description,
         personality: card.personality,
         scenario: card.scenario,
         first_mes: card.first_mes,
         mes_example: card.mes_example,
-      });
+      } });
       slot.append(screen);
     } else if (pageName === 'proactive') {
       const draft = readProactivePolicy({
@@ -69,7 +71,7 @@
       }, '11');
       const inbox = document.createElement('div');
       inbox.className = 'vc-inbox-tab';
-      inbox.innerHTML = renderInboxTab({
+      const state = {
         loading: false,
         error: '',
         relationships: [{ relationshipId: '11', name: '小满' }],
@@ -87,7 +89,12 @@
         cancelAsk: null,
         reauth: { open: false },
         busy: false,
-      });
+      };
+      const { mountInboxListView } = await import('../desktop/build/index.js');
+      mountInboxListView(inbox, inboxViewProps(state, inbox, {
+        action() {}, policy() {}, channel() {}, relationship() {}, filter() {}, mode() {},
+        readSecret: () => '', voice: () => null, authenticate() {}, layerDismiss() {}, returnFocus: () => null,
+      }));
       slot.append(inbox);
     }
     document.body.dataset.vcReady = '1';

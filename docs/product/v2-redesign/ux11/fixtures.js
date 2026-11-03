@@ -1,7 +1,7 @@
 // 合成样板数据；不读取部署配置、真实账户或现有选择记录。
 export const voiceSettings={revision:1,kokoroEnabled:true,cosyVoiceEnabled:true,asrEnabled:true,kokoroTimeoutSeconds:60,cosyVoiceTimeoutSeconds:300,asrTimeoutSeconds:30,dailyChatLimit:60,dailyProactiveLimit:8,maxRecordingSeconds:60,voiceFrequency:'STANDARD',cosyVoiceInstructions:{morning:'自然、轻松地说早安。',night:'放轻声音，像熟悉的朋友。',care:'温和一点，认真听对方说话。',share:'像聊天一样分享生活。',default:'用自然、清楚的语气说话。'},proactiveVoiceRates:{morning:.3,night:.6,care:.4,share:.2,default:.3},kokoroMoodSpeeds:{开心:1.05,黏人:.95,好奇:1.05,得意:1.05,懒洋洋:.9,有点累:.9,想独处:.95,有点烦:1,困:.85}};
 export const engines={tts:[{engine:'kokoro',configured:true,enabled:true,healthy:true,voices:[{id:'zf_001',name:'温和女声',gender:'FEMALE'},{id:'zm_010',name:'自然男声',gender:'MALE'}]},{engine:'cosyvoice',configured:true,enabled:true,healthy:true,voices:[{id:'default',name:'默认',gender:'FEMALE'}]}],asr:{configured:true,enabled:true,healthy:true}};
-export const relationship={relationshipId:'11',companionName:'小满 · 日常',gender:'FEMALE',speed:1.1,kokoroVoice:'zf_001',cosyVoice:null,voiceFrequency:null,proactiveEngine:'kokoro',proactiveVoice:true};
+export const relationship={replyLength:'MEDIUM',initiative:'LOW',humor:'LIGHT',advicePref:'ASK_FIRST',memoryShareScope:'RELATIONSHIP',avatarRef:'AVATAR_FEMALE_01',userAddressAs:null,remindersAllowed:true,avoidTopics:[],relationshipId:'11',companionName:'小满 · 日常',gender:'FEMALE',speed:1.1,kokoroVoice:'zf_001',cosyVoice:null,voiceFrequency:null,proactiveEngine:'kokoro',proactiveVoice:true};
 const model={profileKey:'chat',modelId:'synthetic-chat',displayName:'日常聊天',contextWindowTokens:32768,maxOutputTokens:2048,state:'ENABLED',reasoningLevels:['low','medium','high'],generationParams:{temperature:.7,topP:.9,reasoningEffort:'medium'},capabilities:{imageInput:'DECLARED',videoInput:'UNKNOWN',pdfInput:'DECLARED',structuredOutput:'DECLARED',toolCalls:'VERIFIED',nativeWebSearch:'UNKNOWN',systemMessage:'DECLARED',temperature:'DECLARED',topP:'DECLARED'},pricing:{currency:'CNY',inputPerMillionTokens:1.2,outputPerMillionTokens:4.8},ledgerPrice:'ACTIVE',boundPurposes:['FOREGROUND_CHAT','BACKGROUND_GREETINGS']};
 export const providers=[{providerId:'synthetic-primary',displayName:'日常模型服务',protocol:'OPENAI_CHAT_COMPLETIONS',baseUrl:'https://api.example.test/v1',endpointUrl:'https://api.example.test/v1/chat/completions',state:'ENABLED',revision:1,credentialConfigured:true,models:[model]},{providerId:'synthetic-secondary',displayName:'备用模型服务',protocol:'OPENAI_RESPONSES',baseUrl:'https://backup.example.test/v1',endpointUrl:'https://backup.example.test/v1/responses',state:'DISABLED',revision:1,credentialConfigured:false,models:[{...structuredClone(model),profileKey:'backup',modelId:'synthetic-backup',displayName:'备用配置',boundPurposes:[]}]}];
 export const purposes=['FOREGROUND_CHAT','MEMORY_EXTRACTION_DEDUP_SUMMARY','BACKGROUND_GREETINGS','STORY_DIRECTOR','NPC_DIALOGUE','EMBEDDING'].map(purpose=>({purpose,providerId:purpose==='EMBEDDING'?null:'synthetic-primary',profileKey:purpose==='EMBEDDING'?null:'chat',state:purpose==='EMBEDDING'?'DISABLED':'ENABLED',revision:1,status:purpose==='EMBEDDING'?'PENDING_CONFIGURATION':'READY'}));
@@ -30,6 +30,7 @@ export const previewRun={conversationId:'21',runId:'31',branchId:'41',caseId:'ra
 export const previewStoryView={conversationId:'21',runId:'31',branchId:'41',actorId:'player',worldVersion:1,publicLore:{setting:'雨夜，小旅馆的一枚展柜怀表失踪。玩家受邀调查。',locations:['lobby','kitchen','workshop'],knownEvent:'20:20 老板发现怀表不见了。'},knowledge:[{id:'empty-case',fact:'大堂展柜是空的'}],events:[{eventId:'301',worldVersion:1,body:{clueName:'钥匙借用记录',text:'林岚出示了借用记录',phase:'investigation'}}],participants:storyPeople.filter(p=>p.actorId!=='player')};
 export function installSyntheticAPI(){
  const originalFetch=window.fetch.bind(window);window.__previewRequests=[];
+ const localRerank={configured:true,enabled:true,healthy:true,revision:1};
  window.fetch=async(input,init={})=>{
   const url=new URL(typeof input==='string'?input:input.url,location.href);if(url.origin!==location.origin)throw new Error('样板仅允许本机资源');
   if(!url.pathname.startsWith('/api/'))return originalFetch(input,init);
@@ -47,7 +48,7 @@ export function installSyntheticAPI(){
   else if(path.endsWith('/st/bindings')&&method==='POST'){const body=JSON.parse(init.body),id=String(Math.max(...previewRelationships.map(row=>Number(row.relationshipId)))+1);previewRelationships.push({...relationship,...body,relationshipId:id,personaRef:'st-character',companionName:body.displayName});data={relationshipId:id,conversationId:String(300+Number(id))};}
   else if(path.endsWith('/relationships'))data=contentView?(scenario==='empty'?[]:previewRelationships):[relationship];
   else if(/\/relationships\/\d+$/.test(path)&&method==='PATCH'){data=contentView?previewRelationships.find(row=>row.relationshipId===path.split('/').at(-1)):relationship;Object.assign(data,JSON.parse(init.body));}
-  else if(path.endsWith('/proactive-policy')){if(method==='PUT')Object.assign(previewPolicy,JSON.parse(init.body));data=previewPolicy;}
+  else if(path.endsWith('/proactive-policy')){const id=path.split('/').at(-2);window.__previewPolicies??={'11':previewPolicy};data=window.__previewPolicies[id]??={...structuredClone(previewPolicy),relationshipId:id};if(method==='PUT')Object.assign(data,JSON.parse(init.body));}
   else if(path.endsWith('/companion-state'))data={mood:{vibe:'好奇'}};
   else if(path.endsWith('/follow-ups'))data=scenario==='empty'?[]:previewFollowUps;
   else if(path.includes('/follow-ups/')&&path.endsWith('/cancel')){data=previewFollowUps[0];data.status='CANCELLED';}
@@ -57,19 +58,22 @@ export function installSyntheticAPI(){
   else if(path.endsWith('/evidence')){const id=path.split('/').at(-2),i=previewMemories.findIndex(r=>r.memoryId===id);data=params.get('section')&&i>=0?[{evidenceId:id,sourceRef:`st:synthetic-chat:${20+i}:c1:1:1`,chatDisplayName:'合成会话',messageId:String(20+i),revision:1,sourceTimestamp:memoryMoments[i%memoryMoments.length].toISOString(),sourceTimezone:'Asia/Shanghai',status:'VALID',excerpt:memoryExcerpts[i%memoryExcerpts.length]}]:[];}
   else if(/\/memories\/\d+$/.test(path)){data=previewMemories.find(row=>row.memoryId===path.split('/').at(-1));if(scenario==='long'&&method==='GET')data={...data,summary:data.summary.repeat(20)};if(method==='PATCH'){const body=JSON.parse(init.body),previous=data;data={...previous,memoryId:String(Math.max(...previewMemories.map(row=>Number(row.memoryId)))+1),summary:body.summary,version:previous.version+1};Object.assign(previous,{lifecycle:'SUPERSEDED',recallEligible:false,supersededByMemoryId:data.memoryId});previewMemories.push(data);}if(method==='DELETE'){Object.assign(data,{lifecycle:'FORGOTTEN',recallEligible:false,cleanup:{state:'DONE'}});data={cleanup:{state:'DONE'}};}}
   else if(path.endsWith('/st/memory/recall'))data={items:previewMemories.slice(0,3),memories:previewMemories.slice(0,3)};
-  else if(path.endsWith('/notification-channels')||path.endsWith('/notification-deliveries')||path.endsWith('/auth/sessions')||path.endsWith('/auth/trusted-devices')||path.endsWith('/consents'))data=[];
+  else if(path.endsWith('/notification-channels')&&method==='PUT'){const body=JSON.parse(init.body);data={...body,channelId:body.channel==='EMAIL'?'71':'72'};delete data.credential;window.__previewChannels??=[];window.__previewChannels=window.__previewChannels.filter(row=>row.channel!==body.channel).concat(data);}
+  else if(path.endsWith('/notification-channels'))data=window.__previewChannels||[];
+  else if(path.endsWith('/notification-deliveries')||path.endsWith('/auth/sessions')||path.endsWith('/auth/trusted-devices')||path.endsWith('/consents'))data=[];
   else if(path.endsWith('/voice/usage'))data={storageBytes:0};
   else if(path.endsWith('/story/runs'))data=previewRun;
   else if(path.includes('/actors/player/view'))data=scenario==='long'?{...previewStoryView,publicLore:{...previewStoryView.publicLore,setting:previewStoryView.publicLore.setting.repeat(40)},events:previewStoryView.events.map(row=>({...row,body:{...row.body,text:row.body.text.repeat(30)}}))}:previewStoryView;
   else if(path.endsWith('/projections'))data=[];
   else if(path.endsWith('/rewind')){const version=JSON.parse(init.body).toWorldVersion;Object.assign(previewRun,{branchId:'42',worldVersion:version,stage:'investigation'});Object.assign(previewStoryView,{branchId:'42',worldVersion:version,events:previewStoryView.events.filter(event=>event.worldVersion<=version)});data={branchId:'42',worldVersion:version,stage:'investigation'};}
 
+  else if(/\/inbox\/[^/]+\/read$/.test(path)){const row=previewInbox.find(row=>row.eventId===path.split('/').at(-2));data={...row,conversationId:'21',intent:'BODY',read:true};row.read=true;}
   else if(path.endsWith('/inbox'))data=contentView&&scenario!=='empty'?(params.get('messages')==='1'?previewInbox.map(row=>({...row,conversationId:'21',intent:'BODY',body:scenario==='long'?row.body.repeat(50):row.body,...(params.get('voice')==='1'?{voice:{clipId:'701',status:'ready',durationMs:3000}}:{})})):previewInbox):[];
   else if(path.endsWith('/admin/providers')&&method==='GET')data=scenario==='empty'?[]:scenario==='long'?providers.map(row=>({...row,displayName:row.displayName.repeat(8),models:row.models.map(model=>({...model,displayName:model.displayName.repeat(8)}))})):providers;
   else if(path.endsWith('/admin/model-purposes')&&method==='GET')data=scenario==='empty'?purposes.map(row=>({...row,providerId:null,profileKey:null,status:'PENDING_CONFIGURATION'})):purposes;
   else if(path.endsWith('/admin/usage'))data=[];
-  else if(path.endsWith('/admin/local-models'))data={embedding:{configured:true,enabled:true,healthy:true},rerank:{configured:true,enabled:true,healthy:true,revision:1}};
-  else if(path.endsWith('/admin/local-models/rerank'))data={configured:true,enabled:true,healthy:true,revision:2};
+  else if(path.endsWith('/admin/local-models'))data={embedding:{configured:true,enabled:true,healthy:true},rerank:localRerank};
+  else if(path.endsWith('/admin/local-models/rerank')){if(method==='PUT')Object.assign(localRerank,{enabled:JSON.parse(init.body).enabled,revision:localRerank.revision+1});data=localRerank;}
   else if(/\/memories\/\d+\/pin$/.test(path)){const row=previewMemories.find(r=>r.memoryId===path.split('/').at(-2));row.pinnedAt=method==='PUT'?new Date().toISOString():null;data=timelineRow(row);}
   else if(path.endsWith('/incognito-pref')){if(method==='PUT')previewIncognito.defaultIncognito=JSON.parse(init.body).defaultIncognito;data=previewIncognito;}
   else if(path.endsWith('/diary'))data={month:url.searchParams.get('month'),items:previewDiary.filter(row=>row.day.startsWith(url.searchParams.get('month')))};
@@ -81,7 +85,9 @@ export function installSyntheticAPI(){
   else if(path.includes('/admin/providers/')&&['PUT','POST'].includes(method)){
    const id=decodeURIComponent(path.split('/admin/providers/')[1].split('/')[0]);const body=JSON.parse(init.body||'{}');let provider=providers.find(p=>p.providerId===id);
    if(!provider){provider={providerId:id,models:[],revision:0};providers.push(provider)}
-   Object.assign(provider,body,{revision:provider.revision+1});delete provider.expectedRevision;delete provider.credential;data=provider;
+   const previous=provider.models;
+   if(body.models)body.models=body.models.map(row=>({...previous.find(old=>old.profileKey===row.profileKey),...row}));
+   Object.assign(provider,body,{revision:provider.revision+1});if(body.credential)provider.credentialConfigured=true;if(body.clearCredential)provider.credentialConfigured=false;delete provider.expectedRevision;delete provider.credential;delete provider.clearCredential;data=provider;
   }else if(path.includes('/admin/model-purposes/')&&method==='PUT'){
    const purpose=decodeURIComponent(path.split('/').at(-1)),body=JSON.parse(init.body||'{}'),row=purposes.find(p=>p.purpose===purpose);Object.assign(row,body,{revision:row.revision+1});delete row.expectedRevision;data=row;
   }else return new Response(JSON.stringify({code:'PREVIEW_UNAVAILABLE',message:'此动作仅展示样式。'}),{status:409,headers:{'Content-Type':'application/json'}});

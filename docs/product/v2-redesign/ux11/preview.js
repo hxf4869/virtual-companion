@@ -24,6 +24,14 @@ const context={characters:[],chatMetadata:{},chat:[],name1:'合成验收用户'}
 if((['characters','memory','inbox','story'].includes(view)||view==='chat'&&loadDesktop&&innerWidth>=744)&&params.get('state')!=='empty')context.characters=[{name:'小满',avatar:'',data:{extensions:{vc_character_ref:'synthetic-xiaoman'}}},{name:'林舟',avatar:'',data:{extensions:{vc_character_ref:'synthetic-linzhou'}}}];
 if(view==='characters'&&params.get('state')==='long')for(const card of context.characters)card.description='这是用于长内容验收的合成角色介绍。'.repeat(40);
 if(view==='story')context.chatMetadata={vc_binding:{conversationId:'21',relationshipId:'11',mode:'STORY',chatIdentity:'synthetic-story-chat'}};
+if(view==='chat') {
+ const listeners=new Map();
+ context.eventTypes=Object.fromEntries(['CHAT_CHANGED','MESSAGE_SENT','MESSAGE_RECEIVED','MESSAGE_EDITED','MESSAGE_DELETED','MESSAGE_SWIPED','USER_MESSAGE_RENDERED','CHARACTER_MESSAGE_RENDERED','GENERATION_STARTED','GENERATION_ENDED','GENERATION_STOPPED','GENERATION_AFTER_COMMANDS','CHAT_LOADED'].map(key=>[key,key]));
+ context.eventSource={on(type,fn){if(!listeners.has(type))listeners.set(type,new Set());listeners.get(type).add(fn);},removeListener(type,fn){listeners.get(type)?.delete(fn);},async emit(type,...args){for(const fn of [...(listeners.get(type)||[])])await fn(...args);}};
+ context.chatId='synthetic-chat'; context.getCurrentChatId=()=>context.chatId;
+ context.saveChat=async()=>{}; context.saveMetadata=()=>{}; context.saveSettingsDebounced=()=>{};
+ context.setExtensionPrompt=(key,value)=>{(context.extensionPrompts??={})[key]={value};};
+}
 if(view==='chat'){context.name2='小满';context.characterId=0;context.chatMetadata={vc_binding:{relationshipId:'11'}};if(loadDesktop&&innerWidth>=744)context.extensionPrompts=previewPrompts;}
 const {mountShell,registerShellTabs}=await import(`${source}/shell.js`);
 const mounts={characters:'mountCharactersTab',memory:'mountMemoryTab',inbox:'mountInboxTab',story:'mountStoryTab'};
@@ -52,7 +60,7 @@ for(const key of Object.keys(mounts))registry[key]=(container,args)=>{
  const result=(async()=>{const module=await viewModule(key);if(module)return module.mount({container,args,source,params,context});const mod=await import(`${source}/${files[key]}.js`);return mod[mounts[key]](container,args);})();pendingMounts.push(result);return {refresh(){void result.then(handle=>handle?.refresh?.());},destroy(){void result.then(handle=>handle?.destroy?.());}};
 };
 registerShellTabs(registry);
-const shell=mountShell({getContext:()=>context,loadRelationships:()=>api.fetchRelationships(),loadInbox:async()=>[],loadNative:async()=>({})});
+const shell=mountShell({navigationTitles:view==='components'?{characters:'组件'}:{},getContext:()=>context,loadRelationships:()=>api.fetchRelationships(),loadInbox:async()=>window.VC_PREVIEW_INBOX||[],loadNative:async()=>({})});
 let desktop;
 if(loadDesktop){
  const {mountDesktopTheme}=await import(`${source}/desktop/theme.js`);mountDesktopTheme({shell,getContext:()=>context});
@@ -64,7 +72,6 @@ const selected=routes[view]||view;
 shell.querySelector(`.vc-sidebar [data-nav="${selected}"]`)?.click();
 if(view==='chat'&&!modules.chat)await shell.openConversation({relationshipId:'11',name:'小满',instanceName:'日常'});
 if(view==='chat'&&modules.chat)await modules.chat.mount({shell,source,params,context,desktop});
-if(view==='components'){shell.querySelector('[data-page="characters"] .vc-nav-title').textContent='组件';}
 let model;
 if(view==='model'){
  const {mountModelSettings}=await import(`${source}/page.js`);model=mountModelSettings();model.open();
@@ -96,7 +103,6 @@ document.addEventListener('click',async e=>{
  }
 });
 if(loadDesktop){
- for(const node of shell.querySelectorAll('.vc-side-link'))node.setAttribute('data-vc-light','');
  const {bindPointerLights}=await import(`${source}/desktop/pointer-light.js`);bindPointerLights(document);
 }
 await Promise.all(pendingMounts);

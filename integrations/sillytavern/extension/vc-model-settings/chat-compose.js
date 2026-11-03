@@ -2,13 +2,14 @@
 // 只在 html[data-vc-layout="desktop"] 生效；手机的长按抬起、宿主选项菜单保持原样。
 // 所有动作转发宿主原生入口；不往 .mes_text 子树和 #chat 插节点。
 import { createFavorite, createReminder } from './api.js';
-import { commitHostDelete } from './chat-view.js';
+import { commitHostDelete, setMessageRetry, readMessageAloud } from './chat-view.js';
 import { glyph } from './favorites-page.js';
 import { confirmAlert } from './ui/alert.js';
-import { icon } from './ui/icons.js';
+import { iconSpriteUrl } from './ui/icons.js';
+import { mountQuoteView } from './desktop/build/index.js';
 import { popMenu } from './ui/menu.js';
 import { showToast } from './ui/toast.js';
-import { chatVoiceAvailable, readReplyAloud } from './voice-chat.js';
+import { chatVoiceAvailable } from './voice-chat.js';
 
 export const QUOTE_MAX = 30;
 export const SLOW_MS = 60000;
@@ -166,7 +167,7 @@ export function mountChatCompose({ getContext, document: doc = document } = {}) 
     const generating = () => doc.body.getAttribute('data-generating') === 'true';
     const box = () => doc.querySelector('#send_textarea');
 
-    let quote = null;
+    let quote = null, quoteView = null, quoteBar = null;
     let pendingDraft = null;
     let draftTimer = 0;
     let currentId = chatId();
@@ -243,20 +244,15 @@ export function mountChatCompose({ getContext, document: doc = document } = {}) 
 
     // ---- 引用 ----
     function paintQuote() {
-        let bar = doc.querySelector('#vc-quote-bar');
-        if (!quote) { bar?.remove(); return; }
-        if (!bar) {
-            const form = doc.querySelector('#send_form');
-            const parent = form?.parentElement;
+        if (!quote) { quoteView?.unmount(); quoteView = null; quoteBar?.remove(); quoteBar = null; return; }
+        if (!quoteBar?.isConnected) {
+            const form = doc.querySelector('#send_form'), parent = form?.parentElement;
             if (!parent) return;
-            bar = doc.createElement('div');
-            bar.id = 'vc-quote-bar';
-            bar.innerHTML = `<span class="vc-quote-label">${COPY.quote}</span><span class="vc-quote-text"></span><button type="button" class="vc-quote-close" aria-label="关闭引用">${icon('x', { size: 16 })}</button>`;
-            bar.querySelector('.vc-quote-close').addEventListener('click', () => { setQuote(null); box()?.focus(); });
-            parent.insertBefore(bar, form);
+            quoteView?.unmount(); quoteView = null;
+            quoteBar = doc.createElement('div'); quoteBar.id = 'vc-quote-bar'; parent.insertBefore(quoteBar, form);
         }
-        const who = quote.name ? `${quote.name}：` : '';
-        bar.querySelector('.vc-quote-text').textContent = `${who}${quoteSummary(quote.text)}`;
+        const props = { label: COPY.quote, text: `${quote.name ? `${quote.name}：` : ''}${quoteSummary(quote.text)}`, sprite: iconSpriteUrl(), close() { setQuote(null); box()?.focus(); } };
+        if (quoteView) quoteView.update(props); else quoteView = mountQuoteView(quoteBar, props);
     }
 
     function setQuote(next) {
@@ -367,7 +363,7 @@ export function mountChatCompose({ getContext, document: doc = document } = {}) 
             ...reminderChoices().map((choice) => ({ label: choice.label, run: () => { void remindMessage(mes, choice.at); } })),
             { label: COPY.remindPick, run: () => pickReminderTime(mes, rect) },
         ];
-        popMenu(anchor, items, { below: true }).menu.classList.add('vc-compose-menu');
+        popMenu(anchor, items, { below: true, className: 'vc-compose-menu' });
     }
 
     const ACTIONS = {
@@ -375,7 +371,7 @@ export function mountChatCompose({ getContext, document: doc = document } = {}) 
         remind: { label: COPY.remind, icon: 'chevron-right', run: () => {} },
         quote: { label: COPY.quote, icon: 'quote', run: (mes) => { setQuote({ name: speakerName(mes), text: messageText(mes) }); box()?.focus(); } },
         copy: { label: COPY.copy, icon: 'copy', run: copyMessage },
-        read: { label: COPY.read, icon: 'volume-2', run: (mes) => { void readReplyAloud(Number(mes.getAttribute('mesid')), mes.querySelector('[data-vc-act="read"]')); } },
+        read: { label: COPY.read, icon: 'volume-2', run: (mes) => { void readMessageAloud(mes); } },
         edit: { label: COPY.edit, icon: 'pencil', run: (mes) => mes.querySelector('.mes_edit')?.click() },
         regenerate: { label: COPY.regenerate, icon: 'refresh-cw', run: regenerate },
         remove: { label: COPY.remove, icon: 'trash-2', danger: true, run: (mes) => { void removeMessage(mes); } },
@@ -394,14 +390,12 @@ export function mountChatCompose({ getContext, document: doc = document } = {}) 
     }
 
     let lifted = null;
-    let liftWatch = null;
+
     function unlift() {
         const was = lifted;
         lifted?.classList.remove('vc-ctx-target');
         lifted = null;
         if (was) doc.dispatchEvent(new CustomEvent('vc-menu-closed', { detail: { mes: was } })); // UX-26 回应条随菜单收起
-        liftWatch?.disconnect();
-        liftWatch = null;
     }
 
     function openMessageMenu(mes, event) {
@@ -421,29 +415,16 @@ export function mountChatCompose({ getContext, document: doc = document } = {}) 
             if (id === 'remind') {
                 return { ...ACTIONS[id], run: () => openRemindMenu(mes, opened?.menu?.querySelector(`[data-i="${index}"]`)?.getBoundingClientRect()) };
             }
-            return { ...ACTIONS[id], run: () => ACTIONS[id].run(mes) };
+            return { ...ACTIONS[id], mark: ACTIONS[id].glyph ? glyph(ACTIONS[id].glyph, 19) : undefined, run: () => ACTIONS[id].run(mes) };
         });
         const below = event.clientY < globalThis.innerHeight * 0.6;
         // popMenu 以锚点为界上下偏 8px；锚点放在指针上下 8px，菜单边缘正好贴在指针处。
         const anchor = anchorAt(event.clientX, below ? event.clientY - 8 : event.clientY + 8);
-        opened = popMenu(anchor, items, { below });
-        opened.menu.classList.add('vc-compose-menu');
-        items.forEach((item, index) => { // 精灵图里没有的图标用内联线性图标补上
-            const mark = item.glyph && opened.menu.querySelector(`[data-i="${index}"] .vc-menu-mark`);
-            if (mark) mark.innerHTML = glyph(item.glyph, 19);
-        });
+        opened = popMenu(anchor, items, { below, className: 'vc-compose-menu', onClose: unlift });
         lifted = mes;
         mes.classList.add('vc-ctx-target');
         doc.dispatchEvent(new CustomEvent('vc-menu-opened', { detail: { mes, close: opened.close } })); // UX-26 在菜单上方加回应条
-        if (opened?.scrim && typeof MutationObserver === 'function') {
-            let seenOn = false;
-            liftWatch = new MutationObserver(() => {
-                const on = opened.scrim.classList.contains('is-on');
-                if (on) seenOn = true;
-                else if (seenOn) unlift();
-            });
-            liftWatch.observe(opened.scrim, { attributes: true, attributeFilter: ['class'] });
-        }
+
     }
 
     root.addEventListener('contextmenu', (event) => {
@@ -472,7 +453,7 @@ export function mountChatCompose({ getContext, document: doc = document } = {}) 
         };
         hostItem('option_regenerate', COPY.regenerate, 'refresh-cw');
         hostItem('option_continue', COPY.continue, 'play');
-        if (items.length) popMenu(plus, items, { below: false }).menu.classList.add('vc-compose-menu');
+        if (items.length) popMenu(plus, items, { below: false, className: 'vc-compose-menu' });
     }
 
     // ---- 发送：引用前缀、记录原文 ----
@@ -511,7 +492,7 @@ export function mountChatCompose({ getContext, document: doc = document } = {}) 
     function clearFailure() {
         if (!failed) return;
         failed.removeAttribute('data-vc-failed');
-        failed.querySelector('.vc-send-retry')?.remove();
+        setMessageRetry(failed, null);
         failed = null;
     }
 
@@ -524,18 +505,7 @@ export function mountChatCompose({ getContext, document: doc = document } = {}) 
         clearFailure();
         failed = mes;
         mes.setAttribute('data-vc-failed', 'true');
-        let tools = mes.querySelector('.vc-mes-tools');
-        if (!tools) {
-            tools = doc.createElement('div');
-            tools.className = 'vc-mes-tools';
-            mes.append(tools);
-        }
-        const button = doc.createElement('button');
-        button.type = 'button';
-        button.className = 'vc-send-retry';
-        button.innerHTML = `<span>${COPY.failed}</span><span aria-hidden="true">·</span><span class="vc-send-retry-act">${COPY.retry}</span>`;
-        button.addEventListener('click', retry);
-        tools.append(button);
+        setMessageRetry(mes, { failed: COPY.failed, label: COPY.retry, run: retry });
     }
 
     function onGenerationFailed() {

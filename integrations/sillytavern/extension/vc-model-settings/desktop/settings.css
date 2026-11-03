@@ -1,4 +1,7 @@
 /* UX-19。仅桌面、新设置壳；手机与未挂载壳的生产页面保持原样。 */
+/* Base UI 的原生表单镜像不参与绘制；可见原生按钮继续承担焦点与键盘操作。
+   clip 隐藏的 fixed input 仍会改变玻璃合成与字形栅格化，因此明确不生成绘制盒。 */
+html[data-vc-layout="desktop"] body.vc-ui [data-vc-appearance] input[aria-hidden="true"] { display: none; }
 html[data-vc-layout="desktop"] body.vc-ui #vc-shell:has(.vc-settings-shell) .vc-shell-settings { overflow: visible; }
 html[data-vc-layout="desktop"] body.vc-ui #vc-shell:has(.vc-settings-shell) .vc-shell-settings > .vc-navbar { display: none; }
 html[data-vc-layout="desktop"] body.vc-ui #vc-shell:has(.vc-settings-shell) .vc-shell-settings > .vc-shell-scroll { height: 100%; padding: 0; overflow: visible; }
@@ -27,7 +30,7 @@ html[data-vc-layout="desktop"] body.vc-ui .vc-settings-voice summary { min-heigh
 html[data-vc-layout="desktop"] body.vc-ui .vc-settings-voice summary::before { content: '›'; display: inline-block; margin-right: var(--vc-space-xs); transition: transform var(--vc-dur-standard) var(--vc-spring); }
 html[data-vc-layout="desktop"] body.vc-ui .vc-settings-voice details[open] summary::before { transform: rotate(90deg); }
 html[data-vc-layout="desktop"] body.vc-ui .vc-settings-voice details .vc-group { padding: 0; background: transparent; border: 0; }
-html[data-vc-layout="desktop"] body.vc-ui .vc-settings-category-toggle { display: none; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-settings-category-control { display: none; }
 html[data-vc-layout="desktop"] body.vc-ui .vc-settings-body .vc-segment { width: 100%; margin: 0; }
 html[data-vc-layout="desktop"] body.vc-ui .vc-settings-content #vc-model-settings-root { position: static; z-index: auto; color-scheme: inherit; width: 100%; min-width: 0; height: 100%; font-family: var(--vc-font); font-size: var(--vc-fs-body); }
 html[data-vc-layout="desktop"] body.vc-ui .vc-settings-content #vc-model-settings-root .vcms-overlay:not([hidden]) { position: static; inset: auto; height: 100%; padding: 0; background: transparent; overflow: hidden; }
@@ -60,7 +63,7 @@ html[data-vc-layout="desktop"] body.vc-ui .vc-settings-content #vc-model-setting
 @media(max-width:1023px) {
   html[data-vc-layout="desktop"] body.vc-ui .vc-settings-shell { grid-template-columns: minmax(0,1fr); }
   html[data-vc-layout="desktop"] body.vc-ui .vc-settings-categories { display: none; }
-  html[data-vc-layout="desktop"] body.vc-ui .vc-settings-category-toggle { display: inline-flex; }
+  html[data-vc-layout="desktop"] body.vc-ui .vc-settings-category-control { display: contents; }
 }
 
 html[data-vc-layout="desktop"] body.vc-ui #vc-shell:has(.vc-settings-shell) .vc-shell-settings { background: transparent; }

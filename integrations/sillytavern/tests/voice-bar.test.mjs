@@ -1,7 +1,8 @@
+import './react-dom-bootstrap.mjs';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createVoiceBubble, createVoicePlayer, nextVoiceRate, voiceDeskWidth, voiceWaveHeights, clampTime, formatVoiceRate, readVoiceRate, writeVoiceRate } from '../extension/vc-model-settings/voice.js';
-import { installMiniDom } from './mini-dom.mjs';
+import { installReactDom } from './react-dom.mjs';
 
 test('波形高度稳定、24 根、范围合法，不同 clipId 不同', () => {
     const a = voiceWaveHeights('123');
@@ -39,8 +40,8 @@ test('播放器 seek 只作用于当前语音并限制在时长内', async () =>
     assert.equal(player.peek('1').duration, 8);
 });
 
-test('桌面语音条有 24 根柱与倍速按钮，手机保持 5 根且无倍速', () => {
-    const document = installMiniDom();
+test('桌面语音条有 24 根柱与倍速按钮，手机保持 5 根且无倍速', (t) => {
+    const document = installReactDom(t);
     const phone = createVoiceBubble({ document, text: 'hi', voice: { clipId: '7', status: 'ready', durationMs: 4000 } });
     assert.equal(phone.querySelectorAll('i').length, 5);
     assert.equal(phone.querySelector('.vc-voice-speed'), null);
@@ -48,6 +49,6 @@ test('桌面语音条有 24 根柱与倍速按钮，手机保持 5 根且无倍�
     const desk = createVoiceBubble({ document, text: 'hi', voice: { clipId: '7', status: 'ready', durationMs: 4000 } });
     assert.equal(desk.querySelectorAll('i').length, 24);
     assert.ok(desk.classList.contains('vc-voice-desk'));
-    assert.equal(desk.style['--vc-voice-w'], '112px');
+    assert.equal(desk.style.getPropertyValue('--vc-voice-w'), '112px');
     assert.equal(desk.querySelector('.vc-voice-speed').getAttribute('aria-label'), '播放速度');
 });

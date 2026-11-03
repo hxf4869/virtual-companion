@@ -1,8 +1,12 @@
+import { renderCharactersTab } from './characters-dom.mjs';
 // FIX-FE4B：角色卡实例计数稳定，模型页浅色提示可读且不误报上下文窗口。
-import test from 'node:test';
+import test, { after } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { bindingsFromContext, createInstancePage, renderCharactersTab } from '../extension/vc-model-settings/instance-page.js';
+import { installReactDom } from './react-dom.mjs';
+// 角色模块通过共享语音表单加载 React；真实 DOM 须先于生产模块初始化。
+installReactDom({ after });
+const { bindingsFromContext, createInstancePage } = await import('../extension/vc-model-settings/instance-page.js');
 
 function card(characterRef, name) {
     return { characterRef, name, description: '', worldName: '', avatar: '' };
@@ -123,14 +127,42 @@ test('上下文窗口是否缺失只看正在编辑的模型', async () => {
     assert.equal(contextWindowMissing({}), true);
 });
 
-test('模型编辑页用正在编辑模型的上下文窗口决定未填写提示', async () => {
-    const page = await readFile(new URL('../extension/vc-model-settings/page.js', import.meta.url), 'utf8');
-    const formStart = page.indexOf('function renderModelForm');
-    const form = page.slice(formStart, page.indexOf('function renderToolCallVerification', formStart));
-    assert.match(form, /contextWindowMissing\(m\)/);
-    const feedbackStart = page.indexOf('function refreshFeedback');
-    const feedback = page.slice(feedbackStart, page.indexOf('// ---------- 事件 ----------', feedbackStart));
-    assert.match(feedback, /contextWindowMissing\(model\)/);
+test('模型编辑页用正在编辑模型的上下文窗口决定未填写提示', async (t) => {
+    const previousFetch = globalThis.fetch;
+    t.after(() => { globalThis.fetch = previousFetch; });
+    globalThis.fetch = async url => {
+        const body = String(url).endsWith('/auth/session') ? { accountId: '1', sessionId: '2' }
+            : String(url).endsWith('/admin/providers') ? [{
+                providerId: 'context-test', displayName: '上下文测试', protocol: 'OPENAI_CHAT_COMPLETIONS', baseUrl: 'https://example.test/v1', state: 'ENABLED', credentialConfigured: true, revision: 1,
+                models: [
+                    { profileKey: 'filled', modelId: 'filled', displayName: '已填写', contextWindowTokens: 1000000, maxOutputTokens: 128 },
+                    { profileKey: 'blank', modelId: 'blank', displayName: '未填写', maxOutputTokens: 128 },
+                ],
+            }] : [];
+        return { ok: true, status: 200, text: async () => JSON.stringify(body) };
+    };
+    const { mountModelSettings } = await import('../extension/vc-model-settings/page.js');
+    const page = mountModelSettings();
+    page.open();
+    for (let i = 0; i < 30 && page._state.phase !== 'ready'; i++) await new Promise(resolve => setTimeout(resolve, 0));
+    assert.equal(page._state.phase, 'ready');
+    const note = () => page.root.querySelector('.vcms-model-form [data-note="ctx"]');
+    assert.equal(note().hidden, true, '已填写模型不显示缺失提示');
+    page.root.querySelector('[data-action="select-model"][data-model-index="1"]').click();
+    assert.equal(note().hidden, false, '切换到未填写模型显示提示');
+    const input = page.root.querySelector('#vcms-m-ctx');
+    const change = value => {
+        Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set.call(input, value);
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+    };
+    change('200000');
+    assert.equal(note().hidden, true, '编辑当前模型时立即刷新提示');
+    assert.equal(page._state.draft.models[0].contextWindowTokens, 1000000, '其他模型不受影响');
+    assert.equal(page._state.draft.models[1].contextWindowTokens, '200000');
+    change('');
+    assert.equal(note().hidden, false, '清空后恢复提示');
+    assert.equal(page.isDirty(), false, '恢复初值后无未保存修改');
+    await page.close();
 });
 
 test('浅色模型页共用说明与次级标题使用可读 token', async () => {

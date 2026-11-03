@@ -1,3 +1,5 @@
+import './react-dom-bootstrap.mjs';
+import { installReactDom } from './react-dom.mjs';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import test from 'node:test';
@@ -40,6 +42,21 @@ function memoryStore(initial = {}) {
         getItem(key) { return Object.prototype.hasOwnProperty.call(data, key) ? data[key] : null; },
         setItem(key, value) { data[key] = String(value); },
     };
+}
+
+// 控制器的帧/指标断言保留；第三方组件使用真实DOM，实际布局见受管Chrome。
+let chatRuntimeId = 0;
+async function installChatDom(t) {
+    const cleanups = [], doc = installReactDom({ after(fn) { cleanups.push(fn); } });
+    const { mountChatView: mount } = await import(`../extension/vc-model-settings/chat-view.js?ui-test=${++chatRuntimeId}`);
+    let closed = false;
+    const cleanup = async () => {
+        if (closed) return; closed = true;
+        doc.body.replaceChildren(); mount().refresh?.();
+        for (const dispose of cleanups) await dispose();
+    };
+    t.after(cleanup);
+    return { document: doc, mountChatView: mount, cleanup };
 }
 
 function mes(document, { user = false, system = false, name = '角色', text = '一句', swipes = '' } = {}) {
@@ -133,8 +150,8 @@ test('整列只高出一截时，停在顶端不再算贴着底部', () => {
     assert.equal(keepsTail({ scrollHeight: 2000, scrollTop: 0, clientHeight: 750 }), false);
 });
 
-test('溢出只有 70px 时滚到顶端保持不动，后续长高才亮新回复', () => {
-    const document = installMiniDom();
+test('溢出只有 70px 时滚到顶端保持不动，后续长高才亮新回复', async t => {
+    const { document, mountChatView } = await installChatDom(t);
     const queued = [];
     const ros = [];
     const observed = [];
@@ -191,7 +208,7 @@ test('溢出只有 70px 时滚到顶端保持不动，后续长高才亮新回�
         assert.equal(document.querySelector('#vc-new-reply')?.classList.contains('is-on'), true);
         height = 820;
         top = 0;
-        chat.dispatch('scroll');
+        chat.dispatchEvent(new Event('scroll'));
         flush();
         assert.equal(top, 0);
         height = 900;
@@ -200,7 +217,7 @@ test('溢出只有 70px 时滚到顶端保持不动，后续长高才亮新回�
         assert.equal(top, 0);
         assert.equal(document.querySelector('#vc-new-reply')?.classList.contains('is-on'), true);
         top = height;
-        chat.dispatch('scroll');
+        chat.dispatchEvent(new Event('scroll'));
         flush();
     } finally {
         globalThis.performance.now = prevNow;
@@ -315,8 +332,8 @@ test('关闭新外观时不挂海报、不改宿主节点', () => {
     assert.equal(options.className.includes('vc-menu'), false);
 });
 
-test('开启新外观时海报不在 #chat 内，工具行保留宿主滑动计数', () => {
-    const document = installMiniDom();
+test('开启新外观时海报不在 #chat 内，工具行保留宿主滑动计数', async t => {
+    const { document, mountChatView } = await installChatDom(t);
     const power = { stream_fade_in: false };
     const { sheld, chat, form, options, wand } = stage(document, { ui: true });
     chat.append(
@@ -332,15 +349,15 @@ test('开启新外观时海报不在 #chat 内，工具行保留宿主滑动计�
     assert.equal(result.enabled, true);
     const poster = document.querySelector('#vc-chat-poster');
     assert.ok(poster);
-    assert.equal(poster.parent, sheld);
-    assert.equal(chat.children.includes(poster), false);
+    assert.equal(poster.parentElement, sheld);
+    assert.equal([...chat.children].includes(poster), false);
     assert.equal(document.querySelector('#vc-chat-view-css').getAttribute('rel'), 'stylesheet');
     assert.equal(document.body.getAttribute('data-vc-chat-view'), 'on');
     assert.equal(power.stream_fade_in, true);
     assert.equal(form.className.includes('vc-send-idle'), true);
     assert.equal(options.className.includes('vc-menu'), true);
-    assert.equal(wand.parent, options);
-    const rows = chat.children.filter((node) => node.className.split(/\s+/).includes('mes'));
+    assert.equal(wand.parentElement, options);
+    const rows = [...chat.children].filter((node) => node.className.split(/\s+/).includes('mes'));
     assert.equal(rows[0].className.includes('vc-speaker'), true);
     assert.equal(rows[0].className.includes('vc-tools-pin'), false);
     assert.equal(rows[1].className.includes('vc-speaker'), false);
@@ -451,11 +468,11 @@ test('记忆检视确认框挂到当前 sheet 宿主', () => {
     assert.equal(inspectorOverlayRoot(document), host);
 });
 
-test('流式只刷新最后一条，变更合并到一帧', () => {
+test('流式只刷新最后一条，变更合并到一帧', async t => {
     assert.deepEqual(refreshIndexes(0, true), []);
     assert.deepEqual(refreshIndexes(4, false), [0, 1, 2, 3]);
     assert.deepEqual(refreshIndexes(4, true), [3]);
-    const document = installMiniDom();
+    const { document, mountChatView } = await installChatDom(t);
     const queued = [];
     const observed = [];
     const prevRaf = globalThis.requestAnimationFrame;
@@ -489,9 +506,8 @@ test('流式只刷新最后一条，变更合并到一帧', () => {
         const chatObs = observed.filter((obs) => obs.options?.characterData);
         assert.equal(chatObs.length, 1);
         while (queued.length) queued.shift()();
-        const rows = chat.children.filter((node) => node.className.split(/\s+/).includes('mes'));
-        rows[0]._classes = rows[0]._classes.filter((name) => name !== 'vc-speaker');
-        rows[0].className = rows[0]._classes.join(' ');
+        const rows = [...chat.children].filter((node) => node.className.split(/\s+/).includes('mes'));
+        rows[0].classList.remove('vc-speaker');
         document.body.setAttribute('data-generating', 'true');
         writes = 0;
         top = 0;
@@ -516,8 +532,8 @@ test('流式只刷新最后一条，变更合并到一帧', () => {
     }
 });
 
-test('海报高度留给消息，滚动读取合并到一帧', () => {
-    const document = installMiniDom();
+test('海报高度留给消息，滚动读取合并到一帧', async t => {
+    const { document, mountChatView } = await installChatDom(t);
     const queued = [];
     const ros = [];
     const prevRaf = globalThis.requestAnimationFrame;
@@ -547,7 +563,7 @@ test('海报高度留给消息，滚动读取合并到一帧', () => {
             get() { reads += 1; return height; },
         });
         while (queued.length) queued.shift()();
-        assert.equal(document.body.style['--vc-poster-pad'], '360px');
+        assert.equal(document.body.style.getPropertyValue('--vc-poster-pad'), '360px');
         assert.equal(document.querySelector('#vc-poster-avatar').getAttribute('src'), 'https://cdn.example/a.png');
         const watched = ros.find((item) => item.node === poster);
         assert.ok(watched);
@@ -556,12 +572,12 @@ test('海报高度留给消息，滚动读取合并到一帧', () => {
         queued.length = 0;
         watched.fn();
         while (queued.length) queued.shift()();
-        assert.equal(document.body.style['--vc-poster-pad'], '420px');
+        assert.equal(document.body.style.getPropertyValue('--vc-poster-pad'), '420px');
         reads = 0;
         queued.length = 0;
-        chat.dispatch('scroll');
-        chat.dispatch('scroll');
-        chat.dispatch('scroll');
+        chat.dispatchEvent(new Event('scroll'));
+        chat.dispatchEvent(new Event('scroll'));
+        chat.dispatchEvent(new Event('scroll'));
         assert.equal(reads, 0);
         assert.equal(queued.length, 1);
         queued.shift()();
@@ -574,8 +590,8 @@ test('海报高度留给消息，滚动读取合并到一帧', () => {
     }
 });
 
-test('新外观打开角色和模型只发目的地事件', () => {
-    const document = installMiniDom();
+test('新外观打开角色和模型只发目的地事件', async t => {
+    const { document, mountChatView } = await installChatDom(t);
     const { chat } = stage(document, { ui: true });
     const empty = document.createElement('p');
     empty.id = 'vc-chat-empty';
@@ -602,10 +618,10 @@ test('新外观打开角色和模型只发目的地事件', () => {
         },
     });
     const poster = document.querySelector('#vc-chat-poster');
-    poster.querySelectorAll('button').find((button) => button.getAttribute('data-vc-poster') === 'character').click();
-    const pick = document.querySelectorAll('button').find((button) => button.textContent === '选择角色');
+    [...poster.querySelectorAll('button')].find((button) => button.getAttribute('data-vc-poster') === 'character').click();
+    const pick = [...document.querySelectorAll('button')].find((button) => button.textContent === '选择角色');
     pick.click();
-    const config = document.querySelectorAll('button').find((button) => button.textContent === '配置');
+    const config = [...document.querySelectorAll('button')].find((button) => button.textContent === '配置');
     config.click();
     assert.equal(navClicks, 0);
     assert.deepEqual(navs.map((detail) => detail.destination), ['characters', 'characters', 'models']);
@@ -641,8 +657,8 @@ test('聊天样式把滚动交给 #chat，气泡用同等优先级压过外壳',
     assert.equal(css.includes('0.5s'), false);
 });
 
-test('打开或切换会话在可见后贴底，宿主恢复旧位置会被拉回，上翻后保持', () => {
-    const document = installMiniDom();
+test('打开或切换会话在可见后贴底，宿主恢复旧位置会被拉回，上翻后保持', async t => {
+    const { document, mountChatView } = await installChatDom(t);
     const queued = [];
     const ros = [];
     const observed = [];
@@ -702,12 +718,12 @@ test('打开或切换会话在可见后贴底，宿主恢复旧位置会被拉�
         flush();
         assert.equal(top, height, '打开会话并完成布局后应停在最新一条');
         top = 400;
-        chat.dispatch('scroll');
+        chat.dispatchEvent(new Event('scroll'));
         flush();
         assert.equal(top, height, '宿主在渲染后写回旧 scrollTop 时仍应贴底');
         top = 80;
-        chat.dispatch('wheel');
-        chat.dispatch('scroll');
+        chat.dispatchEvent(new Event('wheel'));
+        chat.dispatchEvent(new Event('scroll'));
         flush();
         assert.equal(top, 80);
         height = 2600;
@@ -729,7 +745,7 @@ test('打开或切换会话在可见后贴底，宿主恢复旧位置会被拉�
     }
 });
 
-test('记忆正常提示不占玻璃条，持续不可用只留一行小号说明', async () => {
+test('记忆正常提示不占玻璃条，持续不可用只留一行小号说明', async t => {
     const { MEMORY_QUIET_COPY } = await import('../extension/vc-model-settings/memory-injection.js');
     const css = fs.readFileSync(CSS_PATH, 'utf8');
     const noteCss = css.match(/body\.vc-ui #vc-memory-note \{[^}]+\}/)?.[0] || '';
@@ -739,7 +755,7 @@ test('记忆正常提示不占玻璃条，持续不可用只留一行小号说�
     assert.equal(noteCss.includes('vc-glass'), false);
     assert.equal(noteCss.includes('--vc-glass'), false);
 
-    const skipDoc = installMiniDom();
+    const { document: skipDoc, mountChatView: mountSkip, cleanup: cleanupSkip } = await installChatDom(t);
     stage(skipDoc, { ui: true });
     const skipToasts = skipDoc.createElement('div');
     skipToasts.id = 'toast-container';
@@ -748,12 +764,13 @@ test('记忆正常提示不占玻璃条，持续不可用只留一行小号说�
     skip.textContent = '长期记忆来源已变化或暂不可用，本轮已跳过。';
     skipToasts.append(skip);
     skipDoc.body.append(skipToasts);
-    mountChatView({ getContext: () => ({ powerUserSettings: {}, characters: [], characterId: null }) });
+    mountSkip({ getContext: () => ({ powerUserSettings: {}, characters: [], characterId: null }) });
     assert.equal(skipToasts.querySelector('.toast'), null);
     assert.equal(skipDoc.querySelector('#vc-memory-note')?.textContent || '', '');
     assert.equal(skipDoc.querySelector('#vc-memory-note')?.className.includes('vc-glass'), false);
 
-    const downDoc = installMiniDom();
+    await cleanupSkip();
+    const { document: downDoc, mountChatView: mountDown } = await installChatDom(t);
     stage(downDoc, { ui: true });
     const downToasts = downDoc.createElement('div');
     downToasts.id = 'toast-container';
@@ -762,12 +779,12 @@ test('记忆正常提示不占玻璃条，持续不可用只留一行小号说�
     down.textContent = '部分长期记忆暂不可用；聊天仍可保存。';
     downToasts.append(down);
     downDoc.body.append(downToasts);
-    mountChatView({ getContext: () => ({ powerUserSettings: {}, characters: [], characterId: null }) });
+    mountDown({ getContext: () => ({ powerUserSettings: {}, characters: [], characterId: null }) });
     assert.equal(downToasts.querySelector('.toast'), null);
     const note = downDoc.querySelector('#vc-memory-note');
     assert.equal(note?.textContent, MEMORY_QUIET_COPY);
     assert.equal(note.className.includes('vc-glass'), false);
-    downDoc.body.dispatch('vc-memory-notice', { detail: { text: '' } });
+    downDoc.body.dispatchEvent(new CustomEvent('vc-memory-notice', { detail: { text: '' } }));
     assert.equal(downDoc.querySelector('#vc-memory-note').textContent, '');
 });
 
@@ -831,7 +848,7 @@ test('UX-22 R5：桌面输入区占位左对齐，语音与发送并列且生成
     assert.match(css, /\.vc-shell-chat \.vc-who \{ background: none !important/);
 });
 
-test('UX-22 R6：角色面板头像光晕、56 圆形快捷动作、高度随内容、窄桌面不覆盖对话', () => {
+test('UX-22 R6：角色面板头像光晕、56 圆形快捷动作、高度随内容、窄桌面不覆盖对话', async (t) => {
     const css = fs.readFileSync(DESKTOP_CHAT_CSS, 'utf8');
     const P = 'html[data-vc-layout="desktop"] body.vc-ui';
     const glow = desktopRule(css, `${P} .vc-desk-character-avatar`);
@@ -848,9 +865,14 @@ test('UX-22 R6：角色面板头像光晕、56 圆形快捷动作、高度随内
     assert.match(narrow, /position: relative/);
     assert.match(narrow, /@media\(min-width:744px\) and \(max-width:1027px\)[\s\S]*position: absolute; top: 72px/);
     assert.equal(/\.vc-shell-chat \{ display: none; \}/.test(narrow), false);
-    const panel = fs.readFileSync(CHARACTER_PANEL_JS, 'utf8');
-    assert.equal((panel.match(/\), 24\);|\}, 24\);/g) || []).length, 3);
-    assert.match(panel, /memorySection\.hidden = !rows\.length/);
+    const doc = installReactDom(t), panel = doc.createElement('aside'), tools = doc.createElement('span'); doc.body.append(panel, tools);
+    const { mountCharacterPanelView } = await import('../extension/vc-model-settings/desktop/build/index.js');
+    const noop = () => {}, props = { sprite: '/icons.svg', name: '合成角色', avatar: '', displayName: '', mood: '', open: true, memories: [], followups: [], events: { toggle: noop, close: noop, voice: noop, memory: noop, settings: noop, edit: noop, forget: noop } };
+    const view = mountCharacterPanelView(panel, tools, props); t.after(() => view.unmount());
+    assert.equal(panel.querySelectorAll('.vc-desk-character-actions button svg[width="24"]').length, 3);
+    const section = panel.querySelector('.vc-desk-character-section'); assert.equal(section.hidden, true);
+    view.update({ ...props, memories: [{ id: '1', summary: '合成记忆' }] }); assert.equal(section.hidden, false);
+    view.update(props); assert.equal(section.hidden, true);
 });
 
 test('UX-23 桌面无偏好时按气泡，手机与已存偏好不变', () => {
@@ -949,8 +971,8 @@ test('UX-23 桌面气泡 CSS：只挂桌面 + 气泡类，用 attr() 绘制，�
     assert.equal(/data-vc-(gap|foot|time|pos|tail)/.test(mobile), false);
 });
 
-test('UX-23 桌面气泡：data-vc-* 写在 .mes 上，不插节点；回到手机布局即清除', async () => {
-    const document = installMiniDom();
+test('UX-23 桌面气泡：data-vc-* 写在 .mes 上，不插节点；回到手机布局即清除', async t => {
+    const { document, mountChatView } = await installChatDom(t);
     document.documentElement.setAttribute('data-vc-layout', 'desktop');
     document.body.classList.add('vc-ui', 'vc-reply-bubble');
     const { chat } = stage(document, { ui: true });
@@ -975,9 +997,9 @@ test('UX-23 桌面气泡：data-vc-* 写在 .mes 上，不插节点；回到手�
     assert.equal(rows[0].querySelector('.mes_text').children.length, 0);
 });
 
-test('UX-23 桌面气泡生成中：#vc-chat-gen 是「正在输入」气泡（UX-25：450ms 后才显示），手机仍是「思考中」', async () => {
+test('UX-23 桌面气泡生成中：#vc-chat-gen 是「正在输入」气泡（UX-25：450ms 后才显示），手机仍是「思考中」', async t => {
     for (const layout of ['desktop', 'mobile']) {
-        const document = installMiniDom();
+        const { document, mountChatView, cleanup } = await installChatDom(t);
         document.documentElement.setAttribute('data-vc-layout', layout);
         document.body.classList.add('vc-ui', 'vc-reply-bubble');
         stage(document, { ui: true });
@@ -993,11 +1015,12 @@ test('UX-23 桌面气泡生成中：#vc-chat-gen 是「正在输入」气泡（U
         assert.equal(line.hasAttribute('data-vc-typing'), layout === 'desktop', layout);
         assert.equal(line.textContent, layout === 'desktop' ? '正在输入' : '思考中', layout);
         assert.equal(Boolean(line.querySelector('.vc-gen-bubble')), layout === 'desktop', layout);
+        await cleanup();
     }
 });
 
-test('停止后立即续写，先等半截回复保存完成再进入宿主生成', async () => {
-    const document = installMiniDom();
+test('停止后立即续写，先等半截回复保存完成再进入宿主生成', async t => {
+    const { document, mountChatView } = await installChatDom(t);
     document.documentElement.setAttribute('data-vc-layout', 'desktop');
     const { chat } = stage(document, { ui: true });
     chat.append(mes(document, { text: '尚未写完' }));

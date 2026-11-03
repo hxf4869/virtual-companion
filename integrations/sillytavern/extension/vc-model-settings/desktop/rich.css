@@ -25,11 +25,17 @@ html[data-vc-layout="desktop"] body.vc-ui.vc-reply-bubble #chat > .mes[is_user="
 html[data-vc-layout="desktop"] body.vc-ui.vc-reply-bubble #chat > .mes[is_user="true"]:not(.vc-rich) .vc-voice-desk .vc-voice-transcribe { grid-row: 1; grid-column: 1; }
 html[data-vc-layout="desktop"] body.vc-ui.vc-reply-bubble #chat > .mes[is_user="true"]:not(.vc-rich) .vc-voice-desk .vc-voice-speed { grid-row: 1; grid-column: 2; }
 html[data-vc-layout="desktop"] body.vc-ui.vc-reply-bubble #chat > .mes[is_user="true"]:not(.vc-rich) .vc-voice-desk .vc-voice-bar { grid-row: 1; grid-column: 3; }
+html[data-vc-layout="desktop"] body.vc-ui.vc-reply-bubble #chat > .mes:not(.vc-rich) .vc-voice-desk .vc-voice-transcript { grid-row: 2; grid-column: 1 / -1; justify-self: start; }
 html[data-vc-layout="desktop"] body.vc-ui.vc-reply-bubble #chat > .mes:not(.vc-rich) .vc-voice-desk .vc-voice-text {
- grid-row: 2; grid-column: 1 / -1; justify-self: start; box-sizing: border-box; padding: 10px 14px; background: var(--vc-raised); box-shadow: var(--vc-hairline);
+ box-sizing: border-box; padding: 10px 14px; background: var(--vc-raised); box-shadow: var(--vc-hairline);
  border-radius: var(--vc-bub-r); font-size: var(--vc-fs-bubble); line-height: 1.5;
 }
-html[data-vc-layout="desktop"] body.vc-ui.vc-reply-bubble #chat > .mes[is_user="true"]:not(.vc-rich) .vc-voice-desk .vc-voice-text { justify-self: end; }
+html[data-vc-layout="desktop"] body.vc-ui.vc-reply-bubble #chat > .mes[is_user="true"]:not(.vc-rich) .vc-voice-desk .vc-voice-transcript { justify-self: end; }
+/* Collapsible测量无内边距的外层，文字保持自然尺寸；减弱动态时直接切换。 */
+@media (prefers-reduced-motion: no-preference) {
+ html[data-vc-layout="desktop"]:not([data-vc-reduced-motion="true"]) body.vc-ui .vc-voice-transcript { height: var(--collapsible-panel-height); overflow: hidden; transition: height var(--vc-dur-shared) var(--vc-spring), opacity var(--vc-dur-shared) var(--vc-spring); }
+ html[data-vc-layout="desktop"]:not([data-vc-reduced-motion="true"]) body.vc-ui .vc-voice-transcript:is([data-starting-style],[data-ending-style]) { height: 0; opacity: 0; }
+}
 html[data-vc-layout="desktop"] body.vc-ui .vc-voice-desk .vc-voice-wave { flex: none; width: var(--vc-voice-w); justify-content: space-between; gap: 0; height: 24px; overflow: visible; touch-action: none; cursor: pointer; }
 html[data-vc-layout="desktop"] body.vc-ui .vc-voice-desk .vc-voice-wave i { width: 2px; height: var(--h); opacity: .4; background: currentColor; transition: opacity var(--vc-dur-press) var(--vc-ease-out), background-color var(--vc-dur-press) var(--vc-ease-out); }
 html[data-vc-layout="desktop"] body.vc-ui .vc-voice-desk .vc-voice-wave i.on { opacity: 1; background: rgb(var(--vc-tint)); }

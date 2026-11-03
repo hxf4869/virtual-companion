@@ -1,3 +1,5 @@
+import { renderInboxTab } from './inbox-dom.mjs';
+import { renderCharactersTab } from './characters-dom.mjs';
 import { readFile } from 'node:fs/promises';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -18,8 +20,8 @@ import {
 } from '../extension/vc-model-settings/persona.js';
 import { injectCompanionPrompt } from '../extension/vc-model-settings/companion-prompt.js';
 import { bindOnboardingDismiss, finishOnboarding, mountOnboarding, noteCompanionBound, renderOnboarding, shouldOfferOnboarding } from '../extension/vc-model-settings/onboarding.js';
-import { proactivePolicyPayload, readProactivePolicy, renderInboxTab } from '../extension/vc-model-settings/inbox-page.js';
-import { renderCharactersTab } from '../extension/vc-model-settings/instance-page.js';
+import { proactivePolicyPayload, readProactivePolicy } from '../extension/vc-model-settings/inbox-page.js';
+
 
 test('原生人设单卡合并保留扩展，确认成功后才更新上下文', async () => {
     const card = buildCharacterCard({ name: '合成角色' });

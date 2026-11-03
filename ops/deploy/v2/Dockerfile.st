@@ -3,7 +3,9 @@ RUN apt-get -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 -o Acquir
     && apt-get -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 -o Acquire::Retries=0 install -y --no-install-recommends git ca-certificates python3 openssl \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /opt/vc
-COPY integrations/sillytavern/upstream.lock.json integrations/sillytavern/vendor.lock.json integrations/sillytavern/package.json ./integrations/sillytavern/
+COPY integrations/sillytavern/upstream.lock.json integrations/sillytavern/vendor.lock.json integrations/sillytavern/package.json integrations/sillytavern/package-lock.json ./integrations/sillytavern/
+RUN npm ci --prefix integrations/sillytavern --include=dev --ignore-scripts --no-audit --no-fund --loglevel=error
+COPY integrations/sillytavern/desktop-ui ./integrations/sillytavern/desktop-ui
 COPY integrations/sillytavern/scripts ./integrations/sillytavern/scripts
 COPY integrations/sillytavern/patches ./integrations/sillytavern/patches
 COPY integrations/sillytavern/server-plugin ./integrations/sillytavern/server-plugin
@@ -14,7 +16,8 @@ COPY infra/db/backup/vc_aead.py ./infra/db/backup/vc_aead.py
 # verifies their Git state and every locked artifact before installing anything.
 COPY integrations/sillytavern/upstream ./integrations/sillytavern/upstream
 RUN VC_ST_DEV_DIR=/srv/vc-native node integrations/sillytavern/scripts/bootstrap.mjs \
-    && VC_ST_DEV_DIR=/srv/vc-managed VC_ST_VENDOR_CACHE=/srv/vc-native/vendor-cache node integrations/sillytavern/scripts/assemble-managed.mjs
+    && VC_ST_DEV_DIR=/srv/vc-managed VC_ST_VENDOR_CACHE=/srv/vc-native/vendor-cache node integrations/sillytavern/scripts/assemble-managed.mjs \
+    && rm -rf /opt/vc/integrations/sillytavern/node_modules
 ARG VC_PUBLIC_HOST
 RUN test -n "$VC_PUBLIC_HOST" && node --input-type=module <<'NODE'
 import fs from 'node:fs';

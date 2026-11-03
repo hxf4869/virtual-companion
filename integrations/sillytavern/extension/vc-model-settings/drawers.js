@@ -18,7 +18,7 @@ const DRAWER_IDS = new Set(DRAWER_PAGES.map((page) => page.id));
 const TITLE = Object.fromEntries(DRAWER_PAGES.map((page) => [page.id, page.title]));
 
 let openModel = () => {};
-let openAccount = () => {};
+const accountOpeners = [];
 let observer = null;
 
 export function vcUiEnabled(doc = globalThis.document) {
@@ -34,7 +34,9 @@ export function registerModelOpener(fn) {
 }
 
 export function registerAccountOpener(fn) {
-    if (typeof fn === 'function') openAccount = fn;
+    if (typeof fn !== 'function') return () => {};
+    accountOpeners.push(fn);
+    return () => { const index = accountOpeners.indexOf(fn); if (index >= 0) accountOpeners.splice(index, 1); };
 }
 
 /** F1 设置项在扩展 init 完成之后调用。未注册时为空操作。 */
@@ -44,7 +46,7 @@ export function openModelSettings(opener) {
 
 /** F1 设置项在扩展 init 完成之后调用。未注册时为空操作。 */
 export function openAccountData(opener) {
-    return openAccount(opener);
+    return accountOpeners.at(-1)?.(opener);
 }
 
 function byId(doc, id) {

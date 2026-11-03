@@ -70,7 +70,7 @@ html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-inbox .vc-empty > .vc-icon
 html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-inbox .vc-proactive-modes { padding-bottom: 12px; }
 html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-inbox .vc-proactive-modes .vc-cell[aria-pressed] { position: relative; isolation: isolate; min-height: 32px; height: 32px; border-radius: 0; background: var(--vc-segment-fill); }
 html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-inbox .vc-proactive-modes .vc-group-title + .vc-cell[aria-pressed] { border-radius: var(--vc-radius-control) 0 0 var(--vc-radius-control); }
-html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-inbox .vc-proactive-modes .vc-cell[aria-pressed]:last-child { border-radius: 0 var(--vc-radius-control) var(--vc-radius-control) 0; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-inbox .vc-proactive-modes .vc-cell[aria-pressed]:last-of-type { border-radius: 0 var(--vc-radius-control) var(--vc-radius-control) 0; }
 html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-inbox .vc-proactive-modes .vc-cell[aria-pressed="true"] { font-weight: 600; }
 html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-inbox .vc-proactive-modes .vc-cell[aria-pressed="true"]::before { display: block; content: ''; position: absolute; inset: 2px; height: auto; z-index: -1; border-radius: var(--vc-radius-tile); background: var(--vc-thumb); box-shadow: var(--vc-shadow-segment); }
 

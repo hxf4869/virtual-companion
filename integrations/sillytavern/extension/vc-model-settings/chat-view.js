@@ -5,8 +5,8 @@ import { CHAT_PICK_COPY, requestShellDestination } from './chat-shell.js';
 import { FORGET_NOTICE, createMemoryPage, requestOpenMemory } from './memory-page.js';
 import { MEMORY_NOTICE_EVENT, MEMORY_QUIET_COPY } from './memory-injection.js';
 import { confirmAlert } from './ui/alert.js';
-import { bindSegment } from './ui/controls.js';
-import { icon } from './ui/icons.js';
+import { mountMemoryInspectorView, mountMessageToolsView } from './desktop/build/index.js';
+import { icon, iconSpriteUrl } from './ui/icons.js';
 import { popMenu } from './ui/menu.js';
 import { prefersReducedMotion } from './ui/motion.js';
 import {
@@ -57,7 +57,8 @@ const PIN_MS = 600;
 const LAID_OUT_PX = 48;
 let lastChatId;
 let arrivalsPrimed = false;
-let inspectorSegment = null;
+let inspectorEntry = null;
+const messageToolViews = new Map();
 let posterFrame = 0;
 let scrollFrame = 0;
 let chatFrame = 0;
@@ -327,14 +328,7 @@ export function openChatMoreMenu(anchorEl) {
         '-',
         { label: '新对话', icon: 'square-pen', run: () => document.querySelector('#option_start_new_chat')?.click() },
         { label: '分支', icon: 'git-branch', run: () => lastCharacterMessage()?.querySelector('.mes_create_branch')?.click() },
-    ], { below: true });
-    if (memoryNotice && menu?.menu) {
-        const note = document.createElement('p');
-        note.className = 'vc-memory-note';
-        note.textContent = memoryNotice;
-        if (typeof menu.menu.prepend === 'function') menu.menu.prepend(note);
-        else menu.menu.append(note);
-    }
+    ], { below: true, note: memoryNotice });
     return menu;
 }
 
@@ -479,6 +473,8 @@ function subscribe(doc) {
     const on = (name, fn) => { if (name && events?.on) events.on(name, fn); };
     on(types.CHAT_CHANGED, () => {
         voicePlayer.stop();
+        closeInspector();
+        if (memoryPage?.state.open && String(memoryPage.state.relationshipId) !== relationshipId()) memoryPage.close();
         pendingRewrite = null;
         rewriteCount = 0;
         revealMesId = '';
@@ -690,6 +686,7 @@ function isSystem(mes) {
 }
 
 function refreshMessages() {
+    cleanupMessageTools();
     syncDirectChat(document, safeContext());
     const chat = document.querySelector('#chat');
     if (!chat) return;
@@ -793,65 +790,51 @@ function syncTimeline(list) {
     });
 }
 
-function ensureTools(mes, { character, last = true }) {
-    let tools = mes.querySelector?.('.vc-mes-tools');
-    if (!tools) {
-        tools = document.createElement('div');
-        tools.className = 'vc-mes-tools';
-        mes.append(tools);
-    }
-    const swipe = swipeLabel(mes);
-    let pager = tools.querySelector('[data-vc-pager]');
-    // 桌面：候选切换只留在最后一条角色消息，末位的「›」就是重新生成。
-    const plan = desktopLayout() ? pagerPlan({ last, at: swipe?.at, n: swipe?.n }) : null;
-    const showPager = desktopLayout() ? Boolean(plan) : Boolean(swipe);
-    if (character && swipe && showPager) {
-        if (!pager) {
-            pager = document.createElement('div');
-            pager.className = 'vc-mes-pager';
-            pager.setAttribute('data-vc-pager', '');
-            pager.innerHTML = `<button type="button" data-vc-act="swipe-prev" aria-label="上一个候选">${icon('chevron-left', { size: 18 })}</button><span class="vc-num"></span><button type="button" data-vc-act="swipe-next" aria-label="下一个候选">${icon('chevron-right', { size: 18 })}</button>`;
-            prependNode(tools, pager);
-        }
-        const num = pager.querySelector('.vc-num');
-        const text = `${swipe.at}/${swipe.n}`;
-        if (num && num.textContent !== text) num.textContent = text;
-        if (plan) {
-            const prev = pager.querySelector('[data-vc-act="swipe-prev"]');
-            const next = pager.querySelector('[data-vc-act="swipe-next"]');
-            if (prev && prev.getAttribute('aria-label') !== plan.prev) prev.setAttribute('aria-label', plan.prev);
-            if (next && next.getAttribute('aria-label') !== plan.next) next.setAttribute('aria-label', plan.next);
-        }
-    } else if (pager) {
-        removeNode(pager);
-    }
-    ensureAct(tools, 'regen', 'refresh-cw', '重新生成', character);
-    ensureAct(tools, 'edit', 'pencil', '编辑', true);
-    ensureAct(tools, 'copy', 'copy', '复制', true);
-    ensureAct(tools,'read','volume-2','朗读',character && companionMode() && chatVoiceAvailable(safeContext()));
-    if (!tools.querySelector('.vc-mes-gap')) {
-        const gap = document.createElement('span');
-        gap.className = 'vc-mes-gap';
-        const firstAct = tools.querySelector('[data-vc-act="regen"], [data-vc-act="edit"]');
-        if (firstAct) insertBefore(tools, gap, firstAct);
-        else tools.append(gap);
-    }
+function releaseMessageTools(mes, entry) {
+    entry.view?.unmount(); messageToolViews.delete(mes);
 }
-
-function ensureAct(tools, act, glyph, label, show) {
-    let button = tools.querySelector(`[data-vc-act="${act}"]`);
-    if (!show) {
-        removeNode(button);
-        return;
+function cleanupMessageTools() {
+    for (const [mes, entry] of messageToolViews) if (!mes.isConnected || !entry.el.isConnected) releaseMessageTools(mes, entry);
+}
+function paintMessageTools(entry) {
+    const { busy, playing, failed } = entry.voice;
+    const props = { ...entry.props, voice: { busy, playing, failed }, retry: entry.retry };
+    if (entry.view) entry.view.update(props); else entry.view = mountMessageToolsView(entry.el, props);
+}
+function ensureTools(mes, { character, last = true, retry }) {
+    let tools = mes.querySelector('.vc-mes-tools'), entry = messageToolViews.get(mes);
+    if (entry && tools !== entry.el) { releaseMessageTools(mes, entry); entry = null; }
+    if (!tools) { tools = document.createElement('div'); tools.className = 'vc-mes-tools'; mes.append(tools); }
+    if (!entry) {
+        entry = { el: tools, view: null, retry: null, voice: { busy: false, playing: false, failed: false, clip: null }, props: null };
+        messageToolViews.set(mes, entry);
     }
-    if (button) return;
-    button = document.createElement('button');
-    button.type = 'button';
-    button.dataset.vcAct = act;
-    button.setAttribute('data-vc-act', act);
-    button.setAttribute('aria-label', label);
-    button.innerHTML = icon(glyph, { size: 18 });
-    tools.append(button);
+    const context = safeContext(), message = context?.chat?.[Number(mes.getAttribute('mesid'))];
+    const scope = { chat: context?.chat, message, text: message?.mes, relationshipId: String(context?.chatMetadata?.vc_binding?.relationshipId || '') };
+    if (entry.readScope && Object.keys(scope).some(key => scope[key] !== entry.readScope[key])) entry.voice = { busy: false, playing: false, failed: false, clip: null };
+    entry.readScope = scope;
+    if (retry !== undefined) entry.retry = retry;
+    const swipe = swipeLabel(mes), plan = desktopLayout() ? pagerPlan({ last, at: swipe?.at, n: swipe?.n }) : null;
+    const showPager = desktopLayout() ? Boolean(plan) : Boolean(swipe);
+    entry.props = { sprite: iconSpriteUrl(), character,
+        read: character && companionMode() && (chatVoiceAvailable(context) || entry.voice.busy || entry.voice.playing),
+        pager: character && swipe && showPager ? { ...swipe, prev: plan?.prev || '上一个候选', next: plan?.next || '下一个候选' } : null,
+    };
+    paintMessageTools(entry);
+}
+export function setMessageRetry(mes, retry) {
+    const entry = messageToolViews.get(mes);
+    if (!mes?.isConnected) { if (entry) releaseMessageTools(mes, entry); return; }
+    if (!entry && !retry) return;
+    ensureTools(mes, { character: !isUser(mes) && !isSystem(mes), last: mes === lastCharacterMessage(), retry });
+}
+export async function readMessageAloud(mes) {
+    const entry = messageToolViews.get(mes);
+    if (!entry?.props.read || !mes.isConnected) return;
+    const state = entry.voice;
+    await readReplyAloud(Number(mes.getAttribute('mesid')), state, () => {
+        if (messageToolViews.get(mes) === entry && entry.voice === state && mes.isConnected && entry.el.isConnected) paintMessageTools(entry);
+    });
 }
 
 function swipeLabel(mes) {
@@ -873,7 +856,7 @@ function bindActions(chat) {
 }
 
 function runAction(act, mes) {
-    if(act==='read'){void readReplyAloud(Number(mes.getAttribute('mesid')),mes.querySelector('[data-vc-act="read"]'));return;}
+    if (act === 'read') { void readMessageAloud(mes); return; }
     if (act === 'swipe-prev') {
         animateSwipe(mes, -1);
         mes.querySelector('.swipe_left')?.click();
@@ -1289,18 +1272,11 @@ function liftMessage(mes) {
         { label: '删除', icon: 'trash-2', danger: true, run: () => { void deleteMessage(mes); } },
     );
     const below = rect.bottom < (globalThis.innerHeight || 0) * 0.6;
-    const opened = popMenu(ghost, items, { blur: true, below });
     const finish = () => {
         removeNode(ghost);
         removeClass(mes, 'vc-lift-source');
     };
-    opened?.scrim?.addEventListener?.('click', finish);
-    opened?.menu?.addEventListener?.('click', () => setTimeout(finish, 260));
-    document.addEventListener?.('keydown', function onKey(event) {
-        if (event.key !== 'Escape') return;
-        document.removeEventListener?.('keydown', onKey, true);
-        finish();
-    }, true);
+    popMenu(ghost, items, { blur: true, below, onClosed: finish });
 }
 
 function selectMessageText(mes) {
@@ -2019,68 +1995,58 @@ function ensureMemorySheetHost() {
     return host;
 }
 
+function currentInspector(entry) { return inspectorEntry === entry && entry.root.isConnected; }
 function presentInspector(opener) {
-    const wide = globalThis.matchMedia?.('(min-width: 744px)')?.matches === true;
-    let root = document.querySelector('#vc-memory-inspector');
-    if (!root) {
-        root = document.createElement('div');
-        root.id = 'vc-memory-inspector';
-        root.innerHTML = '<div class="vc-segment"><i class="vc-segment-thumb"></i><button type="button" aria-pressed="true">本次召回</button><button type="button">全部</button></div><div data-vc-memory-list></div>';
-        bindInspectorSegment(root.querySelector('.vc-segment'));
-    }
-    if (wide) {
-        let rail = document.querySelector('#vc-memory-rail');
-        if (!rail) {
-            rail = document.createElement('aside');
-            rail.id = 'vc-memory-rail';
-            rail.setAttribute('aria-label', '记忆');
-            rail.innerHTML = '<header><h2>记忆</h2></header>';
-            const done = textButton('完成', () => closeInspector());
-            rail.querySelector('header').append(done);
-            rail.append(root);
-            document.body.append(rail);
-        }
-    } else if (!root.isConnected) {
-        const host = ensureMemorySheetHost();
-        openSheet({
-            title: '记忆',
-            body: root,
-            root: host,
-            opener: opener || document.activeElement,
-            onDone: () => {
-                try { host.hidePopover?.(); } catch { /* 宿主已卸下 */ }
-                host.remove();
-                closeInspector();
+    let entry = inspectorEntry;
+    if (!entry) {
+        const root = document.createElement('div'); root.id = 'vc-memory-inspector';
+        entry = { root, header: null, rail: null, sheet: null, view: null, events: null };
+        inspectorEntry = entry;
+        const current = entry;
+        entry.events = {
+            mode(value) { if (currentInspector(current)) { inspectorMode = value; paintInspector(); } },
+            draft(value) { if (currentInspector(current)) inspectorPage().setDraft(value); },
+            retry() { if (currentInspector(current)) void inspectorPage().loadList(); },
+            edit(id) { if (currentInspector(current)) void beginCorrect(id); },
+            forget(id) { if (currentInspector(current)) void beginForget(id); },
+            save() { if (currentInspector(current)) void inspectorPage().save(); },
+            cancel() { if (currentInspector(current)) inspectorPage().cancelEdit(); },
+            close() { if (currentInspector(current)) closeInspector(); },
+            dispose() {
+                if (inspectorEntry === current) { inspectorEntry = null; inspectorMode = 'recall'; }
+                current.sheet?.dismiss(); current.rail?.remove(); root.remove();
             },
-        });
+        };
+        if (globalThis.matchMedia?.('(min-width: 744px)')?.matches === true) {
+            const rail = document.createElement('aside'); rail.id = 'vc-memory-rail'; rail.setAttribute('aria-label', '记忆');
+            const header = document.createElement('header'); rail.append(header, root); document.body.append(rail);
+            entry.rail = rail; entry.header = header;
+        } else {
+            const host = ensureMemorySheetHost();
+            entry.sheet = openSheet({ title: '记忆', body: root, root: host, opener: opener || document.activeElement,
+                canClose: () => !inspectorPage().state.busy,
+                onDone() {
+                    try { host.hidePopover?.(); } catch { /* 宿主已卸下 */ }
+                    host.remove();
+                    if (inspectorEntry === current) closeInspector(); else current.events.dispose();
+                },
+            });
+        }
     }
-    const ctl = inspectorPage();
-    const rel = relationshipId();
-    const task = !ctl.state.open ? ctl.open(rel) : (String(ctl.state.relationshipId) !== String(rel) && rel ? ctl.changeRelationship(rel) : Promise.resolve());
-    return Promise.resolve(task).then(() => { paintInspector(); return root; }).catch(() => { paintInspector(); return root; });
+    const ctl = inspectorPage(), rel = relationshipId(), current = entry;
+    const task = !ctl.state.open ? ctl.open(rel) : String(ctl.state.relationshipId) !== String(rel) && rel ? ctl.changeRelationship(rel) : Promise.resolve();
+    const paint = () => { if (currentInspector(current)) paintInspector(); return current.root; };
+    return Promise.resolve(task).then(paint, paint);
 }
-
-function bindInspectorSegment(segment) {
-    inspectorSegment?.dispose?.();
-    inspectorSegment = null;
-    if (!segment || typeof bindSegment !== 'function') return;
-    inspectorSegment = bindSegment(segment, {
-        onChange: (index) => {
-            inspectorMode = index === 1 ? 'all' : 'recall';
-            paintInspector();
-        },
-    });
-}
-
 function closeInspector() {
-    inspectorSegment?.dispose?.();
-    inspectorSegment = null;
-    removeNode(document.querySelector('#vc-memory-rail'));
-    inspectorMode = 'recall';
+    const current = inspectorEntry;
+    if (!current) return;
+    inspectorEntry = null; inspectorMode = 'recall';
+    current.view?.unmount(); current.events.dispose();
 }
 
 function inspectorPage() {
-    if (!memoryPage) memoryPage = createMemoryPage({ onChange: () => { if (document.querySelector('#vc-memory-inspector')) paintInspector(); } });
+    if (!memoryPage) memoryPage = createMemoryPage({ onChange: () => { if (inspectorEntry?.root.isConnected) paintInspector(); } });
     return memoryPage;
 }
 
@@ -2095,80 +2061,30 @@ function currentBlock() {
 }
 
 function paintInspector() {
-    const list = document.querySelector('#vc-memory-inspector [data-vc-memory-list]');
-    if (!list) return;
+    const entry = inspectorEntry;
+    if (!entry?.root.isConnected) return;
     const state = inspectorPage().state;
-    clearChildren(list);
-    if (state.loading && !state.items.length) {
-        list.append(skeletonBlock());
-        return;
-    }
-    if (state.listError) {
-        const block = document.createElement('div');
-        block.className = 'vc-empty';
-        appendIcon(block, 'circle-alert', 32);
-        const p = document.createElement('p');
-        p.textContent = state.listError;
-        block.append(p, textButton('重试', () => { void inspectorPage().loadList(); }));
-        list.append(block);
-        return;
-    }
     const rows = inspectorMode === 'all' ? state.items : recalledItems(state.items, currentBlock());
-    if (!rows.length) {
-        const block = document.createElement('div');
-        block.className = 'vc-empty';
-        appendIcon(block, 'brain', 32);
-        const p = document.createElement('p');
-        p.textContent = inspectorMode === 'all' ? '没有相关记忆' : '这次没有召回';
-        block.append(p, textButton('刷新', () => { void inspectorPage().loadList(); }));
-        list.append(block);
-        return;
-    }
-    const group = document.createElement('div');
-    group.className = 'vc-group';
-    for (const item of rows) group.append(memoryRow(item, state));
-    list.append(group);
-}
-
-function skeletonBlock() {
-    const row = document.createElement('div');
-    row.className = 'vc-skeleton-row';
-    row.innerHTML = '<span class="vc-skeleton vc-skeleton-line"></span><span class="vc-skeleton vc-skeleton-line is-short"></span>';
-    return row;
-}
-
-function memoryRow(item, state) {
-    const row = document.createElement('div');
-    row.className = 'vc-cell';
-    const id = String(item.memoryId ?? '');
-    row.setAttribute('data-memory-id', id);
-    if (state.editing && String(state.selectedId) === id) {
-        const box = document.createElement('textarea');
-        box.setAttribute('aria-label', '纠正记忆');
-        box.value = state.draft || item.summary || '';
-        box.addEventListener('input', () => inspectorPage().setDraft(box.value));
-        const save = textButton('保存', () => { void inspectorPage().save(); });
-        const cancel = textButton('取消', () => inspectorPage().cancelEdit());
-        row.append(box, save, cancel);
-        return row;
-    }
-    const grow = document.createElement('div');
-    grow.className = 'vc-grow';
-    grow.textContent = item.summary || '';
-    const correct = textButton('纠正', () => { void beginCorrect(id); });
-    const remove = textButton('删除', () => { void beginForget(id); });
-    addClass(remove, 'is-danger');
-    row.append(grow, correct, remove);
-    return row;
+    const props = { header: entry.header, sprite: iconSpriteUrl(), mode: inspectorMode,
+        loading: state.loading && !state.items.length, error: state.listError, busy: state.busy,
+        items: rows.map(item => ({ id: String(item.memoryId ?? ''), summary: item.summary || '' })),
+        editing: state.editing, selected: String(state.selectedId ?? ''), draft: state.draft || '', events: entry.events,
+    };
+    if (entry.view) entry.view.update(props); else entry.view = mountMemoryInspectorView(entry.root, props);
 }
 
 async function beginCorrect(id) {
+    const entry = inspectorEntry;
+    if (!entry || !currentInspector(entry)) return;
     const ctl = inspectorPage();
     await ctl.select(id);
+    if (!currentInspector(entry) || String(ctl.state.selectedId) !== String(id)) return;
     ctl.edit();
 }
 
 async function beginForget(id) {
+    const entry = inspectorEntry;
+    if (!entry || !currentInspector(entry)) return;
     const ok = await confirmAlert({
         title: '删除这条记忆？',
         message: FORGET_NOTICE,
@@ -2176,15 +2092,16 @@ async function beginForget(id) {
         root: inspectorOverlayRoot() || undefined,
         opener: document.activeElement,
     });
-    if (!ok) return;
+    if (!ok || !currentInspector(entry)) return;
     const ctl = inspectorPage();
     await ctl.select(id);
+    if (!currentInspector(entry) || String(ctl.state.selectedId) !== String(id)) return;
     if (ctl.state.reauthAction) {
         requestOpenMemory(document.activeElement);
         return;
     }
     await ctl.forget();
-    if (ctl.state.reauthAction) requestOpenMemory(document.activeElement);
+    if (currentInspector(entry) && ctl.state.reauthAction) requestOpenMemory(document.activeElement);
 }
 
 function clearChildren(node) {

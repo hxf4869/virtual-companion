@@ -1,10 +1,12 @@
+import { renderStoryPage, storyNode } from './story-dom.mjs';
+import { installReactDom } from './react-dom.mjs';
 // W12-D：玩家剧情页只渲染玩家 ActorView。假 fetch，不启浏览器、不调用模型。
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import * as api from '../extension/vc-model-settings/api.js';
 import { ADMIN_BRIDGE_ROUTES } from '../server-plugin/virtual-companion/lib/admin-bridge.js';
-import { createStoryPage, mountStoryPage, renderStoryPage, STORY_CONFLICT } from '../extension/vc-model-settings/story-page.js';
+import { createStoryPage, mountStoryPage, STORY_CONFLICT } from '../extension/vc-model-settings/story-page.js';
 import { createStoryProjection } from '../extension/vc-model-settings/story-projection.js';
 import { STORY_UI_ROUTES } from '../server-plugin/virtual-companion/lib/story-ui-routes.js';
 
@@ -242,8 +244,8 @@ test('地点、线索与时间线分区，行动按对象分组，所选角色�
     assert.match(html, /data-group="su"[\s\S]*data-step="a2"/);
     assert.match(html, /data-group="zhou"[\s\S]*data-step="a7"/);
     assert.match(html, /data-group="place"[\s\S]*data-step="a6"/);
-    assert.match(html, /class="vcms-btn vcms-btn-primary" data-action="act" data-step="a6"/);
-    assert.match(html, /class="vcms-btn vcms-btn-danger-ghost" data-action="act" data-step="a7"/);
+    assert.equal(storyNode(html).querySelector('[data-action="act"][data-step="a6"]').className, 'vcms-btn vcms-btn-primary');
+    assert.equal(storyNode(html).querySelector('[data-action="act"][data-step="a7"]').className, 'vcms-btn vcms-btn-danger-ghost');
     assert.match(html, /placeholder="对林岚说"/);
     assert.match(html, /data-actor="lin"[^>]*aria-pressed="true"/);
     assert.match(html, /vc-story-badge[^>]*>当前</);
@@ -568,7 +570,7 @@ test('行动请求未返回时显示正在生成，并停用这一步的按钮',
     const html = renderStoryPage(page.state);
     assert.match(html, /data-state="generating"/);
     assert.match(html, /正在生成这一步/);
-    assert.match(html, /data-action="act"[^>]*disabled/);
+    assert.ok([...storyNode(html).querySelectorAll('[data-action="act"]')].every(button => button.disabled));
     assert.doesNotMatch(html, /发现证据：|结局|确认回档/);
     release({ body: { accepted: false, replayed: false, reason: 'bad_command', worldVersion: 0, branchId: '13', stage: 'investigation', ended: false } });
     await pending;
@@ -684,157 +686,6 @@ test('用户删除的墓碑在刷新后不会补回', async () => {
 });
 
 const STORY_DOM_VOID = new Set(['input', 'br', 'img', 'link', 'meta', 'hr']);
-let storyDomPaints = 0;
-
-class StoryDomNode {
-    constructor(tag) {
-        this.tag = String(tag || 'fragment').toLowerCase();
-        this.attrs = {};
-        this.dataset = {};
-        this.className = '';
-        this.id = '';
-        this.value = '';
-        this.disabled = false;
-        this.open = false;
-        this.children = [];
-        this.parentNode = null;
-        this.listeners = {};
-        this._html = '';
-    }
-
-    setAttribute(name, value) {
-        const text = String(value ?? '');
-        if (name === 'class') this.className = text;
-        else if (name === 'id') this.id = text;
-        else {
-            this.attrs[name] = text;
-            if (name === 'disabled') this.disabled = true;
-            if (name.startsWith('data-')) this.dataset[name.slice(5)] = text;
-        }
-    }
-
-    getAttribute(name) {
-        if (name === 'class') return this.className;
-        if (name === 'id') return this.id;
-        return Object.hasOwn(this.attrs, name) ? this.attrs[name] : null;
-    }
-
-    hasAttribute(name) {
-        if (name === 'class') return this.className !== '';
-        if (name === 'id') return this.id !== '';
-        return Object.hasOwn(this.attrs, name);
-    }
-
-    matches(selector) {
-        const items = String(selector).match(/[a-zA-Z][\w-]*|#[\w-]+|\.[\w-]+|\[[^\]]+\]/g) ?? [];
-        return items.every((item) => {
-            if (item.startsWith('#')) return this.id === item.slice(1);
-            if (item.startsWith('.')) return this.className.split(/\s+/).includes(item.slice(1));
-            if (item.startsWith('[')) {
-                const body = item.slice(1, -1);
-                const eq = body.match(/^([\w-]+)(?:="([^"]*)")?$/);
-                if (!eq || !this.hasAttribute(eq[1])) return false;
-                return eq[2] === undefined || this.getAttribute(eq[1]) === eq[2];
-            }
-            return this.tag === item.toLowerCase();
-        });
-    }
-
-    querySelector(selector) {
-        for (const child of this.children) {
-            if (child.matches(selector)) return child;
-            const found = child.querySelector(selector);
-            if (found) return found;
-        }
-        return null;
-    }
-
-    closest(selector) {
-        let node = this;
-        while (node) {
-            if (typeof node.matches === 'function' && node.matches(selector)) return node;
-            node = node.parentNode;
-        }
-        return null;
-    }
-
-    contains(node) {
-        let current = node;
-        while (current) {
-            if (current === this) return true;
-            current = current.parentNode;
-        }
-        return false;
-    }
-
-    addEventListener(type, fn) {
-        (this.listeners[type] ||= []).push(fn);
-    }
-
-    append(...nodes) {
-        for (const node of nodes) {
-            if (!node) continue;
-            node.remove?.();
-            node.parentNode = this;
-            this.children.push(node);
-        }
-    }
-
-    remove() {
-        const parent = this.parentNode;
-        if (!parent) return;
-        parent.children = parent.children.filter((child) => child !== this);
-        this.parentNode = null;
-    }
-
-    focus() {}
-
-    showModal() { this.open = true; }
-
-    close() { this.open = false; }
-
-    set innerHTML(html) {
-        this._html = String(html ?? '');
-        for (const child of this.children) child.parentNode = null;
-        this.children = [];
-        for (const child of parseStoryHtml(this._html)) this.append(child);
-        if (this._html.includes('data-field="say"')) storyDomPaints += 1;
-    }
-
-    get innerHTML() { return this._html; }
-}
-
-function parseStoryHtml(html) {
-    const root = new StoryDomNode('fragment');
-    const stack = [root];
-    const re = /<!--[\s\S]*?-->|<\/([a-zA-Z0-9]+)>|<([a-zA-Z0-9]+)([^>]*?)(\/?)>/g;
-    for (const match of String(html).matchAll(re)) {
-        if (match[0].startsWith('<!--')) continue;
-        if (match[1]) {
-            const name = match[1].toLowerCase();
-            while (stack.length > 1 && stack.at(-1).tag !== name) stack.pop();
-            if (stack.length > 1) stack.pop();
-            continue;
-        }
-        const el = new StoryDomNode(match[2]);
-        for (const attr of match[3].matchAll(/([:@\w-]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|(\S+)))?/g)) {
-            el.setAttribute(attr[1], attr[2] ?? attr[3] ?? attr[4] ?? '');
-        }
-        stack.at(-1).append(el);
-        if (!match[4] && !STORY_DOM_VOID.has(el.tag)) stack.push(el);
-    }
-    return root.children;
-}
-
-function bubble(node, type) {
-    const event = { target: node, type };
-    let current = node;
-    while (current) {
-        for (const fn of current.listeners?.[type] || []) fn(event);
-        current = current.parentNode;
-    }
-}
-
 async function storyDomUntil(label, fn) {
     for (let i = 0; i < 40; i += 1) {
         const value = fn();
@@ -844,19 +695,10 @@ async function storyDomUntil(label, fn) {
     throw new Error(label);
 }
 
-test('重开旧剧情对话框后，迟到的刷新仍保留并提交已填对白', async () => {
-    storyDomPaints = 0;
-    const head = new StoryDomNode('head');
-    const body = new StoryDomNode('body');
-    globalThis.document = {
-        cookie: 'vc_csrf=go-token',
-        head,
-        body,
-        documentElement: new StoryDomNode('html'),
-        activeElement: body,
-        createElement: (tag) => new StoryDomNode(tag),
-        querySelector: (selector) => head.querySelector(selector) || body.querySelector(selector),
-    };
+test('重开旧剧情对话框后，迟到的刷新仍保留并提交已填对白', async (t) => {
+    let ui;
+    t.after(() => ui?.close());
+    const doc = installReactDom(t); doc.cookie = 'vc_csrf=go-token';
     let holdNext = false;
     let releaseHold = null;
     const base = route;
@@ -867,29 +709,30 @@ test('重开旧剧情对话框后，迟到的刷新仍保留并提交已填对�
         }
         return base(url, init);
     };
-    const ui = mountStoryPage({ getConversation: storyConversation });
-    const dialog = body.querySelector('dialog');
+    ui = mountStoryPage({ getConversation: storyConversation });
+    const dialog = doc.querySelector('dialog');
     ui.open();
     const start = await storyDomUntil('开局按钮', () => {
         const button = dialog.querySelector('[data-action="start"]');
         return button && !button.disabled ? button : null;
     });
-    bubble(start, 'click');
+    start.click();
     await storyDomUntil('调查中', () => dialog.querySelector('[data-state="playing"]'));
-    bubble(dialog.querySelector('[data-action="select-actor"][data-actor="lin"]'), 'click');
+    dialog.querySelector('[data-action="select-actor"][data-actor="lin"]').click();
     ui.close();
     holdNext = true;
     ui.open();
     const line = '林岚，今晚你一直在厨房吗？';
     const typed = await storyDomUntil('对白输入', () => dialog.querySelector('[data-field="say"]'));
-    typed.value = line;
-    bubble(typed, 'input');
-    const painted = storyDomPaints;
+    Object.getOwnPropertyDescriptor(doc.defaultView.HTMLInputElement.prototype, 'value').set.call(typed, line);
+    typed.dispatchEvent(new Event('input', { bubbles: true }));
+    const fetched = calls.filter(call => String(call.url).endsWith('/admin/model-purposes')).length;
     releaseHold({ body: { accountId: STORY_ID, sessionId: '42' } });
-    await storyDomUntil('迟到刷新', () => (storyDomPaints > painted ? storyDomPaints : null));
+    await storyDomUntil('迟到刷新', () => calls.filter(call => String(call.url).endsWith('/admin/model-purposes')).length > fetched);
+    await new Promise(resolve => setTimeout(resolve, 0));
     const field = dialog.querySelector('[data-field="say"]');
     assert.equal(field.value, line);
-    bubble(dialog.querySelector('[data-action="say"]'), 'click');
+    dialog.querySelector('[data-action="say"]').click();
     const posted = await storyDomUntil('对白请求', () => calls.find((call) => String(call.url).includes('/actions')) || null);
     assert.equal(JSON.parse(posted.body).text, line);
     assert.equal(JSON.parse(posted.body).target, 'lin');

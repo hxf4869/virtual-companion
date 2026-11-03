@@ -1,10 +1,13 @@
+import { renderInboxPage, renderInboxTab, renderInboxChannel } from './inbox-dom.mjs';
+import { bootstrapDocument } from './react-dom-bootstrap.mjs';
+import { renderMemoryPage, renderMemoryDetailTab, renderMemoryTab } from './memory-dom.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createMemoryPage, renderMemoryPage, renderMemoryTab, renderMemoryDetailTab, mountMemoryTab } from '../extension/vc-model-settings/memory-page.js';
-import { createInboxPage, inboxPolicyDirty, renderInboxPage, renderInboxTab, renderInboxChannel, mountInboxTab } from '../extension/vc-model-settings/inbox-page.js';
+import { createMemoryPage, mountMemoryTab } from '../extension/vc-model-settings/memory-page.js';
+import { createInboxPage, inboxPolicyDirty, mountInboxTab } from '../extension/vc-model-settings/inbox-page.js';
 
 const root = fileURLToPath(new URL('../extension/vc-model-settings/', import.meta.url));
 
@@ -46,10 +49,11 @@ test('记忆新界面保留搜索、分段、状态与详情合同', () => {
     const html = renderMemoryTab(memoryState());
     assert.match(html, /aria-label="搜索记忆"/);
     assert.match(html, /placeholder="搜索记忆"/);
-    assert.match(html, /data-vc-owned-title>记忆</);
-    assert.match(html, /data-status=""[^>]*>全部</);
-    assert.match(html, /data-status="PENDING_VERIFICATION"[^>]*>待核验</);
-    assert.match(html, /data-status="INVALID"[^>]*>已失效</);
+    const rendered = bootstrapDocument.createElement('div'); rendered.innerHTML = html;
+    assert.equal(rendered.querySelector('[data-vc-owned-title]').textContent, '记忆');
+    const segment = rendered.querySelector('[data-vc-memory-segment]');
+    assert.deepEqual([...segment.querySelectorAll('[role="radio"]')].map(node => node.textContent), ['全部', '待核验', '已失效']);
+    assert.deepEqual([...segment.querySelectorAll('input[type="radio"]')].map(node => node.value), ['', 'PENDING_VERIFICATION', 'INVALID']);
     assert.match(html, /id="vc-memory-instance"/);
     assert.match(html, /name="relationshipId"/);
     assert.match(html, /aria-label="角色实例"/);
@@ -124,8 +128,11 @@ test('记忆详情保留来源、修订、纠正、删除与再验证合同', ()
     assert.match(detail, /仅此角色实例/);
     assert.match(detail, /data-action="edit"[^>]*>纠正/);
     assert.match(detail, /data-action="confirm-forget"[^>]*>删除长期记忆/);
-    assert.match(detail, /data-forget-dialog/);
-    assert.match(detail, /聊天原文仍保留，可能继续用于当前对话。/);
+    // 自有详情改用公共 AlertDialog（实际点击与文案由 dr-pages 验证）；旧原生弹窗仍保留自己的原生确认。
+    assert.doesNotMatch(detail, /data-forget-dialog/);
+    const classic = renderMemoryPage(state);
+    assert.match(classic, /data-forget-dialog/);
+    assert.match(classic, /聊天原文仍保留，可能继续用于当前对话。/);
     assert.match(detail, /将停止召回这条记忆并清理相关派生内容/);
 
     state.editing = true;
@@ -236,16 +243,20 @@ test('陪伴新界面保留分段、开关、投递状态与渠道合同', () =>
         ],
     });
     const html = renderInboxTab(page.state);
-    assert.match(html, /data-vc-owned-title>陪伴</);
-    assert.match(html, /data-filter="all"/);
-    assert.match(html, /data-filter="pending"/);
-    assert.match(html, /data-filter="written"/);
-    assert.match(html, /data-filter="broken"/);
+    const dom = bootstrapDocument.createElement('div'); dom.innerHTML = html;
+    assert.equal(dom.querySelector('[data-vc-owned-title]')?.textContent, '陪伴');
+    const filters = [...dom.querySelectorAll('[aria-label="消息筛选"] [role="radio"]')];
+    assert.deepEqual(filters.map(node => node.textContent), ['全部', '待写入', '已写入', '链接失效']);
+    assert.deepEqual(filters.map(node => node.getAttribute('aria-checked')), ['true', 'false', 'false', 'false']);
     assert.match(html, />全部</);
     assert.match(html, />待写入</);
     assert.match(html, />已写入</);
     assert.match(html, />链接失效</);
-    assert.match(html, /class="vc-inbox-switch vc-switch" role="switch" data-action="toggle-enabled" data-field="enabled" aria-checked="true" aria-pressed="true"/);
+    const enabled = dom.querySelector('[data-action="toggle-enabled"][data-field="enabled"]');
+    assert.equal(enabled?.className, 'vc-inbox-switch vc-switch');
+    assert.equal(enabled.getAttribute('role'), 'switch');
+    assert.equal(enabled.getAttribute('aria-checked'), 'true');
+    assert.equal(enabled.getAttribute('aria-pressed'), 'true');
     assert.match(html, /主动问候<\/span>/);
     assert.match(html, /class="vc-inbox-badge"[^>]*>待写入</);
     assert.match(html, /邮箱 已接受/);
@@ -285,7 +296,10 @@ test('陪伴新界面保留分段、开关、投递状态与渠道合同', () =>
     assert.match(email, /placeholder="已配置，留空不修改"/);
     assert.match(email, /data-channel-card/);
     assert.match(email, /data-key="7"/);
-    assert.match(email, /data-action="toggle-preview" data-key="7" data-field="previewBody" aria-checked="false" aria-pressed="false"/);
+    dom.innerHTML = email;
+    const preview = dom.querySelector('[data-action="toggle-preview"][data-key="7"][data-field="previewBody"]');
+    assert.equal(preview?.getAttribute('aria-checked'), 'false');
+    assert.equal(preview.getAttribute('aria-pressed'), 'false');
     assert.match(email, /收件地址/);
     assert.doesNotMatch(email, /super-secret-value/);
     assert.match(feishu, /群名称/);
@@ -310,7 +324,12 @@ test('陪伴新界面保留分段、开关、投递状态与渠道合同', () =>
     };
     const oldHtml = renderInboxPage(legacy.state);
     assert.match(oldHtml, /<h1[^>]*>主动陪伴<\/h1>/);
-    assert.match(oldHtml, /class="vc-inbox-switch" role="switch" data-action="toggle-enabled" data-field="enabled" aria-checked="true" aria-pressed="true"/);
+    dom.innerHTML = oldHtml;
+    const classicEnabled = dom.querySelector('[data-action="toggle-enabled"][data-field="enabled"]');
+    assert.equal(classicEnabled?.className, 'vc-inbox-switch');
+    assert.equal(classicEnabled.getAttribute('role'), 'switch');
+    assert.equal(classicEnabled.getAttribute('aria-checked'), 'true');
+    assert.equal(classicEnabled.getAttribute('aria-pressed'), 'true');
     assert.doesNotMatch(oldHtml, /data-vc-owned-title/);
 });
 

@@ -4,17 +4,16 @@ import crypto from 'node:crypto';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { pinVcUi } from './vc-ui-pin.mjs';
 import { waitFor } from './managed-lib.mjs';
 import { allowedOverlays, unexpectedOverlays } from './lib/overlay-guard.mjs';
 
-const MANAGED = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../dev-managed');
 const WIDTHS = [
     { width: 360, height: 780 },
     { width: 390, height: 844 },
     { width: 768, height: 1024 },
     { width: 1024, height: 768 },
+    { width: 1280, height: 900 },
     { width: 1440, height: 900 },
 ];
 const THEMES = ['light', 'dark'];
@@ -25,18 +24,27 @@ async function closeAccountDialog(page) {
         const dialog = document.querySelector('.vc-data-dialog[open]');
         if (!dialog) return;
         dialog.querySelector('[data-close]')?.click();
-        if (dialog.open) dialog.close();
     });
     await page.waitForFunction(() => !document.querySelector('.vc-data-dialog[open]'), null, { timeout: 8000 });
 }
 
 async function removeSheets(page) {
-    await page.evaluate(() => {
-        document.querySelectorAll('.vc-sheet, .vc-scrim').forEach((el) => {
-            el.style.pointerEvents = 'none';
-            el.remove();
-        });
-    });
+    const selector = '.vc-sheet:visible, .vc-alert:visible, .vc-menu:has([role="menu"]):visible';
+    for (let i = 0; i < 8; i++) {
+        const before = await page.locator(selector).count();
+        if (!before) return;
+        const alert = page.locator('.vc-alert:visible').last();
+        if (await alert.count()) {
+            const discard = alert.getByRole('button', { name: /^放弃(?:修改)?$/, exact: true });
+            if (await discard.count()) await discard.click();
+            else await alert.locator('[data-vc-cancel]').click();
+        } else await page.keyboard.press('Escape');
+        await page.waitForFunction(count => {
+            const visible = node => node.getClientRects().length && getComputedStyle(node).visibility !== 'hidden';
+            return [...document.querySelectorAll('.vc-sheet,.vc-alert,.vc-menu:has([role="menu"])')].filter(visible).length !== count;
+        }, before, { timeout: 8000 });
+    }
+    throw new Error('按真实关闭动作后仍有弹层残留');
 }
 const DRAWERS = [
     { id: 'ai-config-button', panel: 'left-nav-panel', page: 'tavern-ai' },
@@ -57,10 +65,6 @@ function selectedWidths() {
     const picked = WIDTHS.filter((item) => wanted.has(item.width));
     if (!picked.length) throw new Error(`没有匹配的走查宽度 ${raw}`);
     return picked;
-}
-
-function stamp() {
-    return new Date().toISOString().replace(/[:.]/g, '-').replace(/Z$/, 'Z');
 }
 
 function sleep(ms) {
@@ -181,7 +185,9 @@ ${cards}
 export async function sceneVcUiWalkthrough(ctx) {
     const startedAt = Date.now();
     iconSettleTimeouts = 0;
-    const dir = path.join(MANAGED, 'artifacts', `walkthrough-${stamp()}`);
+    // 同一隔离运行目录只保留一套走查；不在公共dev-managed外溢时间戳目录。
+    const dir = path.join(path.dirname(ctx.artifactsDir), 'walkthrough-latest');
+    fs.rmSync(dir, {recursive:true, force:true});
     fs.mkdirSync(dir, { recursive: true });
     const notes = [];
     const buckets = [];
@@ -441,19 +447,9 @@ export async function sceneVcUiWalkthrough(ctx) {
             if (!(await settingsOpen())) {
                 await page.evaluate(() => {
                     document.querySelectorAll('.openDrawer [data-vc-drawer-back]').forEach((el) => el.click());
-                    document.querySelectorAll('.openDrawer').forEach((el) => el.classList.remove('openDrawer'));
-                    document.body.classList.remove('vc-host-drawer');
-                    document.querySelectorAll('.vc-scrim').forEach((el) => {
-                        if (!el.nextElementSibling?.classList?.contains('vc-sheet')) el.remove();
-                    });
-                    const buttons = [...document.querySelectorAll('#vc-shell [data-settings]')];
-                    const visible = buttons.find((el) => {
-                        const style = getComputedStyle(el);
-                        const rect = el.getBoundingClientRect();
-                        return style.display !== 'none' && style.visibility !== 'hidden' && rect.width > 0 && rect.height > 0;
-                    });
-                    (visible || buttons[0])?.click();
                 });
+                await removeSheets(page);
+                await page.locator('#vc-shell [data-settings]:visible').first().click();
             }
             await page.waitForFunction(() => {
                 const y = Math.min(window.innerHeight * 0.42, window.innerHeight - 120);
@@ -726,6 +722,7 @@ export async function sceneVcUiWalkthrough(ctx) {
                                 await draft.fill('合成桌面纠正草稿');
                                 await page.locator('.vc-memory-editor-scrim').click({ position: { x: 8, y: 8 } });
                                 await page.locator('.vc-alert').waitFor();
+                                await page.waitForFunction(() => document.activeElement === document.querySelector('.vc-alert [data-vc-cancel]'), null, {timeout:8000});
                                 assert.equal(await page.evaluate(() => document.activeElement?.textContent?.trim()), '继续编辑');
                                 await page.keyboard.press('Escape');
                                 await page.locator('.vc-alert').waitFor({ state: 'detached' });
@@ -756,6 +753,7 @@ export async function sceneVcUiWalkthrough(ctx) {
                         const draft = await quiet.inputValue();
                         await page.locator('#vc-shell [data-nav="characters"]:visible').first().click();
                         await page.locator('.vc-alert').waitFor();
+                        await page.waitForFunction(() => document.activeElement === document.querySelector('.vc-alert [data-vc-cancel]'), null, {timeout:8000});
                         assert.equal(await page.evaluate(() => document.activeElement?.textContent?.trim()), '继续编辑', '陪伴离开确认默认焦点');
                         await page.keyboard.press('Escape');
                         await page.locator('.vc-alert').waitFor({ state: 'detached' });
@@ -799,6 +797,14 @@ export async function sceneVcUiWalkthrough(ctx) {
                 });
                 } catch (error) {
                     const site = String(error.stack || '').match(/vc-ui-walkthrough\.mjs:\d+:\d+/)?.[0];
+                    const geometry = await page.evaluate(() => {
+                        const shell = document.querySelector('#vc-shell');
+                        const probe = document.elementFromPoint(innerWidth / 2, Math.min(innerHeight * .42, innerHeight - 120));
+                        const active = document.activeElement;
+                        return { settings: shell?.dataset.settings, destination: shell?.dataset.destination, focus:[active?.tagName, active?.id, active?.className, active?.hasAttribute('data-vc-cancel')], probe: [probe?.tagName, probe?.id, String(probe?.className)], panels: [...document.querySelectorAll('.vc-shell-settings,.vc-settings-shell,.vc-sheet,.vc-menu')].map(node => ({ className:node.className, hidden:node.hidden, rect:node.getBoundingClientRect().toJSON() })) };
+                    }).catch(() => ({ unavailable: true }));
+                    bucket.notes.push(`${viewport.width}/${theme} failure geometry: ${JSON.stringify(geometry)}`);
+                    await record(page, viewport.width, theme, 'failure', bucket).catch(() => {});
                     throw new Error(`${viewport.width}/${theme}: ${String(error.message || error).split('\n')[0]}${site ? ` (${site})` : ''}`, { cause: error });
                 }
         }

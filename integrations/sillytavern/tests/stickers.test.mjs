@@ -1,3 +1,5 @@
+import { renderStickerPage as renderStickers } from './stickers-dom.mjs';
+import { installReactDom } from './react-dom.mjs';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
@@ -16,7 +18,6 @@ import {
     mountStickerSettingsEntry,
     planSticker,
     registerBubbleTransformerIfPresent,
-    renderStickerPage,
     revertSentSticker,
     setStickerCatalog,
     stickerSrc,
@@ -354,8 +355,9 @@ test('流水线按已剥离文本再次排版后，表情气泡还在', () => {
     }
 });
 
-test('表情包设置页可以开关、改频率、上传、改标签和删除', async () => {
-    const doc = installMiniDom();
+test('表情包设置页可以开关、改频率、上传、改标签和删除', async (t) => {
+    const doc = installReactDom(t);
+    const renderStickerPage = (doc, options) => renderStickers(doc, options, t);
     const seen = [];
     const page = renderStickerPage(doc, {
         settings: { enabled: true, frequency: 'normal' },
@@ -377,15 +379,17 @@ test('表情包设置页可以开关、改频率、上传、改标签和删除',
     often.click();
     assert.deepEqual(seen[1], ['frequency', 'high']);
     const input = page.querySelector('[data-vc-sticker-tag]');
-    input.value = '抱抱';
-    input.dispatch('change');
+    input.focus();
+    Object.getOwnPropertyDescriptor(doc.defaultView.HTMLInputElement.prototype, 'value').set.call(input, '抱抱');
+    input.dispatchEvent(new Event('input', {bubbles:true}));
+    await new Promise(resolve => setTimeout(resolve, 0)); input.blur();
     assert.deepEqual(seen[2], ['tag', 'u1', '抱抱']);
     page.querySelector('[data-vc-sticker-delete]').click();
     await Promise.resolve();
     assert.deepEqual(seen[3], ['delete', 'u1']);
     const file = page.querySelector('[data-vc-sticker-file]');
-    file.files = [{ name: '委屈.png' }];
-    file.dispatch('change');
+    Object.defineProperty(file, 'files', { configurable: true, value: [new doc.defaultView.File(['synthetic'], '委屈.png', {type:'image/png'})] });
+    file.dispatchEvent(new Event('change', {bubbles:true}));
     assert.deepEqual(seen[4], ['upload', '委屈.png']);
     page.querySelector('[data-vc-sticker-back]').click();
     assert.deepEqual(seen[5], ['back']);
@@ -419,8 +423,8 @@ test('表情样式不写死色值和字号', async () => {
     assert.equal(/\d+ms/.test(body), false);
 });
 
-test('桌面外观页提供表情包入口，重复扫描仍只挂载一次', () => {
-    const doc = installMiniDom();
+test('桌面外观页提供表情包入口，重复扫描仍只挂载一次', (t) => {
+    const doc = installReactDom(t);
     const body = doc.createElement('div'); body.className = 'vc-settings-body';
     const group = doc.createElement('section'); group.className = 'vc-desk-group';
     const theme = doc.createElement('div'); theme.setAttribute('data-preference', 'theme');
@@ -437,8 +441,9 @@ test('桌面外观页提供表情包入口，重复扫描仍只挂载一次', ()
 
 const FLUENT_NOTE = 'Microsoft Fluent Emoji, Copyright (c) Microsoft Corporation, MIT License, https://github.com/microsoft/fluentui-emoji';
 
-test('表情包行内是缩略图、可读标签和删除，许可署名按包在列表底部只出现一次', () => {
-    const doc = installMiniDom();
+test('表情包行内是缩略图、可读标签和删除，许可署名按包在列表底部只出现一次', (t) => {
+    const doc = installReactDom(t);
+    const renderStickerPage = (doc, options) => renderStickers(doc, options, t);
     const page = renderStickerPage(doc, {
         settings: { enabled: true, frequency: 'normal' },
         rows: [
@@ -450,9 +455,9 @@ test('表情包行内是缩略图、可读标签和删除，许可署名按包�
     });
     const list = page.querySelector('[data-vc-sticker-list]');
     const upload = list.querySelector('[data-vc-sticker-upload]');
-    const rows = list.querySelectorAll('[data-vc-sticker-id]');
+    const rows = [...list.querySelectorAll('[data-vc-sticker-id]')];
     assert.equal(upload.textContent, '上传');
-    assert.equal(list.children.indexOf(upload) < list.children.indexOf(rows[0]), true);
+    assert.ok(upload.closest('.vc-sticker-actions').compareDocumentPosition(rows[0]) & Node.DOCUMENT_POSITION_FOLLOWING);
     assert.deepEqual(rows.map((row) => row.querySelector('[data-vc-sticker-tag]').value), ['开心', '害羞', '晚安', '抱抱']);
     for (const row of rows) {
         assert.ok(row.querySelector('.vc-sticker-thumb'));
@@ -471,7 +476,7 @@ test('表情包行内是缩略图、可读标签和删除，许可署名按包�
     assert.match(notes[0].textContent, /MIT/);
     assert.equal(notes[1].textContent, '自定义包，MIT');
     assert.equal(page.innerHTML.split(FLUENT_NOTE).length - 1, 1);
-    assert.equal(list.children.indexOf(rows.at(-1)) < page.children.indexOf(notes[0]), true);
+    assert.ok(rows.at(-1).compareDocumentPosition(notes[0]) & Node.DOCUMENT_POSITION_FOLLOWING);
 });
 
 test('表情标签输入在行内伸展，不会被压成空胶囊', async () => {

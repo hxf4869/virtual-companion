@@ -1,10 +1,11 @@
+import { renderStoryPage } from './story-dom.mjs';
 // W13-4：剧情回合在 SETTINGS_READY 写入单个 actor 的 vc_story。假 eventSource，不启浏览器。
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import * as api from '../extension/vc-model-settings/api.js';
 import { createMemoryInjection, MEMORY_PROMPT, memoryBlock } from '../extension/vc-model-settings/memory-injection.js';
-import { createStoryPage, renderStoryPage } from '../extension/vc-model-settings/story-page.js';
+import { createStoryPage } from '../extension/vc-model-settings/story-page.js';
 import { createStoryContext } from '../extension/vc-model-settings/story-context.js';
 
 const READY = 'chat_completion_settings_ready';

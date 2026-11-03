@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { test } from 'node:test';
-import { renderAccountShell } from '../extension/vc-model-settings/data-rights.js';
+import { accountFixture } from './account-dom.mjs';
 import {
     DRAWER_PAGES,
     closeDrawerPage,
@@ -29,7 +29,7 @@ function ruleSelectors(css) {
     return out;
 }
 
-test('九个抽屉页有稳定标题，样式只作用于 body.vc-ui', async () => {
+test('九个抽屉页有稳定标题，样式只作用于 body.vc-ui', async (t) => {
     assert.deepEqual(DRAWER_PAGES.map((page) => page.id), [
         'left-nav-panel',
         'rm_api_block',
@@ -61,8 +61,9 @@ test('九个抽屉页有稳定标题，样式只作用于 body.vc-ui', async () 
     for (const selector of [...ruleSelectors(drawersCss), ...ruleSelectors(settingsCss)]) {
         assert.equal(selector.includes('body.vc-ui'), true, selector);
     }
-    assert.equal(renderAccountShell().includes('data-vc-account-nav'), false);
-    assert.equal(renderAccountShell().includes('aria-label="修改密码"'), true);
+    const { root } = await accountFixture(t);
+    assert.equal(root.querySelector('[data-vc-account-nav]'), null);
+    assert.ok(root.querySelector('[aria-label="修改密码"]'));
 });
 
 test('打开抽屉只点原开关，导航留在内容根内', () => {

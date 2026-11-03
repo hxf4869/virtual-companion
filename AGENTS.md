@@ -26,6 +26,41 @@ PostgreSQL 18 + pgvector。Technical Alpha：Generation/Realtime/Memory 纵切�
 - 不删测试、不加 skip、不吞退出码；确需删除测试或新增 skip 时，以用户对此的明确授权为前提。
   不通过削弱有效断言来让检查通过。
 
+## 前端组件、布局与视觉验收
+
+- 通用控件先复用仓库已有组件与已锁定依赖；不能满足时，使用本会话实际可用的工具查官方文档和 GitHub 源码，
+  确认现成能力后再实现。桌面自有 UI 沿用 React + Base UI，按需复用 shadcn/ui 开源代码并保留许可；
+  不重复实现已有的键盘、焦点、弹层状态机。原生控件足够时直接使用，不为“组件化”增加无实际用途的包装。
+- 正常页面以现有生产视觉、`DESIGN.md` 对应端规则与既有 token / 图标为准，不套用组件库默认主题。
+  有意改变正常页面的外观、布局或交互反馈，先出图并取得 Owner 确认；内部重构与按已确认对齐关系修复不重复确认。
+  按 ADR-0011 区分桌面窗口、分屏与缩放适配和独立移动端布局，保留共享 ST / iframe 路径的兼容性。
+- 对齐、遮挡或适配问题先检查真实 DOM、盒子尺寸与中心点、生效断点、计算样式和级联来源，再修正结构或规则。
+  不用逐元素位移、负 margin 或不断追加覆盖规则掩盖根因。公共图标按钮统一尺寸、双轴居中和收缩规则；
+  导航角标/未读点独立于主体排版，空态也不能留下 gap；头像由统一容器约束尺寸、裁切，父级槽位负责对齐。
+  断点切换使用明确的组件状态，不能只改 display 而丢失内部居中或尺寸约束。
+- 修改公共组件、类名、CSS 显隐或布局约定前，在相关前端范围内查齐当前受支持的直接消费者，包含尚未迁移的原生模板与模型页等入口。
+  明确基础样式与断点/状态变体的优先级和覆盖顺序，删除被替代的旧规则；验证所有直接受影响的消费者，不能只检查当前截图所在页面。
+- React 与原生控制器对同一子树只能有一个渲染 owner。控制器通过 props / 动作同步状态，不再直接重写 React 内部节点；
+  分类切换、重绘或销毁前先卸载被移除的组件。销毁守卫也须覆盖迟到请求的 catch/finally 和公开入口；
+  有销毁路径的注册入口须释放自己的注册，不能覆盖其他活实例。ST 原生消息、输入和卡片节点保持宿主管理，不因壳层重构被重建。
+  挂在宿主消息中的语音、图片等叶组件也须随宿主移除而卸载，释放自身帧循环和全局监听；媒体服务保留单一 owner。
+- 对已复现的适配问题，先让对应行为/几何回归失败，修复后通过。按本次影响检查断点两侧、窗口往返、短窗口、
+  侧栏状态和相关内容变化（如角标有无/长值、图片/首字头像），同时检查内部裁切与操作可达，不能只看文档横向溢出。
+  像素一致会保留旧错误，不能替代布局正确性检查。优先复用或扩展现有受管场景；公共壳层与外观页分别已有 `dr-shell`、`dr-appearance`。
+- 视觉对照使用独立保存的旧实现/旧截图，在相同数据、字体、时间、主题、视口和稳定渲染条件下比较正常状态及相关交互状态。
+  不通过覆盖旧基线、遮罩问题区域或放宽阈值消除未解释的差异。预览复用生产组件与样式，只替换合成数据和必要宿主边界，
+  不额外注入改变悬停、光效或布局的属性/样式。交付时明确合成样板、完整宿主和运行实例分别验证到哪里。
+- 组合弹层先核对库的父子关系与遮罩/滚动锁 owner。临时子弹层随父层销毁；独立全屏页面保留自身生命周期，
+  覆盖期间后层 Dialog 不可继续抢焦点和键盘。优先使用库的公开模式匹配既有容器，不能叠加自写焦点状态机。
+  imperative 弹层须分别确认定位 host、回焦 opener 和生命周期 owner；外部侧栏触发也要归属实际页面。
+  依赖 Portal 焦点出口的独立 React root 必须接入文档；销毁应能同步终止退出动画，完成回调须幂等。
+  库测量折叠高度时，动画外壳与有内边距的内容分开，检查首次展开、收起与减弱动态，避免收缩中的内容尺寸被当成展开目标。
+- React / 第三方组件挂载测试使用现有 Happy DOM，并在导入生产 bundle 前建立 DOM，避免库锁定 SSR/noop hooks；
+  布局、响应式与浏览器原生 Tab 动作使用真实浏览器，不扩充手写 Mini DOM 来仿造第三方运行时。
+  升级测试环境时保留原行为断言，改用真实节点与事件 API。忽略的前端 bundle 必须由现有构建入口生成，不能依赖上次本机构建残留。
+  合成宿主和媒体替身遵循真实接口的状态与事件语义，不能用恒真/恒假的能力状态绕过实际用户操作路径。
+  受管场景通过公开入口或真实用户动作关闭弹层，不直接删除组件节点、改 pointer-events 或清除背景层来让后续步骤可点击。
+
 ## Docker 与产物保留（OP-11）
 
 - 本机与服务器沿用 [部署说明的存储保留规则](ops/deploy/v2/README.md#存储保留与清理)：成功部署后只留当前提交镜像
@@ -61,6 +96,8 @@ PostgreSQL 18 + pgvector。Technical Alpha：Generation/Realtime/Memory 纵切�
   V2 执行序列，按执行计划第 2 节的顺序、完成标准与暂停条件逐项推进；Owner 2026-11-01 另授权用一个 Goal 串行完成
   UX-12–UX-19，按 `docs/planning/2026-11-01-ux11-desktop-immersive-plan.md` 第 2.1 节执行。
   Owner 2026-11-02 另授权用一个 Goal 串行完成移动端 MB-0–MB-10，范围、暂停条件与环境见 Backlog H 节「Goal 约定」。
+  Owner 2026-11-02 另授权用一个 Goal 串行完成后台 React 重构计划剩余 DR-2–DR-8（DR-4A 已完成），
+  以 `docs/planning/2026-11-02-desktop-frontend-refactor-plan.md` 第 10 节为范围与停止条件。
 - 不安装 Goal Kit 的 `.agent` 状态、外部循环器或第二套检查/交接体系；跨任务恢复依赖当前 Git 状态、
   机器真源和已对账的路线图条目，不恢复下述历史档案流程。
 
@@ -81,7 +118,7 @@ PostgreSQL 18 + pgvector。Technical Alpha：Generation/Realtime/Memory 纵切�
 - 验证：按下表跑对应检查；新功能补受管场景或扩展已有场景（`integrations/sillytavern/scripts/`），
   受影响场景整组通过才合并。改 UI 时用受管环境截 390 与 1440、浅色与深色，复制到仓库根目录
   `.review-queue/<ID>/`（已忽略，不提交），附 `NOTES.md` 写改了什么、自查发现了什么；截图留给 Owner / Claude
-  事后复核，不阻塞合并。视觉须符合 `DESIGN.md`：Apple 应用语法、移动优先、不加多余次级标签与说明文字。
+  事后复核，不阻塞合并。视觉须符合 `DESIGN.md` 对应端约定及上述前端规则，不加多余次级标签与说明文字。
 - 合并与发布：Owner 2026-10-31 授权接手 agent 提交并推送 `main`，并在 `bash scripts/check.sh` 全量与受影响
   受管场景在同一提交上通过后，用 `bash ops/deploy/v2/deploy.sh <commit>` 部署生产（仅限清单条目），部署后看
   自检结果并记入 `TODO.md`；失败时部署上一个已知良好提交回滚，不手工改线上数据。服务器操作只用 ssh-skill；
@@ -99,7 +136,7 @@ PostgreSQL 18 + pgvector。Technical Alpha：Generation/Realtime/Memory 纵切�
 | 纯文档或 Agent 规则 | 核对相关 diff、引用与规则一致性，运行 `git diff --check` |
 | Catalog/OpenAPI、生成物、依赖清单等仓库约束 | `bash scripts/check.sh --quick` |
 | Go 后端（Go 1.26.10，以 `backend/go.mod` 为准） | `GOPROXY=off go test -C backend -mod=vendor -count=1 ./...`；局部修改可将 `./...` 收窄到受影响包 |
-| ST 集成脚本（Node 22.13+） | `node --test "integrations/sillytavern/tests/*.test.mjs"`（离线单测，已并入 `check.sh` 全量；浏览器验收与备份入口见 `integrations/sillytavern/README.md`，不进 check.sh） |
+| ST 集成脚本（Node 22.13+） | `npm --prefix integrations/sillytavern test`（先构建前端 bundle，再运行离线单测；`check.sh` 全量已包含构建与单测。浏览器验收与备份入口见 `integrations/sillytavern/README.md`，不进 check.sh） |
 | SQL/RLS | `bash infra/db/run-rls-tests.sh`（OrbStack Docker，使用本地测试环境） |
 | 跨组件实现改动或需要仓库整体验证 | `bash scripts/check.sh`（仓库约束检查 + Go 单测 + ST 集成单测） |
 

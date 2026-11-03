@@ -1,5 +1,11 @@
 /* UI-P04 主动陪伴 / 通知。本模块自行插入，不改 style.css。 */
 
+/* 这些控件以原生 button 承担焦点和无障碍语义。保留 Base UI 的表单代理
+   与事件逻辑，但不让其 fixed/clip-path 隐藏盒子参与页面动画的合成与裁切。 */
+.vc-inbox-switch + input[type="checkbox"][aria-hidden="true"],
+.vc-proactive-modes input[type="radio"][aria-hidden="true"] { display: none; }
+
+
 body.vc-ui .vc-reauth-dialog {
   width: min(420px, calc(100vw - 32px));
   max-width: none;

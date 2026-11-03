@@ -2,6 +2,7 @@
 // 规格 docs/planning/2026-11-02-ux24-desktop-experience.md §1 UX-26；文案 companion-copy §20。
 // 只在 html[data-vc-layout="desktop"] 生效；不往 #chat 插节点，不往 .mes_text 子树插节点。
 import { quoteSummary } from './chat-compose.js';
+import { mountEmojiPanelView, mountReactionToolbarView } from './desktop/build/index.js';
 import { reducedMotion } from './desktop/transition.js';
 import { listStickerPicks } from './stickers.js';
 import { mountSuggest } from './desktop/suggest.js';
@@ -330,103 +331,39 @@ export function mountChatReact({ getContext, document: doc = globalThis.document
     let panelState = null;
     let recent = readRecent();
 
-    function cell(label, className = '') {
-        const button = doc.createElement('button');
-        button.type = 'button';
-        button.className = `vc-emoji-cell ${className}`.trim();
-        button.setAttribute('aria-label', label);
-        return button;
-    }
-
-    function renderBody() {
-        const { body, query, tab, mode } = panelState;
-        const picks = listStickerPicks();
-        const frag = [];
-        const emojiCells = (items) => items.map(([emoji, name]) => {
-            const button = cell(name.split(' ')[0]);
-            button.textContent = emoji;
-            button.dataset.k = 'e';
-            button.dataset.v = emoji;
-            return button;
-        });
-        const stickerCells = (items) => items.map((pick) => {
-            const button = cell(pick.tag, 'is-sticker');
-            if (pick.kind === 'image') {
-                const image = doc.createElement('img');
-                image.src = pick.src;
-                image.alt = '';
-                image.draggable = false;
-                button.append(image);
-            } else button.textContent = pick.text;
-            button.dataset.k = 's';
-            button.dataset.v = pick.tag;
-            return button;
-        });
-        const group = (title, nodes) => {
-            const section = doc.createElement('section');
-            if (title) {
-                const heading = doc.createElement('h3');
-                heading.textContent = title;
-                section.append(heading);
-            }
-            const grid = doc.createElement('div');
-            grid.className = 'vc-emoji-grid';
-            grid.append(...nodes);
-            section.append(grid);
-            frag.push(section);
-        };
+    function panelGroups(query, tab, mode) {
+        const picks = listStickerPicks(), groups = [];
+        const emojiItems = (items) => items.map(([emoji, name]) => ({ kind: 'e', value: emoji, label: name.split(' ')[0], text: emoji }));
+        const stickerItems = (items) => items.map(pick => ({ kind: 's', value: pick.tag, label: pick.tag, ...(pick.kind === 'image' ? { src: pick.src } : { text: pick.text }) }));
         if (tab === 'emoji' || mode === 'react') {
-            const found = searchEmoji(query);
-            if (!query.trim() && recent.some((item) => item.k === 'e')) {
-                const recents = recent.filter((item) => item.k === 'e').map((item) => [item.v, EMOJI.find(([emoji]) => emoji === item.v)?.[1] || item.v]);
-                group(COPY.recent, emojiCells(recents));
-            }
-            if (found.length) group('', emojiCells(found));
-        } else {
-            const found = searchStickers(query, picks);
             if (!query.trim()) {
-                const recents = recent.filter((item) => item.k === 's').map((item) => picks.find((pick) => pick.tag === item.v)).filter(Boolean);
-                if (recents.length) group(COPY.recent, stickerCells(recents));
+                const items = recent.filter(item => item.k === 'e').map(item => [item.v, EMOJI.find(([emoji]) => emoji === item.v)?.[1] || item.v]);
+                if (items.length) groups.push({ title: COPY.recent, items: emojiItems(items) });
             }
-            if (found.length) group('', stickerCells(found));
+            const items = searchEmoji(query);
+            if (items.length) groups.push({ title: '', items: emojiItems(items) });
+        } else {
+            if (!query.trim()) {
+                const items = recent.filter(item => item.k === 's').map(item => picks.find(pick => pick.tag === item.v)).filter(Boolean);
+                if (items.length) groups.push({ title: COPY.recent, items: stickerItems(items) });
+            }
+            const items = searchStickers(query, picks);
+            if (items.length) groups.push({ title: '', items: stickerItems(items) });
         }
-        if (!frag.length) {
-            const none = doc.createElement('p');
-            none.className = 'vc-emoji-none';
-            none.textContent = COPY.empty;
-            frag.push(none);
-        }
-        body.replaceChildren(...frag);
+        return groups;
     }
 
-    function zoomFor(button) {
-        const { zoom, panelEl } = panelState;
-        if (!button) { zoom.hidden = true; return; }
-        zoom.replaceChildren(button.cloneNode(true));
-        zoom.firstChild.removeAttribute('aria-label');
-        zoom.hidden = false;
-        const host = panelEl.getBoundingClientRect();
-        const rect = button.getBoundingClientRect();
-        const size = zoom.offsetWidth || 72;
-        zoom.style.left = `${Math.max(8, Math.min(rect.left - host.left + rect.width / 2 - size / 2, host.width - size - 8))}px`;
-        zoom.style.top = `${rect.top - host.top - size - 6}px`;
-    }
-
-    function pick(button) {
-        const kind = button.dataset.k;
-        const value = button.dataset.v;
-        if (!kind || !value) return;
-        const { mode, mesid } = panelState;
+    function pick(entry, kind, value) {
+        if (panelState !== entry || !value) return;
+        const { mode, mesid } = entry;
         recent = pushRecent(recent, { k: kind, v: value });
         writeRecent(recent);
         if (mode === 'react') {
             closePanel(false);
             void react(mesid, value);
-            return;
-        }
-        if (kind === 'e') {
+        } else if (kind === 'e') {
             insertAtCursor(value);
-            renderBody();
+            entry.view.update(entry.props);
         } else {
             closePanel(true);
             sendSticker(value);
@@ -458,82 +395,53 @@ export function mountChatReact({ getContext, document: doc = globalThis.document
     function openPanel({ mode, anchor, mesid } = {}) {
         closePanel(false);
         if (!desktop()) return;
-        const opener = doc.activeElement;
-        const el = doc.createElement('div');
-        el.id = 'vc-emoji-panel';
-        el.className = 'vc-glass';
-        el.setAttribute('role', 'dialog');
-        el.setAttribute('aria-label', COPY.emojiTab);
-        const search = doc.createElement('input');
-        search.type = 'search';
-        search.className = 'vc-emoji-search';
-        search.placeholder = COPY.searchPlaceholder;
-        search.setAttribute('aria-label', COPY.searchPlaceholder);
-        const body = doc.createElement('div');
-        body.className = 'vc-emoji-body';
-        const zoom = doc.createElement('div');
-        zoom.className = 'vc-emoji-zoom';
-        zoom.hidden = true;
-        zoom.setAttribute('aria-hidden', 'true');
-        panelState = { panelEl: el, body, zoom, query: '', tab: 'emoji', mode, mesid, opener, anchor };
-        el.append(search);
-        if (mode !== 'react') {
-            const segment = doc.createElement('div');
-            segment.className = 'vc-segment vc-emoji-segment';
-            segment.innerHTML = `<i class="vc-segment-thumb"></i><button type="button" aria-pressed="true">${COPY.emojiTab}</button><button type="button" aria-pressed="false">${COPY.stickerTab}</button>`;
-            el.append(segment);
-            bindSegmentLazy(segment, (index) => { panelState.tab = index === 0 ? 'emoji' : 'sticker'; zoomFor(null); renderBody(); });
-        }
-        el.append(body, zoom);
-        doc.body.append(el);
-        panel = el;
-        search.addEventListener('input', () => { panelState.query = search.value; zoomFor(null); renderBody(); });
-        body.addEventListener('click', (event) => { const button = event.target.closest('.vc-emoji-cell'); if (button) pick(button); });
-        body.addEventListener('pointerover', (event) => zoomFor(event.target.closest('.vc-emoji-cell')));
-        body.addEventListener('pointerleave', () => zoomFor(null));
-        body.addEventListener('focusin', (event) => zoomFor(event.target.closest('.vc-emoji-cell')));
-        body.addEventListener('scroll', () => zoomFor(null), { passive: true });
-        renderBody();
-        placePanel(el, anchor);
+        const host = doc.createElement('div');
+        host.style.display = 'contents';
+        doc.body.append(host);
+        const entry = { host, mode, mesid, opener: doc.activeElement, anchor, restoreFocus: false, props: null, view: null };
+        panelState = entry;
+        entry.props = {
+            mode, style: {},
+            groups: (query, tab) => panelGroups(query, tab, mode),
+            pick: (kind, value) => pick(entry, kind, value),
+            close: restore => { if (panelState === entry) closePanel(restore); },
+            returnFocus: () => entry.restoreFocus && (entry.opener?.isConnected ? entry.opener : box()),
+            dispose: () => {
+                host.remove();
+                if (panelState !== entry) return;
+                panel = panelState = null;
+                emojiButton?.setAttribute('aria-expanded', 'false');
+            },
+        };
+        entry.view = mountEmojiPanelView(host, entry.props, anchor);
+        panel = entry.view.el;
+        placePanel(entry, anchor);
         emojiButton?.setAttribute('aria-expanded', 'true');
-        search.focus();
     }
 
-    function placePanel(el, anchor) {
+    function placePanel(entry, anchor) {
+        const el = entry.view.el;
         const rect = anchor?.getBoundingClientRect?.() || { left: 16, right: 16, top: root.innerHeight, bottom: root.innerHeight };
-        const width = el.offsetWidth;
-        const height = el.offsetHeight;
+        const width = el.offsetWidth, height = el.offsetHeight;
         const left = Math.max(8, Math.min(rect.right - width, root.innerWidth - width - 8));
-        // 用 bottom 贴住按钮上沿：切换「表情 / 贴纸」或搜索后面板高度会变，按 top 定位会在下方留出空隙。
         const bottom = Math.max(8, root.innerHeight - rect.top + 8);
-        el.style.left = `${left}px`;
-        el.style.top = 'auto';
-        el.style.bottom = `${Math.min(bottom, root.innerHeight - Math.min(height, root.innerHeight - 16) - 8)}px`;
+        entry.props = { ...entry.props, style: { left, top: 'auto', bottom: Math.min(bottom, root.innerHeight - Math.min(height, root.innerHeight - 16) - 8) } };
+        entry.view.update(entry.props);
     }
 
     function closePanel(restoreFocus) {
-        if (!panel) return;
-        const { opener } = panelState;
-        panel.remove();
-        panel = null;
-        panelState = null;
+        if (!panelState) return;
+        const entry = panelState;
+        entry.restoreFocus = restoreFocus;
+        panel = panelState = null;
         emojiButton?.setAttribute('aria-expanded', 'false');
-        if (restoreFocus) (emojiButton?.isConnected && opener === emojiButton ? emojiButton : opener || box())?.focus?.();
+        entry.view?.unmount();
+        entry.host.remove();
     }
-
-    doc.addEventListener('keydown', (event) => {
-        if (event.key !== 'Escape' || !panel) return;
-        event.preventDefault();
-        event.stopPropagation();
-        closePanel(true);
-    }, true);
-    doc.addEventListener('pointerdown', (event) => {
-        if (!panel || panel.contains(event.target) || emojiButton?.contains(event.target) || event.target.closest?.('#vc-react-bar')) return;
-        closePanel(false);
-    }, true);
 
     // ---- 3. 消息回应 ----
     let bar = null;
+    let barView = null;
     let barMes = null;
     let barLocked = null; // 右键菜单打开时锁定 { close }
     let hideTimer = 0;
@@ -543,23 +451,10 @@ export function mountChatReact({ getContext, document: doc = globalThis.document
         bar = doc.createElement('div');
         bar.id = 'vc-react-bar';
         bar.className = 'vc-glass';
-        bar.setAttribute('role', 'toolbar');
         bar.hidden = true;
-        for (const { emoji, label } of REACTIONS) {
-            const button = doc.createElement('button');
-            button.type = 'button';
-            button.dataset.emoji = emoji;
-            button.setAttribute('aria-label', label);
-            button.textContent = emoji;
-            bar.append(button);
-        }
-        const more = doc.createElement('button');
-        more.type = 'button';
-        more.className = 'vc-react-more';
-        more.dataset.more = '';
-        more.setAttribute('aria-label', COPY.more);
-        more.innerHTML = '<svg class="vc-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>';
-        bar.append(more);
+        barView?.unmount();
+        doc.body.append(bar);
+        barView = mountReactionToolbarView(bar, { reactions: REACTIONS, selected: [] });
         bar.addEventListener('click', (event) => {
             const button = event.target.closest('button');
             if (!button || !barMes) return;
@@ -578,7 +473,6 @@ export function mountChatReact({ getContext, document: doc = globalThis.document
         });
         bar.addEventListener('pointerenter', () => clearTimeout(hideTimer));
         bar.addEventListener('pointerleave', () => scheduleHide());
-        doc.body.append(bar);
         return bar;
     }
 
@@ -597,7 +491,7 @@ export function mountChatReact({ getContext, document: doc = globalThis.document
         const list = messageOf(mes)?.extra?.vc_reactions || [];
         const same = barMes === mes && !el.hidden;
         barMes = mes;
-        for (const button of el.querySelectorAll('button[data-emoji]')) button.setAttribute('aria-pressed', list.includes(button.dataset.emoji) ? 'true' : 'false');
+        barView.update({ reactions: REACTIONS, selected: list });
         el.hidden = false;
         const rect = bubbleRect(mes);
         const width = el.offsetWidth;
@@ -777,10 +671,6 @@ export function mountChatReact({ getContext, document: doc = globalThis.document
     }
     queueSync();
     return { enabled: true, pat, react };
-}
-
-function bindSegmentLazy(segment, onChange) {
-    import('./ui/controls.js').then(({ bindSegment }) => bindSegment(segment, { onChange }));
 }
 
 function ensureCss(doc) {

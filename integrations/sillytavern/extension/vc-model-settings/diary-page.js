@@ -1,7 +1,6 @@
 // UX-33 记忆页「日记」：按天的日期条 + 纸张卡片。只在桌面记忆页里由 memory-page.js 挂载。
 // 数据来自 Go：每个关系每天至多一篇，按月读取；字体偏好只存本机。
 import * as api from './api.js';
-import { icon } from './ui/icons.js';
 
 export const DIARY_FONT_KEY = 'vc-diary-font';
 export const DIARY_FONTS = Object.freeze([['body', '正文'], ['hand', '手写']]);
@@ -10,7 +9,6 @@ export const DIARY_MOMENTS = '今天的瞬间';
 export const DIARY_FONT_BUTTON = 'Aa';
 const HAND_CSS = new URL('./fonts/lxgw-wenkai/lxgwwenkai-regular.css', import.meta.url).href;
 const WEEKDAYS = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
-const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 const pad = (n) => String(n).padStart(2, '0');
 
 // ---- 纯函数（单测直接覆盖） ----
@@ -64,34 +62,6 @@ export function ensureHandwriting(doc = globalThis.document) {
     link.href = HAND_CSS;
     link.setAttribute('data-vc-diary-font', '');
     doc.head.append(link);
-}
-
-// ---- 渲染 ----
-
-export function renderDiary(state, { font = 'body' } = {}) {
-    const entries = state.entries || {};
-    const days = monthDays(state.month).map((day) => {
-        const on = day === state.selectedDay;
-        const dot = entries[day] ? ' data-has="true"' : '';
-        return `<button type="button" class="vc-diary-day" data-action="diary-day" data-day="${day}" aria-pressed="${on}"${dot}><span>${Number(day.slice(8))}</span></button>`;
-    }).join('');
-    const strip = `<div class="vc-diary-strip"><button type="button" class="vc-circle" data-action="diary-month" data-delta="-1" aria-label="上个月">${icon('chevron-left', { size: 18 })}</button>
-        <div class="vc-diary-days" role="group" aria-label="${esc(monthLabel(state.month))}"><span class="vc-diary-month">${esc(monthLabel(state.month))}</span>${days}</div>
-        <button type="button" class="vc-circle" data-action="diary-month" data-delta="1" aria-label="下个月">${icon('chevron-right', { size: 18 })}</button></div>`;
-    const entry = entries[state.selectedDay];
-    let body;
-    if (state.error) body = `<div class="vc-empty"><p role="alert">${esc(state.error)}</p><button type="button" class="vc-btn vc-btn-fill" data-action="diary-retry">重试</button></div>`;
-    else if (state.loading && !entry) body = '<div class="vc-diary-paper is-loading" aria-busy="true"></div>';
-    else if (!entry) body = `<div class="vc-empty">${icon('file-text', { size: 32 })}<p class="vc-memory-empty" role="status">${DIARY_EMPTY}</p></div>`;
-    else {
-        const moments = (entry.moments || []).length
-            ? `<div class="vc-diary-moments"><h3>${DIARY_MOMENTS}</h3><ul>${entry.moments.map((m) => `<li>${esc(m)}</li>`).join('')}</ul></div>` : '';
-        body = `<article class="vc-diary-paper${font === 'hand' ? ' is-hand' : ''}" data-day="${esc(entry.day)}">
-            <header><h2>${esc(diaryDayTitle(entry.day))}</h2>${entry.vibe ? `<span class="vc-diary-vibe">${esc(entry.vibe)}</span>` : ''}
-            <button type="button" class="vc-circle vc-diary-aa" data-action="diary-font" aria-haspopup="menu" aria-label="${DIARY_FONT_BUTTON}">${DIARY_FONT_BUTTON}</button></header>
-            <p class="vc-diary-body">${esc(entry.body)}</p>${moments}</article>`;
-    }
-    return `<div class="vc-diary">${strip}${body}</div>`;
 }
 
 // ---- 控制器 ----

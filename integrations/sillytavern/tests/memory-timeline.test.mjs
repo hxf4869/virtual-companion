@@ -1,7 +1,8 @@
+import { bootstrapDocument } from './react-dom-bootstrap.mjs';
+import { renderDesktopMemory } from './memory-dom.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {
-    MEMORY_SECTIONS,
+import { MEMORY_SECTIONS,
     SECTION_STATUS,
     clockOf,
     dayGroupLabel,
@@ -9,9 +10,7 @@ import {
     excerptOf,
     groupTimeline,
     parseSourceRef,
-    pickSource,
-    renderDesktopMemory,
-} from '../extension/vc-model-settings/memory-page.js';
+    pickSource } from '../extension/vc-model-settings/memory-page.js';
 
 const now = new Date(2026, 10, 2, 16, 0);
 const at = (offset, hour, minute = 0) => new Date(2026, 10, 2 + offset, hour, minute).toISOString();
@@ -74,13 +73,15 @@ test('桌面渲染：左栏分区与计数、钉住卡、悬停操作、来源�
     assert.match(html, /data-pinned="true"/);
     assert.match(html, /aria-label="取消钉住"/);
     assert.match(html, /aria-label="钉住"/);
-    assert.match(html, /data-vc-incognito aria-label="新对话不记" aria-checked="true"/);
-    assert.match(html, /<button type="button" class="vc-mem-source" data-action="open-source" data-mid="1" >来自 今天 15:42：「刚才」/);
-    assert.match(html, /data-mid="2" hidden/);
+    const rendered = bootstrapDocument.createElement('div'); rendered.innerHTML = html;
+    const incognito = rendered.querySelector('[data-vc-incognito][role="switch"]');
+    assert.equal(incognito.getAttribute('aria-label'), '新对话不记'); assert.equal(incognito.getAttribute('aria-checked'), 'true');
+    assert.equal(rendered.querySelector('.vc-mem-source[data-mid="1"][data-action="open-source"]').textContent, '来自 今天 15:42：「刚才」');
+    assert.equal(rendered.querySelector('.vc-mem-source[data-mid="2"]').hidden, true);
     // 已遗忘的卡片不再提供「忘记」与「编辑」
-    const forgotten = html.slice(html.indexOf('记忆3'));
-    assert.doesNotMatch(forgotten, /data-action="forget-inline" data-mid="3"/);
-    assert.doesNotMatch(forgotten, /data-action="edit-inline" data-mid="3"/);
+    const forgotten = rendered.querySelector('[data-memory-id="3"]').closest('li');
+    assert.equal(forgotten.querySelector('[data-action="forget-inline"]'), null);
+    assert.equal(forgotten.querySelector('[data-action="edit-inline"]'), null);
 });
 
 test('已钉住分区只列钉住的记忆；时间线内联编辑带取消 / 保存', () => {

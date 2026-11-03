@@ -215,8 +215,8 @@ html[data-vc-layout="desktop"] body.vc-ui .vc-convo-unread[data-count] {
   background: var(--vc-accent); color: var(--vc-on-accent); font-size: var(--vc-fs-caption); font-style: normal; font-weight: 600; line-height: 1;
 }
 html[data-vc-layout="desktop"] body.vc-ui .vc-convo-unread[data-count]::after { content: attr(data-count); }
-html[data-vc-layout="desktop"] body.vc-ui .vc-side-link .vc-side-dot { position: absolute; top: var(--vc-space-sm); right: var(--vc-space-sm); width: var(--vc-dot); height: var(--vc-dot); border-radius: var(--vc-radius-pill); background: var(--vc-accent); }
-html[data-vc-layout="desktop"] body.vc-ui .vc-side-link .vc-side-dot[hidden] { display: none; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-side-item .vc-side-dot { position: absolute; top: var(--vc-space-sm); right: var(--vc-space-sm); width: var(--vc-dot); height: var(--vc-dot); border-radius: var(--vc-radius-pill); background: var(--vc-accent); pointer-events: none; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-side-item .vc-side-dot[hidden] { display: none; }
 html:not([data-vc-layout="desktop"]) body.vc-ui .vc-side-dot { display: none; }
 
 @media (prefers-reduced-motion: reduce) {

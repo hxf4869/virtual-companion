@@ -1,6 +1,7 @@
 // 桌面会话内搜索（UX-23 §1.5）：标题栏右侧圆钮展开为搜索条，范围是当前会话已渲染的消息。
 // 高亮用 CSS Custom Highlight API，不往 .mes_text 子树插任何节点；不支持时只给当前匹配的 .mes 描边。
-import { icon } from './ui/icons.js';
+import { iconSpriteUrl } from './ui/icons.js';
+import { mountChatSearchView } from './desktop/build/index.js';
 import { reducedMotion } from './desktop/transition.js';
 import { jumpToMessage } from './chat-scroll.js';
 
@@ -73,46 +74,27 @@ export function collectMatches(chat, query) {
 
 const highlightSupported = () => typeof globalThis.CSS?.highlights?.set === 'function' && typeof globalThis.Highlight === 'function';
 
-export function mountChatSearch({ pane, getContext, doc = pane.ownerDocument } = {}) {
-    const navbar = pane?.querySelector('.vc-navbar'), capsule = pane?.querySelector('.vc-capsule');
-    if (!navbar || !capsule) return null;
+export function mountChatSearch({ pane, getContext, onOpenChange, doc = pane.ownerDocument } = {}) {
+    const navbar = pane?.querySelector('.vc-navbar'), capsule = pane?.querySelector('.vc-chat-search-tools'), toolbar = pane?.querySelector('.vc-chat-toolbar-views');
+    if (!navbar || !capsule || !toolbar) return null;
     ensureStyle(doc);
-    const el = (tag, className) => { const node = doc.createElement(tag); if (className) node.className = className; return node; };
-    const circle = (label, glyph, size, run) => {
-        const button = el('button', 'vc-circle'); button.type = 'button';
-        button.setAttribute('aria-label', label); button.innerHTML = icon(glyph, { size });
-        button.addEventListener('click', run); return button;
-    };
-
-    const toggle = circle('搜索', 'search', 20, () => open());
-    toggle.classList.add('vc-desk-search-toggle');
-    capsule.prepend(toggle);
-
-    const bar = el('div', 'vc-chat-search'); bar.hidden = true; bar.setAttribute('role', 'search');
-    const field = el('label', 'vc-chat-search-field');
-    const input = el('input'); input.type = 'text'; input.autocomplete = 'off'; input.enterKeyHint = 'search';
-    input.placeholder = '搜索'; input.setAttribute('aria-label', '搜索');
-    const count = el('span', 'vc-chat-search-count vc-num'); count.setAttribute('aria-live', 'polite');
-    const prev = circle('上一条', 'arrow-up', 18, () => step(-1));
-    const next = circle('下一条', 'arrow-down', 18, () => step(1));
-    const done = el('button', 'vc-btn vc-btn-gray vc-chat-search-done'); done.type = 'button'; done.textContent = '完成';
-    done.addEventListener('click', () => close());
-    const glyph = el('span', 'vc-chat-search-icon'); glyph.innerHTML = icon('search', { size: 18 });
-    field.append(glyph, input, count);
-    bar.append(field, prev, next, done); navbar.append(bar);
-
-    let matches = [], index = -1, timer = 0;
+    let matches = [], index = -1, timer = 0, query = '', opened = false, dead = false;
+    const events = { open, close, step, key, change(value) {
+        if (dead) return;
+        query = value; paintCount(); clearTimeout(timer); timer = setTimeout(run, DEBOUNCE_MS);
+    } };
+    const props = () => ({ toggleHost: capsule, sprite: iconSpriteUrl(), open: opened, query,
+        count: !query.trim() ? '' : matches.length ? `${index + 1} / ${matches.length}` : '没有找到',
+        disabled: matches.length < 2, events });
+    const view = mountChatSearchView(toolbar, props());
+    const { toggle, bar, input } = view;
     const chatNode = () => doc.getElementById('chat');
 
     function clearMarks() {
         if (highlightSupported()) { CSS.highlights.delete('vc-search'); CSS.highlights.delete('vc-search-current'); }
         for (const mes of doc.querySelectorAll('#chat > .mes[data-vc-search-current]')) mes.removeAttribute('data-vc-search-current');
     }
-    function paintCount() {
-        const query = input.value.trim();
-        count.textContent = !query ? '' : matches.length ? `${index + 1} / ${matches.length}` : '没有找到';
-        prev.disabled = next.disabled = matches.length < 2;
-    }
+    function paintCount() { if (!dead) view.update(props()); }
     function mark(scroll) {
         clearMarks(); paintCount();
         if (!matches.length) return;
@@ -134,37 +116,40 @@ export function mountChatSearch({ pane, getContext, doc = pane.ownerDocument } =
     }
     function run({ keep = false } = {}) {
         timer = 0;
-        const chat = chatNode(), query = input.value.trim();
-        matches = chat && query ? collectMatches(chat, query) : [];
+        if (dead) return;
+        const chat = chatNode();
+        matches = chat && query ? collectMatches(chat, query.trim()) : [];
         index = !matches.length ? -1 : keep && index >= 0 ? Math.min(index, matches.length - 1) : startIndex();
         mark(!keep);
     }
     function step(delta) {
-        if (!matches.length) return;
+        if (dead || !matches.length) return;
         index = (index + delta + matches.length) % matches.length;
         mark(true);
     }
     function open() {
-        pane.dataset.search = 'open'; bar.hidden = false;
+        if (dead) return;
+        opened = true; onOpenChange?.(true); paintCount();
         input.focus(); input.select(); run();
     }
     function close() {
+        if (dead) return;
         clearTimeout(timer); timer = 0; matches = []; index = -1; clearMarks();
-        delete pane.dataset.search; bar.hidden = true;
+        opened = false; onOpenChange?.(false); paintCount();
         if (doc.activeElement === doc.body || bar.contains(doc.activeElement)) toggle.focus();
     }
 
-    input.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(run, DEBOUNCE_MS); });
-    bar.addEventListener('keydown', (event) => {
+    function key(event) {
         if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); close(); return; }
         if (event.key !== 'Enter' || event.isComposing || event.target !== input) return;
         event.preventDefault();
         if (timer) { clearTimeout(timer); run(); return; }
         step(event.shiftKey ? -1 : 1);
-    });
+    }
 
     // ⌘F / Ctrl+F 打开会话内搜索（会话页可见时）；Esc 在没有更上层浮层处理时关闭它。
     const onKey = (event) => {
+        if (dead) return;
         if ((event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey && String(event.key).toLowerCase() === 'f') {
             if (pane.getClientRects?.().length === 0) return;
             event.preventDefault();
@@ -187,10 +172,11 @@ export function mountChatSearch({ pane, getContext, doc = pane.ownerDocument } =
     return {
         toggle, bar, open, close,
         destroy() {
-            close();
+            if (dead) return;
+            close(); dead = true;
             doc.removeEventListener('keydown', onKey);
             for (const [type, handler] of bound) source.removeListener?.(type, handler);
-            bar.remove(); toggle.remove();
+            view.unmount();
         },
     };
 }

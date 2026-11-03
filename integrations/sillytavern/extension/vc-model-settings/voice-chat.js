@@ -98,28 +98,41 @@ export function installChatVoice(options) {
     globalThis.addEventListener?.('vc-voice-settings-changed',()=>{invalidateVoicePolicy();void refresh();});
 }
 
-export async function readReplyAloud(index,button){
-    if(!integration || button.disabled)return;
-    const context=integration.getContext();const message=context.chat?.[index];const text=message?.mes;
-    if(!message || message.is_user || message.is_system || context.chatMetadata?.vc_binding?.mode!=='COMPANION')return;
-    const active=()=>integration.getContext().chat===context.chat && context.chat[index]===message && message.mes===text;
-    const {voicePlayer}=await import('./voice.js');const {icon}=await import('./ui/icons.js');
-    const state=(playing)=>{button.setAttribute('aria-label',playing?'暂停语音':'朗读');button.setAttribute('aria-pressed',String(playing));button.innerHTML=icon(playing?'pause':'volume-2',{size:18});};
-    const failure=()=>{state(false);button.title='没有完成，请重试。';button.vcRead=null;};
-    if(button.vcRead?.message===message && button.vcRead.text===text){await voicePlayer.toggle(button.vcRead.clipId,{onState:state,onError:failure});return;}
-    button.disabled=true;button.setAttribute('aria-busy','true');button.setAttribute('aria-label','正在生成语音…');
-    try{
-        const policy=await loadVoicePolicy(context);if(!active() || !policy?.available)return;
-        await integration.saveChat();if(!active())return;
-        const identity=context.chatMetadata.vc_f2?.id,source=message.extra?.vc_source;
-        if(!identity || !source?.id || !message.vc_message_id)return;
-        await reconcileSTSources([identity]);if(!active())return;
-        const queued=await createVoiceClip(String(policy.relationship.relationshipId),{messageRef:`stmsg:${identity}:${message.vc_message_id}:${source.id}`,text,purpose:'chat'});
-        const clip=await waitForVoiceClip(queued.clipId,{timeoutMs:policy.settings.kokoroTimeoutSeconds*1000+5000});
-        if(!active())return;if(!clip)throw new Error('voice');
-        button.vcRead={clipId:clip.clipId,message,text};await voicePlayer.toggle(clip.clipId,{onState:state,onError:failure});
-    }catch{failure();}
-    finally{button.disabled=false;button.removeAttribute('aria-busy');if(button.getAttribute('aria-pressed')!=='true')state(false);}
+// state由实际聊天工具栏控制器持有；本模块仅产生状态，不再改写React按钮。
+export async function readReplyAloud(index, state, onChange) {
+    if (!integration || state.busy) return;
+    const context = integration.getContext(), message = context.chat?.[index], text = message?.mes;
+    if (!message || message.is_user || message.is_system || context.chatMetadata?.vc_binding?.mode !== 'COMPANION') return;
+    const relationshipId = String(context.chatMetadata.vc_binding.relationshipId || '');
+    const active = () => {
+        const current = integration.getContext();
+        return current.chat === context.chat && current.chat[index] === message && message.mes === text
+            && String(current.chatMetadata?.vc_binding?.relationshipId || '') === relationshipId;
+    };
+    const paint = patch => { Object.assign(state, patch); if (active()) onChange(); };
+    const playing = value => paint({ playing: value });
+    const failure = () => paint({ playing: false, failed: true, clip: null });
+    if (state.clip?.message === message && state.clip.text === text) {
+        const { voicePlayer } = await import('./voice.js');
+        if (active()) await voicePlayer.toggle(state.clip.clipId, { onState: playing, onError: failure });
+        return;
+    }
+    paint({ busy: true, failed: false });
+    try {
+        const { voicePlayer } = await import('./voice.js');
+        if (!active()) return;
+        const policy = await loadVoicePolicy(context); if (!active() || !policy?.available) return;
+        await integration.saveChat(); if (!active()) return;
+        const identity = context.chatMetadata.vc_f2?.id, source = message.extra?.vc_source;
+        if (!identity || !source?.id || !message.vc_message_id) return;
+        await reconcileSTSources([identity]); if (!active()) return;
+        const queued = await createVoiceClip(String(policy.relationship.relationshipId), { messageRef: `stmsg:${identity}:${message.vc_message_id}:${source.id}`, text, purpose: 'chat' });
+        const clip = await waitForVoiceClip(queued.clipId, { timeoutMs: policy.settings.kokoroTimeoutSeconds * 1000 + 5000 });
+        if (!active()) return; if (!clip) throw new Error('voice');
+        state.clip = { clipId: clip.clipId, message, text };
+        await voicePlayer.toggle(clip.clipId, { onState: playing, onError: failure });
+    } catch { failure(); }
+    finally { paint({ busy: false }); }
 }
 
 export async function requestChatVoice(index) {

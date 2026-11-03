@@ -1,3 +1,4 @@
+import './react-dom-bootstrap.mjs';
 // FIX-FE 第三轮：走查提速、浅色可读性、背景抽屉、账户遮罩、警示条、剧情舞台、抬起层。
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
@@ -5,6 +6,7 @@ import test from 'node:test';
 import { mountShell } from '../extension/vc-model-settings/shell.js';
 import { mountStoryTab } from '../extension/vc-model-settings/story-page.js';
 import { installMiniDom } from './mini-dom.mjs';
+import { installReactDom } from './react-dom.mjs';
 
 const walkUrl = new URL('../scripts/vc-ui-walkthrough.mjs', import.meta.url);
 const guardUrl = new URL('../scripts/lib/overlay-guard.mjs', import.meta.url);
@@ -15,8 +17,8 @@ const chatCssUrl = new URL('../extension/vc-model-settings/chat-view.css', impor
 const tokenCssUrl = new URL('../extension/vc-model-settings/vc-ui.css', import.meta.url);
 const designUrl = new URL('../../../DESIGN.md', import.meta.url);
 
-function shellHost(width) {
-    const doc = installMiniDom();
+function shellHost(t, width) {
+    const doc = installReactDom(t);
     doc.body.classList.add('vc-ui');
     globalThis.innerWidth = width;
     const ctx = {
@@ -39,8 +41,8 @@ function shellHost(width) {
     return { doc, root };
 }
 
-function click(root, node) {
-    root.dispatch('click', { target: node });
+function click(_root, node) {
+    node.click();
 }
 
 function channel(hex, index) {
@@ -176,8 +178,8 @@ test('剧情舞台盖过推入的设置页', async () => {
     assert.match(css, /#vc-shell\[data-cover="story"\] \.vc-shell-settings[\s\S]*display:\s*none !important/);
 });
 
-test('关闭设置后，点外壳内部不会再打开设置', () => {
-    const { root } = shellHost(1440);
+test('关闭设置后，点外壳内部不会再打开设置', (t) => {
+    const { root } = shellHost(t, 1440);
     click(root, root.querySelector('[data-settings]'));
     assert.equal(root.dataset.settings, 'page');
     click(root, root.querySelector('[data-settings-done]'));
@@ -186,10 +188,10 @@ test('关闭设置后，点外壳内部不会再打开设置', () => {
     assert.notEqual(root.dataset.settings, 'page');
 });
 
-test('进入剧情舞台时清掉推入的设置页，且不自动打开模型设置', async () => {
+test('进入剧情舞台时清掉推入的设置页，且不自动打开模型设置', async (t) => {
     const previousFetch = globalThis.fetch;
     const previousMatch = globalThis.matchMedia;
-    globalThis.matchMedia = (query) => ({
+    const reducedMatch = (query) => ({
         matches: String(query).includes('reduce'),
         media: String(query),
         addEventListener() {},
@@ -205,7 +207,8 @@ test('进入剧情舞台时清掉推入的设置页，且不自动打开模型�
         else if (path.includes('/actors/player/view')) body = { participants: [{ actorId: 'lin', name: '林岚', publicPersona: '公开人设' }], publicLore: { setting: '雨夜旅馆' }, knowledge: [], events: [] };
         return { ok: true, status: 200, headers: { get: () => null }, text: async () => JSON.stringify(body) };
     };
-    const { doc, root } = shellHost(1440);
+    const { doc, root } = shellHost(t, 1440);
+    globalThis.matchMedia = reducedMatch;
     const configured = { n: 0 };
     const container = root.querySelector('[data-page="story"]');
     try {
@@ -220,9 +223,9 @@ test('进入剧情舞台时清掉推入的设置页，且不自动打开模型�
             if (!start) await new Promise((resolve) => setTimeout(resolve, 10));
         }
         assert.ok(start);
-        story.ownerDocument = doc;
+        assert.equal(story.ownerDocument, doc);
         root.dataset.settings = 'page';
-        for (const fn of story.listeners.click || []) fn({ target: start, button: 0 });
+        start.click();
         for (let i = 0; i < 50 && story.dataset.view !== 'stage'; i += 1) {
             await new Promise((resolve) => setTimeout(resolve, 10));
         }
@@ -231,7 +234,7 @@ test('进入剧情舞台时清掉推入的设置页，且不自动打开模型�
         assert.equal(configured.n, 0);
         const configure = story.querySelector('[data-action="configure"]');
         assert.ok(configure);
-        for (const fn of story.listeners.click || []) fn({ target: configure, button: 0 });
+        configure.click();
         assert.equal(configured.n, 1);
     } finally {
         globalThis.fetch = previousFetch;
@@ -239,7 +242,8 @@ test('进入剧情舞台时清掉推入的设置页，且不自动打开模型�
     }
 });
 
-test('桌面进入账户后关掉设置层，手机上的设置 sheet 仍留着', async () => {
+test('桌面进入账户后关掉设置层，手机上的设置 sheet 仍留着', async (t) => {
+    const phone = installReactDom(t);
     const listeners = [];
     const previousAdd = globalThis.addEventListener;
     const previousRemove = globalThis.removeEventListener;
@@ -256,12 +260,7 @@ test('桌面进入账户后关掉设置层，手机上的设置 sheet 仍留着'
     function clickAction(doc, action) {
         const button = [...doc.querySelectorAll('button')].find((el) => el.getAttribute('data-action') === action);
         assert.ok(button, action);
-        const original = button.closest.bind(button);
-        button.closest = (sel) => (String(sel).includes('data-action') ? button : original(sel));
-        let node = button;
-        while (node && !(node.listeners?.click?.length)) node = node.parent;
-        assert.ok(node, action);
-        node.dispatch('click', { target: button, button: 0 });
+        button.click();
     }
     function mount(doc, width) {
         globalThis.innerWidth = width;
@@ -284,10 +283,10 @@ test('桌面进入账户后关掉设置层，手机上的设置 sheet 仍留着'
         });
     }
     try {
-        const phone = installMiniDom();
         phone.body.classList.add('vc-ui');
         const narrow = mount(phone, 390);
         click(narrow, narrow.querySelector('[data-settings]'));
+        await new Promise(resolve => setTimeout(resolve, 0));
         assert.ok(phone.querySelector('.vc-sheet'));
         clickAction(phone, 'data');
         await new Promise((resolve) => setTimeout(resolve, 0));
@@ -301,7 +300,8 @@ test('桌面进入账户后关掉设置层，手机上的设置 sheet 仍留着'
         assert.equal(phone.querySelector('.vc-sheet'), null);
         assert.notEqual(narrow.dataset.settings, 'page');
 
-        const desk = installMiniDom();
+        const desk = phone.implementation.createHTMLDocument();
+        globalThis.document = desk;
         desk.body.classList.add('vc-ui');
         const wide = mount(desk, 1440);
         click(wide, wide.querySelector('[data-settings]'));

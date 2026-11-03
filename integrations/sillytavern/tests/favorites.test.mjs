@@ -1,13 +1,12 @@
+import { bootstrapDocument } from './react-dom-bootstrap.mjs';
+import { renderFavorites } from './memory-dom.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as api from '../extension/vc-model-settings/api.js';
-import {
-    createFavoritesPage,
+import { createFavoritesPage,
     glyph,
     monthDay,
-    reminderWhen,
-    renderFavorites,
-} from '../extension/vc-model-settings/favorites-page.js';
+    reminderWhen } from '../extension/vc-model-settings/favorites-page.js';
 import { COPY, REMIND_MAX, messageInstant, messageMenuPlan, quoteSummary, reminderChoices, rfc3339 } from '../extension/vc-model-settings/chat-compose.js';
 
 const realFetch = globalThis.fetch;
@@ -17,7 +16,8 @@ const favorite = (id, extra = {}) => ({ favoriteId: String(id), relationshipId: 
 const reminder = (id, at, text) => ({ reminderId: String(id), relationshipId: '11', text, remindAt: at.toISOString(), recurrence: 'NONE', status: 'ACTIVE', createdAt: new Date(2026, 10, 2).toISOString() });
 test.beforeEach(() => {
     calls = [];
-    globalThis.document = { cookie: 'vc_csrf=go-token' };
+    bootstrapDocument.cookie = 'vc_csrf=go-token';
+    globalThis.document = bootstrapDocument;
     api.setStHeadersProvider(() => ({}));
     globalThis.fetch = async (url, init = {}) => {
         const path = String(url);
@@ -47,10 +47,11 @@ test('收藏卡片墙：正文、角色名 · 日期、回到对话；右侧即�
     assert.match(html, /aria-pressed="false">提醒</);
     assert.equal(html.match(/class="vc-fav-card"/g).length, 2);
     assert.match(html, /小满 · 10月20日/);
-    assert.match(html, /data-action="open-favorite" data-favorite-id="1">回到对话/);
+    const rendered = bootstrapDocument.createElement('div'); rendered.innerHTML = html;
+    assert.match(rendered.querySelector('[data-action="open-favorite"][data-favorite-id="1"]').textContent, /^回到对话/);
     assert.match(html, /aria-label="即将提醒"><h2>即将提醒<\/h2>/);
     assert.match(html, /今晚 21:00[\s\S]*看晚霞/);
-    assert.match(html, /data-action="cancel-reminder" data-reminder-id="7"/);
+    assert.ok(rendered.querySelector('[data-action="cancel-reminder"][data-reminder-id="7"]'));
 });
 
 test('提醒分段列出全部提醒；没有收藏 / 没有提醒时给一句空态', () => {
