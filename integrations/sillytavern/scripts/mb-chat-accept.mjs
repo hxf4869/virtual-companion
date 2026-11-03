@@ -9,6 +9,7 @@ import { reauthForWrite } from './lib/reauth-write.mjs';
 import { ownerBudgetResetSql } from './lib/owner-budget.mjs';
 import { makePng } from './lib/fixtures.mjs';
 import { ensureNativeConnection } from './desktop-startup-accept.mjs';
+import assert from 'node:assert/strict';
 
 const SHOTS = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../.review-queue/MB-4');
 export async function sceneMbChat(ctx) {
@@ -37,7 +38,7 @@ export async function sceneMbChat(ctx) {
         await bc.addCookies([{name:'vc_session',value:s.vcSession,url:ctx.w05.stBase},{name:'vc_csrf',value:s.vcCsrf,url:ctx.w05.stBase}]);
         await completeStOnboarding(bc,ctx.w05.stBase);
         page=await bc.newPage();page.setDefaultTimeout(20000);
-        const errors=[];page.on('pageerror',e=>errors.push(e.message.slice(0,160)));
+        const errors=[],errorStacks=[];page.on('pageerror',e=>{errors.push(e.message.slice(0,160));errorStacks.push(String(e.stack).split('\n').filter(line=>/^\s+at /.test(line)).slice(0,6))});
         await page.goto(`${ctx.w05.stBase}/m/?vcdebug=1`);
         await page.locator(`.vc-row[data-chat-file='${file}']`).click();
         const input=page.locator('.vc-chat-input textarea');
@@ -102,7 +103,63 @@ export async function sceneMbChat(ctx) {
             const overflow=await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1);
             if(overflow)throw Error(`宽度 ${width} 横向溢出`);
         }
-        if(errors.length)throw Error(`页面错误：${errors.join(' | ')}`);
+        // NF-11：正式根桌面与手机原生宿主同时持有同一聊天，双向 CAS。
+        const desktopContext = await browser.newContext({ viewport: { width: 1440, height: 900 }, reducedMotion: 'reduce' });
+        const nativeConflicts = [];
+        const recordNativeConflict = response => {
+            if (new URL(response.url()).pathname === '/api/chats/save' && response.status() === 409) {
+                nativeConflicts.push(response.json().then(body => body.code));
+            }
+        };
+        page.on('response', recordNativeConflict);
+        try {
+            await desktopContext.addCookies(await bc.cookies());
+            const desktop = await desktopContext.newPage(), nativeRequests = [];
+            desktop.setDefaultTimeout(30000);
+            desktop.on('request', request => { const path = new URL(request.url()).pathname; if (['/native/', '/script.js', '/scripts/extensions.js', '/scripts/st-context.js'].includes(path)) nativeRequests.push(path); });
+            const current = (await st.call('POST', '/api/chats/get', { avatar_url: avatar, file_name: file })).json;
+            await desktop.goto(ctx.w05.stBase + '/');
+            await desktop.waitForFunction(() => document.documentElement.dataset.vcApp === 'ready');
+            await desktop.evaluate(row => document.querySelector('#vc-shell').openConversation(row), { avatar, file, ...current[0].chat_metadata.vc_binding });
+            await desktop.waitForFunction(id => document.documentElement.dataset.vcRuntime === 'prepared' && SillyTavern.getContext().chatMetadata?.vc_f2?.id === id, current[0].chat_metadata.vc_f2.id);
+            const nativeMarker = 'NF11 手机先保存的修订';
+            await page.evaluate(text => globalThis.__vcEngine.edit(0, text), nativeMarker);
+            const calls = await ctx.fixtureHttp.count({ protocol: 'chat' });
+            const draft = 'NF11 桌面保留的冲突草稿';
+            await desktop.locator('#send_textarea').fill(draft);
+            await desktop.waitForFunction(() => !document.querySelector('#send_but').disabled);
+            await desktop.locator('#send_but').click();
+            const panel = desktop.locator('#vc-f2-conflict'); await panel.waitFor({ state: 'visible' });
+            assert.equal(await desktop.locator('#send_textarea').inputValue(), draft);
+            assert.equal(await ctx.fixtureHttp.count({ protocol: 'chat' }), calls, '桌面保存冲突不能发模型请求');
+            await panel.locator('[data-action="view-latest"]').click(); await panel.waitFor({ state: 'hidden' });
+            await desktop.waitForFunction(text => SillyTavern.getContext().chat[0].mes === text, nativeMarker);
+            assert.equal(await desktop.locator('#send_textarea').inputValue(), draft);
+            await reply('测试回复：跨端版本已同步。');
+            await desktop.waitForFunction(() => !document.querySelector('#send_but').disabled);
+            await desktop.locator('#send_but').click();
+            await desktop.waitForFunction(() => !document.querySelector('#mes_stop') && SillyTavern.getContext().chat.at(-1)?.mes.includes('跨端版本已同步'));
+            assert.equal(await ctx.fixtureHttp.count({ protocol: 'chat' }), calls + 1, '显式读取最新后只有一次生成');
+            const nativeDraft = 'NF11 手机旧版本保留的修订草稿';
+            const rejected = await page.evaluate(async text => {
+                let code;
+                try { await globalThis.__vcEngine.edit(0, text); } catch (error) { code = error.code; }
+                const w = globalThis.__vcEngine.frame.contentWindow;
+                const { readF2Draft } = await w.eval("import('/scripts/vc-runtime/f2-client.js')");
+                return { code, retained: Boolean(readF2Draft()?.includes(text)) };
+            }, nativeDraft);
+            assert.ok(['VC_REVISION_CONFLICT', 'VC_STALE_SOURCE'].includes(rejected.code));
+            assert.equal(rejected.retained, true);
+            assert.ok((await Promise.all(nativeConflicts)).includes('VC_REVISION_CONFLICT'), '手机必须实际观察到服务端409；此前失败已封锁队列时后续写入仍拒绝');
+            const latest = (await st.call('POST', '/api/chats/get', { avatar_url: avatar, file_name: file })).json;
+            assert.equal(latest[1].mes, nativeMarker);
+            assert.equal(latest.filter(row => row.is_user && row.mes === draft).length, 1);
+            assert.ok(!latest.some(row => row.mes === nativeDraft));
+            assert.deepEqual(nativeRequests, [], '正式根桌面不借用手机原生宿主');
+            assert.equal(await desktop.locator('#vc-engine').count(), 0);
+            console.log('[mb-chat] PASS 根桌面/手机同一聊天双向CAS、保留草稿、显式重读后单次生成');
+        } finally { page.off('response', recordNativeConflict); await desktopContext.close(); }
+        if(errors.length)throw Error(`页面错误：${errors.join(' | ')};frames=${JSON.stringify(errorStacks)}`);
         fs.writeFileSync(path.join(SHOTS,'NOTES.md'),'# MB-4\n\n合成会话：发送与停止、引用、搜索、草稿回填、编辑删除；新增嵌套实例与酒馆视图切换后返回，恢复原会话并确认消息没有写到另一实例；360/390/430/1440 浅深色截图。\n');
         await bc.close();
     } catch (e) {

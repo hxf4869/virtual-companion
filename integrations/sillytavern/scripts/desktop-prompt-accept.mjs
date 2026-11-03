@@ -62,6 +62,14 @@ async function scenePromptParity(ctx) {
             const oldPage = await reference.newPage(), newPage = await candidate.newPage();
             oldPage.setDefaultTimeout(60000); newPage.setDefaultTimeout(60000);
             const memoryExchanges = [];
+            let preparedContext;
+            await oldPage.route('**' + MEMORY_PATH, async route => {
+                // 在真实召回发出前记录同一份内存输入；存储会规范化来源字段，不能拿磁盘字段替代原生内存。
+                preparedContext = await oldPage.evaluate(() => JSON.parse(JSON.stringify({
+                    chatMetadata: SillyTavern.getContext().chatMetadata, chat: SillyTavern.getContext().chat,
+                })));
+                await route.continue();
+            });
             oldPage.on('response', response => {
                 if (new URL(response.url()).pathname !== MEMORY_PATH) return;
                 // Playwright读取响应副本，不消费页面fetch。只在内存保留本组合成输入。
@@ -157,6 +165,21 @@ async function scenePromptParity(ctx) {
                 const memory = await Promise.all(memoryExchanges);
                 assert.equal(memory.length, 1, '参考页必须实际完成一轮记忆召回');
                 assert.equal(memory[0].status, 200, '参考记忆端口必须真实成功');
+                // NF-10 原生提示词准备先提交 metadata；纯计算的输入从同一已落盘边界开始。
+                // 保留全部最终请求/状态/外部请求断言，并明确验证这次 F2 提交没有预先执行宏。
+                const prepared = await st.call('POST', '/api/chats/get', { avatar_url: fixture.avatar, file_name: fixture.file });
+                assert.equal(prepared.status, 200);
+                const preparedMetadata = prepared.json[0].chat_metadata;
+                assert.deepEqual(preparedMetadata.vc_f2, { id: input.context.chatMetadata.vc_f2.id, revision: input.context.chatMetadata.vc_f2.revision + 1 });
+                assert.equal(preparedMetadata.vc_f2.revision, memory[0].request.revision);
+                assert.deepEqual(preparedContext.chatMetadata.vc_f2, preparedMetadata.vc_f2);
+                assert.deepEqual(preparedMetadata.variables, input.context.chatMetadata.variables, '持久化边界不能预执行提示词变量宏');
+                assert.deepEqual(preparedContext.chatMetadata.variables, input.context.chatMetadata.variables);
+                const promptInput = messages => messages.map(({ name, is_user, is_system, mes, send_date, vc_message_id, variables }) => ({ name, is_user, is_system, mes, send_date, vc_message_id, variables }));
+                assert.deepEqual(promptInput(prepared.json.slice(1)), promptInput(input.context.chat), 'F2准备必须保持同一计算输入');
+                assert.deepEqual(promptInput(preparedContext.chat), promptInput(input.context.chat));
+                input.context.chatMetadata = preparedContext.chatMetadata;
+                input.context.chat = preparedContext.chat;
                 let memoryUsed = 0;
                 const memoryDifferences = [];
                 await candidate.route('**' + MEMORY_PATH, async route => {

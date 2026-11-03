@@ -195,7 +195,49 @@ async function sceneIndependentDesktop(ctx) {
                 throw new Error('聊天准备首次初始化失败');
             }, { avatar: fixture.avatar, file: fixture.file });
         }
-        const result = { entry: '/', alias: '/desktop/', uiMs, historyMs, openMs: Math.round(historyMs - opening), sendMs: null,
+        const zoom = [];
+        // 沿用 dr-shell：固定物理区域，以 CSS 视口和 DPR 验证等效桌面缩放。
+        for (const factor of [1.25, 1.5, 2]) {
+            const zoomContext = await desktopBenchmarkContext(browser, ctx, { viewport: { width: Math.round(1440 / factor), height: Math.round(900 / factor) }, deviceScaleFactor: factor });
+            try {
+                const zoomPage = await zoomContext.newPage(), native = [], generated = [];
+                zoomPage.setDefaultTimeout(20000);
+                zoomPage.on('request', request => {
+                    const url = new URL(request.url()).pathname;
+                    if (['/native/', '/script.js', '/scripts/extensions.js', '/scripts/st-context.js'].includes(url)) native.push(url);
+                    if (url.endsWith('/generate')) generated.push(url);
+                });
+                await zoomPage.goto(ctx.w05.stBase + '/');
+                await zoomPage.waitForFunction(() => document.documentElement.dataset.vcApp === 'ready');
+                await zoomPage.locator(`[data-convo-list] [data-relationship-id="${fixture.chat[0].chat_metadata.vc_binding.relationshipId}"]`).click();
+                await zoomPage.waitForFunction(() => document.documentElement.dataset.vcRuntime === 'prepared' && document.querySelectorAll('#chat > .mes').length === 24);
+                await zoomPage.locator('#send_textarea').fill('NF11 缩放草稿');
+                await zoomPage.waitForFunction(() => !document.querySelector('#send_but').disabled);
+                for (const scheme of ['light', 'dark']) {
+                    await zoomPage.evaluate(async mode => (await import('/scripts/extensions/third-party/vc-model-settings/ui/theme.js')).setThemeMode(mode), scheme);
+                    await zoomPage.evaluate(async () => {
+                        await document.fonts.ready;
+                        await Promise.all(document.getAnimations().filter(animation => animation.playState === 'running' && animation.effect?.getComputedTiming().iterations !== Infinity).map(animation => animation.finished.catch(() => {})));
+                        await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+                    });
+                    const geometry = await zoomPage.evaluate(() => {
+                        const input = document.querySelector('#send_textarea').getBoundingClientRect();
+                        const send = document.querySelector('#send_but'), button = send.getBoundingClientRect();
+                        const hit = document.elementFromPoint(button.x + button.width / 2, button.y + button.height / 2);
+                        return { width: innerWidth, height: innerHeight, dpr: devicePixelRatio, overflow: document.documentElement.scrollWidth > innerWidth + 1,
+                            input: input.toJSON(), button: button.toJSON(), reachable: hit === send || send.contains(hit) };
+                    });
+                    assert.equal(geometry.overflow, false);
+                    assert.ok(geometry.input.left >= 0 && geometry.input.right <= geometry.width + 1 && geometry.input.bottom <= geometry.height + 1);
+                    assert.ok(geometry.button.width >= 36 && geometry.button.height >= 36 && geometry.reachable, '缩放后的实际发送控件必须可达');
+                    assert.equal(await zoomPage.locator('#vc-engine').count(), 0);
+                    await zoomPage.screenshot({ path: path.join(ctx.artifactsDir, `nf-desktop-zoom-${factor * 100}-${scheme}.png`) });
+                    zoom.push({ factor, scheme, ...geometry });
+                }
+                assert.deepEqual(native, []); assert.deepEqual(generated, []);
+            } finally { await zoomContext.close(); }
+        }
+        const result = { entry: '/', alias: '/desktop/', uiMs, historyMs, openMs: Math.round(historyMs - opening), sendMs: null, zoom,
             delayedRuntime: true, nativeRequests: forbidden.length, modelRequests: 0, messages: fixture.chat.length - 1,
             resources: [...new Set(requests)],
             note: 'NF-01/NF-10 验证根入口在聊天准备延迟时仍可导航、读取和设置；发送与复杂卡由 nf-chat/nf-cards 单独验收。' };
@@ -219,9 +261,9 @@ async function sceneDesktopPerformance(ctx) {
         for(let round=0;round<3;round++){
             const context=await desktopBenchmarkContext(browser,ctx),page=await context.newPage();page.setDefaultTimeout(30000);
             const forbidden=[],errors=[];page.on('pageerror',error=>errors.push(error.name));
-            page.on('request',request=>{const path=new URL(request.url()).pathname;if(path.endsWith('/generate'))generated++;if(['/', '/index.html','/script.js','/scripts/extensions.js','/scripts/st-context.js'].includes(path))forbidden.push(path);});
+            page.on('request',request=>{const path=new URL(request.url()).pathname;if(path.endsWith('/generate'))generated++;if(['/index.html','/script.js','/scripts/extensions.js','/scripts/st-context.js'].includes(path)||path==='/'&&!(request.isNavigationRequest()&&request.frame()===page.mainFrame()))forbidden.push(path);});
             for(const cache of ['cold','warm']){
-                await page.goto(ctx.w05.stBase+'/desktop/',{waitUntil:'domcontentloaded'});
+                await page.goto(ctx.w05.stBase+'/',{waitUntil:'domcontentloaded'});
                 await page.waitForFunction(()=>document.documentElement.dataset.vcApp==='ready');
                 await page.locator('.vc-sidebar [data-nav=characters]').click();
                 await page.locator('.vc-characters [name=character-search]').fill('NF');
@@ -245,8 +287,12 @@ async function sceneDesktopPerformance(ctx) {
     assert.equal(generated,0,'启动测量不得生成');
     const median=values=>[...values].sort((a,b)=>a-b)[Math.floor(values.length/2)];
     const medians=Object.fromEntries(['cold','warm'].map(cache=>[cache,Object.fromEntries(['uiMs','historyMs','openMs','sendMs'].map(key=>[key,median(samples.filter(row=>row.cache===cache).map(row=>row[key]))]))]));
-    const result={surface:'independent-desktop',viewport:'1440x900@1',messages:24,modelRequests:generated,cache:native.cache,native:native.samples,samples,medians,resources};
+    const result={surface:'independent-desktop',entry:'/',viewport:'1440x900@1',messages:24,modelRequests:generated,cache:native.cache,native:native.samples,samples,medians,resources};
     fs.writeFileSync(path.join(ctx.artifactsDir,'nf-performance.json'),JSON.stringify(result,null,2)+'\n');
+    for(const sample of native.samples){
+        assert.ok(medians[sample.cache].uiMs<sample.uiMs,`${sample.cache}根入口界面应快于同输入原生宿主`);
+        assert.ok(medians[sample.cache].sendMs<sample.sendMs,`${sample.cache}根入口真实可发送应快于同输入原生宿主`);
+    }
     if(process.env.VC_NF_PERFORMANCE_REFERENCE){
         const previous=JSON.parse(fs.readFileSync(process.env.VC_NF_PERFORMANCE_REFERENCE,'utf8'));
         for(const cache of ['cold','warm']){

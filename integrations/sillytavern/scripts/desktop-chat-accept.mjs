@@ -26,7 +26,7 @@ export async function openDesktopFixture(page, base, fixture, messages = 24) {
     await page.waitForFunction(count => document.querySelectorAll('#chat > .mes').length === count, messages);
 }
 
-export async function captureWindows(page, ctx, prefix = 'nf-chat') {
+export async function captureWindows(page, ctx, prefix = 'nf-chat', inspectCapture) {
     // 与NF-04 reopen相同的真实发送就绪检查；只改合成草稿，不发出请求。
     const input = page.locator('#send_textarea'), draft = await input.inputValue();
     if (!draft.trim()) await input.fill('合成就绪检查');
@@ -57,7 +57,8 @@ export async function captureWindows(page, ctx, prefix = 'nf-chat') {
                 `发送/麦克风必须在输入框内 ${JSON.stringify({width: geometry.width, button: geometry.send, input: geometry.input})}`);
             assert.ok(Math.abs(geometry.emoji.width - geometry.emoji.height) < 1 && geometry.emoji.top >= geometry.input.top - 1 && geometry.emoji.bottom <= geometry.input.bottom + 1,
                 `表情按钮不能另占空白行 ${JSON.stringify({width: geometry.width, emoji: geometry.emoji, input: geometry.input})}`);
-            await page.screenshot({ path: path.join(ctx.artifactsDir, `${prefix}-${viewport.width}-${scheme}.png`) });
+            const image = await page.screenshot({ path: path.join(ctx.artifactsDir, `${prefix}-${viewport.width}-${scheme}.png`) });
+            if (inspectCapture) await inspectCapture(image, viewport, scheme);
         }
     }
     await page.setViewportSize({ width: 1440, height: 900 });

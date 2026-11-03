@@ -1,5 +1,6 @@
 // NF-04：使用既有合成复杂卡、真实锁定EJS/Helper/MVU与受管provider。
 import assert from 'node:assert/strict';
+import { PNG } from 'pngjs';
 import { createStClient, waitFor } from './managed-lib.mjs';
 import { seedDesktopBenchmark, desktopBenchmarkContext } from './desktop-startup-accept.mjs';
 import { openDesktopFixture, captureWindows } from './desktop-chat-accept.mjs';
@@ -185,7 +186,33 @@ async function sceneDesktopCards(ctx) {
         await swipe('swipe-next'); await expectState(31, true); await storedTrust(6, 31);
         assert.equal((await read())[7].extra.vc_source.id, newSource); assert.equal((await captures()).length, beforeSwipe + 1, '切到已有候选不额外生成');
         await reopen(7); await expectState(31, true); await panelTrust(6, 31);
-        await captureWindows(page, ctx, 'nf-cards');
+        const originalFrame = await page.locator('#TH-message--6--0').elementHandle();
+        const preferredScheme = await page.frameLocator('#TH-message--6--0').locator('html').evaluate(() => matchMedia('(prefers-color-scheme: dark)').matches);
+        await captureWindows(page, ctx, 'nf-cards', async (image, viewport, scheme) => {
+            // 每个窗口/主题同时核对真实变量、同一iframe与实际保存的PNG，避免仅凭预览误判内容。
+            assert.equal(await page.locator('#TH-message--6--0').evaluate((frame, original) => frame === original, originalFrame), true, '切换窗口/主题不能重建卡片并重跑脚本');
+            assert.equal(await page.frameLocator('#TH-message--6--0').locator('html').evaluate(() => matchMedia('(prefers-color-scheme: dark)').matches), preferredScheme, '应用主题不能改写卡内系统偏好媒体查询');
+            const schemes = await page.evaluate(() => [document.body, document.querySelector('#TH-message--6--0')].map(node => getComputedStyle(node).colorScheme));
+            assert.ok(schemes.every(value => value.includes(scheme)), '控件和卡片嵌入元素仍须继承宿主明暗选择');
+            await panelTrust(6, 31);
+            const state = await page.frameLocator('#TH-message--6--0').locator('body').evaluate(body => {
+                const trust = document.querySelector('#trust'), rect = trust.getBoundingClientRect(), style = getComputedStyle(body);
+                return { trust: trust.textContent, opacity: style.opacity, visibility: style.visibility, width: rect.width, height: rect.height };
+            });
+            assert.equal(state.trust, '31'); assert.equal(state.opacity, '1'); assert.equal(state.visibility, 'visible');
+            assert.ok(state.width > 0 && state.height > 0, '各窗口/主题的卡片变量文字必须实际参与布局');
+            const rect = await page.locator('#TH-message--6--0').boundingBox(), png = PNG.sync.read(image);
+            const scale = png.width / viewport.width;
+            let textPixels = 0;
+            for (let y = Math.max(0, Math.ceil(rect.y * scale)); y < Math.min(png.height, (rect.y + rect.height) * scale); y++) {
+                for (let x = Math.max(0, Math.ceil(rect.x * scale)); x < Math.min(png.width, (rect.x + rect.width) * scale); x++) {
+                    const pixel = (y * png.width + x) * 4;
+                    // 既有合成卡深色面板的白色文字；空白背景不满足该条件，不依赖字体像素精确匹配。
+                    if (png.data[pixel] > 180 && png.data[pixel + 1] > 180 && png.data[pixel + 2] > 180) textPixels++;
+                }
+            }
+            assert.ok(textPixels > 20, `${viewport.width}/${scheme}的真实卡片截图应绘出文字和按钮，亮色像素=${textPixels}`);
+        });
         await page.evaluate(() => { EjsTemplate.setFeatures({ compile_workers: false, sandbox: false }); SillyTavern.getContext().saveSettingsDebounced(); });
         assert.deepEqual(forbidden, []); assert.deepEqual(errors, []);
         return { initialized: 10, generated: 15, nextTurn: 17, reprocessed: 19, replayed: 25, workerAndSandbox: true, candidateVariables: [25, 31], nativeRequests: 0 };
