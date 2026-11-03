@@ -1,4 +1,6 @@
-# 后台 React 组件化重构实施计划
+# 电脑端前端替换与酒馆能力适配重构实施计划
+
+> **2026-11-03 当前执行范围：第 11 节 NF-00–NF-11。** 第 1–10 节保留 DR 组件化的基线与历史回执；其中“ST 管理桌面消息树、原生输入和启动”的约束已由本轮 Owner 决定替代，不再约束 NF 实施。NF 是同一 Virtual Companion 电脑端的替换，不是第二套产品。本文件是唯一实施计划，进度仍只在既有 TODO 按 ID 回填。
 
 > 执行方式：主 Agent 在隔离分支串行实施，每批有独立验收；遵循 `superpowers:executing-plans` 的逐项实施与最终评审方法。项目只维护本计划和既有 `TODO.md`，不建立第二套过程文件。
 
@@ -336,3 +338,122 @@ Owner已确认首次推送目标。实现提交`392894079ae0d8e37abc4c53b8ce7f32
 线上39289407部署与自检完成：加密备份自校验通过，203个迁移/最新V282一致；Go、ST、MemoryCore、向量、重排与三个已配置语音引擎健康通过。额外核验线上数据卷实际具有React bundle和本次绑定派生高亮逻辑，外部HTTPS登录返回200。历史镜像、旧备份/扩展快照和传输包按OP-11清理；临时构建目录和无用候选镜像标签回收，当前运行/部署镜像及必要共享层保留。
 
 本地11080已从旧项目目录的前端挂载切换至本重构worktree并重建ST，健康、登录200和新前端代码检查通过。只更新了本地自有前端，原Go/MemoryCore等服务和业务卷保留。本地继续依赖该worktree路径；本轮未执行真实业务消息/通知发送或Owner人工体验验收，供Owner随后试用反馈。此前各批“未提交/未部署”为当时本地候选阶段的历史记录。
+
+
+## 11. NF 电脑端替换与酒馆能力适配（2026-11-03）
+
+### 11.1 已确认的范围与基线
+
+正式电脑端复用现有 React、TypeScript、Vite、Base UI、主题、组件与同源部署，替换当前页面；开发先走 `/desktop/`。
+“独立”指启动、导航、页面、设置、消息列表、输入与生命周期不依赖完整 ST 页面；不新建应用、业务存储或生成服务。
+桌面禁止完整 ST iframe、先初始化 ST 再隐藏、模拟抽屉点击或观察原生 DOM 补皮肤。仅卡片 HTML/脚本 iframe 可保留。
+本轮不重写手机；现有 ST/Go 服务、功能与复杂卡能力均保留。真实模型费用、通知、生产部署、新增生产依赖均未授权。
+
+- 原主工作树：`/Users/hxf/projects/virtual-companion`，`ux-11-desktop-immersive@a8b240e2`；未跟踪 zip 不处理。
+- React 来源：`codex/desktop-frontend-refactor@09690d26`（已 fetch 核对，跟踪远端一致），上游父实现 `39289407`。
+  DR-1–DR-8 是可复用的组件化成果，不代表独立前端已完成。原工作树 11 个文件有未提交改动，本轮全部保留、不复制或提交。
+- 本轮唯一写入 owner：主 Agent；隔离工作树 `/Users/hxf/.codex/worktrees/desktop-independent-frontend/virtual-companion`，
+  分支 `codex/desktop-independent-frontend`，推送 origin 同名跟踪分支。只读子任务可以提供证据，不建立固定多 Agent 流水线。
+- 手机分支 `mb-mobile@bedf0320`，`/Users/hxf/projects/virtual-companion-mobile/mobile/src/engine/engine.mjs` 的
+  `createEngine({src='/'})` 为真实消费者。NF-10 必须先提供明确原生宿主入口并适配它，再切桌面根入口；不能靠 UA 猜测绕过。
+- 上游锁定：ST `7e8663cd9`、Helper `0af421068e`、EJS `d6f520d149`、MVU `d03b7dc8a6`；原始检出只读，派生物走受管装配。
+
+### 11.2 责任边界与状态语义
+
+| 所有者 | 保留/迁移责任 |
+| --- | --- |
+| 自有前端 | 全部桌面界面与页面生命周期、列表/消息/输入、草稿、焦点、滚动和请求失效 |
+| 聊天运行模块 | 实际需要的 ST 提示词组装、世界书、宏、正则和生成钩子；纯计算复用，显式状态注入，解除 DOM/原生设置/完整初始化依赖 |
+| 卡片运行模块 | 当前锁定 Helper/EJS/MVU、消息 iframe、卡片脚本、变量/swipe、编辑重处理与历史回放；React 仅提供叶子挂载位 |
+| ST Node | 原始聊天、角色卡、世界书、受控生成和插件；所有聊天写入沿用现有 F2/CAS，不绕过冲突保护 |
+| Go | 现有身份、模型目录、预算、记忆、陪伴、语音、通知与剧情状态；不并行改写 ST 聊天文件，凭据不进入浏览器 |
+
+一操作只有一条生成流程。沿用页面加载时账号/会话快照、ST CSRF 与 Go 双提交令牌；不在写前自动换身份。
+绑定和模型目录沿用既有 revision。保存冲突保留本地草稿，迟到请求不得覆盖新会话、已卸载页面或新身份。
+
+### 11.3 现有功能逐项迁移表
+
+路径相对 `integrations/sillytavern/`；接口以当前 api.js、ST 路由/F2 及相关 OpenAPI 为真源。
+
+| 功能及当前来源 | 目标批次/复用位置 | 现有接口 | 必须解除的依赖 | 直接验收场景 |
+| --- | --- | --- | --- | --- |
+| 登录/身份/首屏：server-plugin/lib/host-auth.js、auth/ | NF-01 桌面 HTML 与独立客户端，复用原登录 | `/auth/api/session`、`/csrf-token`、Go bridge | 仅 `/` 绑定会话、原生 index.html/startup | 未登录/非 ACTIVE/删号/身份变化拒绝；独立 URL 正确绑定 |
+| 导航/会话列表：shell.js、conversations.js、React Sidebar/Conversations | NF-01 复用组件与行数据转换 | `/api/chats/recent`、`/api/characters/all`、relationships | `loadNative()`、ST context、延迟补取/原生面板 | 聊天模块延迟期间导航、列表、历史、设置仍可用；网络无完整宿主 |
+| 角色卡输入/世界书/宏/正则：ST script.js、world-info.js、macros/、regex/engine.js | NF-02 计算运行模块 | 既有角色/世界书/设置读取 | 所有入口静态导回 script.js；全局状态/DOM/预设单例 | 同一合成角色/历史/设置/时钟，最终请求与状态逐项对照 |
+| 提示词/预算/生成事件：ST openai.js、PromptManager.js | NF-02/03 定向提取计算段 | 原生受控 chat-completions generate 与 Go 目录 | Generate 读取 textarea；PromptManager 导入 popup/移动检测 | 预设排列、token 预算和钩子前后顺序一致；三协议请求形状 |
+| 记忆/陪伴/剧情注入：memory-injection、companion-prompt、story-context | NF-02 复用纯逻辑，显式上下文/事件 | memory recall、`vc_memory`/`vc_companion`/`vc_story` | ST setExtensionPrompt、事件注册时序 | plan→memory→companion；EJS 后追加身份；剧情不召回日常记忆 |
+| 打开/发送/流式/停止/错误/保存/恢复：chat-compose、F2 client、ST Generate | NF-03 桌面输入与会话 owner | `/api/chats/get`、`/api/chats/save`、受控生成、F2 metadata | 原生 send_form/textarea、StreamingProcessor、全局 chat | 重复点击、切聊天、迟到响应、断网、409、多端同聊、草稿保留 |
+| Helper/EJS/MVU：锁定扩展与 scripts/lib/complex-card.mjs | NF-04 卡片运行模块与 iframe 叶子 | Helper variables/messages/worldbook/events，原保存链 | Helper 主入口挂 Vue/设置面板、`.mes` 扫描；EJS 自动 UI；MVU 父 API | 现有 C04/C05 全链、下一轮新变量、编辑后重新处理及历史回放 |
+| 重新生成/继续/候选/编辑/删除：chat-view/compose/react | NF-05 自有消息操作 | 原聊天与 F2 保存/来源 | 原生按钮点击、message DOM | 一操作一生成；候选变量、来源、保存版本与恢复一致 |
+| 引用/复制/搜索/历史/滚动/阅读：chat-search、desktop/chat-scroll、message-source | NF-05 复用 React 工具与算法 | 现有来源/记忆 API、聊天读取 | `#chat > .mes`、mesid、ST滚动容器 | 引用定位、加载前后锚点、切聊天草稿与阅读位置 |
+| 图片/贴纸/语音条/朗读/输入：stickers、lightbox、voice-chat/input、React叶组件 | NF-05 现有服务/组件 | 现有 Go voice、ASR/TTS、素材 API | 原生消息插槽/移除观察、宿主输入 | 不串播放/来源，卸载释放；合成语音/图片，不调用真实服务 |
+| 模型：page、model-logic、React models/ | NF-06 保留控制器/组件 | providers/model-purposes/local-models | 原魔杖挂载、关闭回原抽屉 | 默认/存储/revision/未保存确认/401/409/迟到响应；保存不试连 |
+| 语音/通知/账户/数据/外观：settings-shell、voice-settings、data-rights、appearance | NF-06 复用 React 与原校验 | voice settings、auth、exports、theme prefs | 原生 persona DOM、模型页宿主、抽屉分流 | 存储键/角色覆盖/保存校验、销毁与未保存、密码生命周期 |
+| 酒馆九类配置：TAVERN_ENTRIES、drawers.js | NF-07 自有设置页 | settings、presets、worldinfo、personas、backgrounds、characters/extensions；缺口契约先行 | 模拟点击原生抽屉、DOM搬运/监听/覆盖 | 逐字段读/写/刷新；现有支持项不删；非表单键保留 |
+| 角色/实例/人设：instance-page、persona、React characters/ | NF-08 拆宿主控制器，复用视图 | characters、relationships、persona | characters全局、选择/导入/创建原生聊天 | 角色/实例作用域、导入失败、草稿、防重与未保存 |
+| 记忆/陪伴/日记/收藏：memory/inbox/diary/favorites-page 与 React | NF-08 复用控制器与组件 | 既有 Go API/分页/来源 | shell路由、ST绑定/已读宿主回调 | 作用域、分页、草稿、纠正/删除语义不变 |
+| 剧情：story-page/projection/action 与 React story/ | NF-08 复用规则与玩家投影 | 现有 Go story / ST projection save | ST舞台/元数据/原生消息 | 三 NPC 隔离、行动/回档/投影原子保存、日常记忆隔离 |
+| 主题/窗口/缩放/受管构建：desktop/、Vite、assemble-managed | NF-09/10/11 沿原体系 | 同源静态资源与受管入口 | 无消费者桌面挂载/抽屉接管/覆盖样式 | 同条件启动改善、窗口往返/明暗/缩放；手机不递归嵌入 |
+
+### 11.4 编号、依赖与验收
+
+NF-00 → NF-01 → NF-02 → NF-03 → NF-04 → NF-05 → NF-06 → NF-07 → NF-08 → NF-09 → NF-10 → NF-11。
+NF-05–08 虽无强制相互依赖，本轮仍串行、单一写入 owner。每批验证/提交/立即推送同名跟踪分支，正常批次后继续。
+
+| ID | 完整交付与验收门槛 |
+| --- | --- |
+| NF-00 | 核对基线/范围、迁移表、合成冷/热测量、登记 Backlog/TODO，并更新冲突架构条款 |
+| NF-01 | `/desktop/` 直接启动自有导航、列表、历史与设置；认证/会话保护不退步；人为延迟聊天模块时仍可操作；实际网络无原生页面/完整启动脚本/隐藏宿主 |
+| NF-02 | 定向抽离角色/世界书/宏/正则/预设/提示词与必要钩子；同合成输入对比最终请求和状态，不能以回复相似代替 |
+| NF-03 | 普通聊天纵切，三协议/流式/停止/错误/F2/CAS/刷新；重复动作、切会话、迟到/断网/冲突保留草稿 |
+| NF-04 | 第一阶段技术门槛：打开合成复杂卡→世界书→EJS→生成→MVU→状态面板→保存→刷新；下一轮读取新值、编辑重处理及历史回放通过 |
+| NF-05 | 全部既有聊天操作与媒体迁移；候选/变量/消息来源不脱节；历史锚定和阅读位置保持 |
+| NF-06 | 模型/语音/通知/账户/数据/外观独立工作；原默认/键/覆盖/校验/离开确认/身份与异步语义完整 |
+| NF-07 | 九类受支持酒馆设置自有页，直接读写接口；不再操作原生抽屉；接口缺口先改契约 |
+| NF-08 | 角色/实例/记忆/陪伴/日记/收藏/剧情去宿主依赖；不改作用域、分页、删除语义与剧情约束 |
+| NF-09 | 依据基线按需加载/拆资源/去重复初始化；分别报告 UI 可操作、可发送、模型响应，不能只提前空壳 |
+| NF-10 | 手机明确原生宿主入口+实际消费者适配/验证先完成，再替换桌面 `/`；清理已替代桌面挂载/监听/样式 |
+| NF-11 | 完整业务/复杂卡/恢复/多端冲突、窗口/缩放/浅深色、构建/受管装配；交付候选、性能对比与明确未验证项 |
+
+停止条件：NF-04 必需能力不能脱离完整 ST 时，写明具体依赖与验证失败，仅暂停依赖该结论的工作；
+不得恢复隐藏 ST 或删减复杂卡后勾选通过。产品取舍、费用、生产部署、新生产依赖等授权缺口只暂停相关部分。
+不以正常批次完成为停止理由，不重新讨论是否覆盖酒馆皮肤。未实测/未通过项不标完成。
+
+### 11.5 合成测量与直接验证
+
+- 复用 `scripts/accept-managed.mjs` 注册表，NF-00 的 `nf-startup` 场景不另建验收编排。
+- 固定 1440×900、DPR 1、浅色、reduce motion、24 条合成消息、相同卡/设置/时间；provider 为现有合成 provider。
+  cold=新浏览器上下文、warm=同一上下文再次导航；均为已启动服务器，不声称清除了 OS 缓存或测了真实生产冷机。
+- UI 可操作：点击“角色”后导航完成；历史打开：公开入口打开指定文件且 24 条消息已渲染；
+  可发送：模型就绪、当前绑定建立且输入可编辑。全过程不调用模型。会话打开另记录操作至历史完成的增量耗时。
+- 后续同条件独立桌面追加对照；NF-01 未实现生成时只能报告 UI/历史，不把可编辑输入等同可发送。
+- 测量数据与直接验证结果在稳定候选后回填本节；固定输出 `ctx.artifactsDir/nf-startup.json`，本工作树保留最后一套有效结果，重试残留按归属回收。
+- NF-00 原生基线实测通过（2026-11-03，Chrome，本工作树独占 11952–11955；两个所选受管场景通过，浏览器生成请求 0）：
+
+| 缓存 | UI 可操作 ms | 24 条历史完成 ms（自导航） | 打开会话增量 ms | 可发送 ms（自导航） |
+| --- | ---: | ---: | ---: | ---: |
+| cold | 2510 | 3275 | 764 | 4682 |
+| warm | 2384 | 2866 | 482 | 4271 |
+
+原始结果 `dev-managed/artifacts/accept-2026-11-03T03-40-36-503Z/nf-startup.json`。这是各一次观测，不是分位数或生产 SLA；
+NF-09 必须在相同条件下成对重测，不把历史文档中的 15.7s 当作本轮基线。首次引导通过创建真实合成绑定消除，未删除弹窗或强制点击。
+初次缺构建产物、vendor-cache 与场景注册顺序/重复选择器问题均按现有入口修正；失败不记通过。
+
+### 11.6 定向抽离的已证实边界
+
+不得直接 import ST `Generate`、`world-info`、regex engine、PromptManager、Helper/EJS dist：它们静态导回 `public/script.js`。
+原始定位：`script.js:4290/4311/4564/4635`、`openai.js:1542/3146`、`world-info.js:892/4709/5175`。
+宏 parser/lexer/walker/registry、正则筛选/替换、世界书扫描/预算/递归/定时效果与 Prompt/Collection 计算可以复用，
+必须显式注入状态、tokenizer、加载器与事件，不能仅拼角色说明+历史。
+
+Helper `src/tauritavern_chat_surface.ts:47–75,150–173,186–204` 已有 prepareContent/claim/mount/dispose 叶子边界，
+但仍依赖 ST/Pinia，不能原样加载整个 dist。`src/iframe/predefine.js:11–34` 从父窗口取 TavernHelper/EjsTemplate/YAML/z/context，
+MVU `src/function/global/index.ts:165–184` 把 Mvu 暴露给父窗口；可保留卡片 iframe 与窄父 API。
+Helper variables `src/function/variables.ts:56–82,128–153` 的 message.variables[swipe_id]/chat/character/global 语义必须保留。
+EJS 底层 `src/3rdparty/ejs.js` 可复用，但 Prompt Template 的 handler/evaluate/variables/worldinfo 钩子仍需抽离；
+MVU InitVar/Request/Response/Cleanup 与按钮不可删。
+
+现有顺序：index.js 189–194 的 planReply→memory.intercept→injectCompanionPrompt；世界书/组装后 EJS 改写 SETTINGS_READY；
+index.js 218–221、239–241 再追加记忆/陪伴/剧情身份。剧情模式清除日常记忆和陪伴提示，保留既有 IN_PROMPT/IN_CHAT 位置。
+
+NF-00 收尾：TypeScript/Vite 构建、ST 离线整组 1033/1033（0 FAIL/0 SKIP）、受管 catalog-admin+nf-startup 2/2、`git diff --check` 通过。受管 ST/Go/provider/MemoryCore 与专属 PG/MinIO 容器及临时卷已按原入口退出清理；未部署、未调用真实服务。

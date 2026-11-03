@@ -1,5 +1,7 @@
 # V2 设计规范（工作副本）· Virtual Companion
 
+> 2026-11-03：桌面以[React/NF 计划 §11](../planning/2026-11-02-desktop-frontend-refactor-plan.md#11-nf-电脑端替换与酒馆能力适配2026-11-03)替换原生页面，沿用 `DESIGN.md` §16 及已确认视觉。下文原生 DOM/抽屉/扩展入口是既有实现的迁移来源，不再要求桌面依赖它们启动；手机共享宿主、ST 存储与唯一受控生成仍须兼容。
+
 版本：基于快照 R3（2026-10-27）建立的工作副本，2026-10-28（V2-W02）。
 来源：[docs/source/v2-r3/DESIGN.md](../source/v2-r3/DESIGN.md)（只读快照，不改写）；Stitch 稿与页面实现的修订回写本文件。
 用途：统一设计、Stitch 生成与 ST 页面实施的语义来源；ST 宿主实现映射见 §7，Stitch 页面映射见 §8.4。

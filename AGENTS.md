@@ -2,7 +2,10 @@
 
 AI 虚拟陪伴系统单体仓库：Go 1.26.10 `companiond` 后端、SillyTavern 宿主（`integrations/sillytavern/`）、
 PostgreSQL 18 + pgvector。Technical Alpha：Generation/Realtime/Memory 纵切已接通，现状以 README 为准。
-2026-10-27 起目标方向为 V2（ADR-0009）：原生 SillyTavern 宿主 + Go 长期服务、Owner 本人非商业使用。
+2026-10-27 起目标方向为 V2（ADR-0009）：SillyTavern Node + Go 长期服务、Owner 本人非商业使用。
+2026-11-03 Owner 确认电脑端由已有 React 工程独立启动并替换当前页面；NF-00–NF-11 以
+`docs/planning/2026-11-02-desktop-frontend-refactor-plan.md` §11 为唯一实施计划，允许按序连续执行。
+桌面不得运行完整 ST 页面或隐藏宿主；手机现有原生宿主消费者按 ADR-0011 保留到地址适配完成。
 旧 Vue / uni-app 前端已在 W15 删除。
 
 ## 适用范围与任务授权
@@ -42,7 +45,7 @@ PostgreSQL 18 + pgvector。Technical Alpha：Generation/Realtime/Memory 纵切�
   明确基础样式与断点/状态变体的优先级和覆盖顺序，删除被替代的旧规则；验证所有直接受影响的消费者，不能只检查当前截图所在页面。
 - React 与原生控制器对同一子树只能有一个渲染 owner。控制器通过 props / 动作同步状态，不再直接重写 React 内部节点；
   分类切换、重绘或销毁前先卸载被移除的组件。销毁守卫也须覆盖迟到请求的 catch/finally 和公开入口；
-  有销毁路径的注册入口须释放自己的注册，不能覆盖其他活实例。ST 原生消息、输入和卡片节点保持宿主管理，不因壳层重构被重建。
+  有销毁路径的注册入口须释放自己的注册，不能覆盖其他活实例。NF 桌面由自有前端管理消息、输入与页面生命周期，卡片 iframe 由卡片运行模块管理；仍受支持的手机原生宿主路径保留既有节点所有权。
   挂在宿主消息中的语音、图片等叶组件也须随宿主移除而卸载，释放自身帧循环和全局监听；媒体服务保留单一 owner。
 - 对已复现的适配问题，先让对应行为/几何回归失败，修复后通过。按本次影响检查断点两侧、窗口往返、短窗口、
   侧栏状态和相关内容变化（如角标有无/长值、图片/首字头像），同时检查内部裁切与操作可达，不能只看文档横向溢出。

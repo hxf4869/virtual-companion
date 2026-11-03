@@ -1610,6 +1610,23 @@ N-00～N-08（对应评审发现 F-01～F-08）为在途修复，逐项状态与
 
 产品待办（现状声明见 README）：
 
+### NF 电脑端前端替换（2026-11-03）
+
+唯一计划：`docs/planning/2026-11-02-desktop-frontend-refactor-plan.md` §11；Backlog J。一个隔离 worktree/写入 owner，按序持续推进。
+
+- [x] NF-00（2026-11-03）：React 基线 `09690d26`，隔离分支 `codex/desktop-independent-frontend`；唯一计划 §11、功能/接口/DOM 迁移表、Backlog J 和架构条款已落地。固定24条合成历史：cold UI 2510ms/可发送 4682ms，warm UI 2384ms/可发送 4271ms；nf-startup+catalog-admin 2/2通过、生成请求0，原工作树未提交改动保留。
+- [ ] NF-01：独立 `/desktop/` 入口。
+- [ ] NF-02：聊天计算、世界书/宏/正则/提示词与必要钩子。
+- [ ] NF-03：普通聊天纵切、三协议与 F2/CAS 异常恢复。
+- [ ] NF-04：复杂卡第一阶段技术门槛。
+- [ ] NF-05：聊天操作与媒体。
+- [ ] NF-06：产品设置。
+- [ ] NF-07：酒馆设置。
+- [ ] NF-08：其余业务页面。
+- [ ] NF-09：同条件性能优化。
+- [ ] NF-10：手机明确宿主地址验证后切根入口与清理。
+- [ ] NF-11：整体验收和运行候选。
+
 ## Go companion runtime（ADR-0007，2026-08-30 起）
 
 实施基线：`docs/planning/2026-08-30-go-companion-runtime-redesign.md`。一次一个可验证 slice。
