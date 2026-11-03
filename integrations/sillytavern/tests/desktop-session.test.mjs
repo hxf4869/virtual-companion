@@ -24,7 +24,7 @@ test('旧卡异步变量结果过期：拒绝原操作，不能把新会话标�
 });
 
 const deferred = () => { let resolve; const promise = new Promise(done => { resolve = done; }); return { promise, resolve }; };
-function fixture({ save, prepare, readResponse, generateHelper, shouldAutoContinue } = {}) {
+function fixture({ save, prepare, readResponse, generateHelper, shouldAutoContinue, confirmProjection } = {}) {
     const card = { avatar: 'synthetic.png', name: '合成角色', data: { extensions: { vc_character_ref: 'synthetic-ref' } } };
     const context = { characters: [card], chat: [], chatMetadata: {}, extensionPrompts: {}, eventSource: new EventEmitter(), eventTypes: event_types };
     const binding = id => ({ characterRef: 'synthetic-ref', chatIdentity: id, relationshipId: '1', conversationId: id, mode: 'COMPANION' });
@@ -51,7 +51,7 @@ function fixture({ save, prepare, readResponse, generateHelper, shouldAutoContin
         shouldAutoContinue,
     };
     const session = createDesktopSession({ client, context, engine, prepareSourceIdentities,
-        choosePersona: async () => '', resolveBinding: async value => binding(value.chatIdentity), reconcileSources: async () => [],
+        choosePersona: async () => '', resolveBinding: async value => ({...binding(value.chatIdentity),mode:value.mode}), reconcileSources: async () => [], confirmProjection,
         onChange: value => states.push(value), onTakeDraft: (...value) => taken.push(value), onRestoreDraft: (...value) => restored.push(value),
         readResponse: readResponse || (async (response, { onUpdate }) => {
             const result = { text: '合成回复', state: { reasoning: '' }, swipes: [], toolCalls: [], finishReason: 'stop' };
@@ -62,6 +62,26 @@ function fixture({ save, prepare, readResponse, generateHelper, shouldAutoContin
         open: (id, options) => session.activate({ avatar: card.avatar, file: id }, records(id), options),
         get generations() { return generations; }, get preparations() { return preparations; } };
 }
+test('实例新建沿同一F2保存，不切换现有现场或调用模型',async()=>{
+    const f=fixture();await f.open('existing');const original=f.context.chatMetadata;
+    const created=await f.session.createConversation({characterRef:'synthetic-ref',displayName:'新实例',chatIdentity:'new-chat'});
+    assert.equal(created.file,'new-chat');assert.equal(f.sent.at(-1).chat[0].chat_metadata.vc_f2.revision,0);
+    assert.equal(f.sent.at(-1).chat[0].chat_metadata.vc_binding.chatIdentity,'new-chat');
+    assert.equal(f.context.chatMetadata,original);assert.equal(f.context.chatId,'existing');assert.equal(f.generations,0);
+});
+test('剧情投影复用唯一Session的F2与原墓碑语义，旧会话投影不写当前聊天',async()=>{
+    let confirms=0;const f=fixture({confirmProjection:async()=>{confirms++;return{confirmed:true};}});await f.open('story');
+    f.context.chatMetadata.vc_binding.mode='STORY';
+    const job={runId:'10',conversationId:'story',worldEventId:'11',text:'合成公开行动'};
+    assert.equal((await f.session.projectStory(job)).appended,true);assert.equal(confirms,1);
+    assert.equal(f.sent.at(-1).chat.at(-1).extra.world_event_id,'11');
+    const before=f.sent.length;assert.equal((await f.session.projectStory(job)).appended,false);assert.equal(f.sent.length,before);
+    await f.session.remove(f.context.chat.length-1);
+    assert.equal((await f.session.projectStory(job)).skipped,'deleted');
+    await f.open('another');const writes=f.sent.length;
+    await assert.rejects(f.session.projectStory({...job,worldEventId:'12'}),error=>error.code==='VC_STALE_SOURCE');
+    assert.equal(f.sent.length,writes);assert.equal(f.context.chatMetadata.vc_f2.id,'another');
+});
 test('自动续写为串行后续步骤，空输入续写不追加第二条用户消息',async()=>{
     let rounds=0;const f=fixture({shouldAutoContinue:async()=>++rounds===1});await f.open('auto');
     assert.equal(await f.session.send('合成输入'),true);assert.equal(f.generations,2);

@@ -10,6 +10,16 @@ const setup = () => {
         loadChats: async () => [{relationshipId:'11',file:'old',chatIdentity:'old-id',characterRef:'c'}],
         document: { querySelector: () => ({getAttribute:()=> '5'}) } };
 };
+test('独立来源端口等待会话激活再定位，不加载原生模块，并展开目标历史',async()=>{
+    const {openMessageSource}=await import('../extension/vc-model-settings/message-source.js');
+    let context={chatId:'new',chatMetadata:{},chat:[]};const calls=[];
+    const result=await openMessageSource({relationshipId:'11',chatIdentity:'old-id',messageId:'stable-id'},{
+        getContext:()=>context,loadChats:setup().loadChats,openConversation:async()=>{calls.push('read');return true;},
+        afterOpen:async()=>{calls.push('activate');context={chatId:'old',chatMetadata:{vc_binding:{relationshipId:'11'},vc_f2:{id:'old-id'}},chat:[{vc_message_id:'stable-id'}]};},
+        ensureVisible:async index=>calls.push(['history',index]),document:{querySelector:()=>null},
+    });
+    assert.equal(result,0);assert.deepEqual(calls,['read','activate',['history',0]]);
+});
 
 test('记忆来源跨聊天文件跳转，按持久消息ID解析楼层并加载历史', async () => {
     const { openMessageSource } = await import('../extension/vc-model-settings/message-source.js');

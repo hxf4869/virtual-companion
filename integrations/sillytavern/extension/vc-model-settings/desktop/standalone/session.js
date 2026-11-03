@@ -6,10 +6,13 @@ import { toggleReaction, addNudge, dropNudge, reactionNudge, runPat } from '../.
 import { createPersonaSelection } from './personas.js';
 import { BUDGET_COPY } from '../../model-logic.js';
 import { applyDocumentValues, documentEqual, documentValue } from '../../settings-documents.js';
+import { createStoryProjection } from '../../story-projection.js';
+import { commitStoryProjectionSave } from '../../projection-save.js';
+import { confirmStoryProjection } from '../../story-action.js';
 
 export function createDesktopSession({ client, context, engine, prepareSourceIdentities, readResponse,
     choosePersona, onChange = () => {}, onTakeDraft = () => {}, onRestoreDraft = () => {}, onConflict = () => {},
-    resolveBinding = resolveSTBinding, reconcileSources = reconcileSTSources }) {
+    resolveBinding = resolveSTBinding, reconcileSources = reconcileSTSources, confirmProjection = confirmStoryProjection }) {
     let current, job, epoch = 0, savingSettled = false, opening = Promise.resolve();
     let budget, catalogReady = true, catalogNotice = '', catalogNeedsSettings = false, lastOperation = Promise.resolve();
     const rejected = new Map(), patState = {};
@@ -138,7 +141,14 @@ export function createDesktopSession({ client, context, engine, prepareSourceIde
             await saveSettings();
             signal?.throwIfAborted(); if (ticket !== epoch) return false;
             await engine.cards?.open({ signal });
+            const firstMessage = !target.messages.length && engine.firstMessage?.();
+            if (firstMessage?.mes) { target.messages.push(firstMessage); context.metadataDirty = true; }
             await context.eventSource.emit(context.eventTypes.CHAT_CHANGED, row.file);
+            if (firstMessage?.mes) {
+                await context.eventSource.emit(context.eventTypes.CHAT_CREATED);
+                await context.eventSource.emit(context.eventTypes.MESSAGE_RECEIVED, 0, 'first_message');
+                await context.eventSource.emit(context.eventTypes.CHARACTER_MESSAGE_RENDERED, 0, 'first_message');
+            }
             await context.eventSource.emit(context.eventTypes.CHAT_LOADED, { detail: { id: index, character: card } });
             await engine.cards?.surface.refresh(target.messages.map((_, index) => index));
             if (context.metadataDirty) await save(target, { settled: guard.isSettled() });
@@ -354,6 +364,50 @@ export function createDesktopSession({ client, context, engine, prepareSourceIde
             return active.promise;
         },
         refreshPersona: () => personas.refresh(),
+        async createConversation({ characterRef, displayName, chatIdentity = crypto.randomUUID(), mode = 'COMPANION' }) {
+            let created;
+            await api.configure(async () => {
+                const card = context.characters.find(card => card.data?.extensions?.vc_character_ref === characterRef);
+                if (!card) throw new Error('角色卡没有加载出来，请重试。');
+                const file = chatIdentity, path = characterChatPath(card.avatar, file);
+                const metadata = { vc_f2: { id: chatIdentity, revision: 0 }, vc_binding: { mode } };
+                const records = [{ user_name: engine.settings.username || context.name1, character_name: card.name, chat_metadata: metadata }];
+                // Go只解析绑定；原始聊天和初始F2 token仍由同一ST保存路径持有。
+                const bound = await resolveBinding({ characterRef, displayName, chatIdentity, mode });
+                metadata.vc_binding = bound;
+                const saved = await f2.save(path, { avatar_url: card.avatar, file_name: file, chat: records }, {
+                    send: serialized => client.raw('/api/chats/save', serialized),
+                });
+                metadata.vc_f2 = saved.vc_f2;
+                created = { ...bound, avatar: card.avatar, file, chatIdentity, characterRef, name: displayName };
+            });
+            return created;
+        },
+        async projectStory(job) {
+            let result;
+            await api.configure(async () => {
+                const target = current;
+                const assertTarget = () => {
+                    if (!target?.ready || target !== current || target.blocked || target.signal?.aborted
+                        || target.metadata.vc_binding?.mode !== 'STORY' || target.metadata.vc_binding.conversationId !== job.conversationId) {
+                        throw new F2ConflictError('VC_STALE_SOURCE');
+                    }
+                };
+                assertTarget();
+                const projection = createStoryProjection({
+                    readChat: async () => { assertTarget(); return { metadata: target.metadata, messages: target.messages.slice() }; },
+                    saveChat: async snapshot => {
+                        assertTarget(); commitStoryProjectionSave(context, snapshot);
+                        await save(target, { settled: guard.isSettled() });
+                        await engine.cards?.surface.refresh(target.messages.map((_, index) => index));
+                        publish(target);
+                    },
+                    confirm: confirmProjection,
+                });
+                result = await projection.project(job);
+            });
+            return result;
+        },
         deleteCharacter(avatar, deleteChats) { return api.configure(async () => {
             const rows=deleteChats?await client.request('/api/characters/chats',{avatar_url:avatar,simple:true}):[];
             const baselines=await f2IO.baselines((Array.isArray(rows)?rows:[]).map(row=>({avatar,file:row.file_name})));

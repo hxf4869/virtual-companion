@@ -6,7 +6,7 @@ const currentFile = context => fileName(context.getCurrentChatId?.() || context.
 
 // 记忆/收藏共用原生打开路径；先确定正确的聊天文件，再按持久消息 ID 找楼层。
 export async function openMessageSource(detail, { getContext, openConversation, loadNative,
-    loadChats = () => loadRecentChatSnapshots(loadNative), document: doc = globalThis.document } = {}) {
+    loadChats = () => loadRecentChatSnapshots(loadNative), afterOpen, ensureVisible, document: doc = globalThis.document } = {}) {
     const relationshipId = String(detail?.relationshipId || '');
     const identity = String(detail?.chatIdentity || '');
     const file = fileName(detail?.chatFile);
@@ -14,12 +14,13 @@ export async function openMessageSource(detail, { getContext, openConversation, 
     const before = getContext();
     const sameRelationship = String(before.chatMetadata?.vc_binding?.relationshipId || '') === relationshipId;
     const alreadyHere = sameRelationship && (identity ? before.chatMetadata?.vc_f2?.id === identity : currentFile(before) === file);
-    const target = alreadyHere ? { relationshipId, file: currentFile(before) }
+    const target = alreadyHere ? { relationshipId, file: currentFile(before), avatar: before.characters?.[before.characterId]?.avatar }
         : (await loadChats()).find(row => String(row.relationshipId) === relationshipId
             && (identity ? row.chatIdentity === identity : fileName(row.file) === file));
     if (!target?.file) throw new Error('source-unavailable');
     if (!await openConversation(target)) throw new Error('source-open-failed');
-    const native = await loadNative();
+    if (afterOpen) await afterOpen();
+    const native = loadNative ? await loadNative() : {};
     if (currentFile(getContext()) !== fileName(target.file)) {
         if (typeof native.openCharacterChat !== 'function') throw new Error('source-open-unavailable');
         await native.openCharacterChat(fileName(target.file));
@@ -45,7 +46,8 @@ export async function openMessageSource(detail, { getContext, openConversation, 
     }
     if (!Number.isInteger(mesId) || mesId < 0 || mesId >= context.chat.length) throw new Error('source-message-unavailable');
     const first = doc?.querySelector('#chat > .mes')?.getAttribute('mesid');
-    if (first != null && Number(first) > mesId && typeof native.showMoreMessages === 'function') {
+    if (ensureVisible) await ensureVisible(mesId);
+    else if (first != null && Number(first) > mesId && typeof native.showMoreMessages === 'function') {
         await native.showMoreMessages(Number(first) - mesId);
     }
     return mesId;

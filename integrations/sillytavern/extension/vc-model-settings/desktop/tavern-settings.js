@@ -575,7 +575,7 @@ export function mountTavernSettings(container, opts = {}) {
                 settings.view=copy(settings.next);
             }}));
             if(key==='Backgrounds')tasks.push(request('/api/backgrounds/all').then(result=>{if(alive(id))backgrounds=result.images || [];}));
-            if(['right-nav-panel','WorldInfo','rm_extensions_block'].includes(key))tasks.push(request('/api/characters/all').then(async result=>{if(!alive(id))return;characters=result;selectedCharacter=currentAvatar() || (key==='right-nav-panel'?characters[0]?.avatar:'') || '';await loadCharacter(selectedCharacter);}));
+            if(['right-nav-panel','WorldInfo','rm_extensions_block'].includes(key))tasks.push(request('/api/characters/all').then(async result=>{if(!alive(id))return;characters=result;selectedCharacter=opts.initialCharacter || currentAvatar() || (key==='right-nav-panel'?characters[0]?.avatar:'') || '';await loadCharacter(selectedCharacter);}));
             if(key==='WorldInfo')tasks.push(request('/api/worldinfo/list').then(async result=>{if(!alive(id))return;worlds=result.map(row=>row.file_id);selectedWorld=worlds[0] || '';selectedPrompt='';await loadWorld(selectedWorld);}));
             await Promise.all(tasks);
         }catch(cause){if(alive(id))fail(cause);}

@@ -6,13 +6,17 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import * as api from '../extension/vc-model-settings/api.js';
 import { ADMIN_BRIDGE_ROUTES } from '../server-plugin/virtual-companion/lib/admin-bridge.js';
-import { createStoryPage, mountStoryPage, STORY_CONFLICT } from '../extension/vc-model-settings/story-page.js';
+import { createStoryPage, mountStoryPage, storyViewProps, STORY_CONFLICT } from '../extension/vc-model-settings/story-page.js';
 import { createStoryProjection } from '../extension/vc-model-settings/story-projection.js';
 import { STORY_UI_ROUTES } from '../server-plugin/virtual-companion/lib/story-ui-routes.js';
 
 const MARKERS = ['PRIVATE_LIN_LOAN_31', 'PRIVATE_ZHOU_WATCH_44', 'PRIVATE_SU_WITNESS_57', 'GM_ONLY_WATCH_TRUTH_92'];
 const STORY_ID = '9007199254740993';
 const realFetch = globalThis.fetch;
+test('地点行动不依赖选择NPC，维修柜操作保持可达',()=>{
+    const props=storyViewProps({run:{stage:'investigation'},view:{participants:[],events:[]},turn:{worldVersion:0}});
+    assert.equal(props.steps.find(step=>step.id==='a6').visible,true);
+});
 const realDocument = globalThis.document;
 const realStorage = globalThis.localStorage;
 let calls;

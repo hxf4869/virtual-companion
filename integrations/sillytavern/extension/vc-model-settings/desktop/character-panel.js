@@ -15,7 +15,7 @@ import { SPRING } from '../ui/motion.js';
 import { reducedMotion } from './transition.js';
 import { mountCharacterPanelView, recalledEditorContent } from './build/index.js';
 
-export function mountCharacterPanel({ shell, getContext, beforeSearch, aurora } = {}) {
+export function mountCharacterPanel({ shell, getContext, beforeSearch, aurora, getInstanceOptions } = {}) {
     if (document.documentElement.dataset.vcLayout !== 'desktop') return null;
     const pane = shell.querySelector('.vc-shell-chat'), host = shell.querySelector('.vc-shell-extensions');
     const tools = pane.querySelector('.vc-capsule-tools');
@@ -28,7 +28,7 @@ export function mountCharacterPanel({ shell, getContext, beforeSearch, aurora } 
             toggle: () => setOpen(panel.hidden), close: () => { setOpen(false); toggle.focus(); },
             voice: opener => { if (!dead) void openRelationshipVoiceSettings(id, { opener }); },
             memory: opener => { if (!dead) requestOpenMemory(opener); },
-            settings: async opener => { if (dead) return; const scope = id; instancePage ||= mountInstancePage({ getContext }); await instancePage.open(opener); if (!dead && id === scope) instancePage.page.selectInstance(scope); },
+            settings: async opener => { if (dead) return; const scope = id; instancePage ||= mountInstancePage({ getContext, ...getInstanceOptions?.() }); await instancePage.open(opener); if (!dead && id === scope) instancePage.page.selectInstance(scope); },
             edit, forget,
         },
     };

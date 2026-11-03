@@ -207,7 +207,7 @@ export function storyViewProps(state, options = {}) {
         setting: view.setting || '', known: view.knownEvent || '', locations: view.locations || [], knowledge: view.knowledge || [],
         lines: (view.events || []).map((event, index, events) => ({ id: event.worldEventId || String(index), text: event.line, say: /[“"「]/.test(event.line), fresh: Boolean(options.fresh && index === events.length - 1) })),
         cards: evidenceItems(state).map(item => ({ ...item, glyph: evidenceIcon(item.name), fresh: item.name === clue, flipped: options.flipped?.has(item.name) || false })),
-        steps: STEPS.map(step => ({ id: step.id, label: step.label, visible: Boolean(selected) && step.target === selected.id, group: actionGroup(step), className: legacy ? actionClass(step) : step.action === 'accuse' ? 'vc-btn vc-btn-danger' : 'vc-btn vc-btn-gray' })),
+        steps: STEPS.map(step => ({ id: step.id, label: step.label, visible: actionGroup(step) === 'place' || Boolean(selected) && step.target === selected.id, group: actionGroup(step), className: legacy ? actionClass(step) : step.action === 'accuse' ? 'vc-btn vc-btn-danger' : 'vc-btn vc-btn-gray' })),
         versions: rewindTargets(state), selected: selected?.name || '',
         companions: state.companions ? state.companions.flatMap(row => CASTABLE.map(actor => ({ actor, relationship: String(row.relationshipId), label: `${row.name} 入局为${people.find(person => person.id === actor)?.name || actor}` }))) : null,
         draftSay: options.draftSay || '', draftSummary: options.draftSummary || '', sprite: iconSpriteUrl(),
@@ -226,6 +226,7 @@ export function createStoryPage({
     onAdvance = () => {},
     getChatIdentity = () => '',
     project = null,
+    ensureConversation,
 } = {}) {
     const state = {
         open: false, busy: false, error: '', conflict: false, run: null, view: null, turn: null, actorId: '',
@@ -304,7 +305,7 @@ export function createStoryPage({
     }
     async function projectEvent(result, text) {
         if (typeof project !== 'function' || !result?.worldEventId) return { confirmed: false, appended: false };
-        const job = { runId: state.turn.runId, worldEventId: String(result.worldEventId), text, cancelled: false };
+        const job = { runId: state.turn.runId, conversationId: state.turn.conversationId, worldEventId: String(result.worldEventId), text, cancelled: false };
         jobs.add(job);
         try {
             const done = await project(job);
@@ -397,7 +398,7 @@ export function createStoryPage({
             state.open = true;
             const ticket = epoch;
             const current = currentStoryId();
-            if (state.turn && current && state.turn.conversationId !== current) resetRun();
+            if (state.turn && (current || ensureConversation) && state.turn.conversationId !== current) resetRun();
             emit();
             try {
                 await api.captureSessionContext();
@@ -548,6 +549,8 @@ export function createStoryPage({
             emit();
             try {
                 await api.captureSessionContext();
+                if (!alive(ticket)) return;
+                if (ensureConversation) await ensureConversation();
                 if (!alive(ticket)) return;
                 const chat = getConversation() || {};
                 let conversationId = '';
@@ -881,6 +884,7 @@ export function mountStoryTab(container, options = {}) {
         onAdvance: options.onAdvance,
         getChatIdentity: options.getChatIdentity,
         project: options.project,
+        ensureConversation: options.ensureConversation,
         onChange(state) {
             if (dead || suppress) return;
             loading = false;

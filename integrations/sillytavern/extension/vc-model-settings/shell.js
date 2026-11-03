@@ -672,8 +672,9 @@ export function mountShell(options = {}) {
         const sidebarPx = sidebarCssWidth(globalThis.innerWidth, collapsed);
         doc.documentElement?.style?.setProperty?.('--vc-sidebar', `${sidebarPx}px`);
         if (chrome.nav !== 'tabbar') chatPane.classList.remove('is-push', 'is-pop');
-        if (!leavingChat) root.dataset.chat = entered ? 'open' : 'closed';
-        if (chrome.nav === 'tabbar') tabbar.classList.toggle('is-hidden', entered || keyboardOn);
+        const visibleChat = entered && (chrome.nav !== 'tabbar' || root.dataset.destination === 'chat');
+        if (!leavingChat) root.dataset.chat = visibleChat ? 'open' : 'closed';
+        if (chrome.nav === 'tabbar') tabbar.classList.toggle('is-hidden', visibleChat || keyboardOn);
         else tabbar.classList.remove('is-hidden');
         releaseMotion(chatPane);
         releaseMotion(pages);
@@ -688,7 +689,7 @@ export function mountShell(options = {}) {
         keyboardOn = readViewport(globalThis).keyboard > 0;
         doc.body.classList.toggle('is-keyboard', keyboardOn);
         if (root.dataset.chrome === 'tabbar') {
-            tabbar.classList.toggle('is-hidden', entered || keyboardOn);
+            tabbar.classList.toggle('is-hidden', entered && root.dataset.destination === 'chat' || keyboardOn);
         }
     }
 
@@ -702,7 +703,7 @@ export function mountShell(options = {}) {
             };
         }
         if (nav === 'inbox') {
-            return { onOpenConversation: (id) => { void openFromInstance({ relationshipId: id }, opener); } };
+            return { onOpenConversation: (payload) => { void openFromInstance(typeof payload === 'object' ? payload : { relationshipId: payload }, opener); } };
         }
         if (nav === 'characters') {
             return {
@@ -845,7 +846,7 @@ export function mountShell(options = {}) {
     async function openFromInstance(instance, opener, { latest = false } = {}) {
         if (root.dataset.settings === 'page' && !await closeSettings()) return false;
         const id = instance?.relationshipId == null ? '' : String(instance.relationshipId);
-        const row = (id && rowById.get(id)) || {
+        const row = (instance?.file || instance?.conversationId || instance?.chatIdentity ? instance : id && rowById.get(id)) || {
             relationshipId: id,
             name: instance?.name,
             instanceName: instance?.instanceName,
@@ -853,6 +854,8 @@ export function mountShell(options = {}) {
             file: instance?.file,
             characterIndex: instance?.characterIndex,
             characterRef: instance?.characterRef,
+            conversationId: instance?.conversationId,
+            chatIdentity: instance?.chatIdentity,
         };
         if (!row.relationshipId && !row.file && !Number.isInteger(row.characterIndex)) return false;
         const ok = await openConversation(row, { latest, beforeCommit: () => root.dataset.settings === 'page' ? closeSettings() : true });
@@ -1242,6 +1245,7 @@ export function mountShell(options = {}) {
         };
     };
     root.refreshConversationDrafts = paintConversations;
+    root.refreshConversations = schedule;
     root.updateConversationSnapshot = snap => {
         const row = snap?.preview && rowById.get(snap.relationshipId);
         if (!row) return;

@@ -232,6 +232,7 @@ export function createInstancePage({
     const emit = () => { if (!dead) onChange(state); };
     const dirty = () => state.draftName !== state.savedName && (state.creating || state.selectedRelationshipId);
     let loadGeneration = 0;
+    let creationIdentity = '';
     function applyInstance(id) {
         const row = instancesFrom(state.relationships).find((item) => item.relationshipId === String(id));
         state.creating = false;
@@ -340,7 +341,7 @@ export function createInstancePage({
                     const created = await createBinding({
                         characterRef: card.characterRef,
                         displayName: clean.value,
-                        chatIdentity: newId(),
+                        chatIdentity: creationIdentity ||= newId(),
                         mode: 'COMPANION',
                     });
                     if (dead) return;
@@ -351,6 +352,7 @@ export function createInstancePage({
                         companionName: clean.value,
                     }];
                     state.creating = false;
+                    creationIdentity = '';
                     state.selectedRelationshipId = String(created?.relationshipId || '');
                     state.savedName = clean.value;
                     state.draftName = clean.value;
@@ -383,6 +385,7 @@ export function createInstancePage({
                 emit();
                 return;
             }
+            state.busy = true; emit();
             try {
                 const created = await importCard({ name, format: inspected.format, bytes });
                 if (dead) return;
@@ -397,12 +400,13 @@ export function createInstancePage({
                 state.importError = '';
             } catch {
                 state.importError = IMPORT_FAILED_COPY;
-            }
+            } finally { state.busy = false; }
             emit();
         },
     };
 
     function beginCreate() {
+        creationIdentity = '';
         state.creating = true;
         state.unsaved = null;
         state.nameError = '';
@@ -630,8 +634,8 @@ export function mountCharactersTab(container, options = {}) {
     const page = createInstancePage({
         ...options,
         importCard: options.importCard || (spec => importNativeCharacterFile({ ...spec, getContext: options.getContext })),
-        getCards() {
-            const cards = options.getCards?.() || [];
+        async getCards() {
+            const cards = await options.getCards?.() || [];
             let context; try { context = options.getContext?.(); } catch { context = null; }
             return (Array.isArray(cards) ? cards : []).map(card => {
                 const raw = context?.characters?.find(item => item?.data?.extensions?.vc_character_ref === card?.characterRef)
@@ -749,7 +753,10 @@ export function mountCharactersTab(container, options = {}) {
         if (action === 'select-template') void openDetail(target.dataset.ref || '', target);
         if (action === 'back') void goBack();
         if (action === 'toggle-description') { descriptionOpen = !descriptionOpen; if (detailEl?.isConnected) fill(detailEl, 'detail'); }
-        if (action === 'edit-card') openHostCharacterPanel(doc);
+        if (action === 'edit-card') {
+            if (options.onEditCard) options.onEditCard(detailRef);
+            else openHostCharacterPanel(doc);
+        }
         if (action === 'edit-persona') openPersona(detailRef);
         if (action === 'edit-voice') {
             const instances = characterModel(page.state).cards.find(item => item.characterRef === detailRef)?.instances || [];

@@ -21,6 +21,9 @@ import { EventEmitter } from './engine/events.js';
 import { event_types } from './engine/st/events.js';
 import { createDesktopPreferences } from './presentation.js';
 import { applyInputMarkdown } from './input-markdown.js';
+import { ensureCharacterReferences, importDesktopCharacter, resolveDesktopConversation } from './business.js';
+import { openMessageSource } from '../../message-source.js';
+import { saveNativePersona, openCompanionStyle } from '../../persona.js';
 
 let modelSettings, preferences, preferencesAccepted = false, budget, catalogSavedWhilePreparing = false;
 const client = createDesktopClient({ onGenerateResponse: response => observeGenerateBudget(response, signal => modelSettings.applyBudget(signal)) });
@@ -29,7 +32,8 @@ const context = { characters: [], chat: [], chatMetadata: {}, characterId: undef
     extensionPrompts: {}, eventSource, eventTypes: event_types };
 const getContext = () => context;
 const drafts = new Map();
-let runtime, view, shell, settingsHandle, currentRow, currentRecords, retryRow, charactersReady, read = 0, committedRead = 0, activated = 0, readAbort, activeAbort, settingsChatReady = false;
+let runtime, runtimeReady, view, shell, settingsHandle, currentRow, currentRecords, retryRow, charactersReady, editCharacter = '', read = 0, committedRead = 0, activated = 0, readAbort, activeAbort, settingsChatReady = false;
+async function requireRuntime() { await runtimeReady; if (!runtime) throw new Error('聊天没有加载出来，请重试。'); return runtime; }
 const pendingConfiguration = [];
 const getSettingsContext = () => chat.status === 'error' ? { ...context, chatMetadata: {}, chatId: '', characterId: undefined, canEditChatMetadata: false } : currentRecords ? { ...context, chatMetadata: currentRecords[0].chat_metadata,
     chatId: currentRow.file, characterId: context.characters.findIndex(card => card.avatar === currentRow.avatar), canEditChatMetadata: chat.status === 'ready' && Boolean(runtime?.ready) } : { ...context, canEditChatMetadata: false };
@@ -94,7 +98,7 @@ async function activateCurrent(ticket, latest) {
 }
 
 async function openConversation(row, { latest = false, beforeCommit } = {}) {
-    if (!row?.avatar || !row?.file) return false;
+    if (!row) return false;
     actions.changed(); retryRow = null;
     readAbort?.abort(); readAbort = new AbortController();
     const controller = readAbort, stopping = runtime?.stop();
@@ -109,6 +113,12 @@ async function openConversation(row, { latest = false, beforeCommit } = {}) {
     };
     chat.status = 'loading'; chat.error = ''; chat.notice = ''; chat.conflict = false; chat.canSend = false; chat.busy = false; paint();
     try {
+        if (!row.avatar || !row.file) {
+            const resolved = resolveDesktopConversation(await client.recent(), row);
+            if (ticket !== read || controller.signal.aborted) return false;
+            if (!resolved) throw new Error('source-unavailable');
+            Object.assign(row, resolved);
+        }
         const records = await client.readChat(row, { signal: controller.signal });
         await stopping;
         if (ticket !== read) return false;
@@ -146,6 +156,27 @@ function choosePersona(options, { signal }) {
     });
 }
 
+function characterPageOptions() {
+    return { getContext,
+        async getCards() { await charactersReady; await ensureCharacterReferences(client, context); return (await import('../../instance-page.js')).cardsFromContext(context); },
+        getBindings: async () => chatSnapshotsFromRecent(await client.recent()),
+        async importCard(spec) {
+            await charactersReady; let imported;
+            const apply=async()=>{imported=await importDesktopCharacter(client, context, spec);};
+            if(runtime)await runtime.configure(apply);else await apply();
+            await runtime?.reloadCharacter(context.characters.find(card=>card.data?.extensions?.vc_character_ref===imported.characterRef).avatar);return imported;
+        },
+        createBinding: async args => { const created = await (await requireRuntime()).createConversation(args); shell.refreshConversations(); return created; },
+        async savePersona(characterRef,fields) {
+            let data;const apply=async()=>{data=await saveNativePersona({getContext,characterRef,fields,headers:client.headers()});};
+            if(runtime)await runtime.configure(apply);else await apply();
+            await runtime?.reloadCharacter(context.characters.find(card=>card.data?.extensions?.vc_character_ref===characterRef).avatar);return data;
+        },
+        onEditCard: ref => { editCharacter=context.characters.find(card=>card.data?.extensions?.vc_character_ref===ref)?.avatar || ''; void shell.openSettings('right-nav-panel'); },
+        onOpenInstance: row => shell.openConversation(row),
+    };
+}
+
 // 页面控制器按需加载；仅在各自空槽位内渲染，不依赖聊天运行模块就绪。
 function lazyPage(load, mount) {
     return (container, args) => {
@@ -169,16 +200,41 @@ async function start() {
     void mountConsentGate({ ready: Promise.resolve() });
     registerShellTabs({
         characters: lazyPage(() => import('../../instance-page.js'), (module, container, args) => module.mountCharactersTab(container, {
-            ...args, getContext, getCards: () => module.cardsFromContext(context), getBindings: () => module.bindingsFromContext(context),
-            onOpenInstance: row => shell.openConversation(row),
+            ...args, ...characterPageOptions(),
         })),
         memory: lazyPage(() => import('../../memory-page.js'), (module, container, args) => module.mountMemoryTab(container, {
             ...args, getRelationshipId: () => context.chatMetadata.vc_binding?.relationshipId || '',
+            onOpenMessage: detail => openMessageSource(detail, { getContext,
+                loadChats: async () => chatSnapshotsFromRecent(await client.recent()),
+                openConversation: row => shell.openConversation(row), afterOpen: async () => { await (await requireRuntime()).whenIdle(); },
+                ensureVisible: async () => { chat.historyAll=true; paint(); await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))); },
+            }),
         })),
-        inbox: lazyPage(() => import('../../inbox-page.js'), (module, container, args) => module.mountInboxTab(container, args)),
-        story: lazyPage(() => import('../../story-page.js'), (module, container, args) => module.mountStoryTab(container, args)),
+        inbox: lazyPage(() => import('../../inbox-page.js'), (module, container, args) => module.mountInboxTab(container, { ...args,
+            onOpenConversation: payload => shell.openConversation({ relationshipId:payload.relationshipId, conversationId:payload.conversationId }),
+        })),
+        story: lazyPage(() => import('../../story-page.js'), (module, container, args) => module.mountStoryTab(container, { ...args,
+            getConversation: () => ({ conversationId:context.chatMetadata.vc_binding?.conversationId || '',mode:context.chatMetadata.vc_binding?.mode || '' }),
+            getChatIdentity: () => context.chatMetadata.vc_f2?.id || '', onConfigure: () => shell.openSettings('model'),
+            async ensureConversation() {
+                const session=await requireRuntime(); await session.whenIdle();
+                if(context.chatMetadata.vc_binding?.mode==='STORY')return;
+                await charactersReady;
+                let card=context.characters.find(card=>card.data?.extensions?.vc_story_case==='rainy-inn-v1');
+                if(!card){
+                    const imported=await characterPageOptions().importCard({name:'rainy-inn.json',format:'json',bytes:new TextEncoder().encode(JSON.stringify({spec:'chara_card_v2',spec_version:'2.0',data:{name:'雨夜旅馆',description:'',personality:'',scenario:'',first_mes:'',mes_example:'',extensions:{vc_story_case:'rainy-inn-v1'}}}))});
+                    card=context.characters.find(card=>card.data?.extensions?.vc_character_ref===imported.characterRef);
+                }
+                const created=await session.createConversation({characterRef:card.data.extensions.vc_character_ref,displayName:'雨夜旅馆',mode:'STORY'});
+                if(!await openConversation(created))throw new Error('source-unavailable');
+                await session.whenIdle(); shell.refreshConversations();
+            },
+            onRun: turn => runtime?.story.setRun(turn), onActor: actor => runtime?.story.selectActor(actor), onAdvance: turn => runtime?.story.advance(turn),
+            project: async job => (await requireRuntime()).projectStory(job),
+        })),
     });
     shell = mountShell({ independent: true, getContext, storage: { getItem(key) { return key === 'vc-ui' ? 'on' : localStorage.getItem(key); }, setItem: (key, value) => localStorage.setItem(key, value) },
+        openCompanionStyle: async opener => { try { await requireRuntime(); openCompanionStyle({getContext,opener}); } catch { showToast('没有完成，请重试。',{type:'failure'}); } },
         getConversationDraft: row => row.avatar && row.file ? draftOf(chatKey(row)) : '',
         loadChatSnapshots: async () => chatSnapshotsFromRecent(await client.recent()), openConversation,
         mountDesktopSettings: container => settingsHandle = mountSettingsShell(container, { getContext: getSettingsContext, onBudgetChange,
@@ -186,7 +242,8 @@ async function start() {
             async mountTavernSettings(body, options) {
                 const module = await import('../tavern-settings.js');
                 if (options.signal.aborted) return;
-                return module.mountTavernSettings(body, { ...options, client, getContext: getSettingsContext,
+                const initialCharacter=editCharacter;editCharacter='';
+                return module.mountTavernSettings(body, { ...options, initialCharacter, client, getContext: getSettingsContext,
                     onSettingsCommit(changes,value) { preferencesAccepted=true;preferences.apply(value);paint();return applyConfiguration('applySettings', changes); },
                     onPresetCommit: (...args) => applyConfiguration('applyPreset', ...args),
                     onWorldbookCommit: (...args) => applyConfiguration('applyWorldbook', ...args),
@@ -212,7 +269,7 @@ async function start() {
             view = mountDesktopChatView(host, chat);
         },
     });
-    mountDesktopShell({ shell, getContext, getThemeContext: getSettingsContext, beforeSearch: async () => {
+    mountDesktopShell({ shell, getContext, getThemeContext: getSettingsContext, getInstanceOptions: characterPageOptions, beforeSearch: async () => {
         if (!chat.historyAll) { chat.historyAll = true; paint(); await new Promise(resolve => requestAnimationFrame(resolve)); }
     } });
     document.querySelector('#vc-desktop-startup')?.remove();
@@ -228,7 +285,7 @@ async function start() {
         return eventSource.emit(event_types.PERSONA_CHANGED, context.userAvatar);
     }).catch(() => {});
     // 不 await 聊天准备：导航、历史和设置拥有各自生命周期。
-    void import('./runtime.js').then(module => module.prepareChatRuntime({ client, context, choosePersona, readInput: () => chat.draft,
+    runtimeReady = import('./runtime.js').then(module => module.prepareChatRuntime({ client, context, choosePersona, readInput: () => chat.draft,
         paint, onConflict(snapshot, error) { showF2Draft(snapshot, error, { latest: () => chat.onNoticeRetry(), copy: () => chat.onCopyDraft() }); },
         onChange(state) {
             if (state.key !== chat.conversation || chat.status !== 'ready') return;
@@ -249,6 +306,7 @@ async function start() {
         document.documentElement.dataset.vcRuntime = 'prepared';
         await eventSource.emit(event_types.APP_INITIALIZED); await eventSource.emit(event_types.APP_READY);
         void activateCurrent(committedRead, false);
+        return runtime;
     }).catch(() => { document.documentElement.dataset.vcRuntime = 'error'; chat.notice = '聊天没有加载出来，请重试。'; paint(); });
 }
 void start().catch(error => {

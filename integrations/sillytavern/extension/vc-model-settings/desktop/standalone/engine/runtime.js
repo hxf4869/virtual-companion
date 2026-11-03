@@ -203,6 +203,19 @@ export async function createChatEngine({ client, context, settings, decision, pr
     }
 
     return { settings, story, memory, cards, measureMessage, substituteMacros: substituteParams, settingsForSave: () => settingsForSave(settings),
+        firstMessage() {
+            const card = context.characters[context.characterId], regex = currentRegex();
+            const message = { name: context.name2, is_user: false, is_system: false, send_date: new Date().toISOString(),
+                mes: regex.getRegexedString(card?.first_mes || '', regex.regex_placement.AI_OUTPUT), extra: {} };
+            const greetings = card?.data?.alternate_greetings;
+            if (greetings?.length) {
+                const swipes = [message.mes, ...greetings.map(text => regex.getRegexedString(text, regex.regex_placement.AI_OUTPUT))];
+                if (!message.mes) { swipes.shift(); message.mes = swipes[0]; }
+                message.swipe_id = 0; message.swipes = swipes;
+                message.swipe_info = swipes.map(() => ({ send_date: message.send_date, extra: {} }));
+            }
+            return message;
+        },
         async shouldAutoContinue(chunk) {
             const auto=settings.power_user.auto_continue;
             if(!auto?.enabled || !auto.allow_chat_completions || auto.target_length<=0 || String(readInput()).length || typeof chunk!=='string' || chunk.trim().length<=5 || !context.chat.length)return false;

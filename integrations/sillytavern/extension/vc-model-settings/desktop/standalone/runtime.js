@@ -47,7 +47,7 @@ export async function prepareChatRuntime({ client, context, choosePersona, readI
     const media = installDesktopMedia({ context, session, paint });
     const restartFor = changes => changes.some(({ path }) => !path.length || path[0] === 'oai_settings' && (path.length === 1 || path[1] === 'preset_settings_openai')
         || path[0] === 'extension_settings' && (path.length === 1 || path[1] === 'tavern_helper' && (path.length === 2 || path[2] === 'script')));
-    return Object.assign(session, media, { refreshCatalog, renderMessage: engine.cards.renderMessage, mountCardActions: engine.cards.mountCardActions,
+    return Object.assign(session, media, { refreshCatalog, story: engine.story, renderMessage: engine.cards.renderMessage, mountCardActions: engine.cards.mountCardActions,
         applySettings(changes) { return session.configure(async () => {
             engine.applySettings(changes);
             client.documents.acceptSettings(changes, engine.settingsForSave());

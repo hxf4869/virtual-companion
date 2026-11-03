@@ -39,8 +39,8 @@ export async function seedDesktopBenchmark(ctx, { messages = 24 } = {}) {
     return { avatar, file, chat };
 }
 
-export async function desktopBenchmarkContext(browser, ctx) {
-    const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1, reducedMotion: 'reduce' });
+export async function desktopBenchmarkContext(browser, ctx, options = {}) {
+    const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1, reducedMotion: 'reduce', ...options });
     await context.addCookies([
         { name: 'vc_session', value: ctx.secrets.session.vcSession, url: ctx.w05.stBase },
         { name: 'vc_csrf', value: ctx.secrets.session.vcCsrf, url: ctx.w05.stBase },
