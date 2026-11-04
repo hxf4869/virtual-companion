@@ -1,0 +1,83 @@
+@layer components {
+  .vc-desktop-aurora {
+    position: fixed;
+    inset: 0;
+    z-index: var(--vc-z-backdrop);
+    pointer-events: none;
+    overflow: hidden;
+  }
+
+  .vc-aurora-set {
+    position: absolute;
+    inset: 0;
+    opacity: 1;
+    transition: opacity var(--vc-dur-aurora-change) var(--vc-ease-out);
+  }
+
+  .vc-aurora-set.is-leaving {
+    opacity: 0;
+  }
+
+  .vc-aurora-spot {
+    position: absolute;
+    width: 60vmax;
+    height: 60vmax;
+    border-radius: 50%;
+    background: radial-gradient(closest-side, rgb(var(--c)) 0%, transparent 70%);
+    opacity: var(--vc-aurora-alpha);
+    will-change: transform;
+    animation: vc-aurora-drift var(--vc-dur-aurora-drift-1) ease-in-out infinite alternate;
+  }
+
+  .vc-aurora-spot--1 {
+    top: -18vmax;
+    left: -12vmax;
+    animation-duration: var(--vc-dur-aurora-drift-1);
+  }
+
+  .vc-aurora-spot--2 {
+    top: 8vmax;
+    right: -18vmax;
+    animation-duration: var(--vc-dur-aurora-drift-2);
+    animation-direction: alternate-reverse;
+  }
+
+  .vc-aurora-spot--3 {
+    bottom: -24vmax;
+    left: 20vmax;
+    animation-duration: var(--vc-dur-aurora-drift-3);
+  }
+
+  .vc-desktop-aurora.is-paused .vc-aurora-spot {
+    animation-play-state: paused;
+  }
+
+  .vc-desktop-aurora.is-reduced .vc-aurora-spot,
+  html[data-vc-reduced-motion="true"] .vc-aurora-spot {
+    /* reduced-motion */
+    animation: none !important;
+    opacity: var(--vc-aurora-reduced-alpha);
+  }
+
+  html[data-vc-desktop-theme="paper"] .vc-desktop-aurora,
+  html[data-vc-desktop-theme="smoke"] .vc-desktop-aurora {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vc-aurora-spot {
+    /* reduced-motion */
+    animation: none !important;
+    opacity: var(--vc-aurora-reduced-alpha);
+  }
+}
+
+@keyframes vc-aurora-drift {
+  from {
+    transform: translate(0, 0) scale(1);
+  }
+  to {
+    transform: translate(6vw, -4vw) scale(1.15);
+  }
+}

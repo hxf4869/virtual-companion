@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { Select as BaseSelect } from '@base-ui/react/select';
+import { usePortalContainer } from '../portal-host';
 import { Icon } from './Icon';
 import './Select.css';
 
@@ -32,6 +33,7 @@ export function Select<T extends string = string>({
 }: SelectProps<T>) {
   const mergedClassName = ['vc-select', className].filter(Boolean).join(' ');
   const items = options.map((opt) => ({ value: opt.value, label: opt.label }));
+  const portalContainer = usePortalContainer();
 
   return (
     <BaseSelect.Root
@@ -51,7 +53,7 @@ export function Select<T extends string = string>({
           <Icon name="chevron-down" size={16} />
         </BaseSelect.Icon>
       </BaseSelect.Trigger>
-      <BaseSelect.Portal>
+      <BaseSelect.Portal container={portalContainer}>
         <BaseSelect.Positioner sideOffset={6} className="vc-select__positioner">
           <BaseSelect.Popup className="vc-select__popup">
             <BaseSelect.List className="vc-select__list">

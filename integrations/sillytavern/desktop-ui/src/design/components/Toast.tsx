@@ -1,4 +1,5 @@
 import { Toast as BaseToast } from '@base-ui/react/toast';
+import { useToastPortalContainer } from '../portal-host';
 import { Icon } from './Icon';
 import './Toast.css';
 
@@ -38,13 +39,14 @@ export interface ToastRegionProps {
 
 function ToastList({ className }: ToastRegionProps) {
   const { toasts } = BaseToast.useToastManager<ToastCustomData>();
+  const toastContainer = useToastPortalContainer();
   const mergedViewportClassName = ['vc-toast-viewport', className].filter(Boolean).join(' ');
   const activeToasts = toasts
     .filter((item) => !item.limited && item.transitionStatus !== 'ending')
     .slice(0, 1);
 
   return (
-    <BaseToast.Portal>
+    <BaseToast.Portal container={toastContainer}>
       <BaseToast.Viewport className={mergedViewportClassName}>
         {activeToasts.map((item) => {
           const kind: ToastKind = item.data?.kind ?? (item.type === 'error' ? 'error' : 'success');

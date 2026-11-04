@@ -1,5 +1,6 @@
 import React, { ReactElement, ReactNode } from 'react';
 import { Popover as BasePopover } from '@base-ui/react/popover';
+import { PortalNestedScope, usePortalContainer } from '../portal-host';
 import './Popover.css';
 
 export interface PopoverProps {
@@ -26,6 +27,7 @@ export function Popover({
   className,
 }: PopoverProps) {
   const mergedClassName = ['vc-popover', className].filter(Boolean).join(' ');
+  const portalContainer = usePortalContainer();
 
   return (
     <BasePopover.Root open={open} defaultOpen={defaultOpen} onOpenChange={onOpenChange}>
@@ -34,10 +36,12 @@ export function Popover({
       ) : (
         <BasePopover.Trigger className="vc-popover__trigger">{trigger}</BasePopover.Trigger>
       )}
-      <BasePopover.Portal>
-        <BasePopover.Positioner side={side} align={align} sideOffset={sideOffset} className="vc-popover__positioner">
-          <BasePopover.Popup className={mergedClassName}>{children}</BasePopover.Popup>
-        </BasePopover.Positioner>
+      <BasePopover.Portal container={portalContainer}>
+        <PortalNestedScope>
+          <BasePopover.Positioner side={side} align={align} sideOffset={sideOffset} className="vc-popover__positioner">
+            <BasePopover.Popup className={mergedClassName}>{children}</BasePopover.Popup>
+          </BasePopover.Positioner>
+        </PortalNestedScope>
       </BasePopover.Portal>
     </BasePopover.Root>
   );

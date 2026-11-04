@@ -1,5 +1,6 @@
 import { type ReactNode } from 'react';
 import { Dialog as BaseDialog } from '@base-ui/react/dialog';
+import { PortalNestedScope, usePortalContainer } from '../portal-host';
 import { IconButton } from './IconButton';
 import './Dialog.css';
 
@@ -29,33 +30,36 @@ export function Dialog({
   className,
 }: DialogProps) {
   const mergedClassName = ['vc-dialog', className].filter(Boolean).join(' ');
+  const portalContainer = usePortalContainer();
 
   return (
     <BaseDialog.Root open={open} onOpenChange={onOpenChange}>
-      <BaseDialog.Portal>
-        <BaseDialog.Backdrop className="vc-dialog__backdrop" />
-        <BaseDialog.Popup
-          data-width={width}
-          className={mergedClassName}
-        >
-          <div className="vc-dialog__header">
-            <div className="vc-dialog__titles">
-              <BaseDialog.Title className="vc-dialog__title">{title}</BaseDialog.Title>
-              {description ? (
-                <BaseDialog.Description className="vc-dialog__description">
-                  {description}
-                </BaseDialog.Description>
+      <BaseDialog.Portal container={portalContainer}>
+        <PortalNestedScope>
+          <BaseDialog.Backdrop className="vc-dialog__backdrop" />
+          <BaseDialog.Popup
+            data-width={width}
+            className={mergedClassName}
+          >
+            <div className="vc-dialog__header">
+              <div className="vc-dialog__titles">
+                <BaseDialog.Title className="vc-dialog__title">{title}</BaseDialog.Title>
+                {description ? (
+                  <BaseDialog.Description className="vc-dialog__description">
+                    {description}
+                  </BaseDialog.Description>
+                ) : null}
+              </div>
+              {showCloseButton ? (
+                <BaseDialog.Close
+                  render={<IconButton icon="close" size={32} iconSize={16} aria-label="关闭弹窗" />}
+                />
               ) : null}
             </div>
-            {showCloseButton ? (
-              <BaseDialog.Close
-                render={<IconButton icon="close" size={32} iconSize={16} aria-label="关闭弹窗" />}
-              />
-            ) : null}
-          </div>
-          <div className="vc-dialog__body">{children}</div>
-          {actions ? <div className="vc-dialog__footer">{actions}</div> : null}
-        </BaseDialog.Popup>
+            <div className="vc-dialog__body">{children}</div>
+            {actions ? <div className="vc-dialog__footer">{actions}</div> : null}
+          </BaseDialog.Popup>
+        </PortalNestedScope>
       </BaseDialog.Portal>
     </BaseDialog.Root>
   );

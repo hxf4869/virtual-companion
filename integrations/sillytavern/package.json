@@ -43,9 +43,17 @@
     "@base-ui/react": "1.9.0",
     "@node-rs/jieba": "2.0.1",
     "@tanstack/react-query": "5.105.3",
+    "@tanstack/react-router": "1.170.46",
+    "cmdk": "1.1.1",
     "crc-32": "1.2.2",
     "react": "19.3.1",
     "react-dom": "19.3.1",
-    "sqlite-vec": "0.1.7-alpha.2"
+    "sqlite-vec": "0.1.7-alpha.2",
+    "zustand": "5.0.16"
+  },
+  "overrides": {
+    "cmdk": {
+      "@radix-ui/react-dialog": "npm:@radix-ui/react-primitive@2.2.0"
+    }
   }
 }

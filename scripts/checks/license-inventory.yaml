@@ -33,6 +33,15 @@ integrationDirectDependencies:
   - name: "@tanstack/react-query"
     licenseFamily: MIT
     scope: runtime
+  - name: "@tanstack/react-router"
+    licenseFamily: MIT
+    scope: runtime
+  - name: cmdk
+    licenseFamily: MIT
+    scope: runtime
+  - name: zustand
+    licenseFamily: MIT
+    scope: runtime
   - name: vite
     licenseFamily: MIT
     scope: dev
