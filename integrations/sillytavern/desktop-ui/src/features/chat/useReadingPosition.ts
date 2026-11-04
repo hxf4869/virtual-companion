@@ -294,6 +294,7 @@ export function useReadingPosition({
             const chat = chatRef.current;
             if (!chat) return;
             openTokenRef.current = null;
+            lastInputRef.current = -1e9;
             releaseHold();
             stateRef.current = 'follow';
             attachedRef.current = true;
@@ -319,6 +320,7 @@ export function useReadingPosition({
 
     const notifySent = useCallback(() => {
         openTokenRef.current = null;
+        lastInputRef.current = -1e9;
         releaseHold();
         stateRef.current = 'follow';
         attachedRef.current = true;
@@ -712,7 +714,6 @@ export function useReadingPosition({
             const target = e.target as HTMLElement | null;
             const tag = target?.tagName;
             if (tag === 'TEXTAREA' || tag === 'INPUT' || target?.isContentEditable) return;
-            markInput();
             if (
                 e.key === 'End' &&
                 isConversationVisible() &&
@@ -720,7 +721,9 @@ export function useReadingPosition({
             ) {
                 e.preventDefault();
                 goLatest({ instant: true });
+                return;
             }
+            markInput();
         };
 
         const compensateLayout = () => {
@@ -742,9 +745,34 @@ export function useReadingPosition({
             }
         };
 
+        const resizeObserver =
+            typeof ResizeObserver === 'function'
+                ? new ResizeObserver(() => {
+                      compensateLayout();
+                      scheduleFollowScroll();
+                  })
+                : null;
+        const observedRows = new Set<HTMLElement>();
+        const observeRows = () => {
+            const current = new Set(getRows().map(row => row.el));
+            for (const row of observedRows) {
+                if (!current.has(row)) {
+                    resizeObserver?.unobserve(row);
+                    observedRows.delete(row);
+                }
+            }
+            for (const row of current) {
+                if (!observedRows.has(row)) {
+                    resizeObserver?.observe(row);
+                    observedRows.add(row);
+                }
+            }
+        };
+
         const mutationObserver =
             typeof MutationObserver === 'function'
                 ? new MutationObserver(records => {
+                      if (records.some(record => record.target === chat && record.type === 'childList')) observeRows();
                       const anchor = anchorRef.current;
                       if (anchor && anchor.el.isConnected && !holdingRef.current) {
                           const prepended = records.some(rec =>
@@ -782,14 +810,8 @@ export function useReadingPosition({
             characterData: true,
         });
 
-        const resizeObserver =
-            typeof ResizeObserver === 'function'
-                ? new ResizeObserver(() => {
-                      compensateLayout();
-                      scheduleFollowScroll();
-                  })
-                : null;
         resizeObserver?.observe(chat);
+        observeRows();
 
         const onWindowResize = () => {
             lastInputRef.current = -1e9;
@@ -809,6 +831,7 @@ export function useReadingPosition({
         return () => {
             mutationObserver?.disconnect();
             resizeObserver?.disconnect();
+            observedRows.clear();
             if (scrollFrame) window.cancelAnimationFrame(scrollFrame);
             if (followFrameRef.current) {
                 window.cancelAnimationFrame(followFrameRef.current);

@@ -409,7 +409,7 @@ export function createSessionBridge(
                 !rawMsg.is_system,
         );
 
-        if (runtimeInstance?.renderMessage) {
+        if (runtimeInstance?.renderMessage && snapshot.status === 'ready') {
             entry.cardCleanup = runtimeInstance.renderMessage(
                 host,
                 entry.index,
@@ -418,6 +418,10 @@ export function createSessionBridge(
             );
             entry.renderedWithCards = true;
         } else {
+            if (entry.renderedWithCards) {
+                entry.cardCleanup?.();
+                entry.cardCleanup = undefined;
+            }
             let textEl = host.querySelector<HTMLElement>(':scope > .mes_text');
             if (!textEl) {
                 textEl = host.ownerDocument.createElement('div');
@@ -453,7 +457,7 @@ export function createSessionBridge(
                     !rawMsg?.is_user &&
                     !rawMsg?.is_system,
             );
-            const hasCards = Boolean(runtimeInstance?.renderMessage);
+            const hasCards = Boolean(runtimeInstance?.renderMessage && snapshot.status === 'ready');
             const needsUpdate =
                 nextIndex !== entry.index ||
                 String(rawMsg?.mes ?? '') !== entry.renderedText ||
@@ -629,7 +633,7 @@ export function createSessionBridge(
                     state.busy && lastMsg && !lastMsg.is_user && !lastMsg.is_system
                         ? lastMsg.key
                         : null;
-                const power = runtimeInstance?.settings?.power_user;
+                const power = context.powerUserSettings;
                 const sendOnEnter = power?.send_on_enter;
                 const binding = context.chatMetadata?.vc_binding;
                 const nextRelId = binding?.relationshipId
@@ -655,9 +659,11 @@ export function createSessionBridge(
                         : snapshot.conversationId,
                     mode: binding?.mode || snapshot.mode,
                     enterToSend:
-                        sendOnEnter === undefined
-                            ? snapshot.enterToSend
-                            : Number(sendOnEnter) !== -1,
+                        state.enterToSend !== undefined
+                            ? Boolean(state.enterToSend)
+                            : sendOnEnter === undefined
+                              ? snapshot.enterToSend
+                              : Number(sendOnEnter) !== -1,
                     preferences: power ? { ...power } : snapshot.preferences,
                     recalledPrompt: String(
                         context.extensionPrompts?.vc_long_term_memory?.value ?? '',
@@ -1114,7 +1120,7 @@ export function createSessionBridge(
             if (dead || !rt) return;
             await rt.applySettings(changes);
             if (dead) return;
-            const power = rt.settings?.power_user;
+            const power = context.powerUserSettings;
             if (power) {
                 const sendOnEnter = power.send_on_enter;
                 snapshot = {
@@ -1323,8 +1329,19 @@ export function createSessionBridge(
             }
             mountedLeaves.clear();
             runtimeInstance?.destroy?.();
-            if (typeof globalThis !== 'undefined' && (globalThis as any).SillyTavern === stOwner) {
-                delete (globalThis as any).SillyTavern;
+            if (typeof globalThis !== 'undefined') {
+                const currentSt = (globalThis as any).SillyTavern;
+                let ownsGlobal = currentSt === stOwner;
+                if (!ownsGlobal && typeof currentSt?.getContext === 'function') {
+                    try {
+                        ownsGlobal = currentSt.getContext() === context;
+                    } catch {
+                        ownsGlobal = false;
+                    }
+                }
+                if (ownsGlobal) {
+                    delete (globalThis as any).SillyTavern;
+                }
             }
         },
     };

@@ -1,10 +1,23 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, act, cleanup, waitFor } from '@testing-library/react';
-import { RouterProvider } from '@tanstack/react-router';
+import { render, act, cleanup, waitFor, fireEvent, screen } from '@testing-library/react';
+import { RouterProvider, useNavigate } from '@tanstack/react-router';
 import { AppProviders } from '../../src/app/providers';
 import { createDesktopRouter } from '../../src/app/router';
+import { MessageItem } from '../../src/features/chat/MessageItem';
+import { useChatUi } from '../../src/features/chat/ChatRoute';
 import { VoiceBubble } from '../../src/features/chat/VoiceBubble';
+import { SessionBridgeProvider } from '../../src/runtime/session-bridge';
+import {
+    captureSessionContext,
+    setStHeadersProvider,
+} from '../../../extension/vc-model-settings/api.js';
+import {
+    invalidateVoicePolicy,
+    loadVoicePolicy,
+    setVoiceIntegration,
+    voicePlayer,
+} from '../../../extension/vc-model-settings/voice-logic.js';
 import { createTestChatEnv } from './fixtures';
 
 function setupMatchMedia(initialWidth = 1440) {
@@ -36,6 +49,81 @@ describe('ChatRoute streaming isolation, B5 open lifecycle, and B13 VoiceBubble 
     afterEach(() => {
         cleanup();
         vi.restoreAllMocks();
+    });
+
+    it('loads history in pages of 80 while retaining the existing visible leaves', async () => {
+        const key = '["alice.png","history"]';
+        const env = createTestChatEnv({
+            conversations: [{ key, avatar: 'alice.png', file: 'history', title: 'Alice', preview: '', updatedAt: 1 }],
+            chatsByKey: { [key]: Array.from({ length: 180 }, (_, index) => ({ name: 'Alice', mes: `Synthetic history ${index}`, is_user: false })) },
+        });
+        await env.bridge.open(key);
+        const router = createDesktopRouter('/chat');
+        const { container } = render(<AppProviders client={env.client} queryClient={env.queryClient} sessionBridge={env.bridge}><RouterProvider router={router} /></AppProviders>);
+        await act(async () => { await router.load(); });
+        await waitFor(() => expect(container.querySelectorAll('#chat > .mes')).toHaveLength(80));
+        const existing = container.querySelector('#chat > .mes[mesid="100"] .mes_text');
+        fireEvent.click(screen.getByRole('button', { name: '显示更早的消息', exact: true }));
+        await waitFor(() => expect(container.querySelectorAll('#chat > .mes')).toHaveLength(160));
+        expect(container.querySelector('#chat > .mes[mesid="100"] .mes_text')).toBe(existing);
+        fireEvent.click(screen.getByRole('button', { name: '显示更早的消息', exact: true }));
+        await waitFor(() => expect(container.querySelectorAll('#chat > .mes')).toHaveLength(180));
+        expect(screen.queryByRole('button', { name: '显示更早的消息', exact: true })).toBeNull();
+        env.bridge.destroy();
+    });
+
+    it('locates an older source only after the chat route is visible and history has committed', async () => {
+        const key = '["alice.png","source"]';
+        const previousKey = '["alice.png","previous"]';
+        const env = createTestChatEnv({
+            conversations: [
+                { key, avatar: 'alice.png', file: 'source', title: 'Alice', preview: '', updatedAt: 1 },
+                { key: previousKey, avatar: 'alice.png', file: 'previous', title: 'Alice', preview: '', updatedAt: 0 },
+            ],
+            chatsByKey: {
+                [key]: Array.from({ length: 100 }, (_, index) => ({ name: 'Alice', mes: `Synthetic source ${index}`, is_user: false })),
+                [previousKey]: Array.from({ length: 100 }, (_, index) => ({ name: 'Alice', mes: `Synthetic previous ${index}`, is_user: false })),
+            },
+        });
+        await env.bridge.open(previousKey);
+        function SourceAction() {
+            const ui = useChatUi()!;
+            const navigate = useNavigate();
+            return <button onClick={async () => {
+                await env.bridge.open(key);
+                await navigate({ to: '/chat/$conversationKey', params: { conversationKey: key } });
+                ui.requestMessageJump(key, 0);
+            }}>Locate source</button>;
+        }
+        const router = createDesktopRouter({ initialEntry: '/memory', routeOverrides: { memory: SourceAction } });
+        const { container } = render(<AppProviders client={env.client} queryClient={env.queryClient} sessionBridge={env.bridge}><RouterProvider router={router} /></AppProviders>);
+        await act(async () => { await router.load(); });
+        expect(container.querySelector('#chat > .mes[mesid="0"]')).toBeNull();
+        fireEvent.click(await screen.findByRole('button', { name: 'Locate source' }));
+        await waitFor(() => {
+            expect(container.querySelector('[data-chat-body]')?.hasAttribute('hidden')).toBe(false);
+            expect(container.querySelector('#chat > .mes[mesid="0"]')?.hasAttribute('data-vc-flash')).toBe(true);
+        });
+        expect(container.querySelectorAll('#chat > .mes')).toHaveLength(100);
+        env.bridge.destroy();
+    });
+
+    it('expands the opening window far enough to restore a saved reading position', async () => {
+        const key = '["alice.png","restored-history"]';
+        const env = createTestChatEnv({
+            conversations: [{ key, avatar: 'alice.png', file: 'restored-history', title: 'Alice', preview: '', updatedAt: 1 }],
+            chatsByKey: { [key]: Array.from({ length: 180 }, (_, index) => ({ name: 'Alice', mes: `Synthetic history ${index}`, is_user: false })) },
+        });
+        await env.bridge.open(key);
+        const storageId = env.bridge.draft.storageId(key);
+        localStorage.setItem(`vc-pos:${storageId}`, '0');
+        localStorage.setItem(`vc-read:${storageId}`, '0');
+        const router = createDesktopRouter('/chat');
+        const { container } = render(<AppProviders client={env.client} queryClient={env.queryClient} sessionBridge={env.bridge}><RouterProvider router={router} /></AppProviders>);
+        await act(async () => { await router.load(); });
+        await waitFor(() => expect(container.querySelectorAll('#chat > .mes')).toHaveLength(180));
+        expect(container.querySelector('#chat > .mes[mesid="0"]')).not.toBeNull();
+        env.bridge.destroy();
     });
 
     it('B5: bridge.open resolves to opened only after activation finishes, returns superseded when preempted, and deduplicates already-ready or in-flight open unless latest:true', async () => {
@@ -400,5 +488,245 @@ describe('ChatRoute streaming isolation, B5 open lifecycle, and B13 VoiceBubble 
         expect(env.runtimeSpies.refreshCatalog).not.toHaveBeenCalled();
         expect(env.runtimeSpies.setBudget).not.toHaveBeenCalled();
         expect(env.prepareRuntimeCalls).toBe(1);
+    });
+
+    it('real runtime contract updates enterToSend via context.powerUserSettings without fictional runtime.settings and destroy releases SillyTavern rebound by cards for the same context only', async () => {
+        const env = createTestChatEnv();
+        await env.bridge.open('["alice.png","chat-1"]');
+        const session = env.session as any;
+        expect('settings' in session).toBe(false);
+        expect(env.bridge.getContext().powerUserSettings).toBeTruthy();
+
+        await env.bridge.applySettings([
+            {
+                path: ['power_user', 'send_on_enter'],
+                before: { exists: true, value: 1 },
+                after: { exists: true, value: -1 },
+            },
+        ]);
+        expect(env.bridge.getSnapshot().enterToSend).toBe(false);
+
+        const context = env.bridge.getContext();
+        (globalThis as any).SillyTavern = { getContext: () => context };
+        env.bridge.destroy();
+        expect((globalThis as any).SillyTavern?.getContext?.() === context).toBe(false);
+
+        // Verify destroying a bridge does not clobber another live instance's SillyTavern owner
+        const env2 = createTestChatEnv();
+        await env2.bridge.open('["alice.png","chat-1"]');
+        const otherContext = { chat: [] };
+        const otherOwner = { getContext: () => otherContext };
+        (globalThis as any).SillyTavern = otherOwner;
+        env2.bridge.destroy();
+        expect((globalThis as any).SillyTavern).toBe(otherOwner);
+        delete (globalThis as any).SillyTavern;
+        env.queryClient.clear();
+        env2.queryClient.clear();
+    });
+
+    it('MessageItem read-aloud retains aria-pressed="true" after busy settles, reuses clip to pause without re-requesting TTS, and isolates new state when text changes', async () => {
+        const keyA = '["alice.png","chat-a"]';
+        const env = createTestChatEnv({
+            conversations: [
+                {
+                    key: keyA,
+                    avatar: 'alice.png',
+                    file: 'chat-a',
+                    title: 'Alice',
+                    preview: 'Hello',
+                    updatedAt: 1,
+                    relationshipId: 'rel-1',
+                    mode: 'COMPANION',
+                },
+            ],
+            chatsByKey: {
+                [keyA]: [
+                    {
+                        name: 'Alice',
+                        mes: 'First reply text',
+                        is_user: false,
+                        is_system: false,
+                        swipe_id: 0,
+                        vc_message_id: 'm-1',
+                        extra: { vc_source: { id: 'src-1' } },
+                    },
+                ],
+            },
+        });
+
+        await env.bridge.open(keyA);
+        const context = env.bridge.getContext();
+        context.chatMetadata.vc_f2 = { id: 'f2-1', revision: 1 };
+        context.chatMetadata.vc_binding = { mode: 'COMPANION', relationshipId: 'rel-1' };
+        context.chat[0].vc_message_id = 'm-1';
+        context.chat[0].extra = { vc_source: { id: 'src-1' } };
+
+        let createClipCalls = 0;
+        const staleCallbacks: Array<(playing: boolean) => void> = [];
+        const playingClips = new Set<string>();
+
+        vi.stubGlobal(
+            'fetch',
+            vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+                const url = String(input);
+                const method = init?.method || 'GET';
+                if (url.endsWith('/api/v1/auth/session')) {
+                    return new Response(
+                        JSON.stringify({ accountId: '1', sessionId: '1' }),
+                        { status: 200 },
+                    );
+                }
+                if (url.endsWith('/api/v1/voice/engines')) {
+                    return new Response(
+                        JSON.stringify({
+                            tts: [
+                                {
+                                    engine: 'kokoro',
+                                    configured: true,
+                                    enabled: true,
+                                    healthy: true,
+                                },
+                            ],
+                        }),
+                        { status: 200 },
+                    );
+                }
+                if (url.endsWith('/api/v1/voice/settings')) {
+                    return new Response(
+                        JSON.stringify({ kokoroTimeoutSeconds: 5, voiceFrequency: 'STANDARD' }),
+                        { status: 200 },
+                    );
+                }
+                if (url.endsWith('/api/v1/relationships')) {
+                    return new Response(
+                        JSON.stringify([
+                            { relationshipId: 'rel-1', voiceFrequency: 'STANDARD' },
+                        ]),
+                        { status: 200 },
+                    );
+                }
+                if (url.endsWith('/api/v1/st/sources/reconcile')) {
+                    return new Response(JSON.stringify({ ok: true }), { status: 200 });
+                }
+                if (method === 'POST' && url.endsWith('/api/v1/relationships/rel-1/voice-clips')) {
+                    createClipCalls += 1;
+                    return new Response(
+                        JSON.stringify({ clipId: `clip-${createClipCalls}` }),
+                        { status: 200 },
+                    );
+                }
+                if (url.includes('/api/v1/voice-clips/clip-')) {
+                    const clipId = url.split('/').pop()!;
+                    return new Response(
+                        JSON.stringify({ clipId, status: 'ready', durationMs: 2000 }),
+                        { status: 200 },
+                    );
+                }
+                return new Response(JSON.stringify({}), { status: 200 });
+            }),
+        );
+
+        setStHeadersProvider(() => ({ 'X-CSRF-Token': 'test-csrf' }));
+        await captureSessionContext();
+        invalidateVoicePolicy();
+        setVoiceIntegration({
+            getContext: () => context,
+            saveChat: async () => {},
+        });
+        await loadVoicePolicy(context);
+
+        const toggleSpy = vi
+            .spyOn(voicePlayer, 'toggle')
+            .mockImplementation(async (clipId, callbacks) => {
+                if (!clipId) return false;
+                if ( callbacks?.onState ) {
+                    staleCallbacks.push(callbacks.onState);
+                }
+                if (playingClips.has(clipId)) {
+                    playingClips.delete(clipId);
+                    callbacks?.onState?.(false);
+                    return false;
+                }
+                playingClips.add(clipId);
+                callbacks?.onState?.(true);
+                return true;
+            });
+
+        const msg0 = env.bridge.getSnapshot().messages[0];
+        const noop = () => {};
+        const view = render(
+            <SessionBridgeProvider bridge={env.bridge}>
+                <MessageItem
+                    message={msg0}
+                    index={0}
+                    totalCount={1}
+                    onQuote={noop}
+                    onEdit={noop}
+                    onRemove={noop}
+                    onRemind={noop}
+                    onOpenReactionPicker={noop}
+                    onOpenLightbox={noop}
+                />
+            </SessionBridgeProvider>,
+        );
+
+        const readBtn = view.container.querySelector(
+            '[data-vc-act="read"]',
+        ) as HTMLButtonElement;
+        expect(readBtn).toBeTruthy();
+        expect(readBtn.getAttribute('aria-pressed')).toBe('false');
+
+        // 1st click: requests TTS clip and starts playback; after busy=false settles, aria-pressed stays true
+        await act(async () => {
+            readBtn.click();
+        });
+        await waitFor(() => {
+            expect(createClipCalls).toBe(1);
+            expect(toggleSpy).toHaveBeenCalledTimes(1);
+            expect(readBtn.getAttribute('aria-pressed')).toBe('true');
+            expect(readBtn.disabled).toBe(false);
+        });
+
+        // 2nd click: reuses the same clip to pause without requesting a new TTS clip
+        await act(async () => {
+            readBtn.click();
+        });
+        await waitFor(() => {
+            expect(createClipCalls).toBe(1);
+            expect(toggleSpy).toHaveBeenCalledTimes(2);
+            expect(readBtn.getAttribute('aria-pressed')).toBe('false');
+        });
+
+        // Text change replaces read-aloud state and ignores stale callbacks from previous state
+        context.chat[0].mes = 'Updated reply text';
+        const updatedMsg = { ...msg0, mes: 'Updated reply text' };
+        view.rerender(
+            <SessionBridgeProvider bridge={env.bridge}>
+                <MessageItem
+                    message={updatedMsg}
+                    index={0}
+                    totalCount={1}
+                    onQuote={noop}
+                    onEdit={noop}
+                    onRemove={noop}
+                    onRemind={noop}
+                    onOpenReactionPicker={noop}
+                    onOpenLightbox={noop}
+                />
+            </SessionBridgeProvider>,
+        );
+        expect(readBtn.getAttribute('aria-pressed')).toBe('false');
+
+        act(() => {
+            for (const cb of staleCallbacks) {
+                cb(true);
+            }
+        });
+        expect(readBtn.getAttribute('aria-pressed')).toBe('false');
+
+        setVoiceIntegration(null);
+        invalidateVoicePolicy();
+        env.bridge.destroy();
+        env.queryClient.clear();
     });
 });

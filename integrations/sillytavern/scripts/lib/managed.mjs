@@ -101,7 +101,7 @@ export function deployManagedAssets({ pluginSrc = SERVER_PLUGIN_SRC, extensionSr
     // Native F2 is mandatory for every mapped profile, even without a user extension.
     const runtime = path.join(runDir, 'public/scripts/vc-runtime');
     mkdirp(runtime, 0o700);
-    for (const name of ['f2-client.js', 'instance-binding.js', 'settings-documents.js']) {
+    for (const name of ['f2-client.js', 'f2-logic.js', 'instance-binding.js', 'settings-documents.js']) {
         fs.copyFileSync(path.join(extensionSrc, name), path.join(runtime, name));
         fs.chmodSync(path.join(runtime, name), 0o600);
     }
@@ -164,7 +164,7 @@ export function verifyManagedDeployment({ pluginSrc = SERVER_PLUGIN_SRC, extensi
     if (fs.existsSync(path.join(extDst, 'harness'))) problems.push('harness/ 被部署进生产扩展目录');
     problems.push(...treeDiff(pluginSrc, pluginDst, ['.git']).map((d) => `plugin ${d}`));
     problems.push(...treeDiff(extensionSrc, extDst, ['.git', 'harness']).map((d) => `extension ${d}`));
-    for (const name of ['f2-client.js', 'instance-binding.js', 'settings-documents.js']) {
+    for (const name of ['f2-client.js', 'f2-logic.js', 'instance-binding.js', 'settings-documents.js']) {
         const deployed = path.join(runDir, 'public/scripts/vc-runtime', name);
         if (!fs.existsSync(deployed) || sha256File(deployed) !== sha256File(path.join(extensionSrc, name))) problems.push(`native F2 部署缺失或漂移：${name}`);
     }

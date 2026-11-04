@@ -4,6 +4,7 @@ import { COPY, messageMenuPlan } from '../../../../extension/vc-model-settings/c
 import { chatVoiceAvailable } from '../../../../extension/vc-model-settings/voice-logic.js';
 import { PortalNestedScope, usePortalContainer } from '../../design/portal-host';
 import { Icon } from '../../design/components/Icon';
+import '../../design/components/Menu.css';
 import { useChatSnapshot, useSessionBridge, type ChatMessage } from '../../runtime/session-bridge';
 import { ReactionBar } from './ReactionBar';
 

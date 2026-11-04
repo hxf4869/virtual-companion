@@ -202,10 +202,12 @@ async function scenePromptParity(ctx) {
                     const { event_types } = await import(root + 'desktop/standalone/engine/st/events.js');
                     const { createChatEngine, runtimeSettings } = await import(root + 'desktop/standalone/engine/runtime.js');
                     const { resolveForegroundProjection } = await import(root + 'projection.js');
-                    const { fetchModelPurposes, fetchProviders } = await import(root + 'api.js');
+                    const { captureSessionContext, fetchModelPurposes, fetchProviders, setStHeadersProvider } = await import(root + 'api.js');
                     const { moment } = await import('/lib.js');
                     moment.now = () => Date.parse('2026-11-03T00:00:00.000Z'); Math.random = () => 0.5;
                     const client = createDesktopClient(); await client.initialize();
+                    setStHeadersProvider(client.headers, { identity: client.identity });
+                    await captureSessionContext();
                     const context = { ...input.context, eventSource: new EventEmitter(), eventTypes: event_types };
                     const settings = runtimeSettings(input.raw);
                     const [purposes, providers] = await Promise.all([fetchModelPurposes(), fetchProviders()]);

@@ -164,6 +164,7 @@ Object.assign(globalThis, {
     CustomEvent: happyWindow.CustomEvent,
     Event: happyWindow.Event,
     MutationObserver: happyWindow.MutationObserver,
+    getComputedStyle: happyWindow.getComputedStyle.bind(happyWindow),
     requestAnimationFrame: cb => setTimeout(cb, 0),
     jQuery: Object.assign(() => ({ triggerHandler: async () => {}, off: () => {} }), { ui: {} }),
     toastr: { info() {}, warning() {}, error() {}, success() {} },
@@ -178,6 +179,7 @@ const { initializeCards } = await import('../extension/vc-model-settings/desktop
 const books = await import('../extension/vc-model-settings/desktop/standalone/cards/helper-worldbook.js');
 const { bindCardHost, getCardHost } = await import('../extension/vc-model-settings/desktop/standalone/cards/ejs-host.js');
 const { bindEngineContext } = await import('../extension/vc-model-settings/desktop/standalone/engine/ports.js');
+const { openaiDefaults, powerUserDefaults } = await import('../extension/vc-model-settings/desktop/standalone/engine/defaults.js');
 
 const deferred = () => {
     let resolve, reject;
@@ -259,8 +261,13 @@ function createSessionFixture({
         settings: {
             username: '合成用户',
             user_avatar: '',
-            power_user: { personas: {}, persona_descriptions: {} },
-            oai_settings: {},
+            power_user: {
+                ...structuredClone(powerUserDefaults),
+                experimental_macro_engine: false,
+                personas: {},
+                persona_descriptions: {},
+            },
+            oai_settings: { ...structuredClone(openaiDefaults) },
             extension_settings: {},
         },
         bindContext() {},
@@ -678,8 +685,10 @@ test('B12: 稳定消息 key 保存在 Session 只读快照且不向 F2 提交包
     };
     try {
         const cardSettings = {
-            oai_settings: { preset_settings_openai: 'Default' },
+            oai_settings: { ...structuredClone(openaiDefaults), preset_settings_openai: 'Default' },
             power_user: {
+                ...structuredClone(powerUserDefaults),
+                experimental_macro_engine: false,
                 reasoning: { prefix: '', suffix: '' },
                 context: {},
                 external_media_allowed_overrides: [],

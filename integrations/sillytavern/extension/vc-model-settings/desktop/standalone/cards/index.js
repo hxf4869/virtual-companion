@@ -18,7 +18,7 @@ import { substituteParamsExtended, getCharacterCardFields } from '../engine/st/s
 import { MacrosParser } from '../engine/st/scripts/macros.js';
 import { renderReplyBubbles } from './reply-bubbles.js';
 
-const base = new URL('./', import.meta.url).href;
+const base = '/scripts/extensions/third-party/vc-model-settings/desktop/standalone/cards/';
 const vendor = '/scripts/extensions/third-party/JS-Slash-Runner/lib/vendor/';
 const loadScript = src => new Promise((resolve, reject) => {
     const script = document.createElement('script'); script.src = src; script.onload = resolve; script.onerror = reject; document.head.append(script);
@@ -247,6 +247,18 @@ export async function initializeCards(options) {
     };
     onScriptButtonsChanged(drawActions);
     const api = { surface, bindContext: refreshCardHost, closeScripts, getPreset: presetsApi.getPreset,
+        destroy() {
+            releaseFrames(scriptFrames);
+            scriptFrames.remove();
+            actions.remove();
+            if (globalThis.SillyTavern?.getContext?.() === context) delete globalThis.SillyTavern;
+            if (globalThis.TavernHelper === publicApi) {
+                delete globalThis.TavernHelper;
+                for (const [name, value] of Object.entries(publicApi)) {
+                    if (!name.startsWith('_') && globalThis[name] === value) delete globalThis[name];
+                }
+            }
+        },
         async configure({ restartScripts = false } = {}) {
             Object.assign(ejs.settings, settings.extension_settings.EjsTemplate || {});
             refreshCardHost();
@@ -301,7 +313,10 @@ export async function initializeCards(options) {
             const ready = context.chat[index] === message;
             if (!ready) { const text = document.createElement('div'); text.className = 'mes_text'; text.textContent = message.mes; node.replaceChildren(text); }
             else if (isStreaming) {format(index, message);if(settings.extension_settings.tavern_helper?.render?.allow_streaming)mountHtml(node,index);}
-            else void schedule(index).catch(() => { node.setAttribute('data-card-error', ''); });
+            else {
+                if (!node.querySelector('.mes_text')) format(index, message);
+                void schedule(index).catch(() => { node.setAttribute('data-card-error', ''); });
+            }
             return entry.cleanup;
         },
         async settle() { await Promise.allSettled([...pending]); await Promise.all(context.cardWrites?.splice(0) || []); },

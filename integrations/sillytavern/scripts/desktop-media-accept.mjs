@@ -1,6 +1,6 @@
 // NF-05复用原语音受管fixture、Go API和生产媒体叶，不使用真实引擎或通知。
 import assert from 'node:assert/strict';
-import { openVoiceChat, sendVoiceTurn, voiceControl, voiceExtension } from './voice-accept-lib.mjs';
+import { openVoiceChat, sendVoiceTurn, voiceControl } from './voice-accept-lib.mjs';
 import { captureWindows } from './desktop-chat-accept.mjs';
 
 export async function sceneDesktopMedia(ctx) {
@@ -19,7 +19,7 @@ export async function sceneDesktopMedia(ctx) {
         await page.locator('#chat>.mes:last-child .vc-voice-transcribe').click(); await page.locator('#chat>.mes:last-child .vc-voice-text').waitFor({ state: 'visible' });
         assert.ok((await read()).at(-1).mes.endsWith('<voice/>'), '原始语音标记仍由ST保存');
         await page.locator('#chat>.mes:last-child .vc-voice-speed').click();
-        await page.evaluate(async base => (await import(base + '/voice.js')).voicePlayer.stop(), voiceExtension);
+        await bar.click(); await page.waitForFunction(() => document.querySelector('#chat>.mes:last-child .vc-voice-bar')?.getAttribute('aria-pressed') === 'false');
         await voiceControl('kokoro');
         stage = 'voice-input';
         await ctx.fixtureHttp.setOverride('vc03m-chat', { text: '合成语音输入回复。', chunks: 1, tool: null });
@@ -37,7 +37,8 @@ export async function sceneDesktopMedia(ctx) {
         await page.locator('#chat>.mes').last().hover(); await page.locator('#chat>.mes:last-child [data-vc-act="read"]').click();
         await page.waitForFunction(() => document.querySelector('#chat>.mes:last-child [data-vc-act="read"]')?.getAttribute('aria-pressed') === 'true');
         assert.equal((await read()).at(-1).mes, original, '朗读不改原消息文字');
-        await page.evaluate(async base => (await import(base + '/voice.js')).voicePlayer.stop(), voiceExtension);
+        await page.locator('#chat>.mes').last().hover(); await page.locator('#chat>.mes:last-child [data-vc-act="read"]').click();
+        await page.waitForFunction(() => document.querySelector('#chat>.mes:last-child [data-vc-act="read"]')?.getAttribute('aria-pressed') === 'false');
         await page.evaluate(async () => {
             const context = SillyTavern.getContext(), message = context.chat.at(-1);
             const image = document.createElement('canvas'); image.width = 320; image.height = 240; const paint = image.getContext('2d'); paint.fillStyle = '#90a8c0'; paint.fillRect(0, 0, 320, 240);

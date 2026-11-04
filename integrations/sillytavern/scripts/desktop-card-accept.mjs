@@ -43,7 +43,7 @@ async function sceneDesktopCards(ctx) {
     const browser = await chromium.launch({ headless: true, ...(process.env.VC_W03_CHROMIUM_PATH ? { executablePath: process.env.VC_W03_CHROMIUM_PATH } : {}) });
     const context = await desktopBenchmarkContext(browser, ctx), page = await context.newPage();
     const errors = [], forbidden = [], failedResources = [], runtimeErrors = [];
-    page.on('pageerror', error => errors.push(error.name + ': ' + error.message));
+    page.on('pageerror', error => errors.push(error.stack?.split('\n').slice(0, 5).join('\n') || error.name + ': ' + error.message));
     page.on('requestfailed', request => { const url = new URL(request.url());
         if (request.resourceType() === 'script') failedResources.push({ origin: url.origin, path: url.pathname, error: request.failure()?.errorText }); });
     page.on('console', message => { if (message.type() === 'error') {

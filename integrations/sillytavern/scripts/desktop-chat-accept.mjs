@@ -47,11 +47,13 @@ export async function captureWindows(page, ctx, prefix = 'nf-chat', inspectCaptu
                 input: document.querySelector('#send_textarea').getBoundingClientRect().toJSON(),
                 emoji: document.querySelector('#vc-emoji-btn').getBoundingClientRect().toJSON(),
                 last: document.querySelector('#chat>.mes:last-child').getBoundingClientRect().toJSON(),
+                leafWidth: document.querySelector('#chat>.mes:last-child .mes_text')?.getBoundingClientRect().width,
+                richFrames: Array.from(document.querySelectorAll('#chat>.mes:last-child iframe'), frame => ({ width: frame.getBoundingClientRect().width, height: frame.getBoundingClientRect().height, contentWidth: frame.contentDocument?.body?.clientWidth, contentHeight: frame.contentDocument?.body?.scrollHeight })),
                 send: (document.querySelector('#send_but').getClientRects().length ? document.querySelector('#send_but') : document.querySelector('#vc-voice-input')).getBoundingClientRect().toJSON() }));
             assert.ok(geometry.scrollWidth <= geometry.width + 1);
             assert.ok(geometry.input.left >= 0 && geometry.input.right <= geometry.width + 1);
             assert.ok(geometry.last.bottom <= geometry.input.top + 1 && geometry.last.top >= 0,
-                `保持底部时窗口调整后仍应看到最新回复 ${JSON.stringify({ last: geometry.last.bottom, input: geometry.input.top, width: geometry.width })}`);
+                `保持底部时窗口调整后仍应看到最新回复 ${JSON.stringify({ last: geometry.last.bottom, lastTop: geometry.last.top, lastHeight: geometry.last.height, leafWidth: geometry.leafWidth, richFrames: geometry.richFrames, input: geometry.input.top, width: geometry.width })}`);
             assert.ok(geometry.send.width >= 36 && geometry.send.height >= 36);
             assert.ok(geometry.send.top >= geometry.input.top - 1 && geometry.send.bottom <= geometry.input.bottom + 1,
                 `发送/麦克风必须在输入框内 ${JSON.stringify({width: geometry.width, button: geometry.send, input: geometry.input})}`);
@@ -112,11 +114,14 @@ async function recoveryChecks({ ctx, st, page, fixture, other, reply }) {
     await page.waitForFunction(count => document.querySelector('#mes_stop') && document.querySelectorAll('#chat>.mes').length === count
         && document.querySelector('#chat>.mes:last-child')?.getAttribute('is_user') === 'false', stopCount);
     await input.fill('NF03 停止时保留的草稿');
+    const beforeWheel = await page.locator('#chat').evaluate(chat => chat.scrollTop);
     await page.locator('#chat').hover(); await page.mouse.wheel(0, -600);
-    await page.waitForFunction(() => { const chat = document.querySelector('#chat'); return chat.scrollHeight - chat.scrollTop - chat.clientHeight > 300; });
+    // wheel() returns before the browser performs its default scrolling action.
+    await page.waitForFunction(before => { const chat = document.querySelector('#chat'); return chat.scrollTop < before && chat.scrollHeight - chat.scrollTop - chat.clientHeight > 300; }, beforeWheel);
     const readingTop = await page.locator('#chat').evaluate(chat => chat.scrollTop);
     await page.locator('#mes_stop').click(); await notice('已停止');
-    assert.ok(Math.abs(await page.locator('#chat').evaluate(chat => chat.scrollTop) - readingTop) < 2, '异步消息增长/停止不能夺走用户已脱离底部的阅读位置');
+    const stoppedTop = await page.locator('#chat').evaluate(chat => chat.scrollTop);
+    assert.ok(Math.abs(stoppedTop - readingTop) < 2, `异步消息增长/停止不能夺走用户已脱离底部的阅读位置 ${JSON.stringify({ readingTop, stoppedTop })}`);
     let saved = await read(fixture);
     assert.equal(saved.at(-1).extra.finish_reason, 'cancelled'); assert.equal(saved.at(-1).extra.no_memory, true);
     assert.equal(await input.inputValue(), 'NF03 停止时保留的草稿');
@@ -334,6 +339,11 @@ export async function sceneDesktopOperations(ctx) {
         await page.keyboard.press('Control+f'); await page.getByRole('textbox', { name: '搜索', exact: true }).fill('合成基准消息 1。');
         await page.waitForFunction(() => document.querySelector('#chat>.mes[mesid="0"]')?.hasAttribute('data-vc-search-current'));
         assert.equal(await page.locator('#chat>.mes').count(), 180, '搜索必须覆盖尚未展开的历史');
+        await page.waitForFunction(() => {
+            const chat = document.querySelector('#chat').getBoundingClientRect();
+            const target = document.querySelector('#chat>.mes[mesid="0"]').getBoundingClientRect();
+            return target.top >= chat.top && target.bottom <= chat.bottom;
+        });
         await page.getByRole('button', { name: '完成', exact: true }).click();
         await page.locator('#chat').hover(); await page.mouse.wheel(0, 80);
         await page.waitForFunction(() => Object.keys(localStorage).some(key => key.startsWith('vc-pos:') && Number(localStorage.getItem(key)) < 20));

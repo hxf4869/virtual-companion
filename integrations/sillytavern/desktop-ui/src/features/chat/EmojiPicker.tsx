@@ -14,6 +14,7 @@ import { listStickerPicks } from '../../../../extension/vc-model-settings/sticke
 import { PortalNestedScope, usePortalContainer } from '../../design/portal-host';
 import { Icon } from '../../design/components/Icon';
 import { Tabs } from '../../design/components/Tabs';
+import '../../design/components/Popover.css';
 import { useChatSnapshot, useSessionBridge } from '../../runtime/session-bridge';
 
 const EMOJI_DATA: EmojiMartData =
@@ -78,6 +79,7 @@ export interface EmojiPickerProps {
     onOpenChange?: (open: boolean) => void;
     onSelectReaction?: (emoji: string) => void;
     trigger?: React.ReactElement;
+    anchor?: HTMLElement | null;
 }
 
 export function EmojiPicker({
@@ -86,6 +88,7 @@ export function EmojiPicker({
     onOpenChange,
     onSelectReaction,
     trigger,
+    anchor,
 }: EmojiPickerProps) {
     const bridge = useSessionBridge();
     const canSend = useChatSnapshot(s => s.canSend);
@@ -269,12 +272,20 @@ export function EmojiPicker({
                 setOpen(nextOpen);
             }}
         >
-            <BasePopover.Trigger
-                render={(trigger ?? defaultTrigger) as React.ReactElement<Record<string, unknown>>}
-            />
+            {mode !== 'react' || trigger ? (
+                <BasePopover.Trigger
+                    render={(trigger ?? defaultTrigger) as React.ReactElement<Record<string, unknown>>}
+                />
+            ) : null}
             <BasePopover.Portal container={portalContainer}>
                 <PortalNestedScope>
-                    <BasePopover.Positioner side="top" align="end" sideOffset={8} className="vc-popover__positioner">
+                    <BasePopover.Positioner
+                        anchor={anchor ?? undefined}
+                        side="top"
+                        align="end"
+                        sideOffset={8}
+                        className="vc-popover__positioner"
+                    >
                         <BasePopover.Popup
                             ref={popupRef}
                             id="vc-emoji-panel"

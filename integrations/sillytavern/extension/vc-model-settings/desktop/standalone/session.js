@@ -554,6 +554,8 @@ export function createDesktopSession({ client, context, engine, prepareSourceIde
             if (job?.controller && !job.controller.signal.aborted) job.controller.abort();
             for (const controller of helperRuns.values()) controller.abort();
             helperRuns.clear();
+            engine.cards?.destroy?.();
+            if (globalThis.SillyTavern?.getContext?.() === context) delete globalThis.SillyTavern;
             f2.leave();
             current = null;
             job = null;

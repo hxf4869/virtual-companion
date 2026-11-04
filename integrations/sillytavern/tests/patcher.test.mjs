@@ -102,7 +102,7 @@ function makeManagedFixture() {
     fs.mkdirSync(path.join(extSrc, 'harness'), { recursive: true });
     fs.writeFileSync(path.join(extSrc, 'manifest.json'), '{"js":"index.js"}\n');
     fs.writeFileSync(path.join(extSrc, 'index.js'), 'export const init = () => {};\n');
-    for (const name of ['f2-client.js', 'instance-binding.js', 'settings-documents.js']) fs.writeFileSync(path.join(extSrc, name), 'export {};\n');
+    for (const name of ['f2-client.js', 'f2-logic.js', 'instance-binding.js', 'settings-documents.js']) fs.writeFileSync(path.join(extSrc, name), 'export {};\n');
     fs.writeFileSync(path.join(extSrc, 'harness', 'server.mjs'), 'export {}; // 开发验收用具，不是生产扩展资产\n');
     return { root, stDir, spec, specFile, patched, pluginSrc, extSrc };
 }
@@ -158,13 +158,21 @@ test('deployManagedAssets：harness 不被部署；部署漂移/缺失被 verify
         fs.mkdirSync(extDir, { recursive: true });
         const dep = deployManagedAssets({ pluginSrc: f.pluginSrc, extensionSrc: f.extSrc, runDir, extDir });
         assert.equal(dep.plugin.files, 4);
-        assert.equal(dep.extension.files, 5, 'harness 内文件不计入部署');
+        assert.equal(dep.extension.files, 6, 'harness 内文件不计入部署');
         assert.ok(!fs.existsSync(path.join(extDir, 'vc-model-settings', 'harness')));
         assert.ok(fs.existsSync(path.join(runDir, 'plugins', 'virtual-companion', 'index.js')));
         let v = verifyManagedDeployment({ pluginSrc: f.pluginSrc, extensionSrc: f.extSrc, runDir, extDir });
         assert.equal(v.ok, true);
         const runtimeClient = path.join(runDir, 'public/scripts/vc-runtime/f2-client.js');
+        const runtimeLogic = path.join(runDir, 'public/scripts/vc-runtime/f2-logic.js');
         assert.ok(fs.existsSync(runtimeClient), '所有profile共用原生F2模块');
+        assert.ok(fs.existsSync(runtimeLogic), 'f2-client 依赖的 f2-logic 必须同步部署到 vc-runtime');
+        fs.writeFileSync(runtimeLogic, 'tampered\n');
+        v = verifyManagedDeployment({ pluginSrc: f.pluginSrc, extensionSrc: f.extSrc, runDir, extDir });
+        assert.ok(v.problems.some((p) => p.includes('native F2') && p.includes('f2-logic.js')));
+        fs.unlinkSync(runtimeLogic);
+        v = verifyManagedDeployment({ pluginSrc: f.pluginSrc, extensionSrc: f.extSrc, runDir, extDir });
+        assert.ok(v.problems.some((p) => p.includes('native F2') && p.includes('f2-logic.js')));
         fs.writeFileSync(runtimeClient, 'tampered\n');
         v = verifyManagedDeployment({ pluginSrc: f.pluginSrc, extensionSrc: f.extSrc, runDir, extDir });
         assert.ok(v.problems.some((p) => p.includes('native F2')));

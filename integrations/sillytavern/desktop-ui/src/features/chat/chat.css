@@ -25,10 +25,11 @@
         min-height: 0;
         overflow-y: auto;
         overflow-x: hidden;
+        overflow-anchor: none;
         padding: var(--vc-space-lg) var(--vc-space-xl);
         display: flex;
         flex-direction: column;
-        gap: var(--vc-space-md);
+        gap: var(--vc-space-xs);
         box-sizing: border-box;
     }
 
@@ -151,6 +152,7 @@
     }
 
     .ch_name {
+        display: none;
         font-size: var(--vc-fs-caption);
         line-height: var(--vc-lh-caption);
         color: var(--vc-ink-3);
@@ -177,6 +179,14 @@
         word-break: break-word;
         overflow-wrap: anywhere;
         box-sizing: border-box;
+    }
+
+    .mes_text > p:first-child {
+        margin-top: 0;
+    }
+
+    .mes_text > p:last-child {
+        margin-bottom: 0;
     }
 
     .mes[is_user="true"] .mes_text {
@@ -289,6 +299,10 @@
         flex-direction: column;
         gap: 6px;
         max-width: 100%;
+    }
+
+    .vc-mes-media:empty {
+        display: none;
     }
 
     .vc-voice {

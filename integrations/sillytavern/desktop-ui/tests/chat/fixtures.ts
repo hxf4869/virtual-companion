@@ -282,6 +282,7 @@ export function createTestChatEnv(options: CreateTestChatEnvOptions = {}) {
                     stream_openai: true,
                 },
             };
+            context.powerUserSettings = engineSettings.power_user;
 
             const renderMessage = (
                 host: HTMLElement,
@@ -474,13 +475,15 @@ export function createTestChatEnv(options: CreateTestChatEnvOptions = {}) {
                 for (const change of changes) {
                     if (change.path[0] === 'power_user' && change.path[1] === 'send_on_enter') {
                         engineSettings.power_user.send_on_enter = change.after?.value;
+                        if (context.powerUserSettings) {
+                            context.powerUserSettings.send_on_enter = change.after?.value;
+                        }
                     }
                 }
             });
 
             sessionRef = session;
             return Object.assign(session, {
-                settings: engineSettings,
                 renderMessage,
                 mountCardActions: () => () => {},
                 createConversation: runtimeSpies.createConversation,

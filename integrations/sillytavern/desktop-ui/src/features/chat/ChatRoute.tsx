@@ -4,15 +4,23 @@ import {
     useContext,
     useEffect,
     useMemo,
+    useRef,
     useState,
     type ReactNode,
 } from 'react';
+import { useRouterState } from '@tanstack/react-router';
 import { useConversationsQuery } from '../../data/queries/chat';
 import { useChatSnapshot, useSessionBridge } from '../../runtime/session-bridge';
 import { ChatSearch } from './ChatSearch';
 import { Composer, type ComposerQuote } from './Composer';
 import { MessageList } from './MessageList';
 import './chat.css';
+import type { ReadingPositionController } from './useReadingPosition';
+
+export interface MessageJumpRequest {
+    key: string;
+    floor: number;
+}
 
 export interface ChatUiContextValue {
     quote: ComposerQuote | null;
@@ -22,20 +30,37 @@ export interface ChatUiContextValue {
     toggleSearch: () => void;
     historyAll: boolean;
     setHistoryAll: (all: boolean) => void;
+    messageJump: MessageJumpRequest | null;
+    requestMessageJump: (key: string, floor: number) => void;
+    completeMessageJump: (request: MessageJumpRequest) => void;
+    sendSequence: number;
+    notifySent: () => void;
 }
 
 const ChatUiContext = createContext<ChatUiContextValue | null>(null);
 
 export function ChatUiProvider({ children }: { children: ReactNode }) {
+    const bridge = useSessionBridge();
     const activeKey = useChatSnapshot(s => s.key);
     const [quote, setQuote] = useState<ComposerQuote | null>(null);
     const [searchOpen, setSearchOpen] = useState(false);
     const [historyAll, setHistoryAll] = useState(false);
+    const [messageJump, setMessageJump] = useState<MessageJumpRequest | null>(null);
+    const [sendSequence, setSendSequence] = useState(0);
+    const notifySent = useCallback(() => setSendSequence(sequence => sequence + 1), []);
+    const requestMessageJump = useCallback((key: string, floor: number) => {
+        if (key !== bridge.getSnapshot().key) return;
+        setMessageJump({ key, floor });
+    }, [bridge]);
+    const completeMessageJump = useCallback((request: MessageJumpRequest) => {
+        setMessageJump(current => current === request ? null : current);
+    }, []);
 
     useEffect(() => {
         setQuote(null);
         setSearchOpen(false);
         setHistoryAll(false);
+        setMessageJump(current => current?.key === activeKey ? current : null);
     }, [activeKey]);
 
     const handleSetSearchOpen = useCallback((open: boolean) => {
@@ -62,8 +87,13 @@ export function ChatUiProvider({ children }: { children: ReactNode }) {
             toggleSearch,
             historyAll,
             setHistoryAll,
+            messageJump,
+            requestMessageJump,
+            completeMessageJump,
+            sendSequence,
+            notifySent,
         }),
-        [quote, searchOpen, handleSetSearchOpen, toggleSearch, historyAll],
+        [quote, searchOpen, handleSetSearchOpen, toggleSearch, historyAll, messageJump, requestMessageJump, completeMessageJump, sendSequence, notifySent],
     );
 
     return <ChatUiContext.Provider value={value}>{children}</ChatUiContext.Provider>;
@@ -79,6 +109,7 @@ export function ChatComposerSlot() {
         <Composer
             quote={ui?.quote ?? null}
             onClearQuote={() => ui?.setQuote(null)}
+            onSent={ui?.notifySent}
         />
     );
 }
@@ -100,6 +131,38 @@ function ChatRouteInner({
     const messageCount = useChatSnapshot(s => s.messages.length);
     const { rows: conversations } = useConversationsQuery();
     const ui = useContext(ChatUiContext)!;
+    const isChatRoute = useRouterState({ select: state => state.location.pathname.startsWith('/chat') });
+    const readingRef = useRef<ReadingPositionController | null>(null);
+    const registerReading = useCallback((controller: ReadingPositionController | null) => {
+        readingRef.current = controller;
+    }, []);
+    const ensureAllHistory = useCallback(async () => {
+        ui.setHistoryAll(true);
+        await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+    }, [ui.setHistoryAll]);
+    const jumpToMessage = useCallback((floor: number) => readingRef.current?.jumpToMessage(floor) ?? false, []);
+
+    useEffect(() => {
+        if (ui.sendSequence > 0) readingRef.current?.notifySent();
+    }, [ui.sendSequence]);
+
+    useEffect(() => {
+        const request = ui.messageJump;
+        if (!request) return;
+        if (!isChatRoute || request.key !== activeKey) {
+            ui.completeMessageJump(request);
+            return;
+        }
+        if (status !== 'ready') return;
+        if (!ui.historyAll) {
+            ui.setHistoryAll(true);
+            return;
+        }
+        const frame = requestAnimationFrame(() => {
+            if (jumpToMessage(request.floor)) ui.completeMessageJump(request);
+        });
+        return () => cancelAnimationFrame(frame);
+    }, [ui.messageJump, ui.completeMessageJump, ui.historyAll, activeKey, status, isChatRoute, jumpToMessage]);
 
     useEffect(() => {
         if (conversationKey) {
@@ -125,22 +188,22 @@ function ChatRouteInner({
                 onOpenChange={ui.setSearchOpen}
                 activeKey={activeKey}
                 messageCount={messageCount}
-                onEnsureAllHistory={() => {
-                    ui.setHistoryAll(true);
-                }}
+                onEnsureAllHistory={ensureAllHistory}
+                onJumpToMessage={jumpToMessage}
             />
 
             <MessageList
                 historyAll={ui.historyAll}
-                onExpandHistory={() => ui.setHistoryAll(true)}
                 onQuote={info => ui.setQuote(info)}
                 onOpenSettings={onOpenSettings}
+                onReadingPosition={registerReading}
             />
 
             {!hideComposer ? (
                 <Composer
                     quote={ui.quote}
                     onClearQuote={() => ui.setQuote(null)}
+                    onSent={ui.notifySent}
                 />
             ) : null}
         </div>

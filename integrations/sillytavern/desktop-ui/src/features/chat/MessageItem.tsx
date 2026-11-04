@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
     COPY,
     avatarUrl,
@@ -58,7 +58,41 @@ export function MessageItem({
 
     const [menuOpen, setMenuOpen] = useState(false);
     const [avatarBroken, setAvatarBroken] = useState(false);
+    const [, setReadAloudVersion] = useState(0);
     const moreBtnRef = useRef<HTMLButtonElement | null>(null);
+    const aliveRef = useRef(true);
+    useEffect(() => {
+        aliveRef.current = true;
+        return () => {
+            aliveRef.current = false;
+        };
+    }, []);
+
+    const messageKey = String(message.key ?? index);
+    const messageText = String(message.mes ?? '');
+    const readAloudRef = useRef<{
+        key: string;
+        text: string;
+        busy: boolean;
+        playing: boolean;
+        failed: boolean;
+        clip: unknown;
+    } | null>(null);
+    if (
+        !readAloudRef.current ||
+        readAloudRef.current.key !== messageKey ||
+        readAloudRef.current.text !== messageText
+    ) {
+        readAloudRef.current = {
+            key: messageKey,
+            text: messageText,
+            busy: false,
+            playing: false,
+            failed: false,
+            clip: null,
+        };
+    }
+    const readAloudState = readAloudRef.current;
 
     const isLast = index === totalCount - 1;
     const isUser = Boolean(message.is_user);
@@ -103,10 +137,7 @@ export function MessageItem({
         (swipeCount > 1 || (isLast && canSend));
 
     const timeLabel =
-        preferences?.timestamp_model_icon ||
-        message.send_date ||
-        message.gen_started ||
-        message.gen_finished
+        preferences?.timestamps_enabled && message.send_date
             ? formatMessageTimeLabel(message)
             : '';
     const durationLabel =
@@ -114,7 +145,11 @@ export function MessageItem({
     const metaParts = [timeLabel, durationLabel].filter(Boolean);
 
     const voiceEnabled =
-        isCharacter && (!busy || !isLast) && chatVoiceAvailable(bridge.getContext());
+        isCharacter &&
+        (!busy || !isLast) &&
+        (chatVoiceAvailable(bridge.getContext()) ||
+            readAloudState.busy ||
+            readAloudState.playing);
 
     const handleAction = async (action: string, anchor: HTMLElement | null) => {
         if (action === 'copy') {
@@ -148,7 +183,19 @@ export function MessageItem({
             return;
         }
         if (action === 'voice' || action === 'read') {
-            await readReplyAloud(index);
+            const targetState = readAloudRef.current;
+            if (!targetState) return;
+            await readReplyAloud(index, targetState, () => {
+                if (aliveRef.current && readAloudRef.current === targetState) {
+                    setReadAloudVersion(v => v + 1);
+                }
+            });
+            if (aliveRef.current && readAloudRef.current === targetState && targetState.failed) {
+                toast.show({
+                    title: COPY.actionFailed || '没有完成，请重试。',
+                    kind: 'error',
+                });
+            }
             return;
         }
         if (action === 'remind') {
@@ -392,6 +439,9 @@ export function MessageItem({
                             type="button"
                             data-vc-act="read"
                             aria-label="读出来"
+                            aria-pressed={readAloudState.playing}
+                            aria-busy={readAloudState.busy || undefined}
+                            disabled={readAloudState.busy}
                             onClick={() => {
                                 void handleAction('voice', null);
                             }}

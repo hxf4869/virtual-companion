@@ -12,6 +12,9 @@ import {
     dateLabel,
     remindSeed,
     rfc3339,
+    posKey,
+    readKey,
+    readStoredNumber,
 } from '../../../../extension/vc-model-settings/chat-logic.js';
 import { AlertDialog } from '../../design/components/AlertDialog';
 import { Dialog } from '../../design/components/Dialog';
@@ -22,7 +25,7 @@ import type { ComposerQuote } from './Composer';
 import { ConflictSheet } from './ConflictSheet';
 import { EmojiPicker } from './EmojiPicker';
 import { MessageItem } from './MessageItem';
-import { useReadingPosition } from './useReadingPosition';
+import { useReadingPosition, type ReadingPositionController } from './useReadingPosition';
 
 const PAGE_SIZE = 80;
 
@@ -46,16 +49,16 @@ export type RemindMessageFormValues = z.infer<typeof remindMessageSchema>;
 
 export interface MessageListProps {
     historyAll: boolean;
-    onExpandHistory: () => void;
     onQuote: (info: ComposerQuote) => void;
     onOpenSettings?: () => void;
+    onReadingPosition?: (controller: ReadingPositionController | null) => void;
 }
 
 export function MessageList({
     historyAll,
-    onExpandHistory,
     onQuote,
     onOpenSettings,
+    onReadingPosition,
 }: MessageListProps) {
     const bridge = useSessionBridge();
     const activeKey = useChatSnapshot(s => s.key);
@@ -114,6 +117,13 @@ export function MessageList({
         return bridge.mountCardActions(node);
     }, [bridge, activeKey]);
 
+    const reading = useReadingPosition({
+        chatRef,
+        chatStorageId: bridge.draft.storageId(activeKey),
+        status,
+        busy,
+        messages,
+    });
     const {
         latestShown,
         latestAriaLabel,
@@ -122,13 +132,11 @@ export function MessageList({
         dateChipVisible,
         goLatest,
         capturePrependAnchor,
-    } = useReadingPosition({
-        chatRef,
-        chatStorageId: bridge.draft.storageId(activeKey),
-        status,
-        busy,
-        messages,
-    });
+    } = reading;
+    useEffect(() => {
+        onReadingPosition?.(reading);
+        return () => onReadingPosition?.(null);
+    }, [onReadingPosition, reading.jumpToMessage, reading.notifySent]);
 
     const openEditDialog = (index: number, currentText: string) => {
         editForm.reset({ text: currentText });
@@ -189,8 +197,23 @@ export function MessageList({
         }
     });
 
-    const hiddenCount =
-        !historyAll && messages.length > PAGE_SIZE ? messages.length - PAGE_SIZE : 0;
+    // Keep the opening boundary stable as replies arrive or earlier rows are deleted.
+    const initialPage = useRef({ key: '', ready: false, firstKey: '' });
+    if (initialPage.current.key !== activeKey || (!initialPage.current.ready && (messages.length > 0 || status === 'ready'))) {
+        const storageId = bridge.draft.storageId(activeKey);
+        const savedPosition = readStoredNumber(posKey(storageId));
+        const savedRead = readStoredNumber(readKey(storageId));
+        const restoreFloor = savedPosition ?? (savedRead === null ? null : savedRead + 1);
+        const pageCount = restoreFloor === null ? 1 : Math.max(1, Math.ceil((messages.length - restoreFloor) / PAGE_SIZE));
+        initialPage.current = {
+            key: activeKey,
+            ready: messages.length > 0 || status === 'ready',
+            firstKey: messages[Math.max(0, messages.length - pageCount * PAGE_SIZE)]?.key ?? '',
+        };
+    }
+    const [pageStart, setPageStart] = useState<{ opening: typeof initialPage.current; firstKey: string } | null>(null);
+    const firstKey = pageStart?.opening === initialPage.current ? pageStart.firstKey : initialPage.current.firstKey;
+    const hiddenCount = historyAll ? 0 : Math.max(0, messages.findIndex(message => message.key === firstKey));
     const visibleMessages = useMemo(
         () => (hiddenCount > 0 ? messages.slice(hiddenCount) : messages),
         [messages, hiddenCount],
@@ -264,7 +287,10 @@ export function MessageList({
                                     className="vc-btn vc-btn--secondary"
                                     onClick={() => {
                                         capturePrependAnchor();
-                                        onExpandHistory();
+                                        setPageStart({
+                                            opening: initialPage.current,
+                                            firstKey: messages[Math.max(0, hiddenCount - PAGE_SIZE)]?.key ?? '',
+                                        });
                                     }}
                                 >
                                     显示更早的消息
@@ -331,42 +357,44 @@ export function MessageList({
                 </button>
             </div>
 
-            <div
-                id="vc-chat-gen"
-                className={busy || notice ? 'vc-visible' : undefined}
-                role="status"
-                aria-live="polite"
-            >
-                {busy ? (
-                    <span className="vc-chat-typing">
-                        <span className="vc-typing-dots" aria-hidden="true" />
-                        <span>{notice || '正在回复…'}</span>
-                    </span>
-                ) : notice ? (
-                    <div className="vc-chat-notice-bar">
-                        <span className="vc-chat-notice-text">{notice}</span>
-                        {settingsRequired && onOpenSettings ? (
-                            <button
-                                type="button"
-                                className="vc-btn vc-btn--secondary vc-btn--sm"
-                                onClick={onOpenSettings}
-                            >
-                                去设置
-                            </button>
-                        ) : canRetryNotice ? (
-                            <button
-                                type="button"
-                                className="vc-btn vc-btn--secondary vc-btn--sm"
-                                onClick={() => {
-                                    void bridge.retry();
-                                }}
-                            >
-                                重试
-                            </button>
-                        ) : null}
-                    </div>
-                ) : null}
-            </div>
+            {busy || notice ? (
+                <div
+                    id="vc-chat-gen"
+                    className="vc-visible"
+                    role="status"
+                    aria-live="polite"
+                >
+                    {busy ? (
+                        <span className="vc-chat-typing">
+                            <span className="vc-typing-dots" aria-hidden="true" />
+                            <span>{notice || '正在回复…'}</span>
+                        </span>
+                    ) : notice ? (
+                        <div className="vc-chat-notice-bar">
+                            <span className="vc-chat-notice-text">{notice}</span>
+                            {settingsRequired && onOpenSettings ? (
+                                <button
+                                    type="button"
+                                    className="vc-btn vc-btn--secondary vc-btn--sm"
+                                    onClick={onOpenSettings}
+                                >
+                                    去设置
+                                </button>
+                            ) : canRetryNotice ? (
+                                <button
+                                    type="button"
+                                    className="vc-btn vc-btn--secondary vc-btn--sm"
+                                    onClick={() => {
+                                        void bridge.retry();
+                                    }}
+                                >
+                                    重试
+                                </button>
+                            ) : null}
+                        </div>
+                    ) : null}
+                </div>
+            ) : null}
 
             <div ref={cardActionsRef} className="vc-desktop-card-actions" />
 
@@ -531,6 +559,7 @@ export function MessageList({
 
             <EmojiPicker
                 mode="react"
+                anchor={reactionTarget?.anchor ?? null}
                 open={reactionTarget !== null}
                 onOpenChange={open => {
                     if (!open) setReactionTarget(null);
@@ -544,10 +573,11 @@ export function MessageList({
             />
 
             <Dialog
+                key={popupRequest?.id ?? 'no-popup'}
                 open={popupRequest !== null}
                 onOpenChange={open => {
                     if (!open && popupRequest) {
-                        bridge.resolvePopup(popupRequest.type === 2 ? null : 0);
+                        bridge.resolvePopup(popupRequest.type === 3 ? null : 0);
                     }
                 }}
                 title="提示"
@@ -560,7 +590,7 @@ export function MessageList({
                                 type="button"
                                 className="vc-btn vc-btn--secondary"
                                 onClick={() =>
-                                    bridge.resolvePopup(popupRequest?.type === 2 ? null : 0)
+                                    bridge.resolvePopup(popupRequest?.type === 3 ? null : 0)
                                 }
                             >
                                 取消
@@ -571,7 +601,7 @@ export function MessageList({
                             className="vc-btn vc-btn--primary vc-sheet-done"
                             onClick={() =>
                                 bridge.resolvePopup(
-                                    popupRequest?.type === 2 ? popupInput : 1,
+                                    popupRequest?.type === 3 ? popupInput : 1,
                                 )
                             }
                         >
@@ -582,7 +612,7 @@ export function MessageList({
             >
                 <div className="vc-popup-body">
                     <p>{popupRequest?.content}</p>
-                    {popupRequest?.type === 2 ? (
+                    {popupRequest?.type === 3 ? (
                         <input
                             type="text"
                             className="vc-input"
