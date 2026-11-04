@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useRef } from 'react';
+import { type ReactNode } from 'react';
 import { Dialog as BaseDialog } from '@base-ui/react/dialog';
 import { IconButton } from './IconButton';
 import './Dialog.css';
@@ -28,35 +28,16 @@ export function Dialog({
   showCloseButton = true,
   className,
 }: DialogProps) {
-  const openerRef = useRef<HTMLElement | null>(null);
-
-  useEffect(() => {
-    if (open && typeof document !== 'undefined' && document.activeElement instanceof HTMLElement) {
-      openerRef.current = document.activeElement;
-    }
-  }, [open]);
-
-  const handleOpenChange = (nextOpen: boolean) => {
-    onOpenChange(nextOpen);
-    if (!nextOpen) {
-      const target = openerRef.current;
-      if (target && typeof target.focus === 'function') {
-        target.focus();
-      }
-    }
-  };
-
   const mergedClassName = ['vc-dialog', className].filter(Boolean).join(' ');
 
   return (
-    <BaseDialog.Root open={open} onOpenChange={handleOpenChange}>
+    <BaseDialog.Root open={open} onOpenChange={onOpenChange}>
       <BaseDialog.Portal>
         <BaseDialog.Backdrop className="vc-dialog__backdrop" />
         <BaseDialog.Popup
           data-width={width}
-          finalFocus={openerRef}
           className={mergedClassName}
-          style={{ width: `min(${width}px, calc(100vw - 32px))` }}
+          style={{ width: `min(${width}px, calc(100vw - 64px))` }}
         >
           <div className="vc-dialog__header">
             <div className="vc-dialog__titles">

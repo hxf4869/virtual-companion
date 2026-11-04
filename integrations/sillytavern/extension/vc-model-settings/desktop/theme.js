@@ -4,7 +4,7 @@ import {
     THEME_PREF_KEY,
     characterThemeKey,
     readThemePreferences,
-    resolveTheme,
+    resolveDesktopTheme as resolveTheme,
     setCharacterThemePreference,
     setGlobalThemePreference,
 } from '../theme-logic.js';

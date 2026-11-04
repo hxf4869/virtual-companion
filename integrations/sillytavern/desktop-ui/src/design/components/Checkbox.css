@@ -2,8 +2,8 @@
   .vc-checkbox {
     display: inline-flex;
     align-items: center;
-    gap: var(--vc-s-2);
-    min-height: 44px;
+    gap: var(--vc-space-xs);
+    min-height: 36px;
     cursor: pointer;
     user-select: none;
   }
@@ -19,7 +19,7 @@
     border: 1px solid var(--vc-line-strong);
     border-radius: 5px;
     background-color: var(--vc-raised);
-    color: var(--vc-on-accent);
+    color: var(--vc-accent-ink);
     cursor: pointer;
     transition:
       background-color var(--vc-dur-fast) var(--vc-ease),

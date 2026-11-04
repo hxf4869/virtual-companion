@@ -24,7 +24,7 @@
 
   .vc-scroll-area__thumb {
     flex: 1;
-    border-radius: var(--vc-r-pill);
+    border-radius: var(--vc-radius-pill);
     background-color: var(--vc-line-strong);
   }
 }

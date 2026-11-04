@@ -111,12 +111,7 @@ export function resolveDesktopTheme({ global, character } = {}, registry = DESKT
   );
 }
 
-export function resolveTheme(first, second) {
-  if (typeof first === 'string' || typeof second === 'boolean') {
-    return resolveThemeMode(first, second);
-  }
-  return resolveDesktopTheme(first, second);
-}
+export { resolveDesktopTheme as resolveTheme };
 
 export function characterThemeKey(context = {}) {
   const card = context.characters?.[context.characterId];

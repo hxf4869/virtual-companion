@@ -1,6 +1,8 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import React, { useState } from 'react';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Checkbox } from '../../src/design/components/Checkbox';
 import { Field } from '../../src/design/components/Field';
 import { Menu } from '../../src/design/components/Menu';
@@ -16,13 +18,44 @@ import { Textarea } from '../../src/design/components/Textarea';
 import { ToastRegion, toast } from '../../src/design/components/Toast';
 import { Tooltip } from '../../src/design/components/Tooltip';
 
+const DESIGN_DIR = resolve(__dirname, '../../src/design');
+
+function stripCssLayersForHappyDom(css: string): string {
+  return css
+    .replace(/^@layer\s+[^;{]+;\s*$/gm, '')
+    .replace(/^@import\s+[^;]+;\s*$/gm, '')
+    .replace(/@layer\s+[a-zA-Z0-9_-]+\s*\{([\s\S]*?)\n\}/g, '$1');
+}
+
+let styleEl: HTMLStyleElement | null = null;
+
+beforeEach(() => {
+  const files = [
+    resolve(DESIGN_DIR, 'tokens.css'),
+    resolve(DESIGN_DIR, 'base.css'),
+    resolve(DESIGN_DIR, 'components/Menu.css'),
+    resolve(DESIGN_DIR, 'components/Toast.css'),
+    resolve(DESIGN_DIR, 'components/TextInput.css'),
+    resolve(DESIGN_DIR, 'components/Textarea.css'),
+    resolve(DESIGN_DIR, 'components/Select.css'),
+    resolve(DESIGN_DIR, 'components/Segment.css'),
+  ];
+  styleEl = document.createElement('style');
+  styleEl.textContent = files
+    .map((p) => stripCssLayersForHappyDom(readFileSync(p, 'utf8')))
+    .join('\n');
+  document.head.appendChild(styleEl);
+});
+
 afterEach(() => {
   cleanup();
+  styleEl?.remove();
+  styleEl = null;
   vi.useRealTimers();
 });
 
 describe('Menu, Toast & form/navigation primitives (DR2-3)', () => {
-  it('arrow keys move, Esc closes, focus returns', async () => {
+  it('arrow keys move, Esc closes, focus returns, and Menu matches §16.4 geometry', async () => {
     const onSelectRename = vi.fn();
     const onSelectDelete = vi.fn();
 
@@ -42,9 +75,11 @@ describe('Menu, Toast & form/navigation primitives (DR2-3)', () => {
 
     const menu = await screen.findByRole('menu');
     expect(menu).not.toBeNull();
+    expect(window.getComputedStyle(menu).minWidth).toBe('220px');
 
     const items = screen.getAllByRole('menuitem');
     expect(items).toHaveLength(2);
+    expect(window.getComputedStyle(items[0]!).height).toBe('36px');
 
     await waitFor(() => {
       expect(items[0]?.getAttribute('data-highlighted')).not.toBeNull();
@@ -69,7 +104,7 @@ describe('Menu, Toast & form/navigation primitives (DR2-3)', () => {
     });
   });
 
-  it('Toast enforces single active instance, 1.8s auto-close on success, and persistent closeable error', () => {
+  it('Toast enforces single active instance, 1.8s auto-close on success, persistent closeable error, and bounded width', () => {
     vi.useFakeTimers();
     render(<ToastRegion />);
 
@@ -79,7 +114,11 @@ describe('Menu, Toast & form/navigation primitives (DR2-3)', () => {
     });
 
     expect(screen.queryByText('已保存第一项')).toBeNull();
-    expect(screen.getByText('已保存第二项')).not.toBeNull();
+    const secondTitle = screen.getByText('已保存第二项');
+    expect(secondTitle).not.toBeNull();
+    const toastRoot = secondTitle.closest('.vc-toast') as HTMLElement;
+    expect(toastRoot).not.toBeNull();
+    expect(window.getComputedStyle(toastRoot).maxWidth).toContain('min(360px,');
 
     act(() => {
       vi.advanceTimersByTime(1850);
@@ -103,7 +142,7 @@ describe('Menu, Toast & form/navigation primitives (DR2-3)', () => {
     expect(screen.queryByText('连接模型失败')).toBeNull();
   });
 
-  it('renders Field, TextInput, Textarea, Switch, Checkbox, Segment, Slider, Select, Tabs, Popover, Tooltip, ScrollArea', async () => {
+  it('renders Field, TextInput, Textarea, Switch, Checkbox, Segment, Slider, Select, Tabs, Popover, Tooltip, ScrollArea with visible 2px focus outline and §16.4 dimensions', async () => {
     function FormHarness() {
       const [seg, setSeg] = useState('chat');
       const [checked, setChecked] = useState(false);
@@ -159,12 +198,29 @@ describe('Menu, Toast & form/navigation primitives (DR2-3)', () => {
       );
     }
 
-    render(<FormHarness />);
+    const { container } = render(<FormHarness />);
 
     expect(screen.getByText('模型名称')).not.toBeNull();
     expect(screen.getByText('名称不能为空')).not.toBeNull();
-    expect(screen.getByDisplayValue('Claude')).not.toBeNull();
-    expect(screen.getByDisplayValue('你是一个温柔的陪伴者')).not.toBeNull();
+    const input = screen.getByDisplayValue('Claude') as HTMLInputElement;
+    const textarea = screen.getByDisplayValue('你是一个温柔的陪伴者') as HTMLTextAreaElement;
+    expect(input).not.toBeNull();
+    expect(textarea).not.toBeNull();
+
+    input.focus();
+    const inputFocusStyle = window.getComputedStyle(input);
+    expect(inputFocusStyle.height).toBe('36px');
+    expect(inputFocusStyle.outlineStyle).toBe('solid');
+    expect(inputFocusStyle.outlineWidth).toBe('2px');
+
+    textarea.focus();
+    const textareaFocusStyle = window.getComputedStyle(textarea);
+    expect(textareaFocusStyle.outlineStyle).toBe('solid');
+    expect(textareaFocusStyle.outlineWidth).toBe('2px');
+
+    const segRoot = container.querySelector('.vc-segment') as HTMLElement;
+    expect(window.getComputedStyle(segRoot).height).toBe('32px');
+
     expect(screen.getByText('记住选择')).not.toBeNull();
     expect(screen.getByText('常规面板')).not.toBeNull();
     expect(screen.getByText('滚动区域正文')).not.toBeNull();

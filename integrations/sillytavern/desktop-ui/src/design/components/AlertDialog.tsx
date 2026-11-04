@@ -1,4 +1,4 @@
-import { type ReactNode, useLayoutEffect, useRef } from 'react';
+import { type ReactNode, useRef } from 'react';
 import { AlertDialog as BaseAlertDialog } from '@base-ui/react/alert-dialog';
 import { Button } from './Button';
 import { Icon } from './Icon';
@@ -29,36 +29,15 @@ export function AlertDialog({
   onConfirm,
   className,
 }: AlertDialogProps) {
-  const openerRef = useRef<HTMLElement | null>(null);
   const cancelBtnRef = useRef<HTMLButtonElement | null>(null);
-
-  useLayoutEffect(() => {
-    if (open && typeof document !== 'undefined' && document.activeElement instanceof HTMLElement) {
-      if (!document.activeElement.closest('.vc-alert-dialog')) {
-        openerRef.current = document.activeElement;
-      }
-    }
-  }, [open]);
-
-  const handleOpenChange = (nextOpen: boolean) => {
-    onOpenChange(nextOpen);
-    if (!nextOpen) {
-      const target = openerRef.current;
-      if (target && typeof target.focus === 'function') {
-        target.focus();
-      }
-    }
-  };
-
   const mergedClassName = ['vc-alert-dialog', className].filter(Boolean).join(' ');
 
   return (
-    <BaseAlertDialog.Root open={open} onOpenChange={handleOpenChange}>
+    <BaseAlertDialog.Root open={open} onOpenChange={onOpenChange}>
       <BaseAlertDialog.Portal>
         <BaseAlertDialog.Backdrop className="vc-alert-dialog__backdrop" />
         <BaseAlertDialog.Popup
           initialFocus={cancelBtnRef}
-          finalFocus={openerRef}
           className={mergedClassName}
         >
           <div className="vc-alert-dialog__content">
@@ -87,17 +66,21 @@ export function AlertDialog({
           <div className="vc-alert-dialog__actions">
             <BaseAlertDialog.Close
               render={
-                <Button ref={cancelBtnRef} variant="gray" disabled={pending}>
+                <Button
+                  ref={cancelBtnRef}
+                  variant={danger ? 'filled' : 'gray'}
+                  disabled={pending}
+                >
                   {cancelLabel}
                 </Button>
               }
             />
             <Button
-              variant={danger ? 'danger' : 'filled'}
+              variant={danger ? 'danger-soft' : 'filled'}
               pending={pending}
               onClick={() => {
                 onConfirm();
-                handleOpenChange(false);
+                onOpenChange(false);
               }}
             >
               {confirmLabel}

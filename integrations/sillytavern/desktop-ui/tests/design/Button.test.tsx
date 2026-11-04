@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import React from 'react';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -8,12 +10,14 @@ import { Icon } from '../../src/design/components/Icon';
 import { IconButton } from '../../src/design/components/IconButton';
 import { Spinner } from '../../src/design/components/Spinner';
 
+const BUTTON_CSS_PATH = resolve(__dirname, '../../src/design/components/Button.css');
+
 afterEach(() => {
   cleanup();
 });
 
 describe('Button & basic display primitives (DR2-3)', () => {
-  it('pending keeps width and shows spinner', () => {
+  it('pending keeps width, retains accessible name/text, and prepends 16px spinner', () => {
     const onClick = vi.fn();
     const { rerender } = render(
       <Button variant="filled" onClick={onClick}>
@@ -21,13 +25,14 @@ describe('Button & basic display primitives (DR2-3)', () => {
       </Button>,
     );
 
-    const button = screen.getByRole('button', { name: '保存设置' }) as HTMLButtonElement;
-    vi.spyOn(button, 'getBoundingClientRect').mockReturnValue({
+    const buttonBefore = screen.getByRole('button', { name: '保存设置' }) as HTMLButtonElement;
+    expect(buttonBefore.textContent).toBe('保存设置');
+    vi.spyOn(buttonBefore, 'getBoundingClientRect').mockReturnValue({
       width: 116,
-      height: 36,
+      height: 40,
       top: 0,
       left: 0,
-      bottom: 36,
+      bottom: 40,
       right: 116,
       x: 0,
       y: 0,
@@ -40,13 +45,32 @@ describe('Button & basic display primitives (DR2-3)', () => {
       </Button>,
     );
 
-    expect(button.disabled).toBe(true);
-    expect(button.getAttribute('aria-busy')).toBe('true');
-    expect(button.style.width).toBe('116px');
-    expect(button.querySelector('.vc-spinner')).not.toBeNull();
+    const buttonAfter = screen.getByRole('button', { name: '保存设置' }) as HTMLButtonElement;
+    expect(buttonAfter).toBe(buttonBefore);
+    expect(buttonAfter.disabled).toBe(true);
+    expect(buttonAfter.getAttribute('aria-busy')).toBe('true');
+    expect(buttonAfter.style.width).toBe('116px');
+    expect(buttonAfter.textContent).toContain('保存设置');
 
-    fireEvent.click(button);
+    const spinner = buttonAfter.querySelector('.vc-spinner');
+    expect(spinner).not.toBeNull();
+    expect(spinner?.getAttribute('width')).toBe('16');
+    expect(buttonAfter.firstElementChild).toBe(spinner);
+
+    fireEvent.click(buttonAfter);
     expect(onClick).not.toHaveBeenCalled();
+  });
+
+  it('matches DESIGN §16.4 button geometry and material specs', () => {
+    const buttonCss = readFileSync(BUTTON_CSS_PATH, 'utf8');
+    expect(buttonCss).toContain('height: 40px');
+    expect(buttonCss).toContain('border-radius: var(--vc-radius-pill)');
+    expect(buttonCss).toContain('font-weight: 600');
+    expect(buttonCss).toContain('min-width: 88px');
+    expect(buttonCss).toContain('max-width: 176px');
+    expect(buttonCss).toContain('padding: 0 20px');
+    expect(buttonCss).toContain('var(--vc-button-fill)');
+    expect(buttonCss).toContain('var(--vc-button-danger-fill)');
   });
 
   it('supports variants, sizes, and className pass-through on Button and IconButton', () => {

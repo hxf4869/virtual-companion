@@ -5,8 +5,8 @@
     gap: 2px;
     height: 32px;
     padding: 2px;
-    border-radius: var(--vc-r-sm);
-    background-color: var(--vc-segment-fill);
+    border-radius: var(--vc-radius-control);
+    background-color: var(--vc-seg-bg);
     user-select: none;
   }
 
@@ -15,13 +15,13 @@
     align-items: center;
     justify-content: center;
     height: 28px;
-    padding: 0 var(--vc-s-3);
+    padding: 0 var(--vc-space-sm);
     border: 0;
-    border-radius: calc(var(--vc-r-sm) - 2px);
+    border-radius: 8px;
     background: transparent;
     color: var(--vc-ink-2);
-    font-family: var(--vc-font-sans);
-    font-size: var(--vc-fs-sub);
+    font-family: var(--vc-font);
+    font-size: var(--vc-fs-sm);
     font-weight: 500;
     line-height: 1;
     cursor: pointer;

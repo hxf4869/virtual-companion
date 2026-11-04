@@ -4,7 +4,7 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    min-height: 44px;
+    min-height: 36px;
     padding: 0;
     border: 0;
     background: transparent;
@@ -19,8 +19,8 @@
     width: 51px;
     height: 31px;
     padding: 2px;
-    border-radius: var(--vc-r-pill);
-    background-color: var(--vc-switch-off);
+    border-radius: var(--vc-radius-pill);
+    background-color: var(--vc-fill-press);
     transition: background-color var(--vc-dur-fast) var(--vc-ease);
   }
 
@@ -32,11 +32,11 @@
     display: block;
     width: 27px;
     height: 27px;
-    border-radius: var(--vc-r-pill);
-    background-color: var(--vc-on-accent);
+    border-radius: var(--vc-radius-pill);
+    background-color: #ffffff;
     box-shadow: var(--vc-shadow-segment);
     transform: translateX(0);
-    transition: transform var(--vc-dur-fast) var(--vc-spring);
+    transition: transform var(--vc-dur-fast) var(--vc-ease-spring);
   }
 
   .vc-switch[data-checked] .vc-switch__thumb {

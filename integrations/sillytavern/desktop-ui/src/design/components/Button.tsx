@@ -2,7 +2,7 @@ import { type ButtonHTMLAttributes, forwardRef, useLayoutEffect, useRef, useStat
 import { Spinner } from './Spinner';
 import './Button.css';
 
-export type ButtonVariant = 'filled' | 'gray' | 'danger' | 'text';
+export type ButtonVariant = 'filled' | 'gray' | 'danger' | 'danger-soft' | 'text';
 export type ButtonSize = 'md' | 'sm';
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
@@ -84,7 +84,8 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
       style={mergedStyle}
       {...rest}
     >
-      {pending ? <Spinner size={16} /> : children}
+      {pending ? <Spinner size={16} /> : null}
+      {children}
     </button>
   );
 });

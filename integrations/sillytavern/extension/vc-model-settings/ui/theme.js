@@ -8,7 +8,7 @@ import {
     parseThemeMode,
     readThemeMode,
     readVcUiFlag,
-    resolveTheme,
+    resolveThemeMode as resolveTheme,
     themeColorFor,
     writeThemeMode,
     writeVcUiFlag,

@@ -6,17 +6,17 @@
     justify-content: center;
     flex-shrink: 0;
     overflow: hidden;
-    border-radius: var(--vc-r-pill);
+    border-radius: var(--vc-radius-pill);
     background-color: var(--vc-raised);
     color: var(--vc-ink-2);
-    font-family: var(--vc-font-sans);
-    font-size: var(--vc-fs-sub);
+    font-family: var(--vc-font);
+    font-size: var(--vc-fs-sm);
     font-weight: 600;
     user-select: none;
   }
 
   .vc-avatar--glow {
-    box-shadow: var(--vc-avatar-glow);
+    box-shadow: 0 0 0 2px var(--vc-accent-glow);
   }
 
   .vc-avatar__image {

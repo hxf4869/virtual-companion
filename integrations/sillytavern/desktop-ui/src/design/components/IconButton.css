@@ -4,25 +4,31 @@
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
-    width: 40px;
-    height: 40px;
+    width: 36px;
+    height: 36px;
     padding: 0;
-    border: 0;
-    border-radius: var(--vc-r-pill);
+    border: 0.5px solid var(--vc-raised-edge);
+    border-radius: var(--vc-radius-pill);
     background-color: var(--vc-raised);
     color: var(--vc-ink);
     cursor: pointer;
     transition:
-      background-color var(--vc-dur-fast) var(--vc-ease),
-      color var(--vc-dur-fast) var(--vc-ease);
+      background-color var(--vc-dur-hover) var(--vc-ease),
+      color var(--vc-dur-hover) var(--vc-ease),
+      transform var(--vc-dur-press) var(--vc-ease);
   }
 
   .vc-icon-button:hover:not(:disabled) {
-    background-color: var(--vc-active);
+    background-color: var(--vc-raised-hover);
+  }
+
+  .vc-icon-button:active:not(:disabled) {
+    transform: scale(0.95);
   }
 
   .vc-icon-button--active {
-    background-color: var(--vc-accent-fill);
+    background-color: var(--vc-accent-soft);
+    border-color: var(--vc-accent-line);
     color: var(--vc-accent-text);
   }
 

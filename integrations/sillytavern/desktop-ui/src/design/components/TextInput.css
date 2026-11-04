@@ -3,19 +3,18 @@
     display: block;
     width: 100%;
     max-width: 360px;
-    height: var(--vc-hit);
-    padding: 0 var(--vc-s-3);
-    border: 1px solid var(--vc-line);
-    border-radius: var(--vc-r-sm);
+    height: 36px;
+    padding: 0 var(--vc-space-sm);
+    border: 0.5px solid var(--vc-raised-edge);
+    border-radius: var(--vc-radius-control);
     background-color: var(--vc-raised);
     color: var(--vc-ink);
-    font-family: var(--vc-font-sans);
+    font-family: var(--vc-font);
     font-size: var(--vc-fs-body);
     line-height: var(--vc-lh-ui);
     transition:
-      border-color var(--vc-dur-fast) var(--vc-ease),
-      box-shadow var(--vc-dur-fast) var(--vc-ease),
-      background-color var(--vc-dur-fast) var(--vc-ease);
+      border-color var(--vc-dur-hover) var(--vc-ease),
+      background-color var(--vc-dur-hover) var(--vc-ease);
   }
 
   .vc-text-input--number {
@@ -27,10 +26,12 @@
     color: var(--vc-placeholder);
   }
 
-  .vc-text-input:focus {
-    outline: none;
+  .vc-text-input:focus,
+  .vc-text-input:focus-visible {
+    outline: 2px solid var(--vc-accent);
+    outline-offset: 2px;
     border-color: var(--vc-accent);
-    box-shadow: 0 0 0 3px var(--vc-focus-ring);
+    background-color: var(--vc-raised-hover);
   }
 
   .vc-text-input[data-invalid],

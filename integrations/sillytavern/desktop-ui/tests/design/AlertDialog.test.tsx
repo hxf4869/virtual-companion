@@ -10,7 +10,7 @@ afterEach(() => {
 });
 
 describe('AlertDialog & Dialog (DR2-3)', () => {
-  it('Esc cancels and returns focus to trigger', async () => {
+  it('Esc cancels, defaults initial focus to primary safe cancel button, styles danger confirm as danger-soft, and returns focus to trigger', async () => {
     const onConfirm = vi.fn();
 
     function Harness() {
@@ -44,6 +44,16 @@ describe('AlertDialog & Dialog (DR2-3)', () => {
     expect(dialog).not.toBeNull();
     expect(screen.getByText('确认删除该对话？')).not.toBeNull();
     expect(screen.getByText('删除后无法恢复历史消息。')).not.toBeNull();
+
+    const cancelBtn = screen.getByRole('button', { name: '取消' });
+    const confirmBtn = screen.getByRole('button', { name: '确认删除' });
+
+    // DESIGN §16.5: Safe cancel is primary filled button and receives initial focus; danger confirm is danger-soft
+    expect(cancelBtn.className).toContain('vc-btn--filled');
+    expect(confirmBtn.className).toContain('vc-btn--danger-soft');
+    await waitFor(() => {
+      expect(document.activeElement).toBe(cancelBtn);
+    });
 
     fireEvent.keyDown(dialog, { key: 'Escape', code: 'Escape' });
 
