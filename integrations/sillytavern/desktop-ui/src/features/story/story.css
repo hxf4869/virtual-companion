@@ -1,0 +1,358 @@
+@layer features {
+  .vc-story-tab {
+    container-type: inline-size;
+    container-name: story-tab;
+    position: relative;
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: var(--vc-canvas);
+    color: var(--vc-ink);
+  }
+
+  .vc-story-body,
+  .vc-story-stage-host {
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .vc-story-tab .vc-navbar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-height: 52px;
+    padding: 8px 24px;
+    border-bottom: 1px solid var(--vc-separator);
+    background: var(--vc-glass);
+    backdrop-filter: blur(20px);
+  }
+
+  .vc-story-tab .vc-nav-title {
+    margin: 0;
+    font-size: var(--vc-fs-headline, 17px);
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .vc-story-tab .vc-nav-spacer {
+    flex: 1 1 auto;
+  }
+
+  .vc-story-tab .vc-scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 24px;
+  }
+
+  .vc-story {
+    max-width: 820px;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+
+  /* 剧目卡 24px 圆角 (DESIGN.md §9) */
+  .vc-case {
+    display: grid;
+    grid-template-columns: 1fr;
+    border-radius: 24px;
+    overflow: hidden;
+    background: var(--vc-group);
+    border: 1px solid var(--vc-separator);
+    box-shadow: var(--vc-shadow-card);
+  }
+
+  @container story-tab (min-width: 640px) {
+    .vc-case {
+      grid-template-columns: 240px 1fr;
+    }
+  }
+
+  .vc-case-cover {
+    position: relative;
+    min-height: 156px;
+    padding: 20px;
+    display: flex;
+    align-items: flex-end;
+    gap: 10px;
+    background: radial-gradient(circle at 25% 20%, rgba(10, 132, 255, 0.24), rgba(0, 0, 0, 0.65));
+  }
+
+  .vc-case-face {
+    position: relative;
+    z-index: 1;
+    width: 44px;
+    height: 44px;
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255, 255, 255, 0.16);
+    color: #ffffff;
+    font-weight: 600;
+  }
+
+  .vc-case-info {
+    padding: 20px 24px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 12px;
+  }
+
+  .vc-case-info h3 {
+    margin: 0;
+    font-size: 20px;
+    font-weight: 600;
+  }
+
+  .vc-case-bar {
+    height: 6px;
+    border-radius: 999px;
+    background: var(--vc-fill);
+    overflow: hidden;
+  }
+
+  .vc-case-bar > i {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    background: var(--vc-accent);
+    transition: width 220ms ease;
+  }
+
+  /* NPC 头像 64px (DESIGN.md §9) */
+  .vc-npcs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    align-items: center;
+  }
+
+  .vc-npc {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 12px;
+    border: 1px solid transparent;
+    border-radius: 16px;
+    background: transparent;
+    cursor: pointer;
+    transition: opacity 180ms ease, transform 180ms ease, border-color 180ms ease;
+  }
+
+  .vc-npcs.is-focus .vc-npc:not(.is-on) {
+    opacity: 0.64;
+  }
+
+  .vc-npc.is-on {
+    border-color: var(--vc-accent);
+    background: var(--vc-fill);
+  }
+
+  .vc-npc-avatar {
+    width: 64px;
+    height: 64px;
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--vc-fill-2);
+    color: var(--vc-ink);
+    font-size: 20px;
+    font-weight: 600;
+    flex-shrink: 0;
+  }
+
+  .vc-npc-name {
+    font-size: 14px;
+    font-weight: 500;
+  }
+
+  /* 证物卡 150x86 (DESIGN.md §9) */
+  .vc-evis {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    perspective: 800px;
+  }
+
+  .vc-evi {
+    position: relative;
+    width: 150px;
+    height: 86px;
+    border-radius: 14px;
+    padding: 10px 12px;
+    background: var(--vc-group);
+    border: 1px solid var(--vc-separator);
+    box-shadow: var(--vc-shadow-card);
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    transform-style: preserve-3d;
+  }
+
+  .vc-evi-face {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 13px;
+  }
+
+  .vc-evi-back {
+    display: none;
+  }
+
+  .vc-evi.is-back .vc-evi-face {
+    display: none;
+  }
+
+  .vc-evi.is-back .vc-evi-back {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+  }
+
+  .vc-evi-new {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--vc-accent-text);
+  }
+
+  /* 叙事与时间线 */
+  .vc-narr {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 16px 20px;
+    border-radius: 16px;
+    background: var(--vc-group);
+    border: 1px solid var(--vc-separator);
+  }
+
+  .vc-story-places,
+  .vc-story-events {
+    margin: 0;
+    padding-left: 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  /* 底部行动栏 */
+  .vc-dock {
+    padding: 12px 24px 16px;
+    border-top: 1px solid var(--vc-separator);
+    background: var(--vc-glass);
+    backdrop-filter: blur(20px);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .vc-acts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .vc-story-say-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    border-radius: 14px;
+    border: 1px solid var(--vc-separator);
+    background: var(--vc-surface);
+  }
+
+  .vc-story-say-row textarea {
+    flex: 1 1 auto;
+    min-width: 0;
+    border: none;
+    background: transparent;
+    resize: none;
+  }
+
+  /* 五步开局向导 */
+  .vc-story-wizard {
+    padding: 20px;
+    border-radius: 18px;
+    background: var(--vc-group);
+    border: 1px solid var(--vc-separator);
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .vc-story-wizard__steps {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .vc-story-wizard__step-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    border-radius: 999px;
+    border: 1px solid var(--vc-separator);
+    background: var(--vc-fill);
+    font-size: 13px;
+    cursor: pointer;
+  }
+
+  .vc-story-wizard__step-pill.is-active .vc-story-wizard__step-btn {
+    border-color: var(--vc-accent);
+    color: var(--vc-accent-text);
+    font-weight: 600;
+  }
+
+  .vc-story-wizard__companions,
+  .vc-story-wizard__cast-roles,
+  .vc-story-wizard__footer,
+  .vc-ending-actions,
+  .vc-story-rewind-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+  }
+
+  .vc-story-wizard__summary {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .vc-story-ending textarea {
+    width: 100%;
+    min-height: 88px;
+    padding: 10px 12px;
+    border-radius: 12px;
+    border: 1px solid var(--vc-separator);
+    background: var(--vc-surface);
+    resize: vertical;
+  }
+}
