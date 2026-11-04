@@ -9,6 +9,7 @@ import { WorldInfo } from '../../src/features/tavern/WorldInfo';
 import {
   CODE_EDITOR_STORAGE_KEY,
   CodeField,
+  SELF_HOSTED_WORKER_SPECS,
   WorldCodeEditorDialog,
   codeEditorDefaults,
 } from '../../src/features/tavern/CodeField';
@@ -36,6 +37,13 @@ vi.mock(
   '/scripts/extensions/third-party/ST-Prompt-Template/dist/desktop-editor.js',
   () => ({
     loadDesktopMonaco: async () => {
+      // Real upstream 5092.index.js sets MonacoEnvironment during loadDesktopMonaco()
+      const upstreamMap: Record<string, string> = { editorWorkerService: 'editor.worker.js' };
+      (globalThis as Record<string, unknown>).MonacoEnvironment = {
+        globalAPI: false,
+        getWorkerUrl: (_moduleId: string, label: string) =>
+          `/scripts/extensions/third-party/ST-Prompt-Template/dist/${upstreamMap[label]}`,
+      };
       return {
         Uri: {
           parse: (p: string) => ({ path: p, toString: () => p }),
@@ -552,13 +560,7 @@ describe('WorldInfo (B14 deleting world clears global/char/chat references in on
       expect(monacoRecord.lastUpdatedOptions).toMatchObject({ readOnly: true });
     });
 
-    // Simulate upstream 5092.index.js MonacoEnvironment that only maps editorWorkerService
-    const upstreamMap: Record<string, string> = { editorWorkerService: 'editor.worker.js' };
-    (globalThis as Record<string, unknown>).MonacoEnvironment = {
-      globalAPI: false,
-      getWorkerUrl: (_moduleId: string, label: string) =>
-        `/scripts/extensions/third-party/ST-Prompt-Template/dist/${upstreamMap[label]}`,
-    };
+    const envBeforeRerender = (globalThis as Record<string, unknown>).MonacoEnvironment;
 
     rerender(
       <CodeField
@@ -573,6 +575,15 @@ describe('WorldInfo (B14 deleting world clears global/char/chat references in on
     await waitFor(() => {
       expect(monacoRecord.lastLanguage).toBe('javascript');
     });
+
+    // Normal rerender must NOT recreate or overwrite global MonacoEnvironment
+    expect((globalThis as Record<string, unknown>).MonacoEnvironment).toBe(envBeforeRerender);
+
+    // Only json, css, javascript have special worker specs; promise default shim is scoped to javascript
+    expect(Object.keys(SELF_HOSTED_WORKER_SPECS).sort()).toEqual(['css', 'javascript', 'json']);
+    expect(SELF_HOSTED_WORKER_SPECS.javascript.needsPromiseDefaultShim).toBe(true);
+    expect(SELF_HOSTED_WORKER_SPECS.json.needsPromiseDefaultShim).toBeUndefined();
+    expect(SELF_HOSTED_WORKER_SPECS.css.needsPromiseDefaultShim).toBeUndefined();
 
     const env = (globalThis as Record<string, unknown>).MonacoEnvironment as {
       getWorkerUrl?: (moduleId: string, label: string) => string;
@@ -620,6 +631,7 @@ describe('WorldInfo (B14 deleting world clears global/char/chat references in on
     const derivedEditor = createEjsEditorSource(rawIndex);
     const derivedSha = crypto.createHash('sha256').update(derivedEditor).digest('hex');
     expect(derivedSha).toBe(patchSpec.desktop_editor_sha256);
-    expect(derivedEditor).toContain('ensureDesktopMonacoWorkers');
+    expect(derivedEditor).toContain('export async function loadDesktopMonaco(){await bv();return _v;}');
+    expect(derivedEditor).toContain('export async function createDesktopEditor(container,{value=\'\',onChange,options={}}={}){');
   });
 });

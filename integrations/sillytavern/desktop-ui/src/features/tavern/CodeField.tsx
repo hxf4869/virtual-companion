@@ -49,34 +49,20 @@ export const SELF_HOSTED_WORKER_BASE =
 
 export const SELF_HOSTED_WORKER_SPECS: Record<
   string,
-  { entry: string; chunks: readonly string[] }
+  { entry: string; chunks: readonly string[]; needsPromiseDefaultShim?: boolean }
 > = {
   json: {
     entry: '2184.index.js',
     chunks: ['4108.index.js', '2641.index.js', '5323.index.js'],
   },
-  css: { entry: '8720.index.js', chunks: ['4108.index.js', '2641.index.js'] },
-  scss: { entry: '8720.index.js', chunks: ['4108.index.js', '2641.index.js'] },
-  less: { entry: '8720.index.js', chunks: ['4108.index.js', '2641.index.js'] },
+  css: {
+    entry: '8720.index.js',
+    chunks: ['4108.index.js', '2641.index.js'],
+  },
   javascript: {
     entry: '2749.index.js',
     chunks: ['4108.index.js', '2641.index.js'],
-  },
-  typescript: {
-    entry: '2749.index.js',
-    chunks: ['4108.index.js', '2641.index.js'],
-  },
-  html: {
-    entry: '4421.index.js',
-    chunks: ['4108.index.js', '2641.index.js', '5323.index.js'],
-  },
-  handlebars: {
-    entry: '4421.index.js',
-    chunks: ['4108.index.js', '2641.index.js', '5323.index.js'],
-  },
-  razor: {
-    entry: '4421.index.js',
-    chunks: ['4108.index.js', '2641.index.js', '5323.index.js'],
+    needsPromiseDefaultShim: true,
   },
 };
 
@@ -85,7 +71,7 @@ export function resolveSelfHostedMonacoWorkerUrl(_moduleId: string, label: strin
   return SELF_HOSTED_WORKER_BASE + (spec ? spec.entry : 'editor.worker.js');
 }
 
-export function configureSelfHostedMonacoWorkers(): void {
+export function configureSelfHostedMonacoWorkers(monacoInstance?: unknown): void {
   const g = globalThis as Record<string, unknown>;
   const prev =
     g.MonacoEnvironment && typeof g.MonacoEnvironment === 'object'
@@ -108,30 +94,48 @@ export function configureSelfHostedMonacoWorkers(): void {
     } catch {
       base = SELF_HOSTED_WORKER_BASE;
     }
+    const entryBoot = spec.needsPromiseDefaultShim
+      ? [
+          'Object.defineProperty(Promise.prototype,"default",{value:{},configurable:true,writable:true});',
+          'try{await import(base+entry);}finally{delete Promise.prototype.default;}',
+        ].join('\n')
+      : 'await import(base+entry);';
     const code = [
-      'const q=[];self.onmessage=e=>q.push(e);',
+      'const q=[],queueHandler=e=>{q.push(e);};self.onmessage=queueHandler;',
       `const base=${JSON.stringify(base)},chunks=${JSON.stringify(spec.chunks)},entry=${JSON.stringify(spec.entry)};`,
       'self.webpackChunkextension_prompt_template=[];',
       'for(const c of chunks){await import(base+c);}',
       'const saved=self.webpackChunkextension_prompt_template.map(c=>[c[0].slice(),c[1],c[2]]);',
       'self.webpackChunkextension_prompt_template=[];',
       'self.importScripts=()=>{for(const c of saved){self.webpackChunkextension_prompt_template.push([c[0].slice(),c[1],c[2]]);}};',
-      'Promise.prototype.default={};',
-      'await import(base+entry);',
-      'await Promise.resolve();',
-      'delete Promise.prototype.default;',
+      entryBoot,
+      'for(let i=0;i<32&&self.onmessage===queueHandler;i++){await Promise.resolve();}',
+      'if(self.onmessage===queueHandler){self.onmessage=null;throw new Error("Monaco worker entry did not install onmessage");}',
       'while(q.length){const ev=q.shift();if(typeof self.onmessage==="function")self.onmessage(ev);}',
     ].join('\n');
     const blobUrl = URL.createObjectURL(
       new Blob([code], { type: 'application/javascript' }),
     );
-    const worker = new Worker(blobUrl, { name: label, type: 'module' });
-    const origTerminate = worker.terminate.bind(worker);
-    worker.terminate = () => {
-      URL.revokeObjectURL(blobUrl);
-      return origTerminate();
+    let revoked = false;
+    const revoke = () => {
+      if (!revoked) {
+        revoked = true;
+        URL.revokeObjectURL(blobUrl);
+      }
     };
-    return worker;
+    try {
+      const worker = new Worker(blobUrl, { name: label, type: 'module' });
+      worker.addEventListener('error', revoke, { once: true });
+      const origTerminate = worker.terminate.bind(worker);
+      worker.terminate = () => {
+        revoke();
+        return origTerminate();
+      };
+      return worker;
+    } catch (err) {
+      revoke();
+      throw err;
+    }
   };
   g.MonacoEnvironment = {
     ...prev,
@@ -139,6 +143,76 @@ export function configureSelfHostedMonacoWorkers(): void {
     getWorkerUrl: resolveSelfHostedMonacoWorkerUrl,
     getWorker,
   };
+
+  const m = monacoInstance as {
+    createWebWorker?: (opts: {
+      moduleId: string;
+      label: string;
+      createData: { options: unknown; languageId: string };
+    }) => {
+      getProxy: () => Promise<unknown>;
+      withSyncedResources: (uris: unknown[]) => Promise<unknown>;
+      dispose: () => void;
+    };
+    languages?: {
+      css?: Record<string, unknown> & {
+        cssDefaults?: {
+          options?: unknown;
+          languageId?: string;
+          onDidChange?: (listener: () => void) => { dispose: () => void };
+        };
+      };
+    };
+  } | null;
+  if (
+    m &&
+    typeof m.createWebWorker === 'function' &&
+    m.languages?.css &&
+    typeof m.languages.css.getCSSWorker !== 'function'
+  ) {
+    const createWebWorker = m.createWebWorker.bind(m);
+    const cssNs = m.languages.css;
+    let cssWorkerClient: ReturnType<typeof createWebWorker> | null = null;
+    cssNs.cssDefaults?.onDidChange?.(() => {
+      cssWorkerClient?.dispose();
+      cssWorkerClient = null;
+    });
+    const getCSSWorker = async () => {
+      return async (...uris: unknown[]) => {
+        if (!cssWorkerClient) {
+          const defaults = cssNs.cssDefaults;
+          const languageId = defaults?.languageId || 'css';
+          cssWorkerClient = createWebWorker({
+            moduleId: 'vs/language/css/cssWorker',
+            label: languageId,
+            createData: {
+              options: defaults?.options,
+              languageId,
+            },
+          });
+        }
+        const proxy = await cssWorkerClient.getProxy();
+        await cssWorkerClient.withSyncedResources(uris);
+        return proxy;
+      };
+    };
+    try {
+      Object.defineProperty(cssNs, 'getCSSWorker', {
+        value: getCSSWorker,
+        configurable: true,
+        enumerable: true,
+      });
+      if (typeof cssNs.getWorker !== 'function') {
+        Object.defineProperty(cssNs, 'getWorker', {
+          value: getCSSWorker,
+          configurable: true,
+          enumerable: true,
+        });
+      }
+    } catch {
+      // Ignore if namespace is non-extensible in synthetic tests
+    }
+  }
 }
 
 let monacoLoadPromise: Promise<unknown> | null = null;
@@ -154,7 +228,7 @@ async function ensureSelfHostedMonaco(): Promise<unknown> {
         if (!monaco) {
           throw new Error('Monaco instance unavailable');
         }
-        configureSelfHostedMonacoWorkers();
+        configureSelfHostedMonacoWorkers(monaco);
         loader.config({ monaco: monaco as any });
         return monaco;
       })
@@ -212,7 +286,6 @@ export function CodeField({
 
     ensureSelfHostedMonaco()
       .then(() => {
-        configureSelfHostedMonacoWorkers();
         if (!cancelled) {
           setMonacoState('ready');
         }
@@ -240,9 +313,6 @@ export function CodeField({
   }, [preferences, disabled]);
 
   if (mode === 'monaco') {
-    if (monacoState === 'ready') {
-      configureSelfHostedMonacoWorkers();
-    }
     const activeTheme = String(resolvedOptions.theme || codeEditorDefaults.theme || 'ejsTheme');
     return (
       <div
