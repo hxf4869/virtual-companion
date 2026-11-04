@@ -13,7 +13,56 @@
 
 **Spec:** `docs/superpowers/specs/2026-11-04-desktop-react-rebuild-design.md`（每个任务开始前读第 2、4、6、9、10 节）
 
-## 0. 执行方式（Claude 调度用；Owner 自行让 Gemini 执行时照此）
+## 0. 执行方式（调度者用；Owner 自行让 Gemini 执行时照此）
+
+### 0.0 调度交接（2026-11-04，Claude → Codex）
+
+- **调度与决策者**：Codex CLI（`gpt-6.1-sol`，max 推理）。职责：按并行图派任务给 Gemini、审 diff、跑任务验证命令、合入
+  `desktop-react-rebuild`、处理 Gemini 卡住或越界的情况、需要后端改动时自己按设计第 7 节契约先行完成。
+- **前端执行者**：Gemini 4 Argon High（`agy`），每任务一个 worktree，提示词模板见下方 0.1。
+- **视觉验收**：Codex 只做 `dr2-layout` 几何断言与截图产出；**外观终审留给 Claude**（Owner 规定视觉验收不交给
+  codex/grok 类执行者）。T12 由 Codex 产出截图矩阵与 `NOTES.md` 后暂停，等 Claude 终审。
+- **Claude 回来后做**：整体审计（`desktop-react-rebuild` 对 `codex/desktop-independent-frontend` 全量 diff）+ T12 视觉终审。
+- **交接时状态**：设计与计划已提交（`77b3b22f`）；T1 已派 Gemini，在 `/Users/hxf/projects/vc-dr2-t1`（分支 `dr2/t1`）运行，
+  日志 `/tmp/vc-dr2-t1.log`。Codex 接手第一步是检查 T1 结果（第 0.2 节）。
+- **参考材料**（已忽略不提交，仅本机）：`.review-queue/DR2/handoff/`
+  - `recon/R1–R4`：功能清单与模块分类、token/CSS 表、引擎与上游差异及 Helper 缺口、测试与场景 DOM 钩子。派任务时把相关文件
+    路径写进 Gemini 提示词（T3 → R2；T5–T10 → R1 对应章节；T11 → R4；T14/T15 → R3）。
+  - `audit/`：审计时 Gemini 四份报告（大量误报，以设计第 9 节"已核实"清单为准）；`audit-mvu-empty.mjs` 是 B1 实测场景，T11 的
+    `dr2-mvu-new` 以它为起点。
+  - **注意**：R2 的 `tokens.css` 初稿数值有错（例如 accent 写成 `#c96a4a`），T3 必须以 DESIGN.md 与 `desktop/themes/aurora.css`
+    实际值为准，R2 只用其"缺失 / 冲突 / 重复变量"清单。
+
+### 0.1 Gemini 任务提示词模板（`<N>` 为任务号）
+
+```text
+你是本仓库的前端执行者。读 AGENTS.md、docs/superpowers/specs/2026-11-04-desktop-react-rebuild-design.md、
+docs/superpowers/plans/2026-11-04-desktop-react-rebuild.md 的第 0–3 节与「Task <N>」。另读参考：<相关 .review-queue/DR2/handoff 文件>。
+只做 Task <N>，按其步骤逐项完成（先写失败测试并确认失败，再实现，再跑任务的全部验证命令），全部通过后按任务里的提交信息
+提交到当前分支（dr2/t<N>）。提交信息末尾加一行：Co-Authored-By: Gemini 4 <noreply@google.com>
+约束：
+- 不得修改该任务 Files 列表之外的文件；确需修改时停下，在输出里说明原因与文件。
+- 不得删除测试、加 skip、削弱断言；设计第 10.1 节授权随旧电脑端模块删除的测试除外，提交信息写"依 Owner 2026-11-04 授权随旧模块删除"。
+- 新增 npm 依赖用 npm install --prefix integrations/sillytavern [-D] <pkg>@<exact-version> --save-exact，并在
+  scripts/checks/license-inventory.yaml 的 integrationDirectDependencies 登记。
+- 不推送；受管场景只在任务步骤要求时运行，且使用调度者给的端口与容器名：<端口/容器变量>；运行后删除 dev-managed/。
+- 原生桥产物 extension/vc-model-settings/desktop/build/index.js 的 38 个导出必须保持不变；/native/ 相关单测必须继续通过。
+- 日志、截图、提交中不得出现对话正文或凭据。
+完成后输出：改动文件列表、执行过的命令及其结果（PASS/FAIL 与关键行）、未解决问题。
+```
+
+调用：`cd <worktree> && /Users/hxf/.local/bin/agy -p "$(cat <prompt>)" --model gemini-4-argon-high --dangerously-skip-permissions --print-timeout 0 > /tmp/vc-dr2-t<N>.log 2>&1`
+
+### 0.2 每个任务的合入检查（调度者）
+
+1. `git -C <worktree> log --oneline desktop-react-rebuild..HEAD` 有且只有该任务的提交；`git diff desktop-react-rebuild...HEAD --stat` 只含任务 Files（另允许 `package*.json`、`license-inventory.yaml`）。
+2. diff 里没有：`!important`（允许的两类除外）、组件读 `innerWidth`/`matchMedia`（`useChrome.ts`/`useReducedMotion.ts` 除外）、删测试 / `skip` / 弱化断言（授权删除除外）、对 `bridge/` 的行为改动。
+3. 在 worktree 里重跑任务 Step 4 的验证命令，结果与 Gemini 报告一致。
+4. `git -C /Users/hxf/projects/virtual-companion-desktop-rebuild merge --ff-only dr2/t<N>`（不能快进时先让 Gemini 在其分支 rebase）；合入后删 worktree 与分支。
+5. Gemini 两次未通过同一验证：Codex 读日志定位根因，给出具体修正指令重派一次；仍失败则 Codex 自己修，并在提交信息注明。
+6. 每合入一个任务，在 `TODO.md`「陪伴体验后续」追加一行 `DR2-<N>`：提交号、验证结果、是否有遗留。
+
+### 0.3 worktree 准备
 
 ```bash
 # 每个任务一个 worktree，基于最新 desktop-react-rebuild
@@ -40,7 +89,7 @@ EOF
   VC_MEMORYCORE_PORT=87<n>4 VC_W03_PG_CONTAINER=vc-w03-dr2-<n>-pg VC_W03_MINIO_CONTAINER=vc-w03-dr2-<n>-minio
   VC_W03_DEV_DIR=$PWD/integrations/sillytavern/dev-managed VC_W03_CHROMIUM_PATH="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"`，
   `<n>` 为 worktree 序号 1–6。任务结束后删除 `dev-managed/` 与 worktree（OP-11）。
-- **Claude 合入前检查**：`git diff desktop-react-rebuild...dr2/<task-id> --stat` 只含任务 Files；跑任务的最终验证命令；视觉任务看截图。
+- **合入前检查**：见 0.2。
 - **并行图**（同一行可并行；箭头表示依赖）：
 
 ```
@@ -379,7 +428,9 @@ export function useChatSnapshot(bridge: SessionBridge): ChatSnapshot;
 - [ ] **Step 2: 运行** —— `--filter dr2-layout,dr2-mvu-new,dr2-settings,dr2-pages,nf-startup,nf-desktop,nf-chat,nf-operations,nf-prompts,nf-cards,nf-media,nf-tavern,nf-business,nf-settings,f2-browser,f2-native,mb-engine` 全部通过；失败按根因修到通过（修复代码属于对应页面任务的文件，在本任务内修改并在提交信息列出）。
 - [ ] **Step 3: 提交** —— `git commit -m "test(DR2-11): 电脑端重建受管场景与回归对齐"`
 
-### Task 12: 视觉自查（Claude 负责，Sonnet 初审）
+### Task 12: 视觉自查（Codex 产出截图，Claude 终审）
+
+> 交接后：Codex 完成截图矩阵、`dr2-layout` 通过与自查 `NOTES.md` 后**暂停**，不自行宣布视觉通过；等 Claude 终审再进入 T13。
 
 **Files:** Create `.review-queue/DR2/`（已忽略，不提交）下截图与 `NOTES.md`。
 
