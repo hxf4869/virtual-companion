@@ -1,5 +1,5 @@
 // AGPL-3.0-only. SillyTavern 7e8663cd9c184a550b37238218bdd32c6efc68e9 / scripts/macros/engine/MacroEngine.js
-// 原计算模块；只适配显式状态、输入/首显消息与无正文诊断端口。
+// 保留本地拷贝：注入 quietConsole as console，并绑定本地 39 行无正文输出桩 ./MacroDiagnostics.js（避免上游 270 行诊断器打印宏原文/参数）。
 import { quietConsole as console } from "../../../../ports.js";
 import { MacroParser } from "./MacroParser.js";
 import { MacroCstWalker } from "./MacroCstWalker.js";

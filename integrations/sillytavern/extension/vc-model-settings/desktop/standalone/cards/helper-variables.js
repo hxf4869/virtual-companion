@@ -1,4 +1,5 @@
-// AGPL-3.0-only. Locked upstream algorithms, adapted 2026-11-03 for explicit desktop ports.
+// AGPL-3.0-only. JS-Slash-Runner 0af421068 / src/iframe/exported/variables.ts
+// 保留本地预编译拷贝：上游为 TypeScript 源码且依赖 Pinia stores，此处绑定 ../engine/ports.js 与 helper-host.js 的轻量 store/持久化端口。
 import { chat, chat_metadata, characters, this_chid, name1, name2, extension_settings, oai_settings } from '../engine/ports.js';
 import { substituteParamsExtended } from '../engine/st/script.js';
 import { klona } from './klona.js';

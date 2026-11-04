@@ -1,5 +1,5 @@
 // AGPL-3.0-only. SillyTavern 7e8663cd9c184a550b37238218bdd32c6efc68e9 / scripts/utils.js
-// 原计算模块；只适配显式状态、输入/首显消息与无正文诊断端口。
+// 保留本地裁剪拷贝：仅保留哈希/正则转义/时间转换/UUID 等纯计算工具函数，剥离 DOM/剪贴板/文件上传辅助函数，并从 ../../ports.js 读取 getCurrentLocale。
 import { moment } from '../lib.js';
 import { getCurrentLocale } from '../../ports.js';
 export function getStringHash(str, seed = 0) {

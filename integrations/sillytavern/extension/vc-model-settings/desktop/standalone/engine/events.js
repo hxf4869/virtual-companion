@@ -1,4 +1,5 @@
 // AGPL-3.0-only. SillyTavern 7e8663cd9 / lib/eventemitter.js
+// 保留本地拷贝：注入 quietConsole 屏蔽 EventEmitter.emit 捕获异常时的 console.error(err, args) 以防泄露提示词/对话正文，并供 Node 离线单测与受管脚本按固定路径直接导入。
 import {quietConsole as console} from './diagnostics.js';
 /* Polyfill indexOf. */
 var indexOf;

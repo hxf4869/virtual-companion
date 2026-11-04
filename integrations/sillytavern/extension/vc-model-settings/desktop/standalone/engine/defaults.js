@@ -1,7 +1,7 @@
+// AGPL-3.0-only. SillyTavern 7e8663cd9 / 已锁定设置缺省值（摘自 script.js、power-user.js、openai.js、world-info.js）。
 import {names_behavior_types} from './st/scripts/instruct-mode.js';
 import {extension_prompt_types,extension_prompt_roles} from './st/script.js';
 import {MEDIA_DISPLAY} from './st/constants.js';
-// AGPL-3.0-only. SillyTavern 7e8663cd9 / 已锁定设置缺省值。
 import {chat_completion_sources,character_names_behavior,custom_prompt_post_processing_types,reasoning_effort_types,verbosity_levels} from './st/scripts/openai.js';
 import {chatCompletionDefaultPrompts,promptManagerDefaultPromptOrders} from './st/scripts/PromptManager.js';
 import {persona_description_positions} from './st/constants.js';

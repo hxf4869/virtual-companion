@@ -1,9 +1,9 @@
+// AGPL-3.0-only. SillyTavern 7e8663cd9 / utils.js, chats.js
+// 保留本地裁剪拷贝：浏览器资源读取/测量端口与 quietConsole 静音；不依赖原生页面或控件。
 export function isDataURL(str) {
     const regex = /^data:([a-z]+\/[a-z0-9-+.]+(;[a-z-]+=[a-z0-9-]+)*;?)?(base64)?,([a-z0-9!$&',()*+;=\-_%.~:@/?#]+)?$/i;
     return typeof str === 'string' && regex.test(str);
 }
-// AGPL-3.0-only. SillyTavern 7e8663cd9 / utils.js, chats.js
-// 浏览器资源读取/测量端口；不依赖原生页面或控件。
 import { quietConsole } from './diagnostics.js';
 export function createResourcePorts({getRequestHeaders,fetch=globalThis.fetch,toast,t}) {
 const console=quietConsole,toastr=toast;

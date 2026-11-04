@@ -1,5 +1,5 @@
 // AGPL-3.0-only. SillyTavern 7e8663cd9c184a550b37238218bdd32c6efc68e9 / scripts/group-chats.js
-// 原计算模块；只适配显式状态、输入/首显消息与无正文诊断端口。
+// 保留本地裁剪拷贝：仅摘取 getGroupDepthPrompts/getGroupNames/getGroupCharacterCardsLazy 群聊提示词计算函数，剥离群聊管理 DOM，绑定 ../../ports.js 与 quietConsole。
 import { chat_metadata, characters, groups, selected_group, power_user, quietConsole as console } from '../../ports.js';
 import { baseChatReplace, createLazyFields, depth_prompt_depth_default, depth_prompt_role_default } from '../script.js';
 export const group_generation_mode = {

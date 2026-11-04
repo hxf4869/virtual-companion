@@ -1,3 +1,5 @@
+// Vendor-adapted from JS-Slash-Runner 0af421068 / src/iframe/predefine.js
+// 保留本地拷贝：维持 B6 过期 iframe 守卫（将 _bind 绑定后的方法同步覆盖至 window.TavernHelper 并用 /^_/ 仅替换前缀）及离线单测源码校验。
 window._ = window.parent._;
 const iframeId = window.frameElement?.id || window.name;
 if (iframeId) {

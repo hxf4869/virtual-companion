@@ -1,5 +1,5 @@
 // AGPL-3.0-only. SillyTavern 7e8663cd9c184a550b37238218bdd32c6efc68e9 / scripts/macros/definitions/env-macros.js
-// 原计算模块；只适配显式状态、输入/首显消息与无正文诊断端口。
+// 保留本地拷贝：注入 quietConsole as console，从 ../../../../ports.js 导入 isMobile 与 power_user，替代上游 RossAscends-mods.js 与 power-user.js DOM 模块。
 import { quietConsole as console } from "../../../../ports.js";
 import { MacroRegistry, MacroCategory, MacroValueType } from "../engine/MacroRegistry.js";
 import { isMobile } from "../../../../ports.js";

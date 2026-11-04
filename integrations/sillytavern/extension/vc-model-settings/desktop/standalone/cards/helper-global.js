@@ -1,4 +1,5 @@
-// AGPL-3.0-only. Locked upstream algorithms, adapted 2026-11-03 for explicit desktop ports.
+// AGPL-3.0-only. JS-Slash-Runner 0af421068 / src/iframe/exported/global.ts
+// 保留本地预编译拷贝：上游为 TypeScript 源码，此处绑定 ../engine/ports.js 的 chat/eventSource 与 helper-host/helper-event 显式端口。
 import { _eventEmit, _eventOnce } from './helper-event.js';
 import { chat, eventSource } from '../engine/ports.js';
 import { waitUntil } from './helper-host.js';

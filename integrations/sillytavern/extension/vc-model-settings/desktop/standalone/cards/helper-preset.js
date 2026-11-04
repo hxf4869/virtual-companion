@@ -1,4 +1,5 @@
-// AGPL-3.0-only. Locked Helper 0af421068e4 preset/read conversion, explicit desktop document ports.
+// AGPL-3.0-only. JS-Slash-Runner 0af421068 / src/iframe/exported/preset.ts
+// 保留本地预编译拷贝：上游为 TypeScript 源码且依赖原生预设 DOM，此处绑定 ejs-host.js 的显式文档端口。
 import {getCardHost,regex_placement} from './ejs-host.js';
 import {klona} from './klona.js';
 const uuidv4=()=>crypto.randomUUID();

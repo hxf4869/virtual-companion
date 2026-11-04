@@ -1,5 +1,5 @@
 // AGPL-3.0-only. SillyTavern 7e8663cd9c184a550b37238218bdd32c6efc68e9 / scripts/macros/definitions/chat-macros.js
-// 原计算模块；只适配显式状态、输入/首显消息与无正文诊断端口。
+// 保留本地拷贝：注入 quietConsole as console，并用 ../../../../ports.js 的 readFirstDisplayedMessageId 显式端口替代上游 document.querySelector('#chat .mes') DOM 查询。
 import { quietConsole as console, readFirstDisplayedMessageId } from "../../../../ports.js";
 import { MacroRegistry, MacroCategory, MacroValueType } from "../engine/MacroRegistry.js";
 import { chat, chat_metadata } from "../../../script.js";

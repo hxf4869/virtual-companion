@@ -1,4 +1,5 @@
-// AGPL-3.0-only. Locked upstream algorithms, adapted 2026-11-03 for explicit desktop ports.
+// AGPL-3.0-only. SillyTavern 7e8663cd9 / scripts/account-storage.js
+// 保留本地拷贝：用 configureAccountStorage(callback) 显式端口替代上游 import { saveSettingsDebounced } from '../script.js'，兼容 Node 离线单测与无 ST 页面宿主运行。
 let save; const saveSettingsDebounced=()=>save?.(); export const configureAccountStorage=callback=>{save=callback;};
 
 const MIGRATED_MARKER = '__migrated';

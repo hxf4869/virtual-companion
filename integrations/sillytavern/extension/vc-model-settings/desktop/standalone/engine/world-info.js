@@ -1,9 +1,9 @@
+// AGPL-3.0-only. SillyTavern 7e8663cd9c184a550b37238218bdd32c6efc68e9 / scripts/world-info.js
+// 保留本地裁剪拷贝：定向摘取世界书扫描/预算/深度注入计算段，宿主/DOM/日志由显式端口与 quietConsole 替代，不加载原生初始化。
 export const wi_anchor_position = {
     before: 0,
     after: 1,
 };
-// AGPL-3.0-only. SillyTavern 7e8663cd9c184a550b37238218bdd32c6efc68e9 / scripts/world-info.js
-// 定向摘取原计算声明；宿主/DOM/日志由显式端口替代，不加载原生初始化。
 import { quietConsole } from './diagnostics.js';
 export function forceWorldInfoEntries(context, entries) {
     const forced = context.forcedWorldInfoEntries || (context.forcedWorldInfoEntries = new Map());

@@ -1,5 +1,5 @@
 // AGPL-3.0-only. SillyTavern 7e8663cd9c184a550b37238218bdd32c6efc68e9 / scripts/macros/engine/MacroEnvBuilder.js
-// 原计算模块；只适配显式状态、输入/首显消息与无正文诊断端口。
+// 保留本地拷贝：注入 quietConsole as console，从 ../../../../ports.js、本地 ../../../script.js 与 39 行桩 ./MacroDiagnostics.js 导入状态与无正文诊断，不拉入上游原生 script.js/group-chats.js。
 import { quietConsole as console } from "../../../../ports.js";
 import { name1, name2, characters, getCharacterCardFieldsLazy, getGeneratingModel } from "../../../script.js";
 import { groups, selected_group } from "../../../../ports.js";

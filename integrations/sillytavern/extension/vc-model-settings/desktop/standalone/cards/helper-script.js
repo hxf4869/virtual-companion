@@ -1,4 +1,5 @@
-// AGPL-3.0-only. Locked upstream algorithms, adapted 2026-11-03 for explicit desktop ports.
+// AGPL-3.0-only. JS-Slash-Runner 0af421068 / src/iframe/exported/script.ts
+// 保留本地预编译拷贝：上游为 TypeScript 源码且依赖 Vue/Pinia runtime store，此处绑定 helper-host.js 的 useScriptIframeRuntimesStore/getButtonId 显式端口。
 import { _getScriptId } from './helper-util.js';
 import { useScriptIframeRuntimesStore, getButtonId } from './helper-host.js';
 import { klona } from './klona.js';

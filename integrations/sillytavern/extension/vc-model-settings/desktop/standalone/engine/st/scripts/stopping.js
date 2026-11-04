@@ -1,4 +1,5 @@
 // AGPL-3.0-only. SillyTavern 7e8663cd9 / scripts/power-user.js
+// 保留本地裁剪拷贝：仅从上游 power-user.js 摘取自定义与临时停止词计算函数，剥离整页设置 DOM 并绑定 ../../ports.js 与 quietConsole。
 import { power_user } from '../../ports.js';
 import { substituteParams } from '../script.js';
 import { quietConsole as console } from '../../diagnostics.js';

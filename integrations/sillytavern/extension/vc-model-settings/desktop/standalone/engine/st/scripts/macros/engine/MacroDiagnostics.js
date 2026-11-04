@@ -1,5 +1,5 @@
 // AGPL-3.0-only. SillyTavern 7e8663cd9c184a550b37238218bdd32c6efc68e9 / scripts/macros/engine/MacroDiagnostics.js
-// 原计算模块；只适配显式状态、输入/首显消息与无正文诊断端口。
+// 保留本地 39 行裁剪桩：仅保留 inferMacroName 纯辅助函数并将 logMacro* 设为空实现，替代上游 270 行向 console 输出宏原文片段与调用参数的诊断模块。
 export function inferMacroName(call, def, explicit) {
     if (typeof explicit === 'string' && explicit.trim()) {
         return explicit.trim();

@@ -1,5 +1,5 @@
 // AGPL-3.0-only. SillyTavern 7e8663cd9c184a550b37238218bdd32c6efc68e9 / scripts/macros/definitions/variable-macros.js
-// 原计算模块；只适配显式状态、输入/首显消息与无正文诊断端口。
+// 保留本地拷贝：注入 quietConsole as console，并用 ../../../../ports.js 的显式 getContext 端口替代上游全局 SillyTavern.getContext()。
 import { quietConsole as console, getContext } from "../../../../ports.js";
 import { MacroRegistry, MacroCategory, MacroValueType } from "../engine/MacroRegistry.js";
 

@@ -1,5 +1,5 @@
 // AGPL-3.0-only. SillyTavern 7e8663cd9c184a550b37238218bdd32c6efc68e9 / scripts/macros/definitions/time-macros.js
-// 原计算模块；只适配显式状态、输入/首显消息与无正文诊断端口。
+// 保留本地拷贝：注入 quietConsole as console，并从本地 ../../../lib.js、../../../script.js 与 ../../utils.js 导入依赖，兼容 Node 离线单测与浏览器 nf-prompts 原生 HTTP ESM。
 import { quietConsole as console } from "../../../../ports.js";
 import { moment } from "../../../lib.js";
 import { chat } from "../../../script.js";

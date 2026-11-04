@@ -1,11 +1,12 @@
-// AGPL-3.0-only. Locked upstream algorithms, adapted 2026-11-03 for explicit desktop ports.
+// AGPL-3.0-only. SillyTavern 7e8663cd9 / script.js messageFormatting.
+// 保留本地裁剪拷贝：通过 configureFormatting 注入 regex/accountStorage/toastr/t 显式端口，从 engine/ports.js 读取会话状态，并直接复用锁定上游 showdown-underscore.js。
 import { DOMPurify, showdown, css } from '/lib.js';
 import { chat, characters, this_chid, selected_group, power_user } from '../engine/ports.js';
 import { substituteParams } from '../engine/st/script.js';
 import { isOdd, countOccurrences, escapeRegex } from '../engine/st/scripts/utils.js';
 import { MessageFormatter } from './message-formatter.js';
 import { markdownExclusionExt } from './showdown-exclusion.js';
-import { markdownUnderscoreExt } from './showdown-underscore.js';
+import { markdownUnderscoreExt } from '../../../../../upstream/SillyTavern/public/scripts/showdown-underscore.js';
 export { MessageFormatter } from './message-formatter.js';
 let active;
 export const messageFormatting=(...args)=>active(...args);

@@ -1,5 +1,5 @@
 // AGPL-3.0-only. SillyTavern 7e8663cd9c184a550b37238218bdd32c6efc68e9 / scripts/events.js
-// 原计算模块；只适配显式状态、输入/首显消息与无正文诊断端口。
+// 保留本地裁剪拷贝：仅保留 event_types 枚举，去除上游顶层 new EventEmitter(...) 全局单例副作用（及未静音的 lib/eventemitter.js 依赖），并供 Node 离线单测与受管脚本按固定路径直接导入。
 export const event_types = {
     APP_INITIALIZED: 'app_initialized',
     APP_READY: 'app_ready',

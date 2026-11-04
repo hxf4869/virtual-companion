@@ -1,7 +1,7 @@
+// AGPL-3.0-only. SillyTavern 7e8663cd9c184a550b37238218bdd32c6efc68e9 / script.js
+// 保留本地裁剪拷贝：仅摘取 substituteParams/角色卡字段/extension_prompts/bias/媒体枚举计算段，剥离 jQuery/DOM/页面启动，绑定 ../ports.js 与 quietConsole。
 import { MEDIA_DISPLAY, system_message_types } from './constants.js';
 import { Handlebars } from './lib.js';
-// AGPL-3.0-only. SillyTavern 7e8663cd9c184a550b37238218bdd32c6efc68e9 / script.js
-// 原计算模块；只适配显式状态、输入/首显消息与无正文诊断端口。
 import { quietConsole as console, chat, chat_metadata, characters, this_chid, name1, name2, groups, selected_group, main_api, power_user, extension_prompts, getGeneratingModel, getMaxPromptTokens, getMaxContextTokens, getMaxResponseTokens, getCurrentChatId, eventSource, event_types, getGroupNames, getGroupCharacterCardsLazy } from '../ports.js';
 export { chat, chat_metadata, characters, this_chid, name1, name2, groups, selected_group, main_api, power_user, extension_prompts, getGeneratingModel, getMaxPromptTokens, getMaxContextTokens, getMaxResponseTokens, getCurrentChatId, eventSource, event_types, getGroupNames, getGroupCharacterCardsLazy } from '../ports.js';
 import { MacroEngine } from './scripts/macros/engine/MacroEngine.js';

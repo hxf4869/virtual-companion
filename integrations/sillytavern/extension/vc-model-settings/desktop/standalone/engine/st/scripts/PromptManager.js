@@ -1,6 +1,6 @@
-import { power_user } from '../../ports.js';
 // AGPL-3.0-only. SillyTavern 7e8663cd9c184a550b37238218bdd32c6efc68e9 / scripts/PromptManager.js
-// 原排列/预算/消息算法；UI、tokenizer、工具与媒体为显式端口，不启动原生页面。
+// 保留本地裁剪拷贝：保留提示词排列/Token 预算/消息装配算法，剥离 jQuerySortable/DOM 渲染并接入显式 tokenizer/工具/媒体与 quietConsole 端口。
+import { power_user } from '../../ports.js';
 import { substituteParams } from '../script.js';
 import { quietConsole as console } from '../../diagnostics.js';
 import { uuidv4 } from './utils.js';

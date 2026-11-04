@@ -19,6 +19,7 @@ import { MacrosParser } from '../engine/st/scripts/macros.js';
 import { renderReplyBubbles } from './reply-bubbles.js';
 
 const base = '/scripts/extensions/third-party/vc-model-settings/desktop/standalone/cards/';
+const iframeBase = '/scripts/extensions/third-party/JS-Slash-Runner/src/iframe/';
 const vendor = '/scripts/extensions/third-party/JS-Slash-Runner/lib/vendor/';
 const loadScript = src => new Promise((resolve, reject) => {
     const script = document.createElement('script'); script.src = src; script.onload = resolve; script.onerror = reject; document.head.append(script);
@@ -176,9 +177,9 @@ export async function initializeCards(options) {
         frame.title = script ? '角色卡脚本' : '角色卡内容'; frame.style.width = '100%';
         frame.dataset.vcCardKind = script ? 'script' : 'html'; frame.setAttribute('frameborder', '0');
         if (script) frame.hidden = true;
-        const jquery = script ? `<script src="${base}parent_jquery.js"></script>` : `<link rel="stylesheet" href="${vendor}fontawesome-free-7.3.1/css/all.min.css"><script src="/scripts/extensions/third-party/JS-Slash-Runner/lib/tailwindcss.min.js"></script><script src="${vendor}jquery-4.0.0/jquery.min.js"></script><script src="${vendor}jquery-ui-1.14.2/jquery-ui.min.js"></script><link rel="stylesheet" href="${vendor}jquery-ui-1.14.2/theme.css"><script src="${vendor}jquery-ui-touch-punch-0.2.3/jquery.ui.touch-punch.min.js"></script>`;
+        const jquery = script ? `<script src="${iframeBase}parent_jquery.js"></script>` : `<link rel="stylesheet" href="${vendor}fontawesome-free-7.3.1/css/all.min.css"><script src="/scripts/extensions/third-party/JS-Slash-Runner/lib/tailwindcss.min.js"></script><script src="${vendor}jquery-4.0.0/jquery.min.js"></script><script src="${vendor}jquery-ui-1.14.2/jquery-ui.min.js"></script><link rel="stylesheet" href="${vendor}jquery-ui-1.14.2/theme.css"><script src="${vendor}jquery-ui-touch-punch-0.2.3/jquery.ui.touch-punch.min.js"></script>`;
         const config = settings.extension_settings.tavern_helper?.render || {};
-        const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><base href="${location.origin}/">${jquery}<script src="${vendor}vue-3.5.44/vue.runtime.global.prod.js"></script><script src="${vendor}vue-router-5.4.0/vue-router.global.prod.js"></script><script src="${base}predefine.js"></script>${script ? config.use_cleanup_protector ? `<script src="${base}cleanup_protector.js"></script>` : '' : `<script src="${base}adjust_viewport.js"></script><script src="${base}adjust_iframe_height.js"></script>`}</head><body>${content}</body></html>`;
+        const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><base href="${location.origin}/">${jquery}<script src="${vendor}vue-3.5.44/vue.runtime.global.prod.js"></script><script src="${vendor}vue-router-5.4.0/vue-router.global.prod.js"></script><script src="${base}predefine.js"></script>${script ? config.use_cleanup_protector ? `<script src="${iframeBase}cleanup_protector.js"></script>` : '' : `<script src="${iframeBase}adjust_viewport.js"></script><script src="${iframeBase}adjust_iframe_height.js"></script>`}</head><body>${content}</body></html>`;
         if (config.use_blob_url) { const url = URL.createObjectURL(new Blob([html], { type: 'text/html' })); frame.src = url; frameUrls.set(frame, url); }
         else frame.srcdoc = html;
         frame.addEventListener('load', () => { void context.eventSource.emit('message_iframe_render_ended', id); });

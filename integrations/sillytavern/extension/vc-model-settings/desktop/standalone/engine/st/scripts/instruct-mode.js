@@ -1,5 +1,5 @@
 // AGPL-3.0-only. SillyTavern 7e8663cd9c184a550b37238218bdd32c6efc68e9 / scripts/instruct-mode.js
-// 原计算模块；只适配显式状态、输入/首显消息与无正文诊断端口。
+// 保留本地裁剪拷贝：仅保留 names_behavior_types、formatInstructModeExamples 与 getInstructMacros 纯计算段，剥离指令模式 UI 控件并绑定 ../../ports.js。
 import { power_user, selected_group, parseExampleIntoIndividual } from '../../ports.js';
 import { substituteParams } from '../script.js';
 export const names_behavior_types = {

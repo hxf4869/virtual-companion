@@ -1,5 +1,5 @@
 // AGPL-3.0-only. SillyTavern 7e8663cd9c184a550b37238218bdd32c6efc68e9 / scripts/constants.js
-// 原计算模块；只适配显式状态、输入/首显消息与无正文诊断端口。
+// 保留本地裁剪拷贝：仅导出聊天/世界书/指令计算所需的 7 个常量，剥离 UI 常量，同时兼容 Node 离线单测（personas.js/desktop-session.test.mjs）与浏览器 nf-prompts 原生 HTTP ESM 双环境相对路径解析。
 export const inject_ids = {
     STORY_STRING: '__STORY_STRING__',
     QUIET_PROMPT: 'QUIET_PROMPT',

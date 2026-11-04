@@ -1,4 +1,5 @@
-// AGPL-3.0-only. Locked upstream algorithms, adapted 2026-11-03 for explicit desktop ports.
+// AGPL-3.0-only. SillyTavern 7e8663cd9 / scripts/message-formatter.js
+// 保留本地拷贝：将上游 import { messageFormatting } from '../script.js' 改为本地 ./format.js，避免在 Node 离线单测与桌面打包时拉入原生 ST 页面宿主。
 import { messageFormatting } from './format.js';
 
 /**

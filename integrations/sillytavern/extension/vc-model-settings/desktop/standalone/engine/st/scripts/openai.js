@@ -1,10 +1,10 @@
+// AGPL-3.0-only. SillyTavern 7e8663cd9c184a550b37238218bdd32c6efc68e9 / scripts/openai.js
+// 保留本地裁剪拷贝：保留 OpenAI/Claude/Google/xAI 消息转换、预填与请求体构造算法，剥离设置面板 DOM 与原生传输并绑定 ../../ports.js。
 import { getCurrentChatId } from '../../ports.js';
 import { getCustomStoppingStrings } from './stopping.js';
 import { clamp } from './utils.js';
 import { IGNORE_SYMBOL, MEDIA_TYPE, MEDIA_DISPLAY, system_message_types, persona_description_positions } from '../constants.js';
 import { getMediaIndex, getMediaDisplay } from '../script.js';
-// AGPL-3.0-only. SillyTavern 7e8663cd9c184a550b37238218bdd32c6efc68e9 / scripts/openai.js
-// 原排列/预算/消息算法；UI、tokenizer、工具与媒体为显式端口，不启动原生页面。
 import { name1, name2, selected_group, getGroupNames, main_api, oai_settings, power_user, model_list, openrouter_website_model } from '../../ports.js';
 import { substituteParams, substituteParamsExtended, extension_prompt_types, extension_prompt_roles, getExtensionPrompt, getExtensionPromptMaxDepth } from '../script.js';
 import { PromptManager, Prompt, PromptCollection, INJECTION_POSITION } from './PromptManager.js';

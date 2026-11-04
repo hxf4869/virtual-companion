@@ -1,5 +1,5 @@
 // AGPL-3.0-only. SillyTavern 7e8663cd9c184a550b37238218bdd32c6efc68e9 / scripts/variables.js
-// 原计算模块；只适配显式状态、输入/首显消息与无正文诊断端口。
+// 保留本地裁剪拷贝：仅保留本地/全局变量读写与加减纯计算函数，剥离变量管理弹窗与 SlashCommand 注册，绑定 ../../ports.js 持久化回调。
 import { chat_metadata, extension_settings, saveMetadataDebounced, saveSettingsDebounced } from '../../ports.js';
 import { convertValueType } from './utils.js';
 export function getLocalVariable(name, args = {}) {

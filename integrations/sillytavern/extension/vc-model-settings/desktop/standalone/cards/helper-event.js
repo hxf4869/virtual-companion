@@ -1,4 +1,5 @@
-// AGPL-3.0-only. Locked upstream algorithms, adapted 2026-11-03 for explicit desktop ports.
+// AGPL-3.0-only. JS-Slash-Runner 0af421068 / src/iframe/exported/event.ts
+// 保留本地预编译拷贝：上游为 TypeScript 源码且依赖 Pinia/原生页面 store，此处绑定 ../engine/ports.js 的 eventSource 与 helper-script/helper-util 显式端口。
 import { eventSource } from '../engine/ports.js';
 import { _getButtonEvent } from './helper-script.js';
 import { _getIframeName } from './helper-util.js';

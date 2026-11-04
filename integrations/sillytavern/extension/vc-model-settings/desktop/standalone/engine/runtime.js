@@ -1,6 +1,6 @@
+// 一个桌面 realm 只有一个聊天计算 owner；页面/历史读取不等待此锁。
 import {wi_anchor_position, forceWorldInfoEntries} from './world-info.js';
 import {GENERATION_TYPE_TRIGGERS} from './st/constants.js';
-// 一个桌面 realm 只有一个聊天计算 owner；页面/历史读取不等待此锁。
 import { bindEngineContext, getMaxPromptTokens } from './ports.js';
 import { initMacros } from './st/scripts/macros.js';
 import { substituteParams, substituteParamsExtended, setExtensionPrompt, getBiasStrings, extractMessageBias, removeMacros, createRawPrompt } from './st/script.js';

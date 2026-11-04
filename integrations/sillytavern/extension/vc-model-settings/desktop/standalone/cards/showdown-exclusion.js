@@ -1,4 +1,5 @@
-// AGPL-3.0-only. Locked upstream algorithms, adapted 2026-11-03 for explicit desktop ports.
+// AGPL-3.0-only. SillyTavern 7e8663cd9 / scripts/showdown-exclusion.js
+// 保留本地拷贝：从 ../engine/ports.js 与 ../engine/st/script.js 导入 power_user 和 substituteParams，替代上游 ./power-user.js 与 ../script.js 原生页面模块依赖。
 import { power_user } from '../engine/ports.js';
 import { substituteParams } from '../engine/st/script.js';
 

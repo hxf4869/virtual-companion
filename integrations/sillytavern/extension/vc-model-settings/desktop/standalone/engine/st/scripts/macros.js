@@ -1,5 +1,5 @@
 // AGPL-3.0-only. SillyTavern 7e8663cd9c184a550b37238218bdd32c6efc68e9 / scripts/macros.js
-// 原计算模块；只适配显式状态、输入/首显消息与无正文诊断端口。
+// 保留本地裁剪拷贝：注入 quietConsole as console，用 readInput/readFirstDisplayedMessageId 显式端口替代 $('#send_textarea')/#chat DOM 读取，不启动原生宏 UI。
 import { quietConsole as console, readInput, readFirstDisplayedMessageId } from "../../ports.js";
 import { moment, seedrandom, droll } from "../lib.js";
 import { chat, chat_metadata, main_api, getMaxPromptTokens, getMaxContextTokens, getMaxResponseTokens, getCurrentChatId, substituteParams, eventSource, event_types, extension_prompts } from "../script.js";

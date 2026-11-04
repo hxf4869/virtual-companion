@@ -1,5 +1,5 @@
 // AGPL-3.0-only. SillyTavern 7e8663cd9c184a550b37238218bdd32c6efc68e9 / scripts/macros/definitions/state-macros.js
-// 原计算模块；只适配显式状态、输入/首显消息与无正文诊断端口。
+// 保留本地拷贝：注入 quietConsole as console，并从 ../../../../ports.js 导入 eventSource/event_types/findExtension，替代上游 ../../../script.js 与 ../../extensions.js。
 import { quietConsole as console } from "../../../../ports.js";
 import { MacroRegistry, MacroCategory } from "../engine/MacroRegistry.js";
 import { eventSource, event_types } from "../../../../ports.js";
