@@ -44,6 +44,103 @@ export type CodeEditorPreferences = Record<string, unknown>;
 export const SELF_HOSTED_EDITOR_URL =
   '/scripts/extensions/third-party/ST-Prompt-Template/dist/desktop-editor.js';
 
+export const SELF_HOSTED_WORKER_BASE =
+  '/scripts/extensions/third-party/ST-Prompt-Template/dist/';
+
+export const SELF_HOSTED_WORKER_SPECS: Record<
+  string,
+  { entry: string; chunks: readonly string[] }
+> = {
+  json: {
+    entry: '2184.index.js',
+    chunks: ['4108.index.js', '2641.index.js', '5323.index.js'],
+  },
+  css: { entry: '8720.index.js', chunks: ['4108.index.js', '2641.index.js'] },
+  scss: { entry: '8720.index.js', chunks: ['4108.index.js', '2641.index.js'] },
+  less: { entry: '8720.index.js', chunks: ['4108.index.js', '2641.index.js'] },
+  javascript: {
+    entry: '2749.index.js',
+    chunks: ['4108.index.js', '2641.index.js'],
+  },
+  typescript: {
+    entry: '2749.index.js',
+    chunks: ['4108.index.js', '2641.index.js'],
+  },
+  html: {
+    entry: '4421.index.js',
+    chunks: ['4108.index.js', '2641.index.js', '5323.index.js'],
+  },
+  handlebars: {
+    entry: '4421.index.js',
+    chunks: ['4108.index.js', '2641.index.js', '5323.index.js'],
+  },
+  razor: {
+    entry: '4421.index.js',
+    chunks: ['4108.index.js', '2641.index.js', '5323.index.js'],
+  },
+};
+
+export function resolveSelfHostedMonacoWorkerUrl(_moduleId: string, label: string): string {
+  const spec = SELF_HOSTED_WORKER_SPECS[label];
+  return SELF_HOSTED_WORKER_BASE + (spec ? spec.entry : 'editor.worker.js');
+}
+
+export function configureSelfHostedMonacoWorkers(): void {
+  const g = globalThis as Record<string, unknown>;
+  const prev =
+    g.MonacoEnvironment && typeof g.MonacoEnvironment === 'object'
+      ? (g.MonacoEnvironment as Record<string, unknown>)
+      : {};
+  const getWorker = (_moduleId: string, label: string): Worker => {
+    const spec = SELF_HOSTED_WORKER_SPECS[label];
+    if (!spec) {
+      return new Worker(SELF_HOSTED_WORKER_BASE + 'editor.worker.js', {
+        name: label || 'editorWorkerService',
+        type: 'module',
+      });
+    }
+    let base = SELF_HOSTED_WORKER_BASE;
+    try {
+      base = new URL(
+        SELF_HOSTED_WORKER_BASE,
+        globalThis.location?.origin || 'http://localhost',
+      ).href;
+    } catch {
+      base = SELF_HOSTED_WORKER_BASE;
+    }
+    const code = [
+      'const q=[];self.onmessage=e=>q.push(e);',
+      `const base=${JSON.stringify(base)},chunks=${JSON.stringify(spec.chunks)},entry=${JSON.stringify(spec.entry)};`,
+      'self.webpackChunkextension_prompt_template=[];',
+      'for(const c of chunks){await import(base+c);}',
+      'const saved=self.webpackChunkextension_prompt_template.map(c=>[c[0].slice(),c[1],c[2]]);',
+      'self.webpackChunkextension_prompt_template=[];',
+      'self.importScripts=()=>{for(const c of saved){self.webpackChunkextension_prompt_template.push([c[0].slice(),c[1],c[2]]);}};',
+      'Promise.prototype.default={};',
+      'await import(base+entry);',
+      'await Promise.resolve();',
+      'delete Promise.prototype.default;',
+      'while(q.length){const ev=q.shift();if(typeof self.onmessage==="function")self.onmessage(ev);}',
+    ].join('\n');
+    const blobUrl = URL.createObjectURL(
+      new Blob([code], { type: 'application/javascript' }),
+    );
+    const worker = new Worker(blobUrl, { name: label, type: 'module' });
+    const origTerminate = worker.terminate.bind(worker);
+    worker.terminate = () => {
+      URL.revokeObjectURL(blobUrl);
+      return origTerminate();
+    };
+    return worker;
+  };
+  g.MonacoEnvironment = {
+    ...prev,
+    globalAPI: false,
+    getWorkerUrl: resolveSelfHostedMonacoWorkerUrl,
+    getWorker,
+  };
+}
+
 let monacoLoadPromise: Promise<unknown> | null = null;
 
 async function ensureSelfHostedMonaco(): Promise<unknown> {
@@ -57,6 +154,7 @@ async function ensureSelfHostedMonaco(): Promise<unknown> {
         if (!monaco) {
           throw new Error('Monaco instance unavailable');
         }
+        configureSelfHostedMonacoWorkers();
         loader.config({ monaco: monaco as any });
         return monaco;
       })
@@ -114,6 +212,7 @@ export function CodeField({
 
     ensureSelfHostedMonaco()
       .then(() => {
+        configureSelfHostedMonacoWorkers();
         if (!cancelled) {
           setMonacoState('ready');
         }
@@ -141,6 +240,9 @@ export function CodeField({
   }, [preferences, disabled]);
 
   if (mode === 'monaco') {
+    if (monacoState === 'ready') {
+      configureSelfHostedMonacoWorkers();
+    }
     const activeTheme = String(resolvedOptions.theme || codeEditorDefaults.theme || 'ejsTheme');
     return (
       <div
@@ -469,7 +571,7 @@ export function TavernFieldRow({
       ) : f.kind === 'code' || f.kind === 'json' ? (
         <CodeField
           id={id}
-          language={f.kind === 'json' ? 'json' : 'markdown'}
+          language={f.kind === 'json' ? 'json' : f.key.endsWith('custom_css') ? 'css' : 'markdown'}
           value={String(f.value ?? '')}
           disabled={disabled}
           error={f.error}

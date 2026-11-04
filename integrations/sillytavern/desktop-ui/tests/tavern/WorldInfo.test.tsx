@@ -551,5 +551,75 @@ describe('WorldInfo (B14 deleting world clears global/char/chat references in on
       expect(monacoRecord.currentValue).toBe('.body { color: red; }');
       expect(monacoRecord.lastUpdatedOptions).toMatchObject({ readOnly: true });
     });
+
+    // Simulate upstream 5092.index.js MonacoEnvironment that only maps editorWorkerService
+    const upstreamMap: Record<string, string> = { editorWorkerService: 'editor.worker.js' };
+    (globalThis as Record<string, unknown>).MonacoEnvironment = {
+      globalAPI: false,
+      getWorkerUrl: (_moduleId: string, label: string) =>
+        `/scripts/extensions/third-party/ST-Prompt-Template/dist/${upstreamMap[label]}`,
+    };
+
+    rerender(
+      <CodeField
+        mode="monaco"
+        language="javascript"
+        value="const answer = 42;"
+        disabled={false}
+        onChange={onChange}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(monacoRecord.lastLanguage).toBe('javascript');
+    });
+
+    const env = (globalThis as Record<string, unknown>).MonacoEnvironment as {
+      getWorkerUrl?: (moduleId: string, label: string) => string;
+      getWorker?: (moduleId: string, label: string) => Worker;
+    };
+    expect(typeof env?.getWorkerUrl).toBe('function');
+    expect(typeof env?.getWorker).toBe('function');
+    for (const label of ['json', 'javascript', 'markdown', 'css', 'ejs', 'editorWorkerService']) {
+      const workerUrl = env.getWorkerUrl!('workerMain.js', label);
+      expect(workerUrl).not.toContain('undefined');
+      expect(workerUrl.startsWith('/scripts/extensions/third-party/ST-Prompt-Template/dist/')).toBe(
+        true,
+      );
+    }
+    expect(env.getWorkerUrl!('workerMain.js', 'json')).toBe(
+      '/scripts/extensions/third-party/ST-Prompt-Template/dist/2184.index.js',
+    );
+    expect(env.getWorkerUrl!('workerMain.js', 'css')).toBe(
+      '/scripts/extensions/third-party/ST-Prompt-Template/dist/8720.index.js',
+    );
+    expect(env.getWorkerUrl!('workerMain.js', 'javascript')).toBe(
+      '/scripts/extensions/third-party/ST-Prompt-Template/dist/2749.index.js',
+    );
+    expect(env.getWorkerUrl!('workerMain.js', 'markdown')).toBe(
+      '/scripts/extensions/third-party/ST-Prompt-Template/dist/editor.worker.js',
+    );
+    expect(env.getWorkerUrl!('workerMain.js', 'ejs')).toBe(
+      '/scripts/extensions/third-party/ST-Prompt-Template/dist/editor.worker.js',
+    );
+
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const crypto = await import('node:crypto');
+    const { createEjsEditorSource } = await import('../../../scripts/lib/ejs-editor.mjs');
+    const integRoot = fs.existsSync(path.join(process.cwd(), 'patches/ejs-desktop-runtime.json'))
+      ? process.cwd()
+      : path.resolve(process.cwd(), '..');
+    const rawIndex = fs.readFileSync(
+      path.join(integRoot, 'upstream/ST-Prompt-Template/dist/index.js'),
+      'utf8',
+    );
+    const patchSpec = JSON.parse(
+      fs.readFileSync(path.join(integRoot, 'patches/ejs-desktop-runtime.json'), 'utf8'),
+    ) as { desktop_editor_sha256: string };
+    const derivedEditor = createEjsEditorSource(rawIndex);
+    const derivedSha = crypto.createHash('sha256').update(derivedEditor).digest('hex');
+    expect(derivedSha).toBe(patchSpec.desktop_editor_sha256);
+    expect(derivedEditor).toContain('ensureDesktopMonacoWorkers');
   });
 });
