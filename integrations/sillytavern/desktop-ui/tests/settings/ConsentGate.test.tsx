@@ -1,18 +1,25 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
-import { AppProviders } from '../../src/app/providers';
+import { AppProviders, createQueryClient, queryClient } from '../../src/app/providers';
 import type { AppClient } from '../../src/data/client';
 import { AppConsentGate } from '../../src/features/settings/AppConsentGate';
 import { CONSENT_VERSION, REQUIRED_CONSENTS } from '../../../extension/vc-model-settings/consent-logic.js';
 
+const APP_CONSENT_GATE_SRC = resolve(__dirname, '../../src/features/settings/AppConsentGate.tsx');
+const SETTINGS_CSS_SRC = resolve(__dirname, '../../src/features/settings/settings.css');
+
 describe('AppConsentGate', () => {
   beforeEach(() => {
     window.localStorage.clear();
+    queryClient.clear();
   });
 
   afterEach(() => {
     cleanup();
+    queryClient.clear();
     vi.restoreAllMocks();
   });
 
@@ -85,6 +92,116 @@ describe('AppConsentGate', () => {
     await waitFor(() => {
       expect(screen.getByTestId('protected-app-content')).toBeTruthy();
       expect(screen.queryByText('开始之前')).toBeNull();
+    });
+  });
+
+  it('loads standalone consent styles and handles uncontrolled reauth overlay with parent inert', async () => {
+    const gateSrc = readFileSync(APP_CONSENT_GATE_SRC, 'utf8');
+    const settingsCss = readFileSync(SETTINGS_CSS_SRC, 'utf8');
+    expect(gateSrc).toContain("import './settings.css'");
+    expect(settingsCss).toMatch(/#vc-consent,\s*\.vc-consent\s*\{[\s\S]*?position:\s*fixed/);
+    expect(settingsCss).toMatch(/\.vc-consent-scroll\s*\{[\s\S]*?overflow-y:\s*auto/);
+    expect(settingsCss).toMatch(/\[data-consent-accept\][\s\S]*?height:\s*50px/);
+    expect(settingsCss).toMatch(/\[data-consent-reauth\]\s*\{[\s\S]*?position:\s*absolute/);
+
+    const records: {
+      consentType: string;
+      version: string;
+      granted: boolean;
+      grantedAt: string;
+    }[] = [];
+    let requireReauth = true;
+    let reauthAttempt = 0;
+
+    const listConsents = vi.fn(async () => [...records]);
+    const recordConsent = vi.fn(
+      async (body: { consentType: string; version: string; granted: boolean }) => {
+        if (requireReauth) {
+          throw Object.assign(new Error('需要重新验证身份'), {
+            status: 403,
+            code: 'RECENT_REAUTH_REQUIRED',
+          });
+        }
+        const entry = {
+          consentType: body.consentType,
+          version: body.version,
+          granted: body.granted,
+          grantedAt: '2026-11-04T09:05:00Z',
+        };
+        records.push(entry);
+        return entry;
+      },
+    );
+    const reauth = vi.fn(async (_pwd: string) => {
+      reauthAttempt += 1;
+      if (reauthAttempt === 1) {
+        throw new Error('密码错误');
+      }
+      requireReauth = false;
+      return { ok: true };
+    });
+
+    const client = {
+      go: {
+        captureSessionContext: vi.fn(async () => ({ accountId: '1', userId: 'u-1', sessionId: 's-1' })),
+        listConsents,
+        recordConsent,
+        reauth,
+        logoutCurrent: vi.fn(async () => ({ ok: true })),
+      },
+    } as unknown as AppClient;
+
+    render(
+      <AppProviders client={client}>
+        <AppConsentGate>
+          <div data-testid="protected-app-content">Protected App Workspace</div>
+        </AppConsentGate>
+      </AppProviders>,
+    );
+
+    expect(await screen.findByText('开始之前')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: '同意并继续' }));
+
+    await waitFor(() => {
+      const reauthForm = document.querySelector<HTMLFormElement>('[data-consent-reauth]');
+      expect(reauthForm?.hidden).toBe(false);
+    });
+
+    const scrollEl = document.querySelector('.vc-consent-scroll');
+    const barEl = document.querySelector('.vc-consent-bar');
+    expect(scrollEl?.hasAttribute('inert')).toBe(true);
+    expect(barEl?.hasAttribute('inert')).toBe(true);
+
+    // Uncontrolled password input: typing does not write secret to static value attribute, and failure clears it
+    let pwdInput = document.querySelector<HTMLInputElement>('[data-consent-reauth-password]')!;
+    pwdInput.value = 'wrong-pass';
+    expect(pwdInput.getAttribute('value')).toBeNull();
+    fireEvent.submit(document.querySelector<HTMLFormElement>('[data-consent-reauth]')!);
+
+    await waitFor(() => {
+      expect(reauth).toHaveBeenCalledTimes(1);
+    });
+    pwdInput = document.querySelector<HTMLInputElement>('[data-consent-reauth-password]')!;
+    expect(pwdInput.value).toBe('');
+
+    // Cancel clears error and closes reauth layer
+    fireEvent.click(document.querySelector<HTMLElement>('[data-consent-reauth-cancel]')!);
+    expect(document.querySelector<HTMLFormElement>('[data-consent-reauth]')?.hidden).toBe(true);
+    expect(scrollEl?.hasAttribute('inert')).toBe(false);
+
+    // Re-trigger and succeed
+    fireEvent.click(screen.getByRole('button', { name: '同意并继续' }));
+    await waitFor(() => {
+      expect(document.querySelector<HTMLFormElement>('[data-consent-reauth]')?.hidden).toBe(false);
+    });
+    pwdInput = document.querySelector<HTMLInputElement>('[data-consent-reauth-password]')!;
+    pwdInput.value = 'correct-pass';
+    fireEvent.submit(document.querySelector<HTMLFormElement>('[data-consent-reauth]')!);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('protected-app-content')).toBeTruthy();
+      expect(document.querySelector('#vc-consent')).toBeNull();
     });
   });
 });

@@ -1,7 +1,8 @@
-import React, { type ReactNode, useCallback, useMemo, useRef, useState } from 'react';
+import React, { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Dialog } from '@base-ui/react/dialog';
 import { Collapsible } from '@base-ui/react/collapsible';
 import { Button } from '@base-ui/react/button';
+import './settings.css';
 import {
   CONSENT_ERROR_COPY,
   REQUIRED_CONSENTS,
@@ -37,10 +38,16 @@ export function AppConsentGate({ children }: AppConsentGateProps) {
   const [error, setError] = useState('');
   const [reauthOpen, setReauthOpen] = useState(false);
   const [reauthError, setReauthError] = useState('');
-  const [reauthPassword, setReauthPassword] = useState('');
   const [resetCounter, setResetCounter] = useState(0);
 
   const titleRef = useRef<HTMLHeadingElement>(null);
+  const reauthInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (reauthOpen) {
+      reauthInputRef.current?.focus();
+    }
+  }, [reauthOpen, resetCounter]);
 
   const records = useMemo(
     () => (Array.isArray(consentsQuery.data) ? consentsQuery.data : []),
@@ -63,10 +70,9 @@ export function AppConsentGate({ children }: AppConsentGateProps) {
       });
       if (!res.ok) {
         if (res.reauth || isReauthError(res.error)) {
-          setReauthOpen(true);
           setReauthError('');
-          setReauthPassword('');
           setResetCounter((c) => c + 1);
+          setReauthOpen(true);
         } else {
           setError(res.error?.message || res.errorCopy || CONSENT_ERROR_COPY);
         }
@@ -75,10 +81,9 @@ export function AppConsentGate({ children }: AppConsentGateProps) {
       await consentsQuery.refetch();
     } catch (err: any) {
       if (isReauthError(err)) {
-        setReauthOpen(true);
         setReauthError('');
-        setReauthPassword('');
         setResetCounter((c) => c + 1);
+        setReauthOpen(true);
       } else {
         setError(err?.message || CONSENT_ERROR_COPY);
       }
@@ -99,15 +104,21 @@ export function AppConsentGate({ children }: AppConsentGateProps) {
     async (e: React.FormEvent<HTMLFormElement>) => {
       e.preventDefault();
       if (busy) return;
-      if (!reauthPassword) {
+      const form = e.currentTarget;
+      const input = form.querySelector<HTMLInputElement>('[data-consent-reauth-password]');
+      const password = input?.value ?? '';
+      if (input) {
+        input.value = '';
+      }
+      setResetCounter((c) => c + 1);
+      if (!password) {
         setReauthError('请输入当前密码。');
         return;
       }
       setBusy(true);
       setReauthError('');
       try {
-        await client.go.reauth(reauthPassword);
-        setReauthPassword('');
+        await client.go.reauth(password);
         setReauthOpen(false);
         setResetCounter((c) => c + 1);
         const res: any = await submitConsentGrants({
@@ -120,22 +131,24 @@ export function AppConsentGate({ children }: AppConsentGateProps) {
         }
         await consentsQuery.refetch();
       } catch (err: any) {
-        setReauthPassword('');
         setResetCounter((c) => c + 1);
         setReauthError(err?.message || '验证失败，请重试。');
       } finally {
         setBusy(false);
       }
     },
-    [busy, reauthPassword, client.go, recordConsentMutation, consentsQuery],
+    [busy, client.go, recordConsentMutation, consentsQuery],
   );
 
   const handleCancelReauth = useCallback(() => {
+    if (busy) return;
+    if (reauthInputRef.current) {
+      reauthInputRef.current.value = '';
+    }
     setReauthOpen(false);
     setReauthError('');
-    setReauthPassword('');
     setResetCounter((c) => c + 1);
-  }, []);
+  }, [busy]);
 
   if (consentsQuery.isLoading) {
     return null;
@@ -232,12 +245,11 @@ export function AppConsentGate({ children }: AppConsentGateProps) {
             <label>
               当前密码
               <input
+                ref={reauthInputRef}
                 key={resetCounter}
                 type="password"
                 autoComplete="current-password"
                 data-consent-reauth-password=""
-                value={reauthPassword}
-                onChange={(e) => setReauthPassword(e.target.value)}
               />
             </label>
             <p
