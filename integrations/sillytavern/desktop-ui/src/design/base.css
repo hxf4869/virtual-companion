@@ -1,0 +1,86 @@
+@layer reset, tokens, base, components, features, utilities;
+@import url('./tokens.css') layer(tokens);
+
+@layer reset {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+
+  html,
+  body {
+    margin: 0;
+    padding: 0;
+    min-height: 100%;
+  }
+
+  button,
+  input,
+  select,
+  textarea {
+    font: inherit;
+    color: inherit;
+  }
+}
+
+@layer base {
+  html {
+    font-family: var(--vc-font-sans);
+    font-size: var(--vc-fs-body);
+    line-height: var(--vc-lh-body);
+    color: var(--vc-ink);
+    background-color: var(--vc-bg);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    color: var(--vc-ink);
+    background-color: var(--vc-bg);
+    overflow-x: hidden;
+  }
+
+  a {
+    color: var(--vc-accent-text);
+    text-decoration: none;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--vc-focus-ring);
+    outline-offset: 2px;
+  }
+
+  [hidden] {
+    display: none !important;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      /* reduced-motion: stop infinite animations */
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms;
+    }
+  }
+}
+
+@layer utilities {
+  .vc-sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .vc-tabular-nums {
+    font-variant-numeric: tabular-nums;
+  }
+}

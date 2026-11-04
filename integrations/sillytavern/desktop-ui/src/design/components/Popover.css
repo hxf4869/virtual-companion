@@ -1,0 +1,25 @@
+@layer components {
+  .vc-popover__positioner {
+    z-index: var(--vc-z-popover);
+  }
+
+  .vc-popover {
+    padding: var(--vc-s-4);
+    border: 1px solid var(--vc-line);
+    border-radius: var(--vc-r-lg);
+    background-color: var(--vc-glass-3);
+    backdrop-filter: var(--vc-blur-3);
+    -webkit-backdrop-filter: var(--vc-blur-3);
+    box-shadow: var(--vc-shadow-elevated), var(--vc-rim-3);
+    color: var(--vc-ink);
+    transition:
+      opacity var(--vc-dur-fast) var(--vc-ease),
+      transform var(--vc-dur-fast) var(--vc-spring);
+  }
+
+  .vc-popover[data-starting-style],
+  .vc-popover[data-ending-style] {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+}

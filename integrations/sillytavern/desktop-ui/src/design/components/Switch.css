@@ -1,0 +1,50 @@
+@layer components {
+  .vc-switch {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 44px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .vc-switch__track {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    width: 51px;
+    height: 31px;
+    padding: 2px;
+    border-radius: var(--vc-r-pill);
+    background-color: var(--vc-switch-off);
+    transition: background-color var(--vc-dur-fast) var(--vc-ease);
+  }
+
+  .vc-switch[data-checked] .vc-switch__track {
+    background-color: var(--vc-accent);
+  }
+
+  .vc-switch__thumb {
+    display: block;
+    width: 27px;
+    height: 27px;
+    border-radius: var(--vc-r-pill);
+    background-color: var(--vc-on-accent);
+    box-shadow: var(--vc-shadow-segment);
+    transform: translateX(0);
+    transition: transform var(--vc-dur-fast) var(--vc-spring);
+  }
+
+  .vc-switch[data-checked] .vc-switch__thumb {
+    transform: translateX(20px);
+  }
+
+  .vc-switch[data-disabled] {
+    opacity: 0.48;
+    cursor: not-allowed;
+  }
+}

@@ -1,0 +1,72 @@
+@layer components {
+  .vc-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--vc-s-2);
+    height: var(--vc-hit);
+    padding: 0 var(--vc-s-4);
+    border: 0;
+    border-radius: var(--vc-r-sm);
+    font-family: var(--vc-font-sans);
+    font-size: var(--vc-fs-body);
+    font-weight: 500;
+    line-height: 1;
+    white-space: nowrap;
+    cursor: pointer;
+    user-select: none;
+    transition:
+      background-color var(--vc-dur-fast) var(--vc-ease),
+      color var(--vc-dur-fast) var(--vc-ease),
+      opacity var(--vc-dur-fast) var(--vc-ease);
+  }
+
+  .vc-btn--sm {
+    height: 30px;
+    padding: 0 var(--vc-s-3);
+    font-size: var(--vc-fs-sub);
+    border-radius: var(--vc-r-xs);
+  }
+
+  .vc-btn--filled {
+    background-color: var(--vc-accent);
+    color: var(--vc-on-accent);
+  }
+
+  .vc-btn--filled:hover:not(:disabled) {
+    opacity: 0.92;
+  }
+
+  .vc-btn--gray {
+    background-color: var(--vc-raised);
+    color: var(--vc-ink);
+  }
+
+  .vc-btn--gray:hover:not(:disabled) {
+    background-color: var(--vc-active);
+  }
+
+  .vc-btn--danger {
+    background-color: var(--vc-danger-fill);
+    color: var(--vc-danger-text);
+  }
+
+  .vc-btn--danger:hover:not(:disabled) {
+    opacity: 0.88;
+  }
+
+  .vc-btn--text {
+    background-color: transparent;
+    color: var(--vc-accent-text);
+    padding: 0 var(--vc-s-2);
+  }
+
+  .vc-btn--text:hover:not(:disabled) {
+    background-color: var(--vc-hover);
+  }
+
+  .vc-btn:disabled {
+    opacity: 0.56;
+    cursor: not-allowed;
+  }
+}

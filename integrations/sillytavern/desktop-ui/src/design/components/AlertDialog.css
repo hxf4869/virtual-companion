@@ -1,0 +1,94 @@
+@layer components {
+  .vc-alert-dialog__backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: var(--vc-z-dialog);
+    background-color: var(--vc-backdrop);
+    transition: opacity var(--vc-dur-med) var(--vc-ease);
+  }
+
+  .vc-alert-dialog__backdrop[data-starting-style],
+  .vc-alert-dialog__backdrop[data-ending-style] {
+    opacity: 0;
+  }
+
+  .vc-alert-dialog {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    z-index: var(--vc-z-dialog);
+    width: min(360px, calc(100vw - 32px));
+    padding: 20px;
+    border: 1px solid var(--vc-line);
+    border-radius: var(--vc-r-xl);
+    background-color: var(--vc-glass-3);
+    backdrop-filter: var(--vc-blur-3);
+    -webkit-backdrop-filter: var(--vc-blur-3);
+    box-shadow: var(--vc-shadow-dialog), var(--vc-rim-3);
+    color: var(--vc-ink);
+    transform: translate(-50%, -50%);
+    transition:
+      opacity var(--vc-dur-fast) var(--vc-ease),
+      transform var(--vc-dur-fast) var(--vc-spring);
+  }
+
+  .vc-alert-dialog[data-starting-style],
+  .vc-alert-dialog[data-ending-style] {
+    opacity: 0;
+    transform: translate(-50%, -48%) scale(0.95);
+  }
+
+  .vc-alert-dialog__content {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--vc-s-3);
+  }
+
+  .vc-alert-dialog__icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 40px;
+    height: 40px;
+    border-radius: var(--vc-r-pill);
+    background-color: var(--vc-warn-fill);
+    color: var(--vc-warn);
+  }
+
+  .vc-alert-dialog__icon--danger {
+    background-color: var(--vc-danger-fill);
+    color: var(--vc-danger-text);
+  }
+
+  .vc-alert-dialog__text {
+    display: flex;
+    flex-direction: column;
+    gap: var(--vc-s-1);
+    min-width: 0;
+  }
+
+  .vc-alert-dialog__title {
+    margin: 0;
+    font-family: var(--vc-font-display);
+    font-size: var(--vc-fs-headline);
+    font-weight: 600;
+    line-height: var(--vc-lh-tight);
+    color: var(--vc-ink);
+  }
+
+  .vc-alert-dialog__description {
+    margin: 0;
+    font-size: var(--vc-fs-body);
+    line-height: var(--vc-lh-body);
+    color: var(--vc-ink-2);
+  }
+
+  .vc-alert-dialog__actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--vc-s-2);
+    margin-top: var(--vc-s-5);
+  }
+}

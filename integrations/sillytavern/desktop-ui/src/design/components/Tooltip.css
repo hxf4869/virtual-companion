@@ -1,0 +1,21 @@
+@layer components {
+  .vc-tooltip__positioner {
+    z-index: var(--vc-z-popover);
+  }
+
+  .vc-tooltip {
+    max-width: 240px;
+    padding: var(--vc-s-1) var(--vc-s-3);
+    border: 1px solid var(--vc-line);
+    border-radius: var(--vc-r-sm);
+    background-color: var(--vc-glass-3);
+    backdrop-filter: var(--vc-blur-3);
+    -webkit-backdrop-filter: var(--vc-blur-3);
+    box-shadow: var(--vc-shadow-card), var(--vc-rim-3);
+    color: var(--vc-ink);
+    font-family: var(--vc-font-sans);
+    font-size: var(--vc-fs-caption);
+    line-height: var(--vc-lh-ui);
+    pointer-events: none;
+  }
+}

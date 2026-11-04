@@ -1,49 +1,23 @@
 import { DEFAULT_THEME_ID, DESKTOP_THEMES, THEME_VARIANTS } from './themes/index.js';
+import {
+    THEME_PREF_EVENT,
+    THEME_PREF_KEY,
+    characterThemeKey,
+    readThemePreferences,
+    resolveTheme,
+    setCharacterThemePreference,
+    setGlobalThemePreference,
+} from '../theme-logic.js';
 
-export const THEME_PREF_KEY = 'vc-desktop-theme';
-export const THEME_PREF_EVENT = 'vc-desktop-theme-preference';
-
-// 只有这一处负责偏好存取；移动端 MB-2 确定同步契约后在这里接入服务器。
-export function readThemePreferences(storage = globalThis.localStorage) {
-    try {
-        const value = JSON.parse(storage?.getItem(THEME_PREF_KEY) || 'null');
-        return {
-            global: typeof value?.global === 'string' ? value.global : DEFAULT_THEME_ID,
-            characters: value?.characters && typeof value.characters === 'object' && !Array.isArray(value.characters)
-                ? Object.fromEntries(Object.entries(value.characters).filter(([, id]) => typeof id === 'string')) : {},
-        };
-    } catch { return { global: DEFAULT_THEME_ID, characters: {} }; }
-}
-
-function writePreferences(preferences, storage) {
-    storage?.setItem(THEME_PREF_KEY, JSON.stringify(preferences));
-    globalThis.dispatchEvent?.(new Event(THEME_PREF_EVENT));
-}
-
-export function setGlobalThemePreference(id, storage = globalThis.localStorage) {
-    const preferences = readThemePreferences(storage);
-    preferences.global = id;
-    writePreferences(preferences, storage);
-}
-
-export function setCharacterThemePreference(character, id, storage = globalThis.localStorage) {
-    if (!character) return;
-    const preferences = readThemePreferences(storage);
-    if (id) Object.defineProperty(preferences.characters, character, { value: id, enumerable: true, configurable: true, writable: true });
-    else delete preferences.characters[character];
-    writePreferences(preferences, storage);
-}
-
-export function resolveTheme({ global, character } = {}, registry = DESKTOP_THEMES) {
-    return registry.find(theme => theme.id === character)
-        || registry.find(theme => theme.id === global)
-        || registry.find(theme => theme.id === DEFAULT_THEME_ID);
-}
-
-export function characterThemeKey(context = {}) {
-    const card = context.characters?.[context.characterId];
-    return String(context.chatMetadata?.vc_binding?.characterRef || card?.data?.extensions?.vc_character_ref || card?.avatar || '');
-}
+export {
+    THEME_PREF_EVENT,
+    THEME_PREF_KEY,
+    characterThemeKey,
+    readThemePreferences,
+    resolveTheme,
+    setCharacterThemePreference,
+    setGlobalThemePreference,
+};
 
 // 极光随 base.css 同步加载，首屏与旧版一致。其他主题加载完成后才一次性切换，失败保留当前主题。
 export function mountDesktopTheme({ shell, getContext = () => ({}), document: doc = globalThis.document,

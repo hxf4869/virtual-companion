@@ -1,0 +1,33 @@
+@layer components {
+  .vc-icon-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    border: 0;
+    border-radius: var(--vc-r-pill);
+    background-color: var(--vc-raised);
+    color: var(--vc-ink);
+    cursor: pointer;
+    transition:
+      background-color var(--vc-dur-fast) var(--vc-ease),
+      color var(--vc-dur-fast) var(--vc-ease);
+  }
+
+  .vc-icon-button:hover:not(:disabled) {
+    background-color: var(--vc-active);
+  }
+
+  .vc-icon-button--active {
+    background-color: var(--vc-accent-fill);
+    color: var(--vc-accent-text);
+  }
+
+  .vc-icon-button:disabled {
+    opacity: 0.48;
+    cursor: not-allowed;
+  }
+}

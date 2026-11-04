@@ -1,0 +1,22 @@
+@layer components {
+  @keyframes vc-spinner-rotate {
+    from {
+      transform: rotate(0deg);
+    }
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  .vc-spinner {
+    display: inline-block;
+    flex-shrink: 0;
+    vertical-align: middle;
+    color: currentColor;
+    animation: vc-spinner-rotate 0.8s linear infinite;
+  }
+
+  .vc-spinner__track {
+    opacity: 0.24;
+  }
+}

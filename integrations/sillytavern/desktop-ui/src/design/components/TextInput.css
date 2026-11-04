@@ -1,0 +1,45 @@
+@layer components {
+  .vc-text-input {
+    display: block;
+    width: 100%;
+    max-width: 360px;
+    height: var(--vc-hit);
+    padding: 0 var(--vc-s-3);
+    border: 1px solid var(--vc-line);
+    border-radius: var(--vc-r-sm);
+    background-color: var(--vc-raised);
+    color: var(--vc-ink);
+    font-family: var(--vc-font-sans);
+    font-size: var(--vc-fs-body);
+    line-height: var(--vc-lh-ui);
+    transition:
+      border-color var(--vc-dur-fast) var(--vc-ease),
+      box-shadow var(--vc-dur-fast) var(--vc-ease),
+      background-color var(--vc-dur-fast) var(--vc-ease);
+  }
+
+  .vc-text-input--number {
+    max-width: 160px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .vc-text-input::placeholder {
+    color: var(--vc-placeholder);
+  }
+
+  .vc-text-input:focus {
+    outline: none;
+    border-color: var(--vc-accent);
+    box-shadow: 0 0 0 3px var(--vc-focus-ring);
+  }
+
+  .vc-text-input[data-invalid],
+  .vc-text-input[aria-invalid="true"] {
+    border-color: var(--vc-danger);
+  }
+
+  .vc-text-input:disabled {
+    opacity: 0.56;
+    cursor: not-allowed;
+  }
+}

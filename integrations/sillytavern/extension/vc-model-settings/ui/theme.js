@@ -1,59 +1,36 @@
 // 明暗模式、body.vc-ui 开关，以及把 theme-color 写回当前明暗。
 import { bindViewport } from './viewport.js';
 import { bindRangeFills } from './controls.js';
+import {
+    THEME_COLOR,
+    THEME_KEY,
+    UI_FLAG_KEY,
+    parseThemeMode,
+    readThemeMode,
+    readVcUiFlag,
+    resolveTheme,
+    themeColorFor,
+    writeThemeMode,
+    writeVcUiFlag,
+} from '../theme-logic.js';
 
-export const THEME_KEY = 'vc-theme';
-export const UI_FLAG_KEY = 'vc-ui';
-export const THEME_COLOR = { light: '#f5f5f7', dark: '#000000' };
+export {
+    THEME_COLOR,
+    THEME_KEY,
+    UI_FLAG_KEY,
+    parseThemeMode,
+    readThemeMode,
+    readVcUiFlag,
+    resolveTheme,
+    themeColorFor,
+    writeThemeMode,
+    writeVcUiFlag,
+};
 
 let watching = false;
 let attrObserver = null;
 let headObserver = null;
 let observedMeta = null;
-
-export function parseThemeMode(value) {
-    return value === 'light' || value === 'dark' || value === 'auto' ? value : 'auto';
-}
-
-export function readThemeMode(storage) {
-    try {
-        const store = storage ?? globalThis.localStorage;
-        return parseThemeMode(store?.getItem?.(THEME_KEY));
-    } catch {
-        return 'auto';
-    }
-}
-
-export function writeThemeMode(mode, storage) {
-    const parsed = parseThemeMode(mode);
-    try {
-        const store = storage ?? globalThis.localStorage;
-        store.setItem(THEME_KEY, parsed);
-    } catch {
-        /* 存储不可用时仍返回解析结果，调用方继续应用。 */
-    }
-    return parsed;
-}
-
-export function readVcUiFlag(storage) {
-    try {
-        const store = storage ?? globalThis.localStorage;
-        return store?.getItem?.(UI_FLAG_KEY) !== 'off';
-    } catch {
-        return true;
-    }
-}
-
-export function writeVcUiFlag(value, storage) {
-    const flag = value === 'off' || value === false ? 'off' : 'on';
-    try {
-        const store = storage ?? globalThis.localStorage;
-        store?.setItem?.(UI_FLAG_KEY, flag);
-    } catch {
-        /* 存储不可用时不抛出；调用方仍按传入值理解开关。 */
-    }
-    return flag;
-}
 
 export function prefersDark(win = globalThis) {
     try {
@@ -61,15 +38,6 @@ export function prefersDark(win = globalThis) {
     } catch {
         return false;
     }
-}
-
-export function resolveTheme(mode, dark) {
-    if (mode === 'light' || mode === 'dark') return mode;
-    return dark ? 'dark' : 'light';
-}
-
-export function themeColorFor(scheme) {
-    return scheme === 'dark' ? THEME_COLOR.dark : THEME_COLOR.light;
 }
 
 export function currentScheme(doc = globalThis.document, win = globalThis) {

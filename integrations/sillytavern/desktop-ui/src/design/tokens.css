@@ -1,0 +1,308 @@
+/* Virtual Companion Desktop — Design Tokens (Light / Dark / Reduced Transparency) */
+
+:root,
+html[data-vc-theme="light"] {
+  color-scheme: light;
+
+  /* Canvas & Surfaces */
+  --vc-bg: #FBFAFC;
+  --vc-canvas: #FBFAFC;
+  --vc-card: rgba(255, 255, 255, 0.72);
+  --vc-raised: rgba(0, 0, 0, 0.045);
+  --vc-hover: rgba(0, 0, 0, 0.04);
+  --vc-active: rgba(0, 0, 0, 0.075);
+  --vc-backdrop: rgba(15, 15, 20, 0.32);
+
+  /* Liquid Glass L1 / L2 / L3 */
+  --vc-glass-1: rgba(255, 255, 255, 0.56);
+  --vc-glass-2: rgba(255, 255, 255, 0.72);
+  --vc-glass-3: rgba(255, 255, 255, 0.86);
+  --vc-glass-opaque: #FBFAFC;
+  --vc-blur-1: blur(20px) saturate(160%);
+  --vc-blur-2: blur(28px) saturate(180%);
+  --vc-blur-3: blur(40px) saturate(200%);
+  --vc-rim-1: inset 0 1px 0 rgba(255, 255, 255, 0.65);
+  --vc-rim-2: inset 0 1px 0 rgba(255, 255, 255, 0.78);
+  --vc-rim-3: inset 0 1px 0 rgba(255, 255, 255, 0.90);
+
+  /* Ink & Text Hierarchy */
+  --vc-ink: #1d1d1f;
+  --vc-ink-2: #55555a;
+  --vc-ink-3: #aeaeb2;
+  --vc-placeholder: #68686c;
+
+  /* Hairlines & Dividers */
+  --vc-line: rgba(0, 0, 0, 0.07);
+  --vc-line-strong: rgba(0, 0, 0, 0.14);
+
+  /* Brand & Semantic Colors */
+  --vc-accent: #0071e3;
+  --vc-accent-text: #0066cc;
+  --vc-on-accent: #ffffff;
+  --vc-accent-fill: rgba(0, 113, 227, 0.12);
+  --vc-focus-ring: rgba(0, 113, 227, 0.28);
+
+  --vc-ok: #1d8348;
+  --vc-ok-fill: rgba(40, 180, 99, 0.14);
+  --vc-warn: #b45309;
+  --vc-warn-fill: rgba(245, 158, 11, 0.14);
+  --vc-danger: #d70015;
+  --vc-danger-fill: rgba(215, 0, 21, 0.10);
+  --vc-danger-text: #d70015;
+
+  /* Controls & Interactive Surfaces */
+  --vc-segment-fill: rgba(118, 118, 128, 0.12);
+  --vc-seg-thumb: #ffffff;
+  --vc-switch-off: rgba(120, 120, 128, 0.24);
+  --vc-slider-track: rgba(120, 120, 128, 0.20);
+  --vc-badge-fill: rgba(0, 113, 227, 0.12);
+
+  /* Chat & Companion Surfaces */
+  --vc-bubble-ai: rgba(255, 255, 255, 0.72);
+  --vc-bubble-me: rgba(0, 113, 227, 0.12);
+  --vc-bubble-me-ink: #1d1d1f;
+  --vc-quote-bar: rgba(0, 113, 227, 0.45);
+  --vc-narrator-ink: #55555a;
+  --vc-thought-bg: rgba(0, 0, 0, 0.03);
+  --vc-code-bg: rgba(245, 245, 248, 0.85);
+  --vc-code-header: rgba(0, 0, 0, 0.035);
+  --vc-lightbox-bg: rgba(12, 12, 16, 0.78);
+
+  /* Ambient & Aurora */
+  --vc-ambient: 255, 150, 120;
+  --vc-aurora-alpha: 0.42;
+  --vc-aurora-reduced-alpha: 0.20;
+  --vc-aurora-blur: 100px;
+  --vc-aurora-blend: normal;
+  --vc-aurora-drift-s: 36s;
+  --vc-aurora-hue-shift: 0deg;
+  --vc-aurora-light-shift: 1;
+  --vc-avatar-glow: 0 0 24px rgba(var(--vc-ambient), 0.38);
+
+  /* Typography */
+  --vc-font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif;
+  --vc-font-display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "PingFang SC", system-ui, sans-serif;
+  --vc-font-serif: "Songti SC", "STSong", "Noto Serif CJK SC", "Source Han Serif SC", Georgia, serif;
+  --vc-font-mono: "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+
+  --vc-fs-caption: 12px;
+  --vc-fs-sub: 13px;
+  --vc-fs-body: calc(15px * var(--fontScale, 1));
+  --vc-fs-headline: 17px;
+  --vc-fs-title-2: 20px;
+  --vc-fs-title: 22px;
+  --vc-fs-title-1: 28px;
+  --vc-fs-hero: 28px;
+
+  --vc-lh-tight: 1.25;
+  --vc-lh-title: 1.2;
+  --vc-lh-title-1: var(--vc-lh-title);
+  --vc-lh-ui: 1.38;
+  --vc-lh-body: 1.47;
+  --vc-lh-chat: 1.55;
+  --vc-lh-story: 1.65;
+
+  /* Spacing & Layout */
+  --vc-s-1: 4px;
+  --vc-s-2: 8px;
+  --vc-s-3: 12px;
+  --vc-s-4: 16px;
+  --vc-s-5: 20px;
+  --vc-s-6: 24px;
+  --vc-s-8: 32px;
+  --vc-s-10: 40px;
+
+  --vc-hit: 36px;
+  --vc-rail-w: 220px;
+  --vc-rail-icon-w: 64px;
+  --vc-conv-w: 280px;
+  --vc-inspector-w: 320px;
+  --vc-read: 68ch;
+  --vc-chat-max: 760px;
+  --vc-settings-max: 760px;
+  --vc-grid-max: 1120px;
+
+  /* Radii */
+  --vc-r-xs: 6px;
+  --vc-r-sm: 10px;
+  --vc-r-md: 12px;
+  --vc-r-lg: 16px;
+  --vc-r-xl: 20px;
+  --vc-r-2xl: 24px;
+  --vc-r-pill: 999px;
+
+  /* Shadows */
+  --vc-shadow-card: 0 2px 12px rgba(15, 15, 25, 0.04), 0 0.5px 0 rgba(15, 15, 25, 0.06);
+  --vc-shadow-elevated: 0 12px 36px rgba(15, 15, 25, 0.12), 0 2px 8px rgba(15, 15, 25, 0.06);
+  --vc-shadow-dialog: 0 24px 64px rgba(10, 10, 20, 0.22), 0 4px 16px rgba(10, 10, 20, 0.08);
+  --vc-shadow-segment: 0 1px 3px rgba(0, 0, 0, 0.12), 0 0.5px 1px rgba(0, 0, 0, 0.08);
+
+  /* Motion & Easing */
+  --vc-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --vc-spring: cubic-bezier(0.32, 0.72, 0, 1);
+  --vc-dur-fast: 140ms;
+  --vc-dur-med: 220ms;
+  --vc-dur-slow: 320ms;
+
+  /* Z-Index Scale */
+  --vc-z-shell: 10;
+  --vc-z-sticky: 20;
+  --vc-z-drawer: 40;
+  --vc-z-popover: 60;
+  --vc-z-dialog: 80;
+  --vc-z-toast: 90;
+  --vc-z-lightbox: 100;
+}
+
+html[data-vc-theme="dark"] {
+  color-scheme: dark;
+
+  --vc-bg: #0D0D10;
+  --vc-canvas: #0D0D10;
+  --vc-card: rgba(34, 34, 38, 0.76);
+  --vc-raised: rgba(255, 255, 255, 0.075);
+  --vc-hover: rgba(255, 255, 255, 0.06);
+  --vc-active: rgba(255, 255, 255, 0.11);
+  --vc-backdrop: rgba(0, 0, 0, 0.56);
+
+  --vc-glass-1: rgba(28, 28, 32, 0.62);
+  --vc-glass-2: rgba(34, 34, 38, 0.76);
+  --vc-glass-3: rgba(44, 44, 48, 0.86);
+  --vc-glass-opaque: #1C1C20;
+  --vc-rim-1: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  --vc-rim-2: inset 0 1px 0 rgba(255, 255, 255, 0.11);
+  --vc-rim-3: inset 0 1px 0 rgba(255, 255, 255, 0.14);
+
+  --vc-ink: #f5f5f7;
+  --vc-ink-2: #b2b2b7;
+  --vc-ink-3: #636366;
+  --vc-placeholder: #98989d;
+
+  --vc-line: rgba(255, 255, 255, 0.08);
+  --vc-line-strong: rgba(255, 255, 255, 0.16);
+
+  --vc-accent: #0071e3;
+  --vc-accent-text: #2997ff;
+  --vc-on-accent: #ffffff;
+  --vc-accent-fill: rgba(41, 151, 255, 0.18);
+  --vc-focus-ring: rgba(41, 151, 255, 0.36);
+
+  --vc-ok: #30d158;
+  --vc-ok-fill: rgba(48, 209, 88, 0.18);
+  --vc-warn: #ff9f0a;
+  --vc-warn-fill: rgba(255, 159, 10, 0.18);
+  --vc-danger: #ff453a;
+  --vc-danger-fill: rgba(255, 69, 58, 0.16);
+  --vc-danger-text: #ff453a;
+
+  --vc-segment-fill: rgba(118, 118, 128, 0.24);
+  --vc-seg-thumb: rgba(99, 99, 102, 0.68);
+  --vc-switch-off: rgba(120, 120, 128, 0.36);
+  --vc-slider-track: rgba(120, 120, 128, 0.32);
+  --vc-badge-fill: rgba(41, 151, 255, 0.20);
+
+  --vc-bubble-ai: rgba(34, 34, 38, 0.76);
+  --vc-bubble-me: rgba(41, 151, 255, 0.22);
+  --vc-bubble-me-ink: #f5f5f7;
+  --vc-quote-bar: rgba(41, 151, 255, 0.55);
+  --vc-narrator-ink: #b2b2b7;
+  --vc-thought-bg: rgba(255, 255, 255, 0.04);
+  --vc-code-bg: rgba(20, 20, 24, 0.88);
+  --vc-code-header: rgba(255, 255, 255, 0.05);
+  --vc-lightbox-bg: rgba(6, 6, 8, 0.86);
+
+  --vc-aurora-alpha: 0.30;
+  --vc-aurora-reduced-alpha: 0.14;
+  --vc-aurora-blend: screen;
+
+  --vc-shadow-card: 0 4px 16px rgba(0, 0, 0, 0.32), 0 0.5px 0 rgba(255, 255, 255, 0.06);
+  --vc-shadow-elevated: 0 16px 40px rgba(0, 0, 0, 0.48), 0 2px 10px rgba(0, 0, 0, 0.32);
+  --vc-shadow-dialog: 0 28px 72px rgba(0, 0, 0, 0.62), 0 6px 20px rgba(0, 0, 0, 0.40);
+}
+
+@media (prefers-color-scheme: dark) {
+  html:not([data-vc-theme="light"]) {
+    color-scheme: dark;
+
+    --vc-bg: #0D0D10;
+    --vc-canvas: #0D0D10;
+    --vc-card: rgba(34, 34, 38, 0.76);
+    --vc-raised: rgba(255, 255, 255, 0.075);
+    --vc-hover: rgba(255, 255, 255, 0.06);
+    --vc-active: rgba(255, 255, 255, 0.11);
+    --vc-backdrop: rgba(0, 0, 0, 0.56);
+
+    --vc-glass-1: rgba(28, 28, 32, 0.62);
+    --vc-glass-2: rgba(34, 34, 38, 0.76);
+    --vc-glass-3: rgba(44, 44, 48, 0.86);
+    --vc-glass-opaque: #1C1C20;
+    --vc-rim-1: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    --vc-rim-2: inset 0 1px 0 rgba(255, 255, 255, 0.11);
+    --vc-rim-3: inset 0 1px 0 rgba(255, 255, 255, 0.14);
+
+    --vc-ink: #f5f5f7;
+    --vc-ink-2: #b2b2b7;
+    --vc-ink-3: #636366;
+    --vc-placeholder: #98989d;
+
+    --vc-line: rgba(255, 255, 255, 0.08);
+    --vc-line-strong: rgba(255, 255, 255, 0.16);
+
+    --vc-accent: #0071e3;
+    --vc-accent-text: #2997ff;
+    --vc-on-accent: #ffffff;
+    --vc-accent-fill: rgba(41, 151, 255, 0.18);
+    --vc-focus-ring: rgba(41, 151, 255, 0.36);
+
+    --vc-ok: #30d158;
+    --vc-ok-fill: rgba(48, 209, 88, 0.18);
+    --vc-warn: #ff9f0a;
+    --vc-warn-fill: rgba(255, 159, 10, 0.18);
+    --vc-danger: #ff453a;
+    --vc-danger-fill: rgba(255, 69, 58, 0.16);
+    --vc-danger-text: #ff453a;
+
+    --vc-segment-fill: rgba(118, 118, 128, 0.24);
+    --vc-seg-thumb: rgba(99, 99, 102, 0.68);
+    --vc-switch-off: rgba(120, 120, 128, 0.36);
+    --vc-slider-track: rgba(120, 120, 128, 0.32);
+    --vc-badge-fill: rgba(41, 151, 255, 0.20);
+
+    --vc-bubble-ai: rgba(34, 34, 38, 0.76);
+    --vc-bubble-me: rgba(41, 151, 255, 0.22);
+    --vc-bubble-me-ink: #f5f5f7;
+    --vc-quote-bar: rgba(41, 151, 255, 0.55);
+    --vc-narrator-ink: #b2b2b7;
+    --vc-thought-bg: rgba(255, 255, 255, 0.04);
+    --vc-code-bg: rgba(20, 20, 24, 0.88);
+    --vc-code-header: rgba(255, 255, 255, 0.05);
+    --vc-lightbox-bg: rgba(6, 6, 8, 0.86);
+
+    --vc-aurora-alpha: 0.30;
+    --vc-aurora-reduced-alpha: 0.14;
+    --vc-aurora-blend: screen;
+
+    --vc-shadow-card: 0 4px 16px rgba(0, 0, 0, 0.32), 0 0.5px 0 rgba(255, 255, 255, 0.06);
+    --vc-shadow-elevated: 0 16px 40px rgba(0, 0, 0, 0.48), 0 2px 10px rgba(0, 0, 0, 0.32);
+    --vc-shadow-dialog: 0 28px 72px rgba(0, 0, 0, 0.62), 0 6px 20px rgba(0, 0, 0, 0.40);
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  :root,
+  html[data-vc-theme="light"],
+  html[data-vc-theme="dark"] {
+    --vc-glass-1: var(--vc-glass-opaque);
+    --vc-glass-2: var(--vc-glass-opaque);
+    --vc-glass-3: var(--vc-glass-opaque);
+    --vc-aurora-alpha: var(--vc-aurora-reduced-alpha);
+  }
+}
+
+html[data-vc-reduced-transparency="reduce"],
+html[data-vc-reduced-transparency="true"] {
+  --vc-glass-1: var(--vc-glass-opaque);
+  --vc-glass-2: var(--vc-glass-opaque);
+  --vc-glass-3: var(--vc-glass-opaque);
+  --vc-aurora-alpha: var(--vc-aurora-reduced-alpha);
+}

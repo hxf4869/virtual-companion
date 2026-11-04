@@ -1,0 +1,89 @@
+@layer components {
+  .vc-select {
+    display: inline-flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--vc-s-2);
+    min-width: 160px;
+    max-width: 240px;
+    height: var(--vc-hit);
+    padding: 0 var(--vc-s-3);
+    border: 1px solid var(--vc-line);
+    border-radius: var(--vc-r-sm);
+    background-color: var(--vc-raised);
+    color: var(--vc-ink);
+    font-family: var(--vc-font-sans);
+    font-size: var(--vc-fs-body);
+    line-height: 1;
+    cursor: pointer;
+    transition:
+      border-color var(--vc-dur-fast) var(--vc-ease),
+      background-color var(--vc-dur-fast) var(--vc-ease);
+  }
+
+  .vc-select:hover:not([data-disabled]) {
+    background-color: var(--vc-active);
+  }
+
+  .vc-select__value {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .vc-select__icon {
+    display: inline-flex;
+    align-items: center;
+    color: var(--vc-ink-2);
+  }
+
+  .vc-select__positioner {
+    z-index: var(--vc-z-popover);
+  }
+
+  .vc-select__popup {
+    min-width: 180px;
+    padding: var(--vc-s-1);
+    border: 1px solid var(--vc-line);
+    border-radius: 14px;
+    background-color: var(--vc-glass-3);
+    backdrop-filter: var(--vc-blur-3);
+    -webkit-backdrop-filter: var(--vc-blur-3);
+    box-shadow: var(--vc-shadow-elevated), var(--vc-rim-3);
+    color: var(--vc-ink);
+  }
+
+  .vc-select__list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    max-height: 280px;
+    overflow-y: auto;
+  }
+
+  .vc-select__item {
+    display: flex;
+    align-items: center;
+    gap: var(--vc-s-2);
+    height: 36px;
+    padding: 0 var(--vc-s-3);
+    border-radius: var(--vc-r-sm);
+    font-size: var(--vc-fs-body);
+    color: var(--vc-ink);
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .vc-select__item[data-highlighted] {
+    background-color: var(--vc-hover);
+    outline: none;
+  }
+
+  .vc-select__item-indicator {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    color: var(--vc-accent-text);
+  }
+}

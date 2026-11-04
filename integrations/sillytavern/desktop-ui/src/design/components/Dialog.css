@@ -1,0 +1,87 @@
+@layer components {
+  .vc-dialog__backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: var(--vc-z-dialog);
+    background-color: var(--vc-backdrop);
+    transition: opacity var(--vc-dur-med) var(--vc-ease);
+  }
+
+  .vc-dialog__backdrop[data-starting-style],
+  .vc-dialog__backdrop[data-ending-style] {
+    opacity: 0;
+  }
+
+  .vc-dialog {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    z-index: var(--vc-z-dialog);
+    display: flex;
+    flex-direction: column;
+    max-height: calc(100vh - 48px);
+    border: 1px solid var(--vc-line);
+    border-radius: var(--vc-r-2xl);
+    background-color: var(--vc-glass-3);
+    backdrop-filter: var(--vc-blur-3);
+    -webkit-backdrop-filter: var(--vc-blur-3);
+    box-shadow: var(--vc-shadow-dialog), var(--vc-rim-3);
+    color: var(--vc-ink);
+    transform: translate(-50%, -50%);
+    transition:
+      opacity var(--vc-dur-med) var(--vc-ease),
+      transform var(--vc-dur-med) var(--vc-spring);
+  }
+
+  .vc-dialog[data-starting-style],
+  .vc-dialog[data-ending-style] {
+    opacity: 0;
+    transform: translate(-50%, -48%) scale(0.96);
+  }
+
+  .vc-dialog__header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--vc-s-4);
+    padding: var(--vc-s-5) var(--vc-s-6) var(--vc-s-3);
+  }
+
+  .vc-dialog__titles {
+    display: flex;
+    flex-direction: column;
+    gap: var(--vc-s-1);
+    min-width: 0;
+  }
+
+  .vc-dialog__title {
+    margin: 0;
+    font-family: var(--vc-font-display);
+    font-size: var(--vc-fs-title-2);
+    font-weight: 600;
+    line-height: var(--vc-lh-tight);
+    color: var(--vc-ink);
+  }
+
+  .vc-dialog__description {
+    margin: 0;
+    font-size: var(--vc-fs-sub);
+    line-height: var(--vc-lh-ui);
+    color: var(--vc-ink-2);
+  }
+
+  .vc-dialog__body {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    padding: var(--vc-s-2) var(--vc-s-6) var(--vc-s-5);
+  }
+
+  .vc-dialog__footer {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--vc-s-3);
+    padding: var(--vc-s-3) var(--vc-s-6) var(--vc-s-5);
+    border-top: 0.5px solid var(--vc-line);
+  }
+}

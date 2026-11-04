@@ -1,0 +1,38 @@
+@layer components {
+  .vc-textarea {
+    display: block;
+    width: 100%;
+    min-height: 80px;
+    padding: var(--vc-s-2) var(--vc-s-3);
+    border: 1px solid var(--vc-line);
+    border-radius: var(--vc-r-sm);
+    background-color: var(--vc-raised);
+    color: var(--vc-ink);
+    font-family: var(--vc-font-sans);
+    font-size: var(--vc-fs-body);
+    line-height: var(--vc-lh-body);
+    resize: vertical;
+    transition:
+      border-color var(--vc-dur-fast) var(--vc-ease),
+      box-shadow var(--vc-dur-fast) var(--vc-ease);
+  }
+
+  .vc-textarea::placeholder {
+    color: var(--vc-placeholder);
+  }
+
+  .vc-textarea:focus {
+    outline: none;
+    border-color: var(--vc-accent);
+    box-shadow: 0 0 0 3px var(--vc-focus-ring);
+  }
+
+  .vc-textarea[aria-invalid="true"] {
+    border-color: var(--vc-danger);
+  }
+
+  .vc-textarea:disabled {
+    opacity: 0.56;
+    cursor: not-allowed;
+  }
+}

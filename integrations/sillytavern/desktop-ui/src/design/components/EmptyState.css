@@ -1,0 +1,35 @@
+@layer components {
+  .vc-empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--vc-s-3);
+    padding: var(--vc-s-8) var(--vc-s-6);
+    text-align: center;
+  }
+
+  .vc-empty-state__icon-box {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 48px;
+    height: 48px;
+    border-radius: var(--vc-r-md);
+    background-color: var(--vc-raised);
+    color: var(--vc-ink-2);
+  }
+
+  .vc-empty-state__title {
+    margin: 0;
+    font-family: var(--vc-font-display);
+    font-size: var(--vc-fs-headline);
+    font-weight: 600;
+    line-height: var(--vc-lh-tight);
+    color: var(--vc-ink);
+  }
+
+  .vc-empty-state__action {
+    margin-top: var(--vc-s-1);
+  }
+}

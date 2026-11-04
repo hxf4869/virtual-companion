@@ -1,0 +1,30 @@
+@layer components {
+  .vc-scroll-area {
+    position: relative;
+    overflow: hidden;
+    width: 100%;
+    height: 100%;
+  }
+
+  .vc-scroll-area__viewport {
+    width: 100%;
+    height: 100%;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  .vc-scroll-area__scrollbar {
+    display: flex;
+    width: 6px;
+    padding: 2px 1px;
+    touch-action: none;
+    user-select: none;
+    transition: opacity var(--vc-dur-fast) var(--vc-ease);
+  }
+
+  .vc-scroll-area__thumb {
+    flex: 1;
+    border-radius: var(--vc-r-pill);
+    background-color: var(--vc-line-strong);
+  }
+}
