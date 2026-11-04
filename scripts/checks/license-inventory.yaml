@@ -30,6 +30,9 @@ integrationDirectDependencies:
   - name: "@base-ui/react"
     licenseFamily: MIT
     scope: runtime
+  - name: "@tanstack/react-query"
+    licenseFamily: MIT
+    scope: runtime
   - name: vite
     licenseFamily: MIT
     scope: dev
@@ -70,5 +73,8 @@ integrationDirectDependencies:
     licenseFamily: MIT
     scope: dev
   - name: "@testing-library/user-event"
+    licenseFamily: MIT
+    scope: dev
+  - name: es-module-lexer
     licenseFamily: MIT
     scope: dev

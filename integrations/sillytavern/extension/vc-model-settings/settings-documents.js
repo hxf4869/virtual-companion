@@ -87,8 +87,9 @@ export function createSettingsDocuments({ post }) {
             const url = kind === 'settings' ? '/api/settings/save' : kind === 'preset' ? '/api/presets/save' : '/api/worldinfo/edit';
             const response = await post(url, { ...(kind !== 'settings' ? { name } : {}), ...(kind === 'preset' ? { apiId } : {}), vc_changes: changes });
             if (!response.ok) {
+                const body = await response.clone().json().catch(() => null);
                 const error = new Error(response.status === 409 ? '配置已在另一处更新，你的修改尚未保存。' : '配置没有保存，请重试。');
-                error.status = response.status; error.code = (await response.clone().json().catch(() => ({}))).code;
+                error.status = response.status; error.code = body?.code; error.details = body?.details ?? body;
                 throw error;
             }
             state.raw = applyDocumentValues(state.raw, changes);
