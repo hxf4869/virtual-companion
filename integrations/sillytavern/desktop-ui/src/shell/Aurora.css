@@ -2,6 +2,8 @@
   .vc-desktop-aurora {
     position: fixed;
     inset: 0;
+    width: 100dvw;
+    height: 100dvh;
     z-index: var(--vc-z-backdrop);
     pointer-events: none;
     overflow: hidden;
@@ -11,9 +13,10 @@
     position: absolute;
     inset: 0;
     opacity: 1;
-    transition: opacity var(--vc-dur-aurora-change) var(--vc-ease-out);
+    transition: opacity var(--vc-dur-aurora-change) var(--vc-spring);
   }
 
+  .vc-aurora-set.is-entering,
   .vc-aurora-set.is-leaving {
     opacity: 0;
   }
@@ -22,30 +25,35 @@
     position: absolute;
     width: 60vmax;
     height: 60vmax;
-    border-radius: 50%;
+    left: calc(15vw - 30vmax);
+    top: calc(20vh - 30vmax);
     background: radial-gradient(closest-side, rgb(var(--c)) 0%, transparent 70%);
     opacity: var(--vc-aurora-alpha);
     will-change: transform;
-    animation: vc-aurora-drift var(--vc-dur-aurora-drift-1) ease-in-out infinite alternate;
+    animation: vc-aurora-drift var(--vc-dur-aurora-drift-1) var(--vc-ease-aurora) infinite alternate;
   }
 
-  .vc-aurora-spot--1 {
-    top: -18vmax;
-    left: -12vmax;
-    animation-duration: var(--vc-dur-aurora-drift-1);
-  }
-
+  .vc-aurora-spot:nth-child(2),
   .vc-aurora-spot--2 {
-    top: 8vmax;
-    right: -18vmax;
+    left: calc(85vw - 30vmax);
+    top: calc(50vh - 30vmax);
     animation-duration: var(--vc-dur-aurora-drift-2);
     animation-direction: alternate-reverse;
   }
 
+  .vc-aurora-spot:nth-child(3),
   .vc-aurora-spot--3 {
-    bottom: -24vmax;
-    left: 20vmax;
+    left: calc(50vw - 30vmax);
+    top: calc(95vh - 30vmax);
     animation-duration: var(--vc-dur-aurora-drift-3);
+  }
+
+  .vc-desktop-aurora::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    opacity: var(--vc-grain-alpha);
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Cpath fill='%23000' filter='url(%23n)' d='M0 0h180v180H0z'/%3E%3C/svg%3E");
   }
 
   .vc-desktop-aurora.is-paused .vc-aurora-spot {
@@ -57,11 +65,6 @@
     /* reduced-motion */
     animation: none !important;
     opacity: var(--vc-aurora-reduced-alpha);
-  }
-
-  html[data-vc-desktop-theme="paper"] .vc-desktop-aurora,
-  html[data-vc-desktop-theme="smoke"] .vc-desktop-aurora {
-    display: none;
   }
 }
 

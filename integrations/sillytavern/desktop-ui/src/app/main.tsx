@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { RouterProvider } from '@tanstack/react-router';
 import { AppProviders } from './providers';
@@ -16,6 +16,9 @@ type BootState = 'booting' | 'ready' | 'error';
 
 export function App({ client: externalClient, routeOverrides }: AppProps = {}) {
   const clientRef = useRef<AppClient | null>(externalClient ?? null);
+  if (externalClient && clientRef.current !== externalClient) {
+    clientRef.current = externalClient;
+  }
   if (!clientRef.current) {
     clientRef.current = createAppClient();
   }
@@ -23,6 +26,7 @@ export function App({ client: externalClient, routeOverrides }: AppProps = {}) {
 
   const [bootState, setBootState] = useState<BootState>('booting');
   const [errorMessage, setErrorMessage] = useState<string>('');
+  const bootTokenRef = useRef(0);
 
   const router = useMemo(
     () => createDesktopRouter({ routeOverrides }),
@@ -30,6 +34,7 @@ export function App({ client: externalClient, routeOverrides }: AppProps = {}) {
   );
 
   const runBootstrap = useCallback(async () => {
+    const token = ++bootTokenRef.current;
     setBootState('booting');
     setErrorMessage('');
     if (typeof document !== 'undefined' && document.documentElement) {
@@ -37,12 +42,15 @@ export function App({ client: externalClient, routeOverrides }: AppProps = {}) {
     }
     try {
       await client.initialize();
+      if (bootTokenRef.current !== token) return;
       await client.go.captureSessionContext();
+      if (bootTokenRef.current !== token) return;
       if (typeof document !== 'undefined' && document.documentElement) {
         document.documentElement.dataset.vcApp = 'ready';
       }
       setBootState('ready');
     } catch (err) {
+      if (bootTokenRef.current !== token) return;
       if (typeof document !== 'undefined' && document.documentElement) {
         document.documentElement.dataset.vcApp = 'error';
       }
@@ -53,13 +61,18 @@ export function App({ client: externalClient, routeOverrides }: AppProps = {}) {
 
   useEffect(() => {
     void runBootstrap();
+    return () => {
+      bootTokenRef.current += 1;
+    };
   }, [runBootstrap]);
 
   if (bootState === 'booting') {
     return (
-      <p id="vc-desktop-startup" role="status">
-        正在打开聊天…
-      </p>
+      <div data-vc-app="booting">
+        <p id="vc-desktop-startup" role="status">
+          正在打开聊天…
+        </p>
+      </div>
     );
   }
 
@@ -81,24 +94,26 @@ export function App({ client: externalClient, routeOverrides }: AppProps = {}) {
   );
 }
 
-export function mountDesktopApp(
-  container: HTMLElement | null = document.getElementById('vc-app-root'),
+export function mountApp(
+  container: HTMLElement | null = typeof document !== 'undefined'
+    ? document.getElementById('root')
+    : null,
   props?: AppProps,
 ): Root | null {
+  if (typeof document !== 'undefined' && document.documentElement) {
+    document.documentElement.dataset.vcApp = 'booting';
+  }
   if (!container) return null;
-  document.documentElement.dataset.vcApp = 'booting';
   const root = createRoot(container);
-  root.render(
-    <React.StrictMode>
-      <App {...props} />
-    </React.StrictMode>,
-  );
+  root.render(<App {...props} />);
   return root;
 }
 
+export { mountApp as mountDesktopApp };
+
 if (typeof document !== 'undefined') {
-  const autoRoot = document.getElementById('vc-app-root');
+  const autoRoot = document.getElementById('root');
   if (autoRoot && !autoRoot.hasAttribute('data-vc-manual-mount')) {
-    mountDesktopApp(autoRoot);
+    mountApp(autoRoot);
   }
 }

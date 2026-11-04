@@ -16,7 +16,7 @@ import { OverlayHost } from './OverlayHost';
 import { QuickSwitch, type QuickSwitchItem } from './QuickSwitch';
 import { Sidebar, type ShellDestination } from './Sidebar';
 import { useChrome, type ChromeTier } from './useChrome';
-import { usePreferences } from './usePreferences';
+import { THEME_PREF_EVENT, usePreferences } from './usePreferences';
 import { useReducedMotion } from './useReducedMotion';
 import './AppShell.css';
 
@@ -84,7 +84,7 @@ export function AppShell({
   children,
 }: AppShellProps) {
   const chrome = useChrome();
-  useReducedMotion();
+  const reducedMotion = useReducedMotion();
 
   const sidebarCollapsed = usePreferences((s) => s.sidebarCollapsed);
   const toggleSidebarCollapsed = usePreferences((s) => s.toggleSidebarCollapsed);
@@ -126,6 +126,14 @@ export function AppShell({
     syncFromStorage(activeCharacterId ?? activeConversationKey ?? null);
   }, [destination, settingsActive, activeCharacterId, activeConversationKey, syncFromStorage]);
 
+  useEffect(() => {
+    const onThemePref = () => {
+      syncFromStorage(activeCharacterId ?? activeConversationKey ?? null);
+    };
+    window.addEventListener(THEME_PREF_EVENT, onThemePref);
+    return () => window.removeEventListener(THEME_PREF_EVENT, onThemePref);
+  }, [activeCharacterId, activeConversationKey, syncFromStorage]);
+
   const isChatMode = destination === 'chat' && !settingsActive;
 
   // Conversation list visibility across the 4 chrome tiers:
@@ -139,6 +147,9 @@ export function AppShell({
         ? !panelOpen
         : compactListOpen
     : false;
+
+  // On narrow (<744px), conversation list and chat main are mutually exclusive
+  const mainHidden = isChatMode && chrome === 'narrow' && listVisible;
 
   const toggleCharacterPanel = useCallback(() => {
     setPanelOpen((prev) => !prev);
@@ -180,7 +191,7 @@ export function AppShell({
       return () => ro.disconnect();
     }
     return undefined;
-  }, [chrome, listVisible, panelOpen, effectiveSidebarCollapsed, destination, settingsActive]);
+  }, [chrome, listVisible, mainHidden, panelOpen, effectiveSidebarCollapsed, destination, settingsActive]);
 
   const layoutMode = useMemo(() => {
     if (!isChatMode) return 'single-main';
@@ -189,8 +200,11 @@ export function AppShell({
       if (!listVisible && panelOpen) return 'main-panel';
       return 'list-main';
     }
+    if (chrome === 'narrow') {
+      return listVisible ? 'list-only' : 'main-only';
+    }
     return listVisible ? 'list-main' : 'main-only';
-  }, [isChatMode, isCompactOrNarrow, listVisible, panelOpen]);
+  }, [isChatMode, isCompactOrNarrow, chrome, listVisible, panelOpen]);
 
   const layoutContextValue = useMemo<ShellLayoutContextValue>(
     () => ({
@@ -218,7 +232,7 @@ export function AppShell({
   return (
     <PortalHostProvider container={overlayHostRef} toastContainer={toastHostRef}>
       <ShellLayoutContext.Provider value={layoutContextValue}>
-        <Aurora characterTint={characterTint} />
+        <Aurora characterTint={characterTint} reducedMotion={reducedMotion} />
         <OverlayHost ref={overlayHostRef} toastRef={toastHostRef} />
 
         <div
@@ -278,6 +292,7 @@ export function AppShell({
                           className={['vc-convo-row', isActive ? 'is-active' : '']
                             .filter(Boolean)
                             .join(' ')}
+                          aria-current={isActive ? 'true' : undefined}
                           data-conversation-key={item.key}
                           data-relationship-id={item.relationshipId || undefined}
                           onClick={() => {
@@ -309,6 +324,7 @@ export function AppShell({
               .filter(Boolean)
               .join(' ')}
             data-shell-main=""
+            hidden={mainHidden}
           >
             {isChatMode ? (
               <>

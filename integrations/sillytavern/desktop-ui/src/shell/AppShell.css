@@ -79,29 +79,26 @@
   }
 
   /* Compact / narrow chat layouts: main area min-width: 0 so it never overflows horizontally */
-  .vc-shell[data-chrome="compact"][data-destination="chat"][data-layout="list-main"],
-  .vc-shell[data-chrome="narrow"][data-destination="chat"][data-layout="list-main"] {
+  .vc-shell[data-chrome="compact"][data-destination="chat"][data-layout="list-main"] {
     grid-template-columns: var(--vc-rail-icon-w) minmax(240px, var(--vc-conv-w)) minmax(0, 1fr);
   }
 
   .vc-shell[data-chrome="narrow"][data-destination="chat"][data-layout="list-only"],
-  .vc-shell[data-chrome="compact"][data-destination="chat"][data-layout="list-only"] {
-    grid-template-columns: var(--vc-rail-icon-w) minmax(0, 1fr);
-  }
-
+  .vc-shell[data-chrome="compact"][data-destination="chat"][data-layout="list-only"],
   .vc-shell[data-chrome="compact"][data-destination="chat"][data-layout="main-only"],
   .vc-shell[data-chrome="narrow"][data-destination="chat"][data-layout="main-only"] {
     grid-template-columns: var(--vc-rail-icon-w) minmax(0, 1fr);
   }
 
+  /* DESIGN.md §16.1 / §16.3 L2 Glass Material (Main panel, Conversation list, Character panel) */
   .vc-panel {
     position: relative;
     min-width: 0;
     min-height: 0;
     border-radius: var(--vc-radius-xl);
-    background-color: var(--vc-glass);
-    backdrop-filter: blur(var(--vc-blur-1)) saturate(180%);
-    -webkit-backdrop-filter: blur(var(--vc-blur-1)) saturate(180%);
+    background-color: var(--vc-glass-2);
+    backdrop-filter: blur(var(--vc-blur-2)) saturate(180%);
+    -webkit-backdrop-filter: blur(var(--vc-blur-2)) saturate(180%);
     border: 1px solid var(--vc-rim);
     box-shadow: var(--vc-shadow-rim-panel);
     overflow: hidden;
@@ -131,12 +128,23 @@
     --vc-toast-left: 50%;
   }
 
-  /* Sidebar */
+  /* DESIGN.md §16.1 / §16.3 L1 Glass Material (Sidebar) */
   .vc-sidebar {
+    position: relative;
+    isolation: isolate;
     display: flex;
     flex-direction: column;
     justify-content: space-between;
+    min-width: 0;
+    min-height: 0;
     padding: var(--vc-space-sm);
+    border-radius: var(--vc-radius-xl);
+    background-color: var(--vc-glass-1);
+    backdrop-filter: blur(var(--vc-blur-1)) saturate(180%);
+    -webkit-backdrop-filter: blur(var(--vc-blur-1)) saturate(180%);
+    border: 1px solid var(--vc-rim);
+    box-shadow: var(--vc-shadow-rim-panel);
+    overflow: hidden;
     user-select: none;
     box-sizing: border-box;
   }
@@ -144,6 +152,24 @@
   .vc-sidebar.is-collapsed {
     align-items: center;
     padding: var(--vc-space-sm) var(--vc-space-xs);
+  }
+
+  /* Sidebar sliding selection lens */
+  .vc-desktop-lens {
+    position: absolute;
+    top: 0;
+    left: 0;
+    z-index: -1;
+    background: linear-gradient(var(--vc-select-fill), var(--vc-select-fill)), var(--vc-raised);
+    border-radius: var(--vc-radius-sm);
+    box-shadow: var(--vc-shadow-rim);
+    transition: transform var(--vc-dur-emphasized) var(--vc-spring);
+    pointer-events: none;
+  }
+
+  html[data-vc-reduced-motion="true"] .vc-desktop-lens {
+    transition-property: opacity;
+    transition-duration: var(--vc-dur-reduced);
   }
 
   .vc-side-top {
@@ -190,9 +216,9 @@
     min-height: 40px;
     padding: 0 var(--vc-space-sm);
     border: 0;
-    border-radius: var(--vc-radius-tile);
+    border-radius: var(--vc-radius-sm);
     background: transparent;
-    color: var(--vc-ink-2);
+    color: var(--vc-ink);
     font-family: var(--vc-font);
     font-size: var(--vc-fs-body);
     line-height: var(--vc-lh-body);
@@ -212,13 +238,16 @@
 
   .vc-side-item:hover {
     background-color: var(--vc-hover-fill);
-    color: var(--vc-ink);
   }
 
-  .vc-side-item.is-active {
-    background-color: var(--vc-select-fill);
+  .vc-side-item.is-active,
+  .vc-side-item[aria-current="page"] {
     color: var(--vc-accent-text);
     font-weight: 600;
+  }
+
+  html[data-vc-theme="dark"] .vc-side-item[aria-current="page"] .vc-side-label {
+    color: var(--vc-ink);
   }
 
   .vc-side-item:focus-visible {
@@ -361,7 +390,8 @@
     background-color: var(--vc-hover-fill);
   }
 
-  .vc-convo-row.is-active {
+  .vc-convo-row.is-active,
+  .vc-convo-row[aria-current="true"] {
     background-color: var(--vc-select-fill);
   }
 
@@ -590,5 +620,12 @@
     font-size: var(--vc-fs-caption);
     color: var(--vc-ink-3);
     flex-shrink: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vc-desktop-lens {
+    transition-property: opacity;
+    transition-duration: var(--vc-dur-reduced);
   }
 }

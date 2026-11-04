@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, act, cleanup } from '@testing-library/react';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { RouterProvider } from '@tanstack/react-router';
-import { App } from '../../src/app/main';
+import { App, mountApp } from '../../src/app/main';
 import { AppProviders } from '../../src/app/providers';
 import { createDesktopRouter } from '../../src/app/router';
 import { useLeaveGuard } from '../../src/shell/useLeaveGuard';
@@ -34,16 +36,14 @@ function createFakeClient(): AppClient {
     go: {
       captureSessionContext: vi.fn(async () => ({ userId: 'u-1', sessionId: 's-1' })),
     },
-    st: {},
-    session: {},
-    cardRuntime: {},
   } as unknown as AppClient;
 }
 
-describe('Desktop Router & useLeaveGuard', () => {
+describe('Desktop Router, Entry Auto-Mount & useLeaveGuard', () => {
   beforeEach(() => {
     installMatchMedia();
     window.localStorage.clear();
+    window.history.replaceState(null, '', '/');
     window.location.hash = '';
   });
 
@@ -158,9 +158,83 @@ describe('Desktop Router & useLeaveGuard', () => {
     });
   });
 
-  it('App bootstrap initializes single AppClient owner and supports recoverable retry on failure', async () => {
+  it('mounts into real desktop-ui/index.html #root template on both / and /desktop/ entry paths', async () => {
+    const htmlTemplate = readFileSync(
+      resolve(__dirname, '../../index.html'),
+      'utf8',
+    );
+    const bodyMatch = htmlTemplate.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+    expect(bodyMatch).toBeTruthy();
+
+    for (const entryPath of ['/', '/desktop/']) {
+      window.history.replaceState(null, '', entryPath);
+      window.location.hash = '';
+      document.body.innerHTML = bodyMatch![1].replace(/<script[\s\S]*?<\/script>/gi, '');
+
+      const rootEl = document.getElementById('root');
+      expect(rootEl).toBeTruthy();
+      expect(document.getElementById('vc-app-root')).toBeNull();
+
+      // 1) Execute module top-level auto-mount path on #root from index.html
+      vi.resetModules();
+      await import('../../src/app/main');
+      expect(document.documentElement.dataset.vcApp).toBe('booting');
+      await waitFor(() => {
+        expect(rootEl!.querySelector('#vc-desktop-startup')).toBeTruthy();
+      });
+
+      // 2) Also verify default mountApp() with injected client boots to ready on #root and routes to #/chat
+      document.body.innerHTML = bodyMatch![1].replace(/<script[\s\S]*?<\/script>/gi, '');
+      const freshRootEl = document.getElementById('root')!;
+      const client = createFakeClient();
+      const reactRoot = mountApp(undefined, { client });
+      expect(reactRoot).toBeTruthy();
+
+      await waitFor(() => {
+        expect(document.documentElement.dataset.vcApp).toBe('ready');
+        expect(freshRootEl.querySelector('#vc-shell')).toBeTruthy();
+      });
+      expect(window.location.pathname).toBe(entryPath);
+      expect(window.location.hash).toBe('#/chat');
+
+      act(() => {
+        reactRoot?.unmount();
+      });
+    }
+  });
+
+  it('App bootstrap liveness guard cancels stale initialize on unmount and supports recoverable retry on failure', async () => {
+    let resolvePendingInit!: (v: unknown) => void;
+    const slowClient = {
+      initialize: vi.fn(
+        () =>
+          new Promise((res) => {
+            resolvePendingInit = res;
+          }),
+      ),
+      go: {
+        captureSessionContext: vi.fn(async () => ({ userId: 'u-1', sessionId: 's-1' })),
+      },
+    } as unknown as AppClient;
+
+    const { unmount } = render(<App client={slowClient} />);
+    expect(document.documentElement.dataset.vcApp).toBe('booting');
+
+    // Unmount while initialize() is still in-flight
+    unmount();
+    document.documentElement.dataset.vcApp = 'unmounted-marker';
+
+    // Resolve stale initialize() after unmount -> must NOT call captureSessionContext or touch dataset.vcApp
+    await act(async () => {
+      resolvePendingInit({ characters: [], chat: [], settings: {} });
+      await Promise.resolve();
+    });
+    expect(slowClient.go.captureSessionContext).not.toHaveBeenCalled();
+    expect(document.documentElement.dataset.vcApp).toBe('unmounted-marker');
+
+    // Now test error recovery retry on a live mount
     let attempts = 0;
-    const client = {
+    const retryClient = {
       initialize: vi.fn(async () => {
         attempts += 1;
         if (attempts === 1) {
@@ -171,19 +245,15 @@ describe('Desktop Router & useLeaveGuard', () => {
       go: {
         captureSessionContext: vi.fn(async () => ({ userId: 'u-1', sessionId: 's-1' })),
       },
-      st: {},
-      session: {},
-      cardRuntime: {},
     } as unknown as AppClient;
 
-    render(<App client={client} />);
+    render(<App client={retryClient} />);
     expect(document.documentElement.dataset.vcApp).toBe('booting');
-    expect(screen.getByRole('status').textContent).toBe('正在打开聊天…');
 
-    // First attempt fails -> shows recoverable error alert
     const alertEl = await screen.findByRole('alert');
     expect(alertEl.textContent).toContain('初始化连接失败');
     expect(document.documentElement.dataset.vcApp).toBe('error');
+    expect(retryClient.go.captureSessionContext).not.toHaveBeenCalled();
 
     // Click retry -> succeeds and mounts shell in ready state
     fireEvent.click(screen.getByRole('button', { name: '重试' }));
@@ -191,7 +261,7 @@ describe('Desktop Router & useLeaveGuard', () => {
       expect(document.documentElement.dataset.vcApp).toBe('ready');
       expect(document.getElementById('vc-shell')).toBeTruthy();
     });
-    expect(client.initialize).toHaveBeenCalledTimes(2);
-    expect(client.go.captureSessionContext).toHaveBeenCalledTimes(1);
+    expect(retryClient.initialize).toHaveBeenCalledTimes(2);
+    expect(retryClient.go.captureSessionContext).toHaveBeenCalledTimes(1);
   });
 });

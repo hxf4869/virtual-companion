@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef } from 'react';
 import { Avatar } from '../design/components/Avatar';
 import { Icon } from '../design/components/Icon';
 import type { ChromeTier } from './useChrome';
@@ -49,6 +49,52 @@ export function Sidebar({
   const isCompactOrNarrow = chrome === 'compact' || chrome === 'narrow';
   const effectiveCollapsed = isCompactOrNarrow ? true : Boolean(collapsed);
 
+  const sidebarRef = useRef<HTMLElement | null>(null);
+  const lensRef = useRef<HTMLElement | null>(null);
+
+  const lensTarget = settingsActive ? 'settings' : (activeDestination ?? '');
+
+  const syncLens = useCallback(() => {
+    const sidebar = sidebarRef.current;
+    const lens = lensRef.current;
+    if (!sidebar || !lens) return;
+    const activeEl = sidebar.querySelector('[aria-current="page"]') as HTMLElement | null;
+    if (!activeEl) {
+      lens.style.opacity = '0';
+      return;
+    }
+    lens.style.opacity = '1';
+    const r = activeEl.getBoundingClientRect();
+    const p = sidebar.getBoundingClientRect();
+    if (r.width > 0 && r.height > 0) {
+      lens.style.width = `${r.width}px`;
+      lens.style.height = `${r.height}px`;
+      lens.style.transform = `translate(${r.left - p.left}px, ${r.top - p.top + sidebar.scrollTop}px)`;
+    } else {
+      const w = activeEl.offsetWidth || (effectiveCollapsed ? 44 : 176);
+      const h = activeEl.offsetHeight || 40;
+      const x = activeEl.offsetLeft || 0;
+      const y = activeEl.offsetTop || 0;
+      lens.style.width = `${w}px`;
+      lens.style.height = `${h}px`;
+      lens.style.transform = `translate(${x}px, ${y}px)`;
+    }
+  }, [effectiveCollapsed]);
+
+  useLayoutEffect(() => {
+    syncLens();
+  }, [lensTarget, effectiveCollapsed, syncLens]);
+
+  useEffect(() => {
+    const sidebar = sidebarRef.current;
+    if (!sidebar || typeof ResizeObserver !== 'function') return undefined;
+    const ro = new ResizeObserver(() => {
+      syncLens();
+    });
+    ro.observe(sidebar);
+    return () => ro.disconnect();
+  }, [syncLens]);
+
   useEffect(() => {
     if (isCompactOrNarrow || !onToggleCollapse) return undefined;
     const onKeyDown = (event: KeyboardEvent) => {
@@ -66,12 +112,20 @@ export function Sidebar({
 
   return (
     <aside
-      className={['vc-sidebar', 'vc-panel', effectiveCollapsed ? 'is-collapsed' : '']
+      ref={sidebarRef}
+      className={['vc-sidebar', effectiveCollapsed ? 'is-collapsed' : '']
         .filter(Boolean)
         .join(' ')}
       aria-label="主导航"
       data-collapsed={effectiveCollapsed ? 'true' : 'false'}
     >
+      <i
+        ref={lensRef}
+        className="vc-desktop-lens"
+        data-side-lens=""
+        data-lens-target={lensTarget}
+        aria-hidden="true"
+      />
       <div className="vc-side-top">
         {!effectiveCollapsed ? (
           <span className="vc-side-brand" aria-hidden="true">

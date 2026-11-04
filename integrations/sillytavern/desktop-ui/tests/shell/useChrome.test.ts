@@ -170,16 +170,25 @@ describe('useChrome', () => {
     }
 
     const widthReaders: string[] = [];
+    const matchMediaCallers: string[] = [];
     for (const file of files) {
       const code = readFileSync(file, 'utf8');
+      const rel = file.replace(srcRoot + '/', '');
       if (
         code.includes('innerWidth') ||
         /\((min-width|max-width):/.test(code)
       ) {
-        widthReaders.push(file.replace(srcRoot + '/', ''));
+        widthReaders.push(rel);
+      }
+      if (code.includes('matchMedia')) {
+        matchMediaCallers.push(rel);
       }
     }
 
     expect(widthReaders).toEqual(['shell/useChrome.ts']);
+    expect(matchMediaCallers.sort()).toEqual([
+      'shell/useChrome.ts',
+      'shell/useReducedMotion.ts',
+    ]);
   });
 });

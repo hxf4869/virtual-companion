@@ -1,93 +1,69 @@
 import { create } from 'zustand';
+import {
+  DEFAULT_THEME_ID,
+  DESKTOP_THEMES,
+  THEME_VARIANTS,
+} from '../../../extension/vc-model-settings/desktop/themes/index.js';
+import {
+  THEME_KEY,
+  THEME_PREF_EVENT,
+  THEME_PREF_KEY,
+  parseThemeMode,
+  readThemeMode,
+  readThemePreferences,
+  resolveDesktopTheme,
+  resolveThemeMode,
+  setCharacterThemePreference,
+  setGlobalThemePreference,
+  writeThemeMode,
+} from '../../../extension/vc-model-settings/theme-logic.js';
 
 export type ThemeMode = 'auto' | 'light' | 'dark';
 export type ResolvedThemeMode = 'light' | 'dark';
-export type DesktopMaterialTheme = 'aurora' | 'paper' | 'smoke';
 export type ReplyStyle = 'spread' | 'bubble';
 
-export const THEME_MODE_KEY = 'vc-theme';
+export const THEME_MODE_KEY = THEME_KEY;
+export const DESKTOP_THEME_KEY = THEME_PREF_KEY;
 export const REPLY_STYLE_KEY = 'vc-reply-style';
 export const REDUCED_MOTION_KEY = 'vc-reduced-motion';
-export const DESKTOP_THEME_KEY = 'vc-desktop-theme';
 export const SIDEBAR_COLLAPSED_KEY = 'vc-sidebar-collapsed';
-const LEGACY_SIDEBAR_KEY = 'vc-sidebar';
 
-const DESKTOP_THEMES = new Set<DesktopMaterialTheme>(['aurora', 'paper', 'smoke']);
+export {
+  DEFAULT_THEME_ID,
+  DESKTOP_THEMES,
+  THEME_VARIANTS,
+  THEME_PREF_EVENT,
+  parseThemeMode,
+  readThemeMode,
+  writeThemeMode,
+  resolveThemeMode,
+  readThemePreferences,
+  setGlobalThemePreference,
+  setCharacterThemePreference,
+  resolveDesktopTheme,
+};
 
 export interface DesktopThemeStoreData {
-  global: DesktopMaterialTheme;
-  characters: Record<string, DesktopMaterialTheme>;
+  global: string;
+  characters: Record<string, string>;
 }
 
-function getStorage(): Storage | null {
+export interface DesktopThemeDefinition {
+  id: string;
+  name: string;
+  css: string;
+  variants?: Record<string, string>;
+}
+
+function getStorage(): Storage | undefined {
   try {
-    return typeof window !== 'undefined' ? window.localStorage : null;
+    return typeof window !== 'undefined' ? window.localStorage : undefined;
   } catch {
-    return null;
+    return undefined;
   }
 }
 
-export function parseThemeMode(raw: unknown): ThemeMode {
-  return raw === 'light' || raw === 'dark' ? raw : 'auto';
-}
-
-export function resolveThemeMode(mode: ThemeMode, prefersDark = false): ResolvedThemeMode {
-  const parsed = parseThemeMode(mode);
-  if (parsed === 'light' || parsed === 'dark') return parsed;
-  return prefersDark ? 'dark' : 'light';
-}
-
-export function parseDesktopMaterialTheme(raw: unknown): DesktopMaterialTheme {
-  return typeof raw === 'string' && DESKTOP_THEMES.has(raw as DesktopMaterialTheme)
-    ? (raw as DesktopMaterialTheme)
-    : 'aurora';
-}
-
-export function readDesktopThemePreferences(
-  storage: Storage | null = getStorage(),
-): DesktopThemeStoreData {
-  const fallback: DesktopThemeStoreData = { global: 'aurora', characters: {} };
-  if (!storage) return fallback;
-  try {
-    const raw = storage.getItem(DESKTOP_THEME_KEY);
-    if (!raw) return fallback;
-    const parsed = JSON.parse(raw) as Partial<DesktopThemeStoreData>;
-    if (!parsed || typeof parsed !== 'object') return fallback;
-    const globalTheme = parseDesktopMaterialTheme(parsed.global);
-    const characters: Record<string, DesktopMaterialTheme> = {};
-    if (parsed.characters && typeof parsed.characters === 'object') {
-      for (const [k, v] of Object.entries(parsed.characters)) {
-        if (k && typeof v === 'string' && DESKTOP_THEMES.has(v as DesktopMaterialTheme)) {
-          characters[String(k)] = v as DesktopMaterialTheme;
-        }
-      }
-    }
-    return { global: globalTheme, characters };
-  } catch {
-    return fallback;
-  }
-}
-
-export function resolveDesktopTheme(
-  characterId?: string | null,
-  prefs: DesktopThemeStoreData = readDesktopThemePreferences(),
-): DesktopMaterialTheme {
-  const key = characterId == null ? '' : String(characterId);
-  if (key && prefs.characters[key]) {
-    return prefs.characters[key];
-  }
-  return prefs.global;
-}
-
-function readThemeModeFromStorage(storage: Storage | null = getStorage()): ThemeMode {
-  try {
-    return parseThemeMode(storage?.getItem(THEME_MODE_KEY));
-  } catch {
-    return 'auto';
-  }
-}
-
-function readReplyStyleFromStorage(storage: Storage | null = getStorage()): ReplyStyle {
+function readReplyStyleFromStorage(storage = getStorage()): ReplyStyle {
   try {
     const v = storage?.getItem(REPLY_STYLE_KEY);
     return v === 'spread' || v === 'bubble' ? v : 'bubble';
@@ -96,77 +72,74 @@ function readReplyStyleFromStorage(storage: Storage | null = getStorage()): Repl
   }
 }
 
-function readReducedMotionFromStorage(storage: Storage | null = getStorage()): boolean {
+function readReducedMotionFromStorage(storage = getStorage()): boolean {
   try {
-    const v = storage?.getItem(REDUCED_MOTION_KEY);
-    return v === 'true' || v === '1';
+    return storage?.getItem(REDUCED_MOTION_KEY) === 'true';
   } catch {
     return false;
   }
 }
 
-function readSidebarCollapsedFromStorage(storage: Storage | null = getStorage()): boolean {
+function readSidebarCollapsedFromStorage(storage = getStorage()): boolean {
   try {
-    const v = storage?.getItem(SIDEBAR_COLLAPSED_KEY);
-    if (v === 'true' || v === '1') return true;
-    if (v === 'false' || v === '0') return false;
-    const legacy = storage?.getItem(LEGACY_SIDEBAR_KEY);
-    return legacy === 'collapsed';
+    return storage?.getItem(SIDEBAR_COLLAPSED_KEY) === 'true';
   } catch {
     return false;
   }
 }
 
-export function isOsReducedMotion(): boolean {
-  try {
-    if (typeof window !== 'undefined' && typeof window.matchMedia === 'function') {
-      return Boolean(window.matchMedia('(prefers-reduced-motion: reduce)')?.matches);
-    }
-  } catch {
-    // ignore
-  }
-  return false;
-}
-
-export function syncReducedMotionDomAttribute(appReducedMotion: boolean, osReduced?: boolean): boolean {
-  const effective = Boolean(appReducedMotion || (osReduced ?? isOsReducedMotion()));
-  if (typeof document !== 'undefined' && document.documentElement) {
-    if (effective) {
-      if (document.documentElement.dataset.vcReducedMotion !== 'true') {
-        document.documentElement.dataset.vcReducedMotion = 'true';
-      }
-    } else if ('vcReducedMotion' in document.documentElement.dataset) {
-      delete document.documentElement.dataset.vcReducedMotion;
-    }
-  }
-  return effective;
+function resolveActiveThemeObject(
+  characterId: string | null | undefined,
+  prefs: DesktopThemeStoreData,
+): DesktopThemeDefinition {
+  const key = characterId == null ? '' : String(characterId);
+  const character =
+    key && Object.prototype.hasOwnProperty.call(prefs.characters, key)
+      ? prefs.characters[key]
+      : undefined;
+  const resolved = resolveDesktopTheme(
+    { global: prefs.global, character },
+    DESKTOP_THEMES,
+  ) as DesktopThemeDefinition | undefined;
+  return (
+    resolved ??
+    ((DESKTOP_THEMES as unknown as DesktopThemeDefinition[])[0] as DesktopThemeDefinition)
+  );
 }
 
 export function syncThemeDomAttributes(
   themeMode: ThemeMode,
-  desktopTheme: DesktopMaterialTheme,
+  theme: DesktopThemeDefinition,
 ): void {
   if (typeof document === 'undefined' || !document.documentElement) return;
-  if (themeMode === 'light' || themeMode === 'dark') {
-    document.documentElement.dataset.vcTheme = themeMode;
-  } else {
-    delete document.documentElement.dataset.vcTheme;
+  const root = document.documentElement;
+  root.dataset.vcTheme = parseThemeMode(themeMode) as ThemeMode;
+  if (theme?.id) {
+    root.dataset.vcThemeId = theme.id;
   }
-  document.documentElement.dataset.vcDesktopTheme = desktopTheme;
+  for (const [name, allowed] of Object.entries(
+    THEME_VARIANTS as Record<string, readonly string[]>,
+  )) {
+    const value = theme?.variants?.[name];
+    root.setAttribute(
+      `data-vc-variant-${name}`,
+      value && allowed.includes(value) ? value : allowed[0],
+    );
+  }
 }
 
 export interface PreferencesState {
   themeMode: ThemeMode;
   desktopThemePrefs: DesktopThemeStoreData;
-  activeDesktopTheme: DesktopMaterialTheme;
+  activeDesktopTheme: string;
   replyStyle: ReplyStyle;
   reducedMotion: boolean;
   sidebarCollapsed: boolean;
   activeCharacterId: string | null;
   characterTint: string;
   setThemeMode: (mode: ThemeMode) => void;
-  setGlobalDesktopTheme: (theme: DesktopMaterialTheme) => void;
-  setCharacterDesktopTheme: (characterId: string, theme: DesktopMaterialTheme | null) => void;
+  setGlobalDesktopTheme: (themeId: string) => void;
+  setCharacterDesktopTheme: (characterId: string, themeId: string | null) => void;
   setReplyStyle: (style: ReplyStyle) => void;
   setReducedMotion: (reduced: boolean) => void;
   setSidebarCollapsed: (collapsed: boolean) => void;
@@ -176,18 +149,19 @@ export interface PreferencesState {
   resetForTest?: () => void;
 }
 
-function readInitialSnapshot(characterId: string | null = null) {
+function readSnapshot(characterId: string | null = null) {
   const storage = getStorage();
-  const themeMode = readThemeModeFromStorage(storage);
-  const desktopThemePrefs = readDesktopThemePreferences(storage);
-  const activeDesktopTheme = resolveDesktopTheme(characterId, desktopThemePrefs);
+  const themeMode = readThemeMode(storage) as ThemeMode;
+  const desktopThemePrefs = readThemePreferences(storage) as DesktopThemeStoreData;
+  const themeObj = resolveActiveThemeObject(characterId, desktopThemePrefs);
   const replyStyle = readReplyStyleFromStorage(storage);
   const reducedMotion = readReducedMotionFromStorage(storage);
   const sidebarCollapsed = readSidebarCollapsedFromStorage(storage);
   return {
     themeMode,
     desktopThemePrefs,
-    activeDesktopTheme,
+    themeObj,
+    activeDesktopTheme: themeObj?.id ?? DEFAULT_THEME_ID,
     replyStyle,
     reducedMotion,
     sidebarCollapsed,
@@ -195,61 +169,55 @@ function readInitialSnapshot(characterId: string | null = null) {
 }
 
 export const usePreferences = create<PreferencesState>((set, get) => {
-  const initial = readInitialSnapshot(null);
+  const initial = readSnapshot(null);
+  syncThemeDomAttributes(initial.themeMode, initial.themeObj);
 
   return {
-    ...initial,
+    themeMode: initial.themeMode,
+    desktopThemePrefs: initial.desktopThemePrefs,
+    activeDesktopTheme: initial.activeDesktopTheme,
+    replyStyle: initial.replyStyle,
+    reducedMotion: initial.reducedMotion,
+    sidebarCollapsed: initial.sidebarCollapsed,
     activeCharacterId: null,
     characterTint: '',
 
     setThemeMode(mode) {
-      const parsed = parseThemeMode(mode);
-      try {
-        getStorage()?.setItem(THEME_MODE_KEY, parsed);
-      } catch {
-        // ignore
-      }
-      syncThemeDomAttributes(parsed, get().activeDesktopTheme);
+      const parsed = writeThemeMode(mode, getStorage()) as ThemeMode;
+      const themeObj = resolveActiveThemeObject(
+        get().activeCharacterId,
+        get().desktopThemePrefs,
+      );
+      syncThemeDomAttributes(parsed, themeObj);
       set({ themeMode: parsed });
     },
 
-    setGlobalDesktopTheme(theme) {
-      const valid = parseDesktopMaterialTheme(theme);
-      const current = readDesktopThemePreferences();
-      const nextPrefs: DesktopThemeStoreData = {
-        global: valid,
-        characters: { ...current.characters },
-      };
-      try {
-        getStorage()?.setItem(DESKTOP_THEME_KEY, JSON.stringify(nextPrefs));
-      } catch {
-        // ignore
-      }
-      const activeDesktopTheme = resolveDesktopTheme(get().activeCharacterId, nextPrefs);
-      syncThemeDomAttributes(get().themeMode, activeDesktopTheme);
-      set({ desktopThemePrefs: nextPrefs, activeDesktopTheme });
+    setGlobalDesktopTheme(themeId) {
+      const storage = getStorage();
+      setGlobalThemePreference(String(themeId ?? ''), storage);
+      const desktopThemePrefs = readThemePreferences(storage) as DesktopThemeStoreData;
+      const themeObj = resolveActiveThemeObject(get().activeCharacterId, desktopThemePrefs);
+      syncThemeDomAttributes(get().themeMode, themeObj);
+      set({
+        desktopThemePrefs,
+        activeDesktopTheme: themeObj?.id ?? DEFAULT_THEME_ID,
+      });
     },
 
-    setCharacterDesktopTheme(characterId, theme) {
-      const current = readDesktopThemePreferences();
-      const characters = { ...current.characters };
-      if (!theme) {
-        delete characters[String(characterId)];
-      } else {
-        characters[String(characterId)] = parseDesktopMaterialTheme(theme);
-      }
-      const nextPrefs: DesktopThemeStoreData = {
-        global: current.global,
-        characters,
-      };
-      try {
-        getStorage()?.setItem(DESKTOP_THEME_KEY, JSON.stringify(nextPrefs));
-      } catch {
-        // ignore
-      }
-      const activeDesktopTheme = resolveDesktopTheme(get().activeCharacterId, nextPrefs);
-      syncThemeDomAttributes(get().themeMode, activeDesktopTheme);
-      set({ desktopThemePrefs: nextPrefs, activeDesktopTheme });
+    setCharacterDesktopTheme(characterId, themeId) {
+      const storage = getStorage();
+      setCharacterThemePreference(
+        String(characterId ?? ''),
+        themeId ? String(themeId) : '',
+        storage,
+      );
+      const desktopThemePrefs = readThemePreferences(storage) as DesktopThemeStoreData;
+      const themeObj = resolveActiveThemeObject(get().activeCharacterId, desktopThemePrefs);
+      syncThemeDomAttributes(get().themeMode, themeObj);
+      set({
+        desktopThemePrefs,
+        activeDesktopTheme: themeObj?.id ?? DEFAULT_THEME_ID,
+      });
     },
 
     setReplyStyle(style) {
@@ -265,19 +233,17 @@ export const usePreferences = create<PreferencesState>((set, get) => {
     setReducedMotion(reduced) {
       const flag = Boolean(reduced);
       try {
-        getStorage()?.setItem(REDUCED_MOTION_KEY, flag ? 'true' : 'false');
+        getStorage()?.setItem(REDUCED_MOTION_KEY, String(flag));
       } catch {
         // ignore
       }
-      syncReducedMotionDomAttribute(flag);
       set({ reducedMotion: flag });
     },
 
     setSidebarCollapsed(collapsed) {
       const flag = Boolean(collapsed);
       try {
-        getStorage()?.setItem(SIDEBAR_COLLAPSED_KEY, flag ? 'true' : 'false');
-        getStorage()?.setItem(LEGACY_SIDEBAR_KEY, flag ? 'collapsed' : 'expanded');
+        getStorage()?.setItem(SIDEBAR_COLLAPSED_KEY, String(flag));
       } catch {
         // ignore
       }
@@ -295,21 +261,29 @@ export const usePreferences = create<PreferencesState>((set, get) => {
 
     syncFromStorage(characterId) {
       const nextCharId = characterId === undefined ? get().activeCharacterId : characterId;
-      const snap = readInitialSnapshot(nextCharId);
-      syncThemeDomAttributes(snap.themeMode, snap.activeDesktopTheme);
-      syncReducedMotionDomAttribute(snap.reducedMotion);
+      const snap = readSnapshot(nextCharId);
+      syncThemeDomAttributes(snap.themeMode, snap.themeObj);
       set({
-        ...snap,
+        themeMode: snap.themeMode,
+        desktopThemePrefs: snap.desktopThemePrefs,
+        activeDesktopTheme: snap.activeDesktopTheme,
+        replyStyle: snap.replyStyle,
+        reducedMotion: snap.reducedMotion,
+        sidebarCollapsed: snap.sidebarCollapsed,
         activeCharacterId: nextCharId,
       });
     },
 
     resetForTest() {
-      const snap = readInitialSnapshot(null);
-      syncThemeDomAttributes(snap.themeMode, snap.activeDesktopTheme);
-      syncReducedMotionDomAttribute(snap.reducedMotion);
+      const snap = readSnapshot(null);
+      syncThemeDomAttributes(snap.themeMode, snap.themeObj);
       set({
-        ...snap,
+        themeMode: snap.themeMode,
+        desktopThemePrefs: snap.desktopThemePrefs,
+        activeDesktopTheme: snap.activeDesktopTheme,
+        replyStyle: snap.replyStyle,
+        reducedMotion: snap.reducedMotion,
+        sidebarCollapsed: snap.sidebarCollapsed,
         activeCharacterId: null,
         characterTint: '',
       });

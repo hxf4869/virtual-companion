@@ -5,8 +5,8 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { AppProviders } from '../../src/app/providers';
 import { AppShell } from '../../src/shell/AppShell';
-import { Aurora } from '../../src/shell/Aurora';
-import { usePreferences } from '../../src/shell/usePreferences';
+import { Aurora, timeOfDayShift } from '../../src/shell/Aurora';
+import { THEME_PREF_EVENT, usePreferences } from '../../src/shell/usePreferences';
 import { useReducedMotion } from '../../src/shell/useReducedMotion';
 import { Dialog } from '../../src/design/components/Dialog';
 import { Select } from '../../src/design/components/Select';
@@ -87,9 +87,6 @@ function createFakeClient(): AppClient {
         sessionId: 's-1',
       })),
     },
-    st: {},
-    session: {},
-    cardRuntime: {},
   } as unknown as AppClient;
 }
 
@@ -99,6 +96,8 @@ describe('AppShell layout, portal host & reduced motion', () => {
     delete document.documentElement.dataset.chrome;
     delete document.documentElement.dataset.vcReducedMotion;
     delete document.documentElement.dataset.vcTheme;
+    delete document.documentElement.dataset.vcThemeId;
+    document.documentElement.removeAttribute('data-vc-variant-bubble');
     usePreferences.getState().resetForTest?.();
   });
 
@@ -145,6 +144,8 @@ describe('AppShell layout, portal host & reduced motion', () => {
     );
 
     expect(listEl.hidden).toBe(true);
+    const activeRow = document.querySelector('[data-conversation-key="conv-alice"]') as HTMLElement;
+    expect(activeRow.getAttribute('aria-current')).toBe('true');
 
     // Clicking the header return-to-list / list toggle button reopens the list
     const listBtn = document.querySelector('[data-list-toggle]') as HTMLButtonElement;
@@ -226,11 +227,39 @@ describe('AppShell layout, portal host & reduced motion', () => {
     expect(listEl.hidden).toBe(false);
   });
 
-  it('narrow keeps 72px icon sidebar, overrides --vc-dialog-viewport-margin to 32px, and constrains floating character panel to chat body', () => {
-    setupMatchMedia(680);
+  it('narrow enforces list-only vs main-only mutual exclusion, 72px icon sidebar, 32px dialog margin, and floating panel inside chat body', () => {
+    setupMatchMedia(375);
     const client = createFakeClient();
 
-    render(
+    const { rerender } = render(
+      <AppProviders client={client}>
+        <AppShell
+          destination="chat"
+          activeConversationKey={null}
+          conversations={[
+            { key: 'conv-alice', title: 'Alice', avatar: 'alice.png', relationshipId: 'rel-1' },
+          ]}
+          characterPanel={<div data-testid="char-panel-content">Alice Profile</div>}
+          composer={<div data-testid="composer-slot">Composer</div>}
+        >
+          <div data-testid="chat-slot">Chat Content</div>
+        </AppShell>
+      </AppProviders>,
+    );
+
+    const shell = document.getElementById('vc-shell') as HTMLElement;
+    const sidebar = document.querySelector('.vc-sidebar') as HTMLElement;
+    const listEl = document.querySelector('[data-convo-list]') as HTMLElement;
+    const mainEl = document.querySelector('[data-shell-main]') as HTMLElement;
+
+    expect(sidebar.classList.contains('is-collapsed')).toBe(true);
+    // Before entering conversation on narrow: list-only, main is hidden
+    expect(shell.dataset.layout).toBe('list-only');
+    expect(listEl.hidden).toBe(false);
+    expect(mainEl.hidden).toBe(true);
+
+    // Enter conversation on narrow: main-only, list is hidden, main is shown
+    rerender(
       <AppProviders client={client}>
         <AppShell
           destination="chat"
@@ -246,8 +275,9 @@ describe('AppShell layout, portal host & reduced motion', () => {
       </AppProviders>,
     );
 
-    const sidebar = document.querySelector('.vc-sidebar') as HTMLElement;
-    expect(sidebar.classList.contains('is-collapsed')).toBe(true);
+    expect(shell.dataset.layout).toBe('main-only');
+    expect(listEl.hidden).toBe(true);
+    expect(mainEl.hidden).toBe(false);
 
     // Open character panel in narrow mode: must live inside [data-chat-body], not covering header or composer
     const panelToggle = document.querySelector('[data-panel-toggle]') as HTMLButtonElement;
@@ -265,6 +295,13 @@ describe('AppShell layout, portal host & reduced motion', () => {
     expect(chatHeader.contains(panelEl)).toBe(false);
     expect(chatComposer.contains(panelEl)).toBe(false);
 
+    // Clicking return-to-list button on narrow flips back to list-only (main hidden, list shown)
+    const listToggle = document.querySelector('[data-list-toggle]') as HTMLButtonElement;
+    fireEvent.click(listToggle);
+    expect(shell.dataset.layout).toBe('list-only');
+    expect(listEl.hidden).toBe(false);
+    expect(mainEl.hidden).toBe(true);
+
     // Verify CSS contract for narrow viewport dialog margin and min-width: 0
     const cssText = readFileSync(
       resolve(__dirname, '../../src/shell/AppShell.css'),
@@ -272,6 +309,114 @@ describe('AppShell layout, portal host & reduced motion', () => {
     );
     expect(cssText).toMatch(/html\[data-chrome="narrow"\][\s\S]*?--vc-dialog-viewport-margin:\s*32px/);
     expect(cssText).not.toMatch(/data-chrome="narrow"[\s\S]*?560px/);
+  });
+
+  it('enforces L1/L2 glass hierarchy in AppShell.css and renders sliding Sidebar selection lens', () => {
+    setupMatchMedia(1440);
+    const client = createFakeClient();
+
+    const { rerender } = render(
+      <AppProviders client={client}>
+        <AppShell destination="chat" settingsActive={false}>
+          <div>Content</div>
+        </AppShell>
+      </AppProviders>,
+    );
+
+    const sidebar = document.querySelector('.vc-sidebar') as HTMLElement;
+    const lens = sidebar.querySelector('.vc-desktop-lens') as HTMLElement;
+    expect(lens).toBeTruthy();
+    expect(lens.getAttribute('aria-hidden')).toBe('true');
+    expect(lens.dataset.lensTarget).toBe('chat');
+
+    // Provide real bounding boxes for sidebar and nav items to verify lens geometry & reflow
+    vi.spyOn(sidebar, 'getBoundingClientRect').mockReturnValue({
+      left: 24,
+      top: 24,
+      width: 200,
+      height: 800,
+      right: 224,
+      bottom: 824,
+      x: 24,
+      y: 24,
+      toJSON: () => ({}),
+    });
+    const chatBtn = sidebar.querySelector('[data-nav="chat"]') as HTMLElement;
+    const memoryBtn = sidebar.querySelector('[data-nav="memory"]') as HTMLElement;
+    const settingsBtn = sidebar.querySelector('[data-settings]') as HTMLElement;
+    vi.spyOn(chatBtn, 'getBoundingClientRect').mockReturnValue({
+      left: 36,
+      top: 84,
+      width: 176,
+      height: 40,
+      right: 212,
+      bottom: 124,
+      x: 36,
+      y: 84,
+      toJSON: () => ({}),
+    });
+    let memoryWidth = 176;
+    vi.spyOn(memoryBtn, 'getBoundingClientRect').mockImplementation(() => ({
+      left: 36,
+      top: 172,
+      width: memoryWidth,
+      height: 40,
+      right: 36 + memoryWidth,
+      bottom: 212,
+      x: 36,
+      y: 172,
+      toJSON: () => ({}),
+    }));
+    vi.spyOn(settingsBtn, 'getBoundingClientRect').mockReturnValue({
+      left: 36,
+      top: 760,
+      width: 176,
+      height: 40,
+      right: 212,
+      bottom: 800,
+      x: 36,
+      y: 760,
+      toJSON: () => ({}),
+    });
+
+    // Switching destination updates lens target and real position/dimensions
+    rerender(
+      <AppProviders client={client}>
+        <AppShell destination="memory" settingsActive={false}>
+          <div>Content</div>
+        </AppShell>
+      </AppProviders>,
+    );
+    expect(lens.dataset.lensTarget).toBe('memory');
+    expect(lens.style.width).toBe('176px');
+    expect(lens.style.height).toBe('40px');
+    expect(lens.style.transform).toBe('translate(12px, 148px)');
+
+    // Collapsing sidebar reflows the lens to the collapsed item width
+    memoryWidth = 44;
+    const collapseBtn = sidebar.querySelector('[data-collapse]') as HTMLButtonElement;
+    fireEvent.click(collapseBtn);
+    expect(lens.style.width).toBe('44px');
+    expect(lens.style.height).toBe('40px');
+
+    rerender(
+      <AppProviders client={client}>
+        <AppShell destination="memory" settingsActive={true}>
+          <div>Content</div>
+        </AppShell>
+      </AppProviders>,
+    );
+    expect(lens.dataset.lensTarget).toBe('settings');
+    expect(lens.style.transform).toBe('translate(12px, 736px)');
+
+    // Check L1 (.vc-sidebar: --vc-glass-1 + --vc-blur-1) vs L2 (--vc-glass-2 + --vc-blur-2) in AppShell.css
+    const cssText = readFileSync(
+      resolve(__dirname, '../../src/shell/AppShell.css'),
+      'utf8',
+    );
+    expect(cssText).toMatch(/\.vc-sidebar\s*\{[\s\S]*?--vc-glass-1[\s\S]*?--vc-blur-1/);
+    expect(cssText).toMatch(/\.vc-panel\s*\{[\s\S]*?--vc-glass-2[\s\S]*?--vc-blur-2/);
+    expect(cssText).toMatch(/\.vc-desktop-lens\s*\{[\s\S]*?--vc-select-fill[\s\S]*?--vc-spring/);
   });
 
   it('portal host renders overlays and Toast inside shell OverlayHost and preserves nested Dialog -> Select/Menu portal hierarchy & focus', async () => {
@@ -376,10 +521,16 @@ describe('AppShell layout, portal host & reduced motion', () => {
     expect(dialogPopup.contains(document.activeElement)).toBe(true);
   });
 
-  it('reduced motion preference and OS media query both set data-vc-reduced-motion and pause Aurora, and preferences re-read on switch', () => {
+  it('reduced motion preference, theme-logic delegation, and Aurora cross-fade / period / spot positions follow canonical contract', () => {
     vi.useFakeTimers();
     try {
       const ctl = setupMatchMedia(1440, false);
+
+      // Verify theme-logic timeOfDayShift canonical boundaries (6/10/17/20 -> morning/noon/evening/night)
+      expect(timeOfDayShift(new Date(2026, 10, 4, 8, 0))).toBe('morning');
+      expect(timeOfDayShift(new Date(2026, 10, 4, 10, 30))).toBe('noon');
+      expect(timeOfDayShift(new Date(2026, 10, 4, 18, 0))).toBe('evening');
+      expect(timeOfDayShift(new Date(2026, 10, 4, 20, 30))).toBe('night');
 
       function Probe() {
         const reduced = useReducedMotion();
@@ -391,7 +542,7 @@ describe('AppShell layout, portal host & reduced motion', () => {
             <span data-testid="reduced-val">{String(reduced)}</span>
             <span data-testid="theme-val">{themeMode}</span>
             <span data-testid="reply-val">{replyStyle}</span>
-            <Aurora characterTint={characterTint} />
+            <Aurora characterTint={characterTint} reducedMotion={reduced} />
           </div>
         );
       }
@@ -400,6 +551,11 @@ describe('AppShell layout, portal host & reduced motion', () => {
 
       expect(screen.getByTestId('reduced-val').textContent).toBe('false');
       expect(document.documentElement.dataset.vcReducedMotion).toBeUndefined();
+      // Default mode 'auto' writes data-vc-theme="auto", data-vc-theme-id="aurora", and data-vc-variant-bubble="grouped"
+      expect(document.documentElement.dataset.vcTheme).toBe('auto');
+      expect(document.documentElement.dataset.vcThemeId).toBe('aurora');
+      expect(document.documentElement.getAttribute('data-vc-variant-bubble')).toBe('grouped');
+      expect(document.documentElement.dataset.vcDesktopTheme).toBeUndefined();
 
       // OS prefers-reduced-motion: reduce -> sets data-vc-reduced-motion="true"
       act(() => ctl.setReducedMotion(true));
@@ -416,15 +572,36 @@ describe('AppShell layout, portal host & reduced motion', () => {
       expect(document.documentElement.dataset.vcReducedMotion).toBe('true');
       expect(window.localStorage.getItem('vc-reduced-motion')).toBe('true');
 
-      // Aurora cross-fade on characterTint change (900ms)
-      act(() => usePreferences.getState().setCharacterTint('210, 120, 160'));
+      // Aurora cross-fade on characterTint change: new set enters with .is-entering, old set gets .is-leaving, max 2 sets
+      act(() => usePreferences.getState().setCharacterTint('210,120,160'));
       expect(document.querySelectorAll('.vc-aurora-set').length).toBe(2);
+      expect(document.querySelector('.vc-aurora-set.is-entering')).toBeTruthy();
       expect(document.querySelector('.vc-aurora-set.is-leaving')).toBeTruthy();
+
+      // Rapid consecutive tint switch still keeps at most 2 sets
+      act(() => usePreferences.getState().setCharacterTint('120,200,180'));
+      expect(document.querySelectorAll('.vc-aurora-set').length).toBe(2);
 
       act(() => {
         vi.advanceTimersByTime(900);
       });
       expect(document.querySelectorAll('.vc-aurora-set').length).toBe(1);
+      expect(document.querySelector('.vc-aurora-set.is-leaving')).toBeNull();
+
+      // Preserves unknown theme strings in localStorage while resolving active theme to registry fallback ('aurora')
+      const prefEvents: Event[] = [];
+      const onPrefEvent = (e: Event) => prefEvents.push(e);
+      window.addEventListener(THEME_PREF_EVENT, onPrefEvent);
+      try {
+        act(() => usePreferences.getState().setGlobalDesktopTheme('custom-future-theme'));
+        expect(prefEvents.length).toBeGreaterThanOrEqual(1);
+        const stored = JSON.parse(window.localStorage.getItem('vc-desktop-theme') || '{}');
+        expect(stored.global).toBe('custom-future-theme');
+        expect(usePreferences.getState().activeDesktopTheme).toBe('aurora');
+        expect(document.documentElement.dataset.vcThemeId).toBe('aurora');
+      } finally {
+        window.removeEventListener(THEME_PREF_EVENT, onPrefEvent);
+      }
 
       // Re-reading preferences from localStorage when switching page/character (fixes B11)
       window.localStorage.setItem('vc-theme', 'dark');
@@ -433,6 +610,16 @@ describe('AppShell layout, portal host & reduced motion', () => {
       expect(screen.getByTestId('theme-val').textContent).toBe('dark');
       expect(screen.getByTestId('reply-val').textContent).toBe('spread');
       expect(document.documentElement.dataset.vcTheme).toBe('dark');
+
+      // Check Aurora.css uses canonical calc() spot coordinates and has no fictional paper/smoke rules
+      const auroraCss = readFileSync(
+        resolve(__dirname, '../../src/shell/Aurora.css'),
+        'utf8',
+      );
+      expect(auroraCss).toContain('calc(15vw - 30vmax)');
+      expect(auroraCss).toContain('calc(85vw - 30vmax)');
+      expect(auroraCss).toContain('calc(50vw - 30vmax)');
+      expect(auroraCss).not.toMatch(/paper|smoke/);
     } finally {
       vi.useRealTimers();
     }
