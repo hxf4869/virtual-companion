@@ -1,7 +1,7 @@
 // 桌面卡片运行入口。只运行卡片HTML/脚本iframe与锁定EJS handler；没有ST页面宿主。
 import { lodash, yaml, showdown, hljs } from '/lib.js';
 import { bindCardHost, refreshCardHost, messageFormatting, getCardHost, getChatCompletionModel, getTokenCountAsync, loadWorldInfo,
-    getRegexedString, getThumbnailUrl, MessageFormatter } from './ejs-host.js';
+    getRegexedString, getThumbnailUrl, MessageFormatter, parseRegexFromString } from './ejs-host.js';
 import { scripts, createScriptState, setHelperSchemaLibrary, notifyScriptButtons, onScriptButtonsChanged, waitUntil, getButtonId } from './helper-host.js';
 import * as variables from './helper-variables.js';
 import * as events from './helper-event.js';
@@ -12,9 +12,16 @@ import * as messages from './helper-message.js';
 import * as books from './helper-worldbook.js';
 import * as generation from './helper-generate.js';
 import * as presetsApi from './helper-preset.js';
+import * as charactersApi from './helper-character.js';
+import * as personasApi from './helper-persona.js';
+import * as slashApi from './helper-slash.js';
+import * as injectApi from './helper-inject.js';
+import * as regexApi from './helper-regex.js';
+import { builtin_prompt_default_order, placeholder_prompt_default_order } from '../engine/helper-types.js';
 import { klona } from './klona.js';
 import { ToolManager } from '../engine/tools.js';
 import { substituteParamsExtended, getCharacterCardFields } from '../engine/st/script.js';
+import { uuidv4 } from '../engine/st/scripts/utils.js';
 import { MacrosParser } from '../engine/st/scripts/macros.js';
 import { renderReplyBubbles } from './reply-bubbles.js';
 
@@ -80,7 +87,8 @@ export async function initializeCards(options) {
             for (const timer of entry.timers) clearTimeout(timer); entry.timers.clear();
             node.removeAttribute('data-vc-segs'); node.classList.remove('vc-segmented');
             const content = document.createElement('div'); content.className = 'mes_text';
-            content.innerHTML = messageFormatting(message.extra?.display_text || message.mes,
+            const rawMes = util.replaceMacroLike(message.extra?.display_text || message.mes, { source: 'display', message_id: index });
+            content.innerHTML = messageFormatting(rawMes,
                 message.name, message.is_system, message.is_user, index);
             content.dataset.vcFormatted = ''; node.replaceChildren(content);
         }
@@ -136,12 +144,56 @@ export async function initializeCards(options) {
     Object.assign(globalThis, { SillyTavern: { getContext: () => context } });
     const runtime = await import('/scripts/extensions/third-party/ST-Prompt-Template/dist/desktop.js');
     ejs = await runtime.initializeDesktop(); setHelperSchemaLibrary(ejs.z); globalThis.z = ejs.z;
+    if (globalThis.EjsTemplate && !globalThis.EjsTemplate.__vcMacroWrapped) {
+        const rawEvalTemplate = globalThis.EjsTemplate.evalTemplate.bind(globalThis.EjsTemplate);
+        globalThis.EjsTemplate.evalTemplate = async (code, ctx = null, opts = {}) => {
+            const pre = typeof code === 'string' ? util.replaceMacroLike(code, { source: 'other' }) : code;
+            const out = await rawEvalTemplate(pre, ctx, opts);
+            return typeof out === 'string' ? util.replaceMacroLike(out, { source: 'other' }) : out;
+        };
+        Object.defineProperty(globalThis.EjsTemplate, '__vcMacroWrapped', { value: true });
+    }
+    const onGenerateAfterData = (eventData, dryRun) => util.demacroOnPrompt(eventData, dryRun);
+    const onChatCompletionReady = generateData => {
+        if (generateData?.messages) util.demacroOnPrompt({ prompt: generateData.messages }, false);
+    };
+    context.eventSource.on(context.eventTypes.GENERATE_AFTER_DATA, onGenerateAfterData);
+    context.eventSource.on(context.eventTypes.CHAT_COMPLETION_SETTINGS_READY, onChatCompletionReady);
 
     function assertFrame(frame) {
         if (!frame || !frame.isConnected || context.chatMetadata !== activeMetadata) throw new Error('VC_STALE_CARD_RUNTIME');
     }
+    const unsupportedHelper = name => function () {
+        console.warn(`[TavernHelper] Unsupported helper interface called: ${name}`);
+        throw new Error(`VC_HELPER_UNSUPPORTED:${name}`);
+    };
+    const UNSUPPORTED_TOP_NAMES = [
+        // audio (13 + playSound alias)
+        'audioEnable', 'audioImport', 'audioMode', 'audioPlay', 'audioSelect',
+        'playAudio', 'pauseAudio', 'getAudioList', 'replaceAudioList', 'appendAudioList',
+        'getAudioSettings', 'setAudioSettings', 'getCurrentAudio', 'playSound',
+        // extension (9 + aliases)
+        'isAdmin', 'getTavernHelperExtensionId', 'getExtensionType',
+        'getExtensionInstallationInfo', 'getExtensionStatus', 'isInstalledExtension',
+        'installExtension', 'uninstallExtension', 'reinstallExtension', 'updateExtension',
+        // file (3)
+        'getTavernFile', 'uploadTavernFile', 'deleteTavernFile',
+        // import_raw (5)
+        'importRawCharacter', 'importRawPreset', 'importRawChat', 'importRawWorldbook', 'importRawTavernRegex',
+        // version update / frontend check
+        'updateTavernHelper', 'updateFrontendVersion', 'isFrontend',
+        // character write
+        'createCharacter', 'deleteCharacter', 'replaceCharacter', 'updateCharacterWith', 'createOrReplaceCharacter', 'setCurrentCharacter',
+        // persona write
+        'createPersona', 'deletePersona', 'replacePersona', 'updatePersonaWith', 'createOrReplacePersona', 'setCurrentPersona',
+        // preset write
+        'loadPreset', 'createPreset', 'deletePreset', 'createOrReplacePreset', 'renamePreset', 'replacePreset', 'updatePresetWith', 'setPreset',
+        // regex write
+        'replaceTavernRegexes', 'updateTavernRegexesWith',
+    ];
+    const unsupportedApi = Object.fromEntries(UNSUPPORTED_TOP_NAMES.map(name => [name, unsupportedHelper(name)]));
     const bind = {};
-    for (const [name, fn] of Object.entries({ ...variables, ...events, ...util, ...scriptApi, ...globals })) {
+    for (const [name, fn] of Object.entries({ ...variables, ...events, ...util, ...scriptApi, ...globals, ...slashApi, ...injectApi })) {
         if (!name.startsWith('_') || typeof fn !== 'function') continue;
         bind[name] = function (...args) {
             if (!name.startsWith('_eventClear') && name !== '_eventRemoveListener') assertFrame(this.frameElement);
@@ -153,15 +205,69 @@ export async function initializeCards(options) {
             return result;
         };
     }
-    for (const [name, fn] of Object.entries({ ...messages, ...books, ...generation, ...presetsApi })) {
-        if (typeof fn === 'function') bind['_' + name] = function (...args) { assertFrame(this.frameElement); return fn(...args); };
+    for (const [name, fn] of Object.entries({ ...messages, ...books, ...generation, ...presetsApi, ...charactersApi, ...personasApi, ...injectApi, ...regexApi, ...unsupportedApi })) {
+        if (name.startsWith('_') || name === 'RawCharacter' || typeof fn !== 'function') continue;
+        bind['_' + name] = function (...args) { assertFrame(this.frameElement); return fn(...args); };
     }
-    const publicApi = { ...variables, ...messages, ...books, ...globals, ...generation, ...presetsApi,
+    const INTERNAL_HELPER_EXPORTS = new Set([
+        'get_variables_without_clone',
+        'get_tavern_regexes_without_clone',
+        'to_tavern_regex',
+        'from_tavern_regex',
+        'replaceMacroLike',
+        'demacroOnPrompt',
+    ]);
+    const publicOnly = mod => Object.fromEntries(
+        Object.entries(mod).filter(([name]) => !name.startsWith('_') && !INTERNAL_HELPER_EXPORTS.has(name)),
+    );
+    const publicApi = {
+        ...unsupportedApi,
+        ...publicOnly(variables),
+        ...publicOnly(messages),
+        ...publicOnly(books),
+        ...publicOnly(globals),
+        ...publicOnly(generation),
+        ...publicOnly(presetsApi),
+        ...publicOnly(scriptApi),
+        ...publicOnly(charactersApi),
+        ...publicOnly(personasApi),
+        ...publicOnly(injectApi),
+        ...publicOnly(regexApi),
+        triggerSlash: slashApi.triggerSlash,
+        triggerSlashWithResult: slashApi.triggerSlashWithResult,
+        registerMacroLike: util.registerMacroLike,
+        unregisterMacroLike: util.unregisterMacroLike,
+        builtin_prompt_default_order,
+        placeholder_prompt_default_order,
         getActiveScriptIds: () => [...scripts.keys()],
-        getTavernHelperVersion: () => '4.11.3', getTavernVersion: () => version,
-        getLastMessageId: util.getLastMessageId, getMessageId: util.getMessageId, substitudeMacros: util.substitudeMacros,
-        tavern_events: events.tavern_events, iframe_events: events.iframe_events,
-        builtin: { saveSettings: () => context.saveSettingsDebounced() },
+        getTavernHelperVersion: () => '4.11.3',
+        getFrontendVersion: () => '4.11.3',
+        getTavernVersion: () => version,
+        getLastMessageId: util.getLastMessageId,
+        getMessageId: util.getMessageId,
+        substitudeMacros: util.substitudeMacros,
+        errorCatched: util.errorCatched,
+        reloadIframe: util.reloadIframe,
+        tavern_events: events.tavern_events,
+        iframe_events: events.iframe_events,
+        builtin: {
+            saveSettings: () => context.saveSettingsDebounced(),
+            uuidv4,
+            copyText: async text => { await globalThis.navigator?.clipboard?.writeText?.(String(text ?? '')); },
+            renderMarkdown: text => new showdown.Converter().makeHtml(String(text ?? '')),
+            parseRegexFromString,
+            duringGenerating: () => Boolean(context.isGenerating),
+            addOneMessage: unsupportedHelper('builtin.addOneMessage'),
+            getImageTokenCost: unsupportedHelper('builtin.getImageTokenCost'),
+            getVideoTokenCost: unsupportedHelper('builtin.getVideoTokenCost'),
+            promptManager: new Proxy({}, { get: () => unsupportedHelper('builtin.promptManager') }),
+            reloadAndRenderChatWithoutEvents: unsupportedHelper('builtin.reloadAndRenderChatWithoutEvents'),
+            reloadChatWithoutEvents: unsupportedHelper('builtin.reloadChatWithoutEvents'),
+            reloadEditor: unsupportedHelper('builtin.reloadEditor'),
+            reloadEditorDebounced: unsupportedHelper('builtin.reloadEditorDebounced'),
+            renderPromptManager: unsupportedHelper('builtin.renderPromptManager'),
+            renderPromptManagerDebounced: unsupportedHelper('builtin.renderPromptManagerDebounced'),
+        },
         _bind: bind, _th_impl: { _init() {}, _log() {}, _clearLog() {},
             writeExtensionField: async (characterId, key, value) => {
                 const card = context.characters[characterId];
@@ -249,6 +355,8 @@ export async function initializeCards(options) {
     onScriptButtonsChanged(drawActions);
     const api = { surface, bindContext: refreshCardHost, closeScripts, getPreset: presetsApi.getPreset,
         destroy() {
+            context.eventSource.removeListener?.(context.eventTypes.GENERATE_AFTER_DATA, onGenerateAfterData);
+            context.eventSource.removeListener?.(context.eventTypes.CHAT_COMPLETION_SETTINGS_READY, onChatCompletionReady);
             releaseFrames(scriptFrames);
             scriptFrames.remove();
             actions.remove();
@@ -320,6 +428,7 @@ export async function initializeCards(options) {
             }
             return entry.cleanup;
         },
+        isRendering: () => pending.size > 0,
         async settle() { await Promise.allSettled([...pending]); await Promise.all(context.cardWrites?.splice(0) || []); },
         async open({ signal } = {}) {
             await Promise.allSettled([...pending]);

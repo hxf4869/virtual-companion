@@ -3,20 +3,33 @@
 import {getCardHost,regex_placement} from './ejs-host.js';
 import {klona} from './klona.js';
 const uuidv4=()=>crypto.randomUUID();
-function isPresetSystemPrompt(prompt) {
-    return ['main', 'nsfw', 'jailbreak', 'enhanceDefinitions'].includes(prompt.id);
+export const default_preset = {
+    settings: {
+        max_context: 4095, max_completion_tokens: 300, reply_count: 1,
+        should_stream: true, temperature: 1, frequency_penalty: 0, presence_penalty: 0, top_p: 1, top_k: 0, top_a: 0, min_p: 0, repetition_penalty: 1, seed: -1,
+        reasoning_effort: 'auto', request_thoughts: false, request_images: false, enable_function_calling: false, enable_web_search: false,
+        allow_sending_images: 'disabled', allow_sending_videos: false, character_name_prefix: 'default', wrap_user_messages_in_quotes: false, squash_system_messages: false,
+    },
+    prompts: [], prompts_unused: [], extensions: {},
+};
+export function isPresetSystemPrompt(prompt) {
+    return ['main', 'nsfw', 'jailbreak', 'enhanceDefinitions', 'enhance_definitions'].includes(prompt?.id);
 }
-function isPresetPlaceholderPrompt(prompt) {
+export function isPresetPlaceholderPrompt(prompt) {
     return [
-        'worldInfoBefore',
-        'personaDescription',
-        'charDescription',
-        'charPersonality',
+        'worldInfoBefore', 'world_info_before',
+        'personaDescription', 'persona_description',
+        'charDescription', 'char_description',
+        'charPersonality', 'char_personality',
         'scenario',
-        'worldInfoAfter',
-        'dialogueExamples',
-        'chatHistory',
-    ].includes(prompt.id);
+        'worldInfoAfter', 'world_info_after',
+        'dialogueExamples', 'dialogue_examples',
+        'chatHistory', 'chat_history',
+        'authors_note',
+    ].includes(prompt?.id);
+}
+export function isPresetNormalPrompt(prompt) {
+    return !isPresetSystemPrompt(prompt) && !isPresetPlaceholderPrompt(prompt);
 }
 function toPresetPrompt(prompt, prompt_order) {
     const is_normal_prompt = prompt.system_prompt === false && (prompt.marker === undefined || prompt.marker === false);

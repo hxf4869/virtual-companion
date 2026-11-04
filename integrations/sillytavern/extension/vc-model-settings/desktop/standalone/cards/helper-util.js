@@ -1,13 +1,110 @@
 // AGPL-3.0-only. JS-Slash-Runner 0af421068 / src/iframe/exported/util.ts
 // 保留本地预编译拷贝：上游为 TypeScript 源码，此处绑定 ../engine/st/script.js 的 substituteParamsExtended 与 helper-host.js 的 zod 实例。
+import { lodash } from '/lib.js';
 import { substituteParamsExtended } from '../engine/st/script.js';
 import { z } from './helper-host.js';
+import { get_variables_without_clone } from './helper-variables.js';
 const isPromise=value=>value!=null&&typeof value.then==='function';
+
+const macros = [
+    {
+        regex: /\{\{get_(?:(global|preset|character|chat|message)_)?variable::(.*?)\}\}/g,
+        replace: (_context, _match, type, path) => {
+            try {
+                const variables = get_variables_without_clone({ type: type ?? 'chat' });
+                const variable = lodash.get(variables, path);
+                if (typeof variable === 'string') return variable;
+                if (variable === undefined) return 'undefined';
+                return JSON.stringify(variable);
+            } catch {
+                return 'undefined';
+            }
+        },
+    },
+    {
+        regex: /\{\{format_(?:(global|preset|character|chat|message)_)?variable_quoted::(.*?)\}\}/g,
+        replace: (_context, _match, type, path) => {
+            try {
+                const variables = get_variables_without_clone({ type: type ?? 'chat' });
+                const variable = lodash.get(variables, path);
+                return String(JSON.stringify(variable));
+            } catch {
+                return 'undefined';
+            }
+        },
+    },
+    {
+        regex: /\{\{format_(?:(global|preset|character|chat|message)_)?variable::(.*?)\}\}/g,
+        replace: (_context, _match, type, path) => {
+            try {
+                const variables = get_variables_without_clone({ type: type ?? 'chat' });
+                const variable = lodash.get(variables, path);
+                return typeof variable === 'string' ? variable : String(JSON.stringify(variable));
+            } catch {
+                return 'undefined';
+            }
+        },
+    },
+];
+
+export function registerMacroLike(regex, replace) {
+    if (!macros.some(macro => macro.regex.source === regex.source)) {
+        macros.push({ regex, replace });
+    }
+    return {
+        unregister: () => unregisterMacroLike(regex),
+    };
+}
+export function _registerMacroLike(regex, replace) {
+    const { unregister } = registerMacroLike(regex, replace);
+    try {
+        if (this && typeof this.addEventListener === 'function') {
+            this.addEventListener('pagehide', unregister, { once: true });
+        } else if (typeof globalThis.jQuery === 'function' && this) {
+            globalThis.jQuery(this).on?.('pagehide', unregister);
+        }
+    } catch {}
+    return { unregister };
+}
+export function unregisterMacroLike(regex) {
+    const index = macros.findIndex(macro => macro.regex.source === regex.source);
+    if (index !== -1) {
+        macros.splice(index, 1);
+    }
+}
+export function replaceMacroLike(text, context = {}) {
+    if (typeof text !== 'string') return text;
+    const ctx = { source: 'other', ...context };
+    return macros.reduce((acc, macro) => acc.replace(macro.regex, (...args) => macro.replace(ctx, ...args)), text);
+}
+export function demacroOnPrompt(event_data, dry_run = false) {
+    if (dry_run || !event_data) return;
+    const replace = text => replaceMacroLike(text, { source: 'prompt' });
+    if (typeof event_data.prompt === 'string') {
+        event_data.prompt = replace(event_data.prompt);
+    } else if (Array.isArray(event_data.prompt)) {
+        for (const data of event_data.prompt) {
+            if (!data) continue;
+            if (typeof data.content === 'string') {
+                data.content = replace(data.content);
+            } else if (Array.isArray(data.content)) {
+                for (const item of data.content) {
+                    if (item?.type === 'text' && typeof item.text === 'string') {
+                        item.text = replace(item.text);
+                    }
+                }
+            }
+        }
+    }
+}
 export function _reloadIframe() {
     this.location.reload();
 }
+export function reloadIframe(iframe_name) {
+    document.querySelector(`iframe[id="${String(iframe_name).replace(/"/g, '\\"')}"]`)?.contentWindow?.location.reload();
+}
 export function substitudeMacros(text) {
-    return substituteParamsExtended(text);
+    return replaceMacroLike(substituteParamsExtended(text), { source: 'other' });
 }
 export function getLastMessageId() {
     return Number(substitudeMacros('{{lastMessageId}}'));

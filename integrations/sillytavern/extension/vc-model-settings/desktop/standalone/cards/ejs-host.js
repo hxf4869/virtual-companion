@@ -4,12 +4,43 @@ import { createRegexRuntime } from '../engine/regex.js';
 import { createTokenizer } from '../engine/tokenizers.js';
 import { getChatCompletionModel as modelOf } from '../engine/st/scripts/openai.js';
 import { getCharaFilename } from '../engine/st/scripts/utils.js';
-import { substituteParams, substituteParamsExtended } from '../engine/st/script.js';
+import { substituteParams as substituteParamsEngine, substituteParamsExtended as substituteParamsExtendedEngine, setExtensionPrompt } from '../engine/st/script.js';
 import { getContext, characters, this_chid, groups, selected_group, power_user, oai_settings } from '../engine/ports.js';
 import { configureFormatting, messageFormatting, MessageFormatter } from './format.js';
 import { accountStorage, configureAccountStorage } from './account-storage.js';
+import { replaceMacroLike } from './helper-util.js';
+import {
+    ARGUMENT_TYPE,
+    SlashCommand,
+    SlashCommandArgument,
+    SlashCommandNamedArgument,
+    SlashCommandParser,
+    executeSlashCommands,
+    executeSlashCommandsWithOptions,
+} from './helper-slash.js';
 export * from '../engine/ports.js';
-export { substituteParams, substituteParamsExtended, getCharaFilename, messageFormatting, MessageFormatter };
+export {
+    setExtensionPrompt,
+    getCharaFilename,
+    messageFormatting,
+    MessageFormatter,
+    ARGUMENT_TYPE,
+    SlashCommand,
+    SlashCommandArgument,
+    SlashCommandNamedArgument,
+    SlashCommandParser,
+    executeSlashCommands,
+    executeSlashCommandsWithOptions,
+};
+
+export function substituteParams(content, ...args) {
+    const out = substituteParamsEngine(content, ...args);
+    return typeof out === 'string' ? replaceMacroLike(out, { source: 'other' }) : out;
+}
+export function substituteParamsExtended(content, ...args) {
+    const out = substituteParamsExtendedEngine(content, ...args);
+    return typeof out === 'string' ? replaceMacroLike(out, { source: 'other' }) : out;
+}
 
 let owner;
 export let user_avatar, world_info, selected_world_info, world_names;
@@ -78,11 +109,64 @@ export function getRegexedString(...args) {
             readPresetExtensionField: ({ path }) => lodash.get(preset.extensions, path) }) }).getRegexedString(...args);
 }
 // 与当前锁定 RawCharacter 的查找规则相同；不接触原生角色列表。
-export const RawCharacter = { find({ name = 'current' } = {}) {
-    if (name === 'current') return characters[this_chid] ?? null;
-    const lowered = name.toLowerCase();
-    return characters.find(character => character.name.toLowerCase() === lowered || character.avatar.toLowerCase() === lowered) ?? null;
-} };
+export class RawCharacter {
+    constructor(character) {
+        Object.assign(this, character);
+        this.character = character;
+    }
+    getCardData() { return this.character.data; }
+    getAvatarId() { return this.character.avatar; }
+    getRegexScripts() { return this.character.data?.extensions?.regex_scripts; }
+    getCharacterBook() { return this.character.data?.character_book; }
+    getWorldName() { return this.character.data?.extensions?.world; }
+    static find({ name = 'current' } = {}) {
+        if (name === 'current') {
+            const current = characters[this_chid];
+            return current ? new RawCharacter(current) : null;
+        }
+        const lowered = String(name).toLowerCase();
+        const found = characters.find(character => character.name?.toLowerCase() === lowered || character.avatar?.toLowerCase() === lowered);
+        return found ? new RawCharacter(found) : null;
+    }
+    static findIndex(arg = 'current') {
+        const name = (typeof arg === 'object' && arg !== null ? arg.name : arg) ?? 'current';
+        if (name === 'current') return this_chid != null && characters[this_chid] ? Number(this_chid) : -1;
+        const lowered = String(name).toLowerCase();
+        return characters.findIndex(character => character.name?.toLowerCase() === lowered || character.avatar?.toLowerCase() === lowered);
+    }
+    static async getChatsFromFiles(data, isGroupChat = false) {
+        if (typeof data === 'string') {
+            const res = await owner.client.request('/api/characters/chats', { avatar_url: data });
+            if (!res || (typeof res === 'object' && 'error' in res)) return undefined;
+            return res;
+        }
+        const chat_dict = {};
+        const chat_list = Object.values(data ?? {})
+            .filter(item => typeof item?.file_name === 'string' && item.file_name.length > 0)
+            .sort((a, b) => a.file_name.localeCompare(b.file_name))
+            .reverse();
+        await Promise.all(
+            chat_list.map(async item => {
+                const ch_name = item.ch_name ?? item.character_name ?? item.file_name.split(' - ')[0];
+                const avatar_url = item.avatar_url || RawCharacter.find({ name: ch_name })?.avatar || '';
+                const currentChat = isGroupChat
+                    ? await owner.client.request('/api/chats/group/get', { id: item.file_name })
+                    : await owner.client.request('/api/chats/get', {
+                        ch_name,
+                        file_name: item.file_name.replace('.jsonl', ''),
+                        avatar_url,
+                    });
+                if (!Array.isArray(currentChat)) return;
+                const copy = [...currentChat];
+                if (!isGroupChat) {
+                    copy.shift();
+                }
+                chat_dict[item.file_name] = copy;
+            }),
+        );
+        return chat_dict;
+    }
+}
 // 原解析规则，供 EJS/Helper 世界书条目的正则键使用。
 export function parseRegexFromString(input) {
     const match = input.match(/^\/([\w\W]+?)\/([gimsuy]*)$/);

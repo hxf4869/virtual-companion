@@ -615,6 +615,10 @@ export function createDesktopSession({ client, context, engine, prepareSourceIde
     };
     context.stopHelperGenerationById = id => { const controller=helperRuns.get(id);if(!controller)return false;controller.abort();void context.eventSource.emit(context.eventTypes.GENERATION_STOPPED,id);return true; };
     context.stopAllHelperGeneration = () => {for(const id of helperRuns.keys())context.stopHelperGenerationById(id);};
+    context.mutateChatMessages = (expectedMetadata, change, { refresh = 'all' } = {}) => {
+        if (!current || current.metadata !== expectedMetadata || engine.cards?.isRendering?.()) return Promise.resolve(false);
+        return mutate(0, current.messages[0], target => change(target.messages), refresh);
+    };
     context.generate = type => type === 'regenerate' ? api.regenerate() : type === 'continue' ? api.continue() : type === 'swipe' ? api.swipe(context.chat.length - 1, 1) : api.retry();
     return api;
 }

@@ -36,6 +36,7 @@ export const placeholder_prompt_default_order = [
     'chat_history',
     'user_input',
 ];
+export const builtin_prompt_default_order = placeholder_prompt_default_order;
 /**
  * 角色类型映射
  */

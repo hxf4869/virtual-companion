@@ -1,10 +1,13 @@
 // AGPL-3.0-only. JS-Slash-Runner 0af421068 / src/iframe/exported/message.ts
 // 保留本地预编译拷贝：上游为 TypeScript 源码且依赖原生消息 DOM，此处绑定 ../engine/ports.js 与 helper-host.js 的 normalizeMessageId/refreshMessages 显式端口。
-import { chat, chat_metadata, characters, this_chid, name1, name2, extension_settings } from '../engine/ports.js';
+import { chat, chat_metadata, characters, this_chid, name1, name2, extension_settings, eventSource, event_types } from '../engine/ports.js';
 import { substituteParamsExtended } from '../engine/st/script.js';
 import { klona } from './klona.js';
 import { system_message_types } from '../engine/st/constants.js';
 import { normalizeMessageId, refreshMessages } from './helper-host.js';
+import { getCardHost, saveChatConditional } from './ejs-host.js';
+import { messageFormatting } from './format.js';
+import { replaceMacroLike } from './helper-util.js';
 function string_to_range(input, min, max) {
     let start, end;
     const clamp = (value) => _.clamp(value < 0 ? max + value + 1 : value, min, max);
@@ -185,7 +188,200 @@ export async function setChatMessages(chat_messages, { refresh = 'affected' } = 
     await refreshMessages(refresh, chat_messages.map(message => message.message_id));
 }
 
-import { saveChatConditional } from './ejs-host.js';
+function runChatMessagesMutation(refresh, change) {
+    const host = getCardHost();
+    const context = host?.context;
+    const expectedMetadata = context?.chatMetadata;
+    if (typeof context?.mutateChatMessages !== 'function') {
+        return Promise.reject(new Error('VC_CHAT_MUTATION_REJECTED'));
+    }
+    const refreshIndices = [];
+    const refreshOption = refresh === 'none' ? [] : refresh === 'all' ? 'all' : refreshIndices;
+    return context.mutateChatMessages(
+        expectedMetadata,
+        messages => change(messages, refreshIndices),
+        { refresh: refreshOption },
+    ).then(ok => {
+        if (!ok) throw new Error('VC_CHAT_MUTATION_REJECTED');
+    });
+}
+
+export async function createChatMessages(chat_messages, { insert_at, insert_before = 'end', refresh = 'affected' } = {}) {
+    const convert = (chat_message) => {
+        let result = _({});
+        if (chat_message?.name !== undefined) {
+            result = result.set('name', chat_message.name);
+        } else if (chat_message.role === 'system') {
+            result = result.set('name', 'system');
+        } else if (chat_message.role === 'user') {
+            result = result.set('name', name1);
+        } else {
+            result = result.set('name', name2);
+        }
+        result = result.set('is_user', chat_message.role === 'user');
+        if (chat_message.role === 'system') {
+            result = result.set('extra.type', system_message_types.NARRATOR);
+        }
+        result = result.set('is_system', chat_message.is_hidden ?? false);
+        result = result.set('mes', chat_message.message ?? '');
+        result = result.set('swipe_id', 0);
+        result = result.set('swipes', [chat_message.message ?? '']);
+        result = result.set('variables', [chat_message.data ? klona(chat_message.data) : {}]);
+        if (chat_message.extra) {
+            result = result.set('extra', klona(chat_message.extra));
+        }
+        return result.value();
+    };
+    await runChatMessagesMutation(refresh, async (messages, refreshIndices) => {
+        const targetInsert = insert_at ?? insert_before;
+        const raw_index = targetInsert === 'end' ? messages.length : _.clamp(targetInsert, -messages.length, messages.length);
+        const actual_insert = raw_index < 0 ? Math.max(0, messages.length + raw_index) : Math.min(messages.length, raw_index);
+        const converted = chat_messages.map(convert);
+        messages.splice(actual_insert, 0, ...converted);
+        if (refresh === 'affected') {
+            refreshIndices.push(..._.range(actual_insert, messages.length));
+        }
+        await Promise.all(
+            converted.map((message, index) =>
+                eventSource?.emit?.(
+                    message.is_user ? event_types.MESSAGE_SENT : event_types.MESSAGE_RECEIVED,
+                    actual_insert + index,
+                    'extension',
+                ),
+            ),
+        );
+    });
+}
+
+export async function deleteChatMessages(message_ids, { refresh = 'affected' } = {}) {
+    const hasValidId = Array.isArray(message_ids)
+        && message_ids.some(id => Number.isInteger(id) && id >= -chat.length && id < chat.length);
+    if (!hasValidId) {
+        return;
+    }
+    await runChatMessagesMutation(refresh, async (messages, refreshIndices) => {
+        const normalizeId = id => (id < 0 ? messages.length + id : id);
+        const valid_ids = _(message_ids)
+            .filter(id => Number.isInteger(id) && id >= -messages.length && id < messages.length)
+            .map(normalizeId)
+            .sortBy()
+            .sortedUniq()
+            .value();
+        if (valid_ids.length === 0) {
+            return;
+        }
+        for (let i = valid_ids.length - 1; i >= 0; i--) {
+            messages.splice(valid_ids[i], 1);
+        }
+        if (refresh === 'affected') {
+            const min_affected = Math.min(...valid_ids);
+            refreshIndices.push(..._.range(min_affected, messages.length));
+        }
+        for (const deleted_id of valid_ids) {
+            await eventSource?.emit?.(event_types.MESSAGE_DELETED, deleted_id);
+        }
+    });
+}
+
+export async function rotateChatMessages(begin, middle, end, { refresh = 'affected' } = {}) {
+    await runChatMessagesMutation(refresh, (messages, refreshIndices) => {
+        const normalizeId = id => (id < 0 ? messages.length + id : id);
+        const b = _.clamp(normalizeId(begin), 0, messages.length);
+        const e = _.clamp(normalizeId(end), 0, messages.length);
+        const m = _.clamp(normalizeId(middle), b, e);
+        const right_part = messages.splice(m, e - m);
+        messages.splice(b, 0, ...right_part);
+        if (refresh === 'affected') {
+            const min_affected = Math.min(b, m, e);
+            refreshIndices.push(..._.range(min_affected, messages.length));
+        }
+    });
+}
+
+export function formatAsDisplayedMessage(text, { message_id = 'last' } = {}) {
+    if (typeof message_id !== 'number' && !['last', 'last_user', 'last_char'].includes(message_id)) {
+        throw Error(
+            `提供的 message_id 无效, 请提供 'last', 'last_user', 'last_char' 或楼层消息号 (-1 表示倒数第一楼), 你提供的是: ${message_id}`,
+        );
+    }
+    const last_message_id = chat.length > 0 ? chat.length - 1 : null;
+    if (last_message_id === null) {
+        throw Error(`未找到任何消息楼层`);
+    }
+    switch (message_id) {
+        case 'last':
+            message_id = last_message_id;
+            break;
+        case 'last_user': {
+            let found = -1;
+            for (let i = chat.length - 1; i >= 0; i--) {
+                if (chat[i]?.is_user && !chat[i]?.is_system) {
+                    found = i;
+                    break;
+                }
+            }
+            if (found === -1) {
+                throw Error(`未找到任何 user 消息楼层, 你提供的是: ${message_id}`);
+            }
+            message_id = found;
+            break;
+        }
+        case 'last_char': {
+            let found = -1;
+            for (let i = chat.length - 1; i >= 0; i--) {
+                if (!chat[i]?.is_user && !chat[i]?.is_system) {
+                    found = i;
+                    break;
+                }
+            }
+            if (found === -1) {
+                throw Error(`未找到任何 char 消息楼层, 你提供的是: ${message_id}`);
+            }
+            message_id = found;
+            break;
+        }
+    }
+    const normalized_message_id = normalizeMessageId(message_id);
+    if (normalized_message_id < 0 || normalized_message_id >= chat.length) {
+        throw Error(`提供的 message_id 不在 [${-last_message_id - 1}, ${last_message_id}] 内, 你提供的是: ${message_id}`);
+    }
+    const chat_message = chat[normalized_message_id];
+    const role = chat_message.is_user ? 'user' : chat_message.is_system ? 'system' : 'assistant';
+    const demacroed = replaceMacroLike(String(text ?? ''), {
+        source: 'display',
+        message_id: normalized_message_id,
+        role,
+    });
+    return messageFormatting(
+        demacroed,
+        chat_message.name,
+        chat_message.is_system,
+        chat_message.is_user,
+        normalized_message_id,
+    );
+}
+
+export function retrieveDisplayedMessage(message_id) {
+    const normalized = normalizeMessageId(message_id);
+    const selector = `#chat > .mes[mesid="${normalized}"] div.mes_text, #chat .mes[mesid="${normalized}"] div.mes_text`;
+    if (typeof globalThis.$ === 'function') {
+        const jq = globalThis.$(`#chat > .mes[mesid="${normalized}"] div.mes_text`);
+        if (jq && jq.length > 0) return jq;
+    }
+    const doc = globalThis.window?.parent?.document ?? globalThis.document;
+    const nodes = doc ? [...doc.querySelectorAll(selector)] : [];
+    return Object.assign(nodes, {
+        text: () => nodes.map(n => n.textContent ?? '').join(''),
+        html: () => nodes[0]?.innerHTML ?? '',
+    });
+}
+
+export async function refreshOneMessage(message_id) {
+    const normalized = normalizeMessageId(message_id);
+    if (normalized < 0 || normalized >= chat.length) return;
+    await refreshMessages('affected', [normalized]);
+}
+
 export async function setChatMessage(field_values, message_id, { swipe_id = 'current', refresh = 'display_and_render_current', } = {}) {
     field_values = typeof field_values === 'string' ? { message: field_values } : field_values;
     if (typeof swipe_id !== 'number' && swipe_id !== 'current') {
