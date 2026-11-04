@@ -240,7 +240,7 @@ assert.equal(traversalRes.statusCode, 404); // /desktop/assets/../index.html
 
 **Interfaces:**
 - Produces: `useChrome(): 'narrow'|'compact'|'regular'|'wide'`（基于三个 `matchMedia('(min-width: Npx)')`，同步写 `<html data-chrome>`）；`usePreferences()`（zustand，持久化键沿用 `vc-theme`、`vc-reply-style`、`vc-reduced-motion`、`vc-desktop-theme`、`vc-sidebar-collapsed`）；路由：`/` → 重定向到 `/chat`；`/chat`、`/chat/$conversationKey`、`/characters`、`/characters/$avatar`、`/memory`、`/inbox`、`/story`、`/story/$runId`、`/settings/$category`、`/settings/tavern/$section`（基路径 `/desktop/` 与 `/` 都可进入，使用 hash history 以免服务端路由改动）；`useLeaveGuard(dirty: boolean, message?: string)`（基于 TanStack Router `useBlocker`，弹 `AlertDialog`："放弃未保存的修改？"——文案以 companion-copy 为准）；`<QuickSwitch>`（cmdk，⌘K / Ctrl+K）。
-- 布局取值（DESIGN.md §11、§16.3）：窗口外边距 ≥1180 `24px`、744–1179 `16px`；面板间距 `12px`；侧栏 ≥1180 `200px`，744–1179 `72px`；会话列表 `320px`；对话最小 `560px`、阅读列最大 `720px`；角色面板 `340px`（≥1600 并排默认展开；1180–1599 默认收起，打开时会话列表让位；<1180 浮层且不遮标题栏与输入区）；`narrow` 档为单列 + 底部标签栏（DESIGN.md §9 标签栏数值）。
+- 布局取值（DESIGN.md §11、§16.3）：窗口外边距 ≥1180 `24px`、744–1179 `16px`；面板间距 `12px`；侧栏 ≥1180 `200px`，744–1179 `72px`；会话列表 `320px`；对话最小 `560px`、阅读列最大 `720px`；角色面板 `340px`（≥1600 并排默认展开；1180–1599 默认收起，打开时会话列表让位；<1180 浮层且不遮标题栏与输入区）；`narrow` 档是压窄的桌面布局（Owner 2026-11-04）：侧栏 72px 图标栏、窗口外边距 `12px`；会话列表与对话二选一（进入会话后列表隐藏，标题栏左侧按钮返回列表）；角色面板与设置分类为浮层；Dialog 宽 `min(设定宽, 100vw - 32px)`。不实现底部标签栏、底部 sheet、拖拽档位、推入视差、键盘避让。
 
 - [ ] **Step 1: 写失败测试** —— `useChrome.test.ts`：`maps 743/744/1179/1180/1599/1600 to correct chrome`、`writes data-chrome once per crossing`（模拟 matchMedia 连续触发同值不重复写）；`AppShell.test.tsx`：`compact hides list after entering conversation and list button reopens it`、`wide shows four columns with panel open by default`；`router.test.tsx`：`leave guard blocks navigation while dirty and proceeds after confirm`；`QuickSwitch.test.tsx`：`Ctrl+K opens, typing filters conversations, Enter navigates`。
 - [ ] **Step 2: 运行确认失败**。
@@ -391,7 +391,7 @@ export function useChatSnapshot(bridge: SessionBridge): ChatSnapshot;
 
 ### Task 13: 收尾、全量验证与 backlog 回填
 
-**Files:** Modify `docs/planning/2026-10-31-handoff-backlog.md`（新增 K 节：DR2-1 … DR2-15，与本计划任务一一对应，并在末尾追加：①"合并与部署前置：与 `mb-mobile` 联合发布；`Dockerfile.st` 增加 `mobile-dist` 构建步骤"；②"Helper 11 个手写模块改为构建时编译上游 TS（DR2-14 未做，待评估）"；③"未补齐的 Helper 接口清单（DR2-15 不做部分，无已知卡片消费者）"）、`TODO.md`「陪伴体验后续」按 ID 回填、`integrations/sillytavern/desktop-ui/README.md`（新架构说明，删去 DR-4 等过时段落）、`integrations/sillytavern/README.md:297` 段落。
+**Files:** Modify `docs/planning/2026-10-31-handoff-backlog.md`（新增 K 节：DR2-1 … DR2-15，与本计划任务一一对应，并在末尾追加：①"合并与部署前置：与 `mb-mobile` 联合发布；`Dockerfile.st` 增加 `mobile-dist` 构建步骤"；②"Helper 11 个手写模块改为构建时编译上游 TS（DR2-14 未做，待评估）"；③"未补齐的 Helper 接口清单（DR2-15 不做部分，无已知卡片消费者）"；④"MB 完成后清理 `/native/` 中 uni-app 不再显示的旧手机外壳（标签栏、会话列表、手机页面栈等），清理前核对 uni-app 的 ST 视图不会露出"）、`TODO.md`「陪伴体验后续」按 ID 回填、`integrations/sillytavern/desktop-ui/README.md`（新架构说明，删去 DR-4 等过时段落）、`integrations/sillytavern/README.md:297` 段落。
 
 - [ ] **Step 1: 确认旧代码已清零** —— `ls integrations/sillytavern/extension/vc-model-settings/desktop/*.js` 只剩 `tavern-defaults.js`、`tavern-fields.js`、`tavern-controller.js`（及 `/native/` 仍 import 的文件，逐个注明消费者）；`grep -rn "!important" integrations/sillytavern/desktop-ui/src --include=*.css` 只剩允许的规则。
 - [ ] **Step 2: 全量** —— `bash scripts/check.sh` 通过；T11 的受管场景整组在同一提交上通过。

@@ -40,7 +40,9 @@ Claude 审计 `codex/desktop-independent-frontend` 后确认根因是结构性�
 
 **非目标**
 
-- 手机端：uni-app（`mb-mobile`）不在范围。
+- 手机端：uni-app（`mb-mobile`）不在范围；电脑端不再为手机做专门适配（手机由 uni-app 单独做，Owner 2026-11-04）。
+  `/native/`（uni-app 的隐藏引擎 iframe，复杂卡 / 剧情舞台 / 酒馆配置时全屏显示）本次不清理，只修 B10；
+  其中不再显示的旧手机外壳待 MB 完成后另行清理（backlog 条目）。
 - 视觉改版：不改颜色、材质、版式、文案（文案改动先改 `2026-10-30-companion-copy.md`）。
 - 新产品功能：不新增 backlog 外的能力。
 - 后端重写：Go 与 ST 插件只在前端确需时做最小改动（第 7 节）。
@@ -106,8 +108,10 @@ integrations/sillytavern/extension/vc-model-settings/desktop/standalone/
 ### 4.3 布局系统
 
 - 壳层只用一个 CSS Grid：`[sidebar] [list?] [main] [panel?]`。列宽、显隐按 DESIGN.md §16.3 与 §11 取值，
-  由 `data-chrome="compact|regular|wide"`（<1180 / 1180–1599 / ≥1600）在 `<html>` 上声明；`<744` 时
-  电脑端仍可用（窄窗），使用 §11 的单列规则（侧栏变底部导航，详情 / 设置用全屏页）。
+  由 `data-chrome="narrow|compact|regular|wide"`（<744 / 744–1179 / 1180–1599 / ≥1600）在 `<html>` 上声明。
+  **`narrow` 是压窄的桌面布局，不是手机界面**（Owner 2026-11-04）：侧栏保持 72px 图标栏，会话列表与对话二选一显示，
+  角色面板与设置分类为浮层；弹层仍为居中 Dialog，宽度 `min(设定宽, 100vw - 32px)`。不做底部标签栏、底部 sheet、
+  拖拽档位、推入视差、键盘避让等手机专属交互；手机浏览器打开可用即可，不做专门打磨。
 - 只有壳层读视口（一个 `useChrome()` 钩子，基于 `matchMedia`，供需要切换 DOM 结构的地方使用）；
   组件尺寸适配一律 `@container`。
 - 浮层统一走 Base UI Portal 到壳层浮层宿主，层级用 DESIGN.md §4 叠层 token；浮层位置由 Floating UI（Base UI 内置）计算，
@@ -261,7 +265,7 @@ Owner："用不到就删了，尽可能减少我审图或者测试。"据此：
 - 新分支与独立 worktree，不改 codex 分支。
 - 组件以 Base UI 为唯一原语库，第 5 节其余库为补充。
 - 引擎层"不改行为、只删适配"。
-- 窄窗（<744）电脑端也要可用，按 DESIGN.md §11 单列规则。
+- 窄窗（<744）电脑端可用即可：压窄的桌面布局，不做手机专属交互（Owner 2026-11-04 确认）。
 - 已知与上游一致的四个问题本次不改。
 - 聊天列表不虚拟化（不引入 react-virtuoso），保留分页 + 阅读位置恢复；卡片依赖的宿主 DOM 契约保留（第 6 节）。
 - 视觉判定：DESIGN.md 数值优先，其余与深色以当前实现为准；验收以人工审图 + 几何断言代替像素对照（第 10.2 节）。
