@@ -6,22 +6,30 @@ import { spawnSync } from 'node:child_process';
 import { build } from 'vite';
 
 const INTEGRATION = fileURLToPath(new URL('../', import.meta.url));
-const OUTPUT = path.join(INTEGRATION, 'extension/vc-model-settings/desktop/build');
+const BRIDGE_OUTPUT = path.join(INTEGRATION, 'extension/vc-model-settings/desktop/build');
+const APP_OUTPUT = path.join(INTEGRATION, 'server-plugin/virtual-companion/desktop/app');
 
 export async function buildDesktop() {
     const checked = spawnSync(process.execPath, [path.join(INTEGRATION, 'node_modules/typescript/bin/tsc'), '--project', path.join(INTEGRATION, 'desktop-ui/tsconfig.json')], { stdio: 'inherit' });
     if (checked.error) throw checked.error;
     if (checked.status !== 0) throw new Error('桌面 TypeScript 检查失败，停止构建');
-    const result = await build({ configFile: path.join(INTEGRATION, 'desktop-ui/vite.config.mjs') });
+    const results = [];
+    for (const target of ['bridge', 'app']) {
+        process.env.VC_DESKTOP_TARGET = target;
+        results.push(await build({ configFile: path.join(INTEGRATION, 'desktop-ui/vite.config.mjs') }));
+    }
     const packages = new Set();
-    for (const bundle of Array.isArray(result) ? result : [result]) for (const chunk of bundle.output) {
-        if (chunk.type !== 'chunk') continue;
-        for (const id of Object.keys(chunk.modules)) {
-            if (!id.startsWith(path.join(INTEGRATION, 'node_modules/'))) continue;
-            let directory = path.dirname(id.split('?')[0]);
-            while (directory.includes(`${path.sep}node_modules${path.sep}`)) {
-                if (fs.existsSync(path.join(directory, 'package.json'))) { packages.add(directory); break; }
-                directory = path.dirname(directory);
+    for (const result of results) {
+        for (const bundle of Array.isArray(result) ? result : [result]) for (const chunk of bundle.output) {
+            if (chunk.type !== 'chunk') continue;
+            for (const id of Object.keys(chunk.modules)) {
+                const clean = id.replace(/^\0/, '').split('?')[0];
+                if (!clean.startsWith(path.join(INTEGRATION, 'node_modules/'))) continue;
+                let directory = path.dirname(clean);
+                while (directory.includes(`${path.sep}node_modules${path.sep}`)) {
+                    if (fs.existsSync(path.join(directory, 'package.json'))) { packages.add(directory); break; }
+                    directory = path.dirname(directory);
+                }
             }
         }
     }
@@ -32,7 +40,10 @@ export async function buildDesktop() {
         return `${info.name}@${info.version}\n\n${fs.readFileSync(path.join(directory, license), 'utf8')}`;
     });
     notices.push(fs.readFileSync(path.join(INTEGRATION, 'desktop-ui/THIRD_PARTY_LICENSES.txt'), 'utf8'));
-    fs.writeFileSync(path.join(OUTPUT, 'THIRD_PARTY_NOTICES.txt'), `${notices.join('\n\n---\n\n')}\n`);
+    const content = `${notices.join('\n\n---\n\n')}\n`;
+    for (const dir of [BRIDGE_OUTPUT, APP_OUTPUT]) {
+        fs.writeFileSync(path.join(dir, 'THIRD_PARTY_NOTICES.txt'), content);
+    }
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) await buildDesktop();

@@ -57,9 +57,28 @@ export function serveMobile(mobileDir, req, res) {
     return res.end(req.method === 'HEAD' ? undefined : fs.readFileSync(file));
 }
 
+export function serveDesktopAsset(desktopAppDir, req, res) {
+    let rel;
+    try { rel = decodeURIComponent(req.path.slice('/desktop/assets/'.length)); } catch { return fail(res, 400, 'INVALID_REQUEST', '路径无效'); }
+    if (!rel || rel.split('/').some((part) => part === '' || part === '.' || part === '..' || part.includes('\\') || part.includes('\0'))) {
+        return fail(res, 404, 'NOT_FOUND_OR_FORBIDDEN', '未找到此入口');
+    }
+    const root = path.resolve(desktopAppDir, 'assets');
+    const file = path.resolve(root, rel);
+    if (!file.startsWith(root + path.sep)) return fail(res, 404, 'NOT_FOUND_OR_FORBIDDEN', '未找到此入口');
+    let stat;
+    try { stat = fs.statSync(file); } catch { return fail(res, 404, 'NOT_FOUND_OR_FORBIDDEN', '未找到此入口'); }
+    if (!stat.isFile()) return fail(res, 404, 'NOT_FOUND_OR_FORBIDDEN', '未找到此入口');
+    res.setHeader('Content-Type', MOBILE_TYPES[path.extname(file)] || 'application/octet-stream');
+    res.setHeader('Cache-Control', 'private, max-age=31536000, immutable');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    return res.end(req.method === 'HEAD' ? undefined : fs.readFileSync(file));
+}
+
 export function createHostAuth({ config, getUser, accountVersion, indexHtml, fetchImpl = fetch,
     sourceBridge, accountData,
-    desktopHtml = () => fs.readFileSync(new URL('../desktop/index.html', import.meta.url), 'utf8'),
+    desktopAppDir = fileURLToPath(new URL('../desktop/app/', import.meta.url)),
+    desktopHtml = () => fs.readFileSync(path.join(desktopAppDir, 'index.html'), 'utf8'),
     authDir = fileURLToPath(new URL('../auth/', import.meta.url)),
     mobileDir = fileURLToPath(new URL('../mobile-dist/', import.meta.url)) }) {
     async function proxyAuth(req, res, suffix) {
@@ -145,6 +164,7 @@ export function createHostAuth({ config, getUser, accountVersion, indexHtml, fet
             res.setHeader('Cache-Control', 'no-store'); res.setHeader('Vary', 'Cookie');
             if (req.method === 'GET' && req.path === '/auth/access') return res.json({ allowed: true });
             if (['GET', 'HEAD'].includes(req.method) && req.path.startsWith('/m/')) return serveMobile(mobileDir, req, res);
+            if (['GET', 'HEAD'].includes(req.method) && req.path.startsWith('/desktop/assets/')) return serveDesktopAsset(desktopAppDir, req, res);
             if (pageEntry) {
                 // 只输出非凭据十进制 ID；getRequestHeaders 在模块初始化时捕获，旧页不能冒用新 cookie。
                 const meta = `<meta name="vc-account-id" content="${identity.accountId}"><meta name="vc-session-id" content="${identity.sessionId}">`;

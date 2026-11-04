@@ -63,3 +63,12 @@ integrationDirectDependencies:
   - name: pngjs
     licenseFamily: MIT
     scope: dev   # 解码视觉对照 PNG，比较全部像素，不设容差
+  - name: vitest
+    licenseFamily: MIT
+    scope: dev
+  - name: "@testing-library/react"
+    licenseFamily: MIT
+    scope: dev
+  - name: "@testing-library/user-event"
+    licenseFamily: MIT
+    scope: dev

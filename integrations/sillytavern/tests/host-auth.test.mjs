@@ -42,7 +42,7 @@ test('根入口与桌面别名绑定同一身份并返回同一自有HTML；明�
     assert.equal(desktop.req.session.vcAccountId, '42');
     assert.equal(desktop.req.session.vcSessionId, '7');
     assert.match(desktop.res.payload, /name="vc-account-id" content="42"/);
-    assert.match(desktop.res.payload, /desktop\/standalone\/app.js/);
+    assert.match(desktop.res.payload, /\/desktop\/assets\/index-[A-Za-z0-9_-]+\.js/);
     assert.doesNotMatch(desktop.res.payload, /<iframe|src=["']\/?script\.js|id="preloader"/);
     assert.equal((await harness({ status: 401 }).call('/desktop/')).res.headers.Location, '/auth/');
     assert.equal((await harness({ identity: { ...active, nextStep: 'TOTP_REQUIRED' } }).call('/desktop/')).res.headers.Location, '/auth/');
@@ -206,5 +206,118 @@ test('手机界面 /m/：未登录跳登录页；入口绑定会话；只读产�
     } finally {
         fs.rmSync(dir, { recursive: true, force: true });
         fs.rmSync(path.join(path.dirname(dir), 'vc-m-secret.txt'), { force: true });
+    }
+});
+
+test('serves built desktop app shell with identity meta', async () => {
+    const fs = await import('node:fs');
+    const os = await import('node:os');
+    const path = await import('node:path');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'vc-desktop-app-'));
+    try {
+        fs.writeFileSync(
+            path.join(dir, 'index.html'),
+            '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"></head><body class="vc-ui" data-vc-standalone=""><div id="root"><p id="vc-desktop-startup" role="status">正在打开聊天…</p></div><script type="module" src="/desktop/assets/app-abc.js"></script></body></html>',
+        );
+        fs.mkdirSync(path.join(dir, 'assets'));
+        fs.writeFileSync(path.join(dir, 'assets', 'app-abc.js'), 'console.log("app");');
+        const identity = { ...active, accountId: '1', sessionId: '7' };
+        const gate = createHostAuth({
+            config: { serviceToken: 'synthetic-service-token-0123456789', goBaseUrl: 'http://go.local', timeoutMs: 1000, accountHandles: { '1': 'owner' } },
+            getUser: async (handle) => ({ handle, enabled: true }),
+            accountVersion: () => 'v1',
+            indexHtml: () => '<html><head></head><body></body></html>',
+            fetchImpl: async (url, options) => url.endsWith('/service/st/profile') ? new Response(options.body, { status: 200 }) : new Response(JSON.stringify(identity), { status: 200 }),
+            desktopAppDir: dir,
+        });
+        const call = async (p, session = {}) => {
+            const req = { path: p, url: p, method: 'GET', session, headers: { cookie: 'vc_session=synthetic' } };
+            const res = {
+                statusCode: 200, headers: {}, payload: undefined,
+                setHeader(n, v) { this.headers[n] = v; this.headers[n.toLowerCase()] = v; },
+                appendHeader(n, v) { this.headers[n] = v; this.headers[n.toLowerCase()] = v; },
+                status(c) { this.statusCode = c; return this; },
+                json(v) { this.payload = v; return this; },
+                end(v) { this.payload = v; },
+                redirect(c, u) { this.statusCode = c; this.headers.Location = u; },
+            };
+            let next = false;
+            await gate(req, res, () => { next = true; });
+            return { req, res, next };
+        };
+        const { res } = await call('/desktop/');
+        const body = String(res.payload);
+        assert.equal(res.statusCode, 200);
+        assert.match(body, /<meta name="vc-account-id" content="1">/);
+        assert.match(body, /<meta name="vc-session-id" content="7">/);
+        assert.match(body, /<script type="module" src="\/desktop\/assets\/app-abc\.js">/);
+        const root = await call('/');
+        assert.equal(root.res.statusCode, 200);
+        assert.equal(String(root.res.payload), body);
+    } finally {
+        fs.rmSync(dir, { recursive: true, force: true });
+    }
+});
+
+test('serves hashed desktop assets immutable and rejects traversal', async () => {
+    const fs = await import('node:fs');
+    const os = await import('node:os');
+    const path = await import('node:path');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'vc-desktop-assets-'));
+    try {
+        fs.writeFileSync(path.join(dir, 'index.html'), '<html><head></head><body></body></html>');
+        fs.mkdirSync(path.join(dir, 'assets'));
+        fs.writeFileSync(path.join(dir, 'assets', 'app-abc.js'), 'console.log("app");');
+        fs.writeFileSync(path.join(dir, 'assets', 'app-abc.css'), 'body{}');
+        const identity = { ...active, accountId: '1', sessionId: '7' };
+        const gateFor = (status = 200) => createHostAuth({
+            config: { serviceToken: 'synthetic-service-token-0123456789', goBaseUrl: 'http://go.local', timeoutMs: 1000, accountHandles: { '1': 'owner' } },
+            getUser: async (handle) => ({ handle, enabled: true }),
+            accountVersion: () => 'v1',
+            indexHtml: () => '<html><head></head><body></body></html>',
+            fetchImpl: async (url, options) => url.endsWith('/service/st/profile') ? new Response(options.body, { status: 200 }) : new Response(JSON.stringify(identity), { status }),
+            desktopAppDir: dir,
+        });
+        const gate = gateFor(200);
+        const call = async (g, p, session = {}, method = 'GET') => {
+            const req = { path: p, url: p, method, session, headers: { cookie: 'vc_session=synthetic' } };
+            const res = {
+                statusCode: 200, headers: {}, payload: undefined,
+                setHeader(n, v) { this.headers[n] = v; this.headers[n.toLowerCase()] = v; },
+                appendHeader(n, v) { this.headers[n] = v; this.headers[n.toLowerCase()] = v; },
+                status(c) { this.statusCode = c; return this; },
+                json(v) { this.payload = v; return this; },
+                end(v) { this.payload = v; },
+                redirect(c, u) { this.statusCode = c; this.headers.Location = u; },
+            };
+            let next = false;
+            await g(req, res, () => { next = true; });
+            return { req, res, next };
+        };
+        const entry = await call(gate, '/desktop/');
+        const session = entry.req.session;
+        const { res: assetRes, next: assetNext } = await call(gate, '/desktop/assets/app-abc.js', session);
+        assert.equal(assetRes.statusCode, 200);
+        assert.equal(assetNext, false);
+        assert.equal(assetRes.headers['cache-control'], 'private, max-age=31536000, immutable');
+        assert.equal(assetRes.headers['x-content-type-options'], 'nosniff');
+        assert.equal(assetRes.headers['content-type'], 'text/javascript; charset=utf-8');
+        const { res: cssRes } = await call(gate, '/desktop/assets/app-abc.css', session);
+        assert.equal(cssRes.statusCode, 200);
+        assert.equal(cssRes.headers['content-type'], 'text/css; charset=utf-8');
+        const { res: headRes } = await call(gate, '/desktop/assets/app-abc.js', session, 'HEAD');
+        assert.equal(headRes.statusCode, 200);
+        assert.equal(headRes.payload, undefined);
+        assert.equal((await call(gateFor(401), '/desktop/assets/app-abc.js', session)).res.statusCode, 401);
+        const { res: traversalRes, next: traversalNext } = await call(gate, '/desktop/assets/../index.html', session);
+        assert.equal(traversalRes.statusCode, 404);
+        assert.equal(traversalNext, false);
+        for (const bad of ['/desktop/assets/%2e%2e/index.html', '/desktop/assets//app-abc.js', '/desktop/assets/', '/desktop/assets/missing.js', '/desktop/assets/%ZZ', '/desktop/assets/%5csecret', '/desktop/assets/%00secret']) {
+            const r = await call(gate, bad, session);
+            assert.equal(r.res.statusCode, bad === '/desktop/assets/%ZZ' ? 400 : 404, bad);
+            assert.equal(r.next, false);
+        }
+    } finally {
+        fs.rmSync(dir, { recursive: true, force: true });
     }
 });
