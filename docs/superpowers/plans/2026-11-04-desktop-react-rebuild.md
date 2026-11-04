@@ -105,6 +105,7 @@ EOF
   VC_MEMORYCORE_PORT=87<n>4 VC_W03_PG_CONTAINER=vc-w03-dr2-<n>-pg VC_W03_MINIO_CONTAINER=vc-w03-dr2-<n>-minio
   VC_W03_DEV_DIR=$PWD/integrations/sillytavern/dev-managed VC_W03_CHROMIUM_PATH="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"`，
   `<n>` 为 worktree 序号 1–6。任务结束后删除 `dev-managed/` 与 worktree（OP-11）。
+- **并行离线测试隔离（2026-11-04 实测补充）**：`backup-pg.test.mjs` 也会启动 PostgreSQL，未设置时共用 `vc-q2-managed-pg`。每个任务的全部 `node --test` 命令都须带 `DOCKER_CONTEXT=orbstack VC_W03_PG_CONTAINER=vc-w03-dr2-t<N>-offline-pg`；测试使用随机宿主端口并按 label 回收。该容器与本任务的受管容器也分开，避免备份测试清掉受管数据库。不得通过改测试或全机 prune 规避冲突。
 - **合入前检查**：见 0.2。
 - **并行图**（同一行可并行；箭头表示依赖）：
 
@@ -362,6 +363,8 @@ export function useChatSnapshot(bridge: SessionBridge): ChatSnapshot;
 - [ ] **Step 4: 验证** —— 类型、组件测试、离线单测 `# fail 0`；受管 `--filter nf-chat,nf-operations,nf-cards,nf-media,nf-prompts,f2-browser`（选择器按新 DOM 契约调整，只改选择器不改断言）全部通过。
 - [ ] **Step 5: 删除旧电脑端聊天模块与其测试** —— 删除 `desktop/standalone/app.js`、`desktop/standalone/chat-actions.js`（逻辑已迁入）、`desktop/standalone/media.js`、`desktop/standalone/presentation.js`、`desktop/character-panel.js`、`desktop/quick-switch.js`、`desktop/status-card.js` 的 DOM 部分、`desktop/chat*.css`、`desktop/rich.css`；同步删除只测这些模块的单测（如 `tests/desktop-*.test.mjs` 中针对它们的文件），提交信息注明授权。
 - [ ] **Step 6: 提交** —— `git commit -m "feat(DR2-5): 聊天页重建与会话缺陷修复（B1–B6、B12、B13）"`
+
+**Task 5 执行注记（2026-11-04）**：锁定 React 19 与 `@emoji-mart/react` 当前 peer 范围不兼容，实际沿用 `emoji-mart` 核心 Picker，以薄 React 宿主挂载，不降级 React。按真实消费链补齐 `f2-logic.js` 受管投放、EJS 与应用共用 `ejs-host` 的构建入口、自托管卡片/贴纸资源基址及许可证遍历；未改变原生桥完整 48 个运行时导出。受管聊天的 wheel/搜索等待改为实际动作完成后采样，原几何与业务断言保留；提示词对照对真实注入调用的 companion-state 响应作内存录制回放，方法/路径/空 body/身份必须一致，UI 状态卡读取不消费该录制。多轮失败后的收尾由 Codex 按 Owner 兜底授权完成，提交中已注明。
 
 ### Task 6: 角色页
 
