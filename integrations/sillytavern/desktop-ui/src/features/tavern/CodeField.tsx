@@ -71,7 +71,7 @@ export function resolveSelfHostedMonacoWorkerUrl(_moduleId: string, label: strin
   return SELF_HOSTED_WORKER_BASE + (spec ? spec.entry : 'editor.worker.js');
 }
 
-export function configureSelfHostedMonacoWorkers(monacoInstance?: unknown): void {
+export function configureSelfHostedMonacoWorkers(): void {
   const g = globalThis as Record<string, unknown>;
   const prev =
     g.MonacoEnvironment && typeof g.MonacoEnvironment === 'object'
@@ -143,76 +143,6 @@ export function configureSelfHostedMonacoWorkers(monacoInstance?: unknown): void
     getWorkerUrl: resolveSelfHostedMonacoWorkerUrl,
     getWorker,
   };
-
-  const m = monacoInstance as {
-    createWebWorker?: (opts: {
-      moduleId: string;
-      label: string;
-      createData: { options: unknown; languageId: string };
-    }) => {
-      getProxy: () => Promise<unknown>;
-      withSyncedResources: (uris: unknown[]) => Promise<unknown>;
-      dispose: () => void;
-    };
-    languages?: {
-      css?: Record<string, unknown> & {
-        cssDefaults?: {
-          options?: unknown;
-          languageId?: string;
-          onDidChange?: (listener: () => void) => { dispose: () => void };
-        };
-      };
-    };
-  } | null;
-  if (
-    m &&
-    typeof m.createWebWorker === 'function' &&
-    m.languages?.css &&
-    typeof m.languages.css.getCSSWorker !== 'function'
-  ) {
-    const createWebWorker = m.createWebWorker.bind(m);
-    const cssNs = m.languages.css;
-    let cssWorkerClient: ReturnType<typeof createWebWorker> | null = null;
-    cssNs.cssDefaults?.onDidChange?.(() => {
-      cssWorkerClient?.dispose();
-      cssWorkerClient = null;
-    });
-    const getCSSWorker = async () => {
-      return async (...uris: unknown[]) => {
-        if (!cssWorkerClient) {
-          const defaults = cssNs.cssDefaults;
-          const languageId = defaults?.languageId || 'css';
-          cssWorkerClient = createWebWorker({
-            moduleId: 'vs/language/css/cssWorker',
-            label: languageId,
-            createData: {
-              options: defaults?.options,
-              languageId,
-            },
-          });
-        }
-        const proxy = await cssWorkerClient.getProxy();
-        await cssWorkerClient.withSyncedResources(uris);
-        return proxy;
-      };
-    };
-    try {
-      Object.defineProperty(cssNs, 'getCSSWorker', {
-        value: getCSSWorker,
-        configurable: true,
-        enumerable: true,
-      });
-      if (typeof cssNs.getWorker !== 'function') {
-        Object.defineProperty(cssNs, 'getWorker', {
-          value: getCSSWorker,
-          configurable: true,
-          enumerable: true,
-        });
-      }
-    } catch {
-      // Ignore if namespace is non-extensible in synthetic tests
-    }
-  }
 }
 
 let monacoLoadPromise: Promise<unknown> | null = null;
@@ -228,7 +158,7 @@ async function ensureSelfHostedMonaco(): Promise<unknown> {
         if (!monaco) {
           throw new Error('Monaco instance unavailable');
         }
-        configureSelfHostedMonacoWorkers(monaco);
+        configureSelfHostedMonacoWorkers();
         loader.config({ monaco: monaco as any });
         return monaco;
       })
