@@ -1610,6 +1610,10 @@ N-00～N-08（对应评审发现 F-01～F-08）为在途修复，逐项状态与
 
 产品待办（现状声明见 README）：
 
+### DR2 电脑端前端重建（2026-11-04 起；调度 Codex，前端 Gemini 4；计划 `docs/superpowers/plans/2026-11-04-desktop-react-rebuild.md`）
+
+- [x] DR2-1（2026-11-04）：应用模式构建与原生桥分离，提交 `0948800b`。原生桥导出与旧 `index.tsx` 一致（仅改 import 路径）；类型、Vitest 1/1、离线单测 1078/1078、`check.sh` 全量 42s 通过。电脑端暂只显示启动文案（预期中间态），受管场景待 DR2-11。
+
 ### NF 电脑端前端替换（2026-11-03）
 
 唯一计划：`docs/planning/2026-11-02-desktop-frontend-refactor-plan.md` §11；Backlog J。一个隔离 worktree/写入 owner，按序持续推进。
