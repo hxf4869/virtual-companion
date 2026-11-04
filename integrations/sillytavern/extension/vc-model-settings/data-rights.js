@@ -8,6 +8,14 @@ import {
 } from './api.js';
 import { CONSENT_VERSION, ensureConsentStyles, effectiveConsents, consentStatusText, REQUIRED_CONSENTS } from './consent.js';
 import {
+    EXPORT_POLL_INTERVAL_MS,
+    formatVoiceStorage,
+    trustedDeviceGroupVisible,
+    formatTrustedWhen,
+    formatTrustedDeviceLine,
+    executeSensitiveAction,
+} from './consent-logic.js';
+import {
     AUTH_RESET_COPY, BACKUP_COPY, EXPORT_PARTIAL_COPY, PASSWORD_CHANGED_COPY, RESTORE_LIMIT_COPY, SESSION_EMPTY_COPY,
     authenticatorStatusText, deletionProgressText, otherSessions, sessionRowText,
 } from './account-logic.js';
@@ -16,33 +24,14 @@ import { iconSpriteUrl } from './ui/icons.js';
 import { mountAccountContentsView } from './desktop/build/index.js';
 import { registerAccountOpener, vcUiEnabled } from './drawers.js';
 
-export function formatVoiceStorage(bytes) {
-    const size=Number(bytes);if(!Number.isFinite(size)||size<0)return '暂不可用';
-    if(size<1024)return `${Math.round(size)} B`;
-    if(size<1024*1024)return `${(size/1024).toFixed(1)} KB`;
-    if(size<1024*1024*1024)return `${(size/(1024*1024)).toFixed(1)} MB`;
-    return `${(size/(1024*1024*1024)).toFixed(1)} GB`;
-}
-
-export function trustedDeviceGroupVisible(devices) {
-    return Array.isArray(devices) && devices.length > 0;
-}
-
-export function formatTrustedWhen(value) {
-    if (typeof value !== 'string' || value.length === 0) return '';
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return '';
-    return new Intl.DateTimeFormat('zh-CN', { dateStyle: 'short', timeStyle: 'short' }).format(date);
-}
-
-export function formatTrustedDeviceLine(device) {
-    const name = typeof device?.displayName === 'string' ? device.displayName.trim() : '';
-    return {
-        name: name || '当前设备',
-        lastUsed: formatTrustedWhen(device?.lastUsedAt),
-        expires: formatTrustedWhen(device?.expiresAt),
-    };
-}
+export {
+    EXPORT_POLL_INTERVAL_MS,
+    formatVoiceStorage,
+    trustedDeviceGroupVisible,
+    formatTrustedWhen,
+    formatTrustedDeviceLine,
+    executeSensitiveAction,
+};
 
 function ensureAccountStyles() {
     if (typeof document === 'undefined' || document.querySelector('link[data-vc-account]')) return;
@@ -51,25 +40,6 @@ function ensureAccountStyles() {
     style.href = new URL('./account.css', import.meta.url).href;
     style.setAttribute('data-vc-account', '');
     (document.head || document.documentElement).append(style);
-}
-
-/** 敏感操作一律先 reauth。当前密码只传给 reauth，以及仍要求 currentPassword 的原接口。 */
-export async function executeSensitiveAction({ action, password, newPassword, accountId, consentType, deps }) {
-    await deps.reauth(password);
-    if (action === 'password') return deps.changePassword(password, newPassword);
-    if (action === 'reset') return deps.resetAuthenticator(accountId);
-    if (action === 'export') return deps.createDataExport(password);
-    if (action === 'recover') return deps.recoverDataExport(password);
-    if (action === 'delete') return deps.deleteOwnAccount(password);
-    if (action === 'consent-revoke') {
-        return deps.recordConsent({
-            consentType,
-            version: CONSENT_VERSION,
-            granted: false,
-            currentPassword: password,
-        });
-    }
-    throw new Error('未知账户操作');
 }
 
 export function mountDataRights() {
