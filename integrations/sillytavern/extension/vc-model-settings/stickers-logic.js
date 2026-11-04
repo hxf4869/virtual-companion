@@ -349,11 +349,11 @@ export async function registerBubbleTransformerIfPresent({ importPipeline } = {}
 
 const BUNDLED_MANIFESTS = ['./stickers/builtin-manifest.json', './stickers/custom/manifest.json'];
 
-export async function loadBundledManifest({ getContext, baseUrl = import.meta.url } = {}) {
+export async function loadBundledManifest({ getContext } = {}) {
     if (getContext) runtime.getContext = getContext;
     const packs = await Promise.all(BUNDLED_MANIFESTS.map(async rel => {
         try {
-            const url = new URL(rel, baseUrl);
+            const url = new URL(rel, new URL('/scripts/extensions/third-party/vc-model-settings/', import.meta.url));
             const response = await fetch(url);
             if (!response?.ok) return [];
             const manifest = loadManifest(await response.json());

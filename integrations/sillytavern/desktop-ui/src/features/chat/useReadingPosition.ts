@@ -689,6 +689,15 @@ export function useReadingPosition({
                     attachedRef.current = next === 'follow';
                     if (attachedRef.current) scheduleFollowScroll();
                 }
+            } else if (
+                !holdingRef.current &&
+                top < lastTopRef.current &&
+                getGap() > ATTACH_PX
+            ) {
+                // Native focus/scrollIntoView can move to history without a wheel event.
+                stateRef.current = 'detached';
+                attachedRef.current = false;
+                recordAnchor();
             }
             lastTopRef.current = top;
             if (!scrollFrame) {

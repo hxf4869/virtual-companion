@@ -363,8 +363,6 @@ export function MessageItem({
                 {metaParts.length > 0 ? (
                     <div className="vc-message-metadata">{metaParts.join(' · ')}</div>
                 ) : null}
-            </div>
-
             {!isSystem ? (
                 <div className="vc-mes-tools" role="toolbar" aria-label="消息工具">
                     {showSwipes ? (
@@ -462,6 +460,7 @@ export function MessageItem({
                     />
                 </div>
             ) : null}
+            </div>
         </article>
     );
 }

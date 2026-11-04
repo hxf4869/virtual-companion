@@ -168,6 +168,18 @@
         display: none;
     }
 
+    .mes:has(iframe) > .mes_block,
+    .vc-desktop-message-content:has(iframe),
+    .vc-desktop-message-content:has(iframe) > .mes_text {
+        width: 100%;
+    }
+
+    .vc-desktop-message-content iframe {
+        display: block;
+        max-width: 100%;
+        border: 0;
+    }
+
     .mes_text {
         padding: 10px 14px;
         border-radius: var(--vc-bub-r);
@@ -237,6 +249,9 @@
     /* Message hover toolbar (.vc-mes-tools) */
     .vc-mes-tools {
         display: inline-flex;
+        flex-wrap: wrap;
+        max-width: 100%;
+        box-sizing: border-box;
         align-items: center;
         gap: 2px;
         padding: 2px 4px;
@@ -247,8 +262,12 @@
         opacity: 0;
         pointer-events: none;
         transition: opacity var(--vc-dur-fade) var(--vc-ease-out);
-        align-self: center;
+        align-self: flex-start;
         flex-shrink: 0;
+    }
+
+    .mes[is_user="true"] .vc-mes-tools {
+        align-self: flex-end;
     }
 
     .mes:hover .vc-mes-tools,

@@ -22,6 +22,40 @@ function paths(a, b, prefix = '') {
     return [...new Set([...Object.keys(a), ...Object.keys(b)])].flatMap(key => paths(a[key], b[key], prefix ? prefix + '.' + key : key)).slice(0, 20);
 }
 
+async function captureCompanionInputs(page, replay = null) {
+    await page.addInitScript(replay => {
+        const actualFetch = window.fetch.bind(window);
+        globalThis.nfCompanionInputs = [];
+        globalThis.nfCompanionReads = 0;
+        globalThis.nfCompanionMismatches = [];
+        window.fetch = function (input, init) {
+            const pathname = new URL(input instanceof Request ? input.url : String(input), location.href).pathname;
+            // UI 状态卡也读同一路径；这里只冻结实际提示词注入的调用。
+            if (!pathname.endsWith('/companion-state') || !new Error().stack.includes('/companion-prompt.js:')) return actualFetch(input, init);
+            const headers = new Headers(init?.headers ?? (input instanceof Request ? input.headers : undefined));
+            const request = { method: init?.method || 'GET', pathname, body: init?.body ?? null,
+                identity: { accountId: headers.get('x-vc-expected-account-id'), sessionId: headers.get('x-vc-expected-session-id') } };
+            const at = globalThis.nfCompanionReads++;
+            if (replay) {
+                const recorded = replay[at];
+                if (!recorded) globalThis.nfCompanionMismatches.push('extra-call');
+                else for (const key of ['method', 'pathname', 'body', 'identity']) {
+                    if (JSON.stringify(recorded.request[key]) !== JSON.stringify(request[key])) globalThis.nfCompanionMismatches.push(key);
+                }
+                if (!recorded || globalThis.nfCompanionMismatches.length) {
+                    return Promise.resolve(new Response(JSON.stringify({ code: 'NF_PARITY_COMPANION_INPUT_MISMATCH' }), { status: 409, headers: { 'content-type': 'application/json' } }));
+                }
+                globalThis.nfCompanionInputs.push({ request, status: recorded.status, text: recorded.text });
+                return Promise.resolve(new Response(recorded.text, { status: recorded.status, headers: { 'content-type': 'application/json' } }));
+            }
+            return actualFetch(input, init).then(async response => {
+                globalThis.nfCompanionInputs.push({ request, status: response.status, text: await response.clone().text() });
+                return response;
+            });
+        };
+    }, replay);
+}
+
 async function scenePromptParity(ctx) {
     const selected = process.env.VC_NF_PROMPT_CASES ? CASES.filter(row => process.env.VC_NF_PROMPT_CASES.split(',').includes(row.id)) : CASES;
     assert.ok(selected.length, '至少选择一组真实合成输入');
@@ -60,6 +94,7 @@ async function scenePromptParity(ctx) {
             // 两个独立 realm；候选侧阻断应用聊天初始化，直接用相同解析输入调用实际计算入口。
             await candidate.route('**/desktop/standalone/runtime.js', route => route.abort());
             const oldPage = await reference.newPage(), newPage = await candidate.newPage();
+            await captureCompanionInputs(oldPage);
             oldPage.setDefaultTimeout(60000); newPage.setDefaultTimeout(60000);
             const memoryExchanges = [];
             let preparedContext;
@@ -162,6 +197,10 @@ async function scenePromptParity(ctx) {
                     globals: SillyTavern.getContext().extensionSettings.variables,
                     trace: globalThis.nfTrace,
                 })), input.context.chat.length);
+                const expectedPrompts = await oldPage.evaluate(() => Object.fromEntries(Object.entries(SillyTavern.getContext().extensionPrompts).filter(([key]) => key.startsWith('vc_'))));
+                const companionInputs = await oldPage.evaluate(() => globalThis.nfCompanionInputs);
+                assert.equal(companionInputs.length, 1, '参考页必须实际读取提示词注入所用的陪伴状态');
+                assert.equal(companionInputs[0].status, 200, '参考陪伴状态端口必须真实成功');
                 const memory = await Promise.all(memoryExchanges);
                 assert.equal(memory.length, 1, '参考页必须实际完成一轮记忆召回');
                 assert.equal(memory[0].status, 200, '参考记忆端口必须真实成功');
@@ -194,6 +233,7 @@ async function scenePromptParity(ctx) {
                 });
                 const nativePaths = [];
                 newPage.on('request', request => { const url = new URL(request.url()).pathname; if (['/', '/script.js', '/scripts/extensions.js', '/scripts/st-context.js'].includes(url)) nativePaths.push(url); });
+                await captureCompanionInputs(newPage, companionInputs);
                 await newPage.goto(ctx.w05.stBase + '/desktop/', { waitUntil: 'domcontentloaded' });
                 await newPage.waitForFunction(() => document.documentElement.dataset.vcApp === 'ready');
                 const actual = await newPage.evaluate(async ({ root, input }) => {
@@ -217,11 +257,13 @@ async function scenePromptParity(ctx) {
                     const trace = [];
                     for (const key of input.watched) context.eventSource.on(event_types[key], () => trace.push(key));
                     const packet = await engine.prepare({ type: 'normal', automatic_trigger: true });
-                    return JSON.parse(JSON.stringify({ packet, state: { metadata: context.chatMetadata, chat: context.chat,
+                    return JSON.parse(JSON.stringify({ packet, companionInputs: globalThis.nfCompanionInputs, companionReads: globalThis.nfCompanionReads, companionMismatches: globalThis.nfCompanionMismatches, prompts: Object.fromEntries(Object.entries(context.extensionPrompts).filter(([key]) => key.startsWith('vc_'))), state: { metadata: context.chatMetadata, chat: context.chat,
                         globals: context.extensionSettings.variables, trace } }));
                 }, { root: ROOT, input });
                 assert.deepEqual(memoryDifferences, [], '记忆外部输入请求/页面身份必须一致');
                 assert.equal(memoryUsed, memory.length, '候选不得多调或漏调记忆端口');
+                assert.deepEqual(actual.companionMismatches, [], '陪伴状态外部输入请求与页面身份必须一致');
+                assert.equal(actual.companionReads, companionInputs.length, '候选不得多调或漏调提示词陪伴状态端口');
                 assert.ok(JSON.stringify(expected).includes('NF_BOOK'), '参考世界书必须真实触发');
                 assert.ok(JSON.stringify(expected).includes('NF_RECURSION'), '参考世界书必须真实递归');
                 assert.ok(JSON.stringify(expected).includes('NF_REPLACED'), '参考正则必须真实运行');
@@ -234,6 +276,18 @@ async function scenePromptParity(ctx) {
                     revisionBefore: input.context.chatMetadata.vc_f2?.revision, nativeRevision: expectedState.metadata.vc_f2?.revision,
                     candidateRevision: actual.state.metadata.vc_f2?.revision,
                     ejsDelimiters: [expected,actual.packet?.body].map(body=>(body?.messages?.[0]?.content?.match?.(/<%/g)||[]).length),
+                    promptDiffs: paths(expectedPrompts, actual.prompts),
+                    companionInputDiffs: paths(companionInputs, actual.companionInputs),
+                    companionInputs: [companionInputs, actual.companionInputs].map(records => records.map(record => {
+                        const body = JSON.parse(record.text);
+                        return { status: record.status, tier: body.mood?.tier, vibeLength: body.mood?.vibe?.length, lineLength: body.mood?.line?.length, emotionLength: body.emotion?.line?.length };
+                    })),
+                    promptLineLengths: [expectedPrompts, actual.prompts].map(prompts => Object.fromEntries(Object.entries(prompts).map(([key, prompt]) => [key, String(prompt.value || '').split('\n').map(line => line.length)]))),
+                    messageDiffs: expected.messages?.flatMap((message, index) => {
+                        const candidate = actual.packet?.body?.messages?.[index];
+                        if (message.content === candidate?.content) return [];
+                        return [{ index, role: message.role, lengths: [message.content?.length, candidate?.content?.length], stickerRules: [message.content, candidate?.content].map(content => typeof content === 'string' && content.includes('可用表情')) }];
+                    }),
                 }));
                 assert.deepEqual(stateDiff, [], '最终状态不等价：' + stateDiff.join(','));
                 completed.push({ id: test.id, request: true, state: true, nativeRequests: nativePaths.length, modelRequests: 0 });

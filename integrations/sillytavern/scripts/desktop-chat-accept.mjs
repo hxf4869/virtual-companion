@@ -49,11 +49,19 @@ export async function captureWindows(page, ctx, prefix = 'nf-chat', inspectCaptu
                 last: document.querySelector('#chat>.mes:last-child').getBoundingClientRect().toJSON(),
                 leafWidth: document.querySelector('#chat>.mes:last-child .mes_text')?.getBoundingClientRect().width,
                 richFrames: Array.from(document.querySelectorAll('#chat>.mes:last-child iframe'), frame => ({ width: frame.getBoundingClientRect().width, height: frame.getBoundingClientRect().height, contentWidth: frame.contentDocument?.body?.clientWidth, contentHeight: frame.contentDocument?.body?.scrollHeight })),
+                richParents: Array.from(document.querySelectorAll('#chat>.mes:last-child iframe'), frame => {
+                    const parents = [];
+                    for (let node = frame, depth = 0; node && depth < 6; node = node.parentElement, depth++) {
+                        const style = getComputedStyle(node);
+                        parents.push({ tag: node.tagName, className: node.className, width: node.getBoundingClientRect().width, cssWidth: style.width, maxWidth: style.maxWidth, display: style.display, flex: style.flex });
+                    }
+                    return parents;
+                }),
                 send: (document.querySelector('#send_but').getClientRects().length ? document.querySelector('#send_but') : document.querySelector('#vc-voice-input')).getBoundingClientRect().toJSON() }));
             assert.ok(geometry.scrollWidth <= geometry.width + 1);
             assert.ok(geometry.input.left >= 0 && geometry.input.right <= geometry.width + 1);
             assert.ok(geometry.last.bottom <= geometry.input.top + 1 && geometry.last.top >= 0,
-                `保持底部时窗口调整后仍应看到最新回复 ${JSON.stringify({ last: geometry.last.bottom, lastTop: geometry.last.top, lastHeight: geometry.last.height, leafWidth: geometry.leafWidth, richFrames: geometry.richFrames, input: geometry.input.top, width: geometry.width })}`);
+                `保持底部时窗口调整后仍应看到最新回复 ${JSON.stringify({ last: geometry.last.bottom, lastTop: geometry.last.top, lastHeight: geometry.last.height, leafWidth: geometry.leafWidth, richFrames: geometry.richFrames, richParents: geometry.richParents, input: geometry.input.top, width: geometry.width })}`);
             assert.ok(geometry.send.width >= 36 && geometry.send.height >= 36);
             assert.ok(geometry.send.top >= geometry.input.top - 1 && geometry.send.bottom <= geometry.input.bottom + 1,
                 `发送/麦克风必须在输入框内 ${JSON.stringify({width: geometry.width, button: geometry.send, input: geometry.input})}`);
@@ -386,6 +394,9 @@ export async function sceneDesktopOperations(ctx) {
         assert.ok((await page.locator('#send_textarea').inputValue()).startsWith('NF05 保留草稿'));
         await page.keyboard.press('Escape');
         assert.equal((await read()).length, 182, '刷新前ST仍持有完整181条消息');
+        // 回到最新后刷新，复验默认 80 条分页与草稿。
+        await page.locator('#chat').focus(); await page.keyboard.press('End');
+        await page.waitForFunction(() => { const chat = document.querySelector('#chat'); return chat.scrollHeight - chat.scrollTop - chat.clientHeight < 2; });
         await openDesktopFixture(page, ctx.w05.stBase, fixture, 80); await page.waitForFunction(() => document.documentElement.dataset.vcRuntime === 'prepared');
         assert.ok((await page.locator('#send_textarea').inputValue()).startsWith('NF05 保留草稿'));
         await captureWindows(page, ctx, 'nf-operations');

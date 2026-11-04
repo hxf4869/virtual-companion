@@ -107,8 +107,7 @@ export async function createChatEngine({ client, context, settings, decision, pr
         initialized = true;
     }
     // 清单读取与卡片资源独立；两者完成后才安装记忆/陪伴/剧情 hooks，保持 EJS 登记顺序。
-    const [, cards] = await Promise.all([loadBundledManifest({ getContext,
-        baseUrl: new URL('/scripts/extensions/third-party/vc-model-settings/', import.meta.url).href }),
+    const [, cards] = await Promise.all([loadBundledManifest({ getContext }),
         initializeCards?.({ client, context, settings, presets, models })]);
     const memory = createMemoryInjection({ getContext, recall: recallSTMemory, ensureBinding: async () => {
         const metadata = context.chatMetadata;
