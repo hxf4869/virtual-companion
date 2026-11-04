@@ -60,6 +60,15 @@ integrationDirectDependencies:
   - name: zod
     licenseFamily: MIT
     scope: runtime
+  - name: "@dnd-kit/core"
+    licenseFamily: MIT
+    scope: runtime
+  - name: "@dnd-kit/sortable"
+    licenseFamily: MIT
+    scope: runtime
+  - name: "@monaco-editor/react"
+    licenseFamily: MIT
+    scope: runtime
   - name: vite
     licenseFamily: MIT
     scope: dev
