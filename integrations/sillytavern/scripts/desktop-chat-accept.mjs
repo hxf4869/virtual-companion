@@ -357,6 +357,7 @@ export async function sceneDesktopOperations(ctx) {
         await page.waitForFunction(() => Object.keys(localStorage).some(key => key.startsWith('vc-pos:') && Number(localStorage.getItem(key)) < 20));
         await openDesktopFixture(page, ctx.w05.stBase, fixture, 180);
         await page.waitForFunction(() => Boolean(document.querySelector('#send_but') && !document.querySelector('#send_but').disabled));
+        await page.locator('#vc-latest').waitFor({ state: 'visible' });
         assert.ok(await page.locator('#vc-latest').isVisible(), '刷新恢复阅读位置而非强制底部');
         await page.locator('#vc-latest').click(); await page.waitForFunction(() => { const chat = document.querySelector('#chat'); return chat.scrollHeight - chat.scrollTop - chat.clientHeight < 2; });
         stage = 'candidate';

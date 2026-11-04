@@ -566,6 +566,8 @@ export function useReadingPosition({
         let scrollFrame = 0;
 
         const markInput = () => {
+            width = chat.clientWidth;
+            height = chat.clientHeight;
             programTopRef.current = null;
             lastInputRef.current = performance.now();
             if (holdingRef.current) {

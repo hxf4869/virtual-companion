@@ -27,14 +27,22 @@ function writeReducedMotionAttribute(effective: boolean): void {
 
 /**
  * Single owner that reads the OS `(prefers-reduced-motion: reduce)` media query,
- * combines it with the app-level `vc-reduced-motion` preference, and syncs
+ * combines it with accepted ST and app-level motion preferences, and syncs
  * `html[data-vc-reduced-motion]`.
  */
 export function useReducedMotion(): boolean {
   const appReduced = usePreferences((s) => s.reducedMotion);
   const [osReduced, setOsReduced] = useState<boolean>(() => readOsReducedMotion());
+  const [nativeReduced, setNativeReduced] = useState(false);
 
-  const effective = Boolean(appReduced || osReduced);
+  const effective = Boolean(appReduced || osReduced || nativeReduced);
+
+  useLayoutEffect(() => {
+    const sync = () => setNativeReduced(document.documentElement.dataset.vcNativeReducedMotion === 'true');
+    sync();
+    window.addEventListener('vc-motion-preference', sync);
+    return () => window.removeEventListener('vc-motion-preference', sync);
+  }, []);
 
   useLayoutEffect(() => {
     writeReducedMotionAttribute(effective);
@@ -48,7 +56,7 @@ export function useReducedMotion(): boolean {
     const sync = () => {
       const matches = Boolean(mql?.matches);
       setOsReduced(matches);
-      writeReducedMotionAttribute(Boolean(usePreferences.getState().reducedMotion || matches));
+      writeReducedMotionAttribute(Boolean(usePreferences.getState().reducedMotion || matches || document.documentElement.dataset.vcNativeReducedMotion === 'true'));
     };
 
     sync();

@@ -111,20 +111,18 @@ export function CharactersRoute({ avatar }: CharactersRouteProps) {
                     </div>
                 </header>
 
-                {cards.length > 1 || searchQuery ? (
-                    <div className="vc-characters-toolbar">
-                        <label className="vc-characters-search">
-                            <Icon name="search" size={16} />
-                            <input
-                                type="search"
-                                value={searchQuery}
-                                placeholder="搜索角色"
-                                aria-label="搜索角色"
-                                onChange={(e) => setSearchQuery(e.target.value)}
-                            />
-                        </label>
-                    </div>
-                ) : null}
+                <div className="vc-characters-toolbar">
+                    <label className="vc-characters-search">
+                        <Icon name="search" size={16} />
+                        <input
+                            type="search"
+                            value={searchQuery}
+                            placeholder="搜索角色"
+                            aria-label="搜索角色"
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                        />
+                    </label>
+                </div>
 
                 {isLoading ? (
                     <div className="vc-characters-empty" role="status">

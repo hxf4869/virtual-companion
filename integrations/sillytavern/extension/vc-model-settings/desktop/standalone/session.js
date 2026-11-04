@@ -4,7 +4,7 @@ import { createInstanceBinding } from '../../instance-binding.js';
 import { resolveSTBinding, reconcileSTSources } from '../../api.js';
 import { toggleReaction, addNudge, dropNudge, reactionNudge, runPat } from '../../chat-logic.js';
 import { createPersonaSelection } from './personas.js';
-import { BUDGET_COPY } from '../../model-logic.js';
+import { BUDGET_COPY, budgetSignalFromGenerateBody, interpretUsageBudget } from '../../model-logic.js';
 import { applyDocumentValues, documentEqual, documentValue } from '../../settings-documents.js';
 import { createStoryProjection } from '../../story-projection.js';
 import { commitStoryProjectionSave } from '../../projection-save.js';
@@ -344,11 +344,13 @@ export function createDesktopSession({ client, context, engine, prepareSourceIde
                     }
                 }
                 if (removed && (!assistant || !assistant.mes)) target.messages.push(removed);
-                if (!target.blocked) target.notice = signal.aborted ? '已停止' : '没有发送成功';
+                const budgetSignal = !signal.aborted && current === target ? budgetSignalFromGenerateBody(error?.details) : null;
+                if (budgetSignal) budget = interpretUsageBudget(budgetSignal);
+                if (!target.blocked) target.notice = signal.aborted ? '已停止' : budget?.insufficient ? BUDGET_COPY : '没有发送成功';
                 if (error.status === 401 || /ACCOUNT|SESSION/.test(error.details?.code || error.code || '')) {
                     target.blocked = true; target.notice = '登录状态或聊天已变化，请重新打开页面。';
                 }
-                if (!savedUser) onRestoreDraft(target.key, input);
+                if (!savedUser || budget?.insufficient) onRestoreDraft(target.key, input);
                 return false;
             } finally {
                 clearTimeout(slowTimer);

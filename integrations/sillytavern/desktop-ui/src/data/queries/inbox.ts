@@ -8,6 +8,10 @@ import {
 import { useAppClient } from '../../app/providers';
 import { queryKeys } from '../queryKeys';
 import {
+  allowChannel,
+  allowDelivery,
+  allowFollowUp,
+  allowInbox,
   passesFilter,
   proactivePolicyPayload,
   readProactivePolicy,
@@ -160,7 +164,10 @@ export function useFollowUps(relId: string | null): UseQueryResult<FollowUpItem[
         'GET',
         `/api/v1/relationships/${encodeURIComponent(relId)}/follow-ups`,
       );
-      return Array.isArray(rows) ? (rows as FollowUpItem[]) : [];
+      if (!Array.isArray(rows)) return [];
+      return rows
+        .map((row) => allowFollowUp(row) as FollowUpItem | null)
+        .filter((item): item is FollowUpItem => Boolean(item));
     },
   });
 }
@@ -174,7 +181,7 @@ export function useCancelFollowUp(relId: string | null): UseMutationResult<Follo
         'POST',
         `/api/v1/follow-ups/${encodeURIComponent(followUpId)}/cancel`,
       );
-      return res as FollowUpItem;
+      return (allowFollowUp(res) as FollowUpItem | null) ?? (res as FollowUpItem);
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.followUps(relId ?? '') });
@@ -188,7 +195,22 @@ export function useInbox(filter: InboxFilter = 'all'): UseQueryResult<InboxEvent
     queryKey: queryKeys.inbox(filter),
     queryFn: async () => {
       const rows = await client.go.storyRequest('GET', '/api/v1/inbox');
-      const list = Array.isArray(rows) ? (rows as InboxEvent[]) : [];
+      const list = Array.isArray(rows)
+        ? rows
+            .map((raw) => {
+              const cleaned = allowInbox(raw) as InboxEvent | null;
+              if (!cleaned) return null;
+              const rec = raw as Record<string, unknown>;
+              if (typeof rec?.conversationKey === 'string' && rec.conversationKey) {
+                cleaned.conversationKey = rec.conversationKey;
+              }
+              if (typeof rec?.createdAt === 'string' && rec.createdAt) {
+                cleaned.createdAt = rec.createdAt;
+              }
+              return cleaned;
+            })
+            .filter((item): item is InboxEvent => Boolean(item))
+        : [];
       if (!filter || filter === 'all') return list;
       return list.filter((item) => passesFilter(item, filter));
     },
@@ -204,7 +226,7 @@ export function useMarkInboxRead(): UseMutationResult<InboxEvent, Error, string>
         'POST',
         `/api/v1/inbox/${encodeURIComponent(eventId)}/read`,
       );
-      return res as InboxEvent;
+      return (allowInbox(res) as InboxEvent | null) ?? (res as InboxEvent);
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['inbox'] });
@@ -218,7 +240,22 @@ export function useChannels(): UseQueryResult<Channel[], Error> {
     queryKey: queryKeys.channels,
     queryFn: async () => {
       const rows = await client.go.storyRequest('GET', '/api/v1/notification-channels');
-      return Array.isArray(rows) ? (rows as Channel[]) : [];
+      if (!Array.isArray(rows)) return [];
+      return rows
+        .map((raw) => {
+          const cleaned = allowChannel(raw) as Channel | null;
+          if (!cleaned) return null;
+          const rec = raw as Record<string, unknown>;
+          if (
+            rec?.credentialState === 'configured' ||
+            rec?.credentialState === 'withheld' ||
+            rec?.credentialState === 'missing'
+          ) {
+            cleaned.credentialState = rec.credentialState;
+          }
+          return cleaned;
+        })
+        .filter((item): item is Channel => Boolean(item));
     },
   });
 }
@@ -229,7 +266,7 @@ export function useSaveChannel(): UseMutationResult<Channel, Error, SaveChannelI
   return useMutation<Channel, Error, SaveChannelInput>({
     mutationFn: async (body) => {
       const res = await client.go.storyRequest('PUT', '/api/v1/notification-channels', body);
-      return res as Channel;
+      return (allowChannel(res) as Channel | null) ?? (res as Channel);
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.channels });
@@ -243,7 +280,19 @@ export function useDeliveries(relId?: string | null): UseQueryResult<Delivery[],
     queryKey: queryKeys.deliveries(relId ?? undefined),
     queryFn: async () => {
       const rows = await client.go.storyRequest('GET', '/api/v1/notification-deliveries');
-      const list = Array.isArray(rows) ? (rows as Delivery[]) : [];
+      const list = Array.isArray(rows)
+        ? rows
+            .map((raw) => {
+              const cleaned = allowDelivery(raw) as Delivery | null;
+              if (!cleaned) return null;
+              const rec = raw as Record<string, unknown>;
+              if (rec?.relationshipId != null && String(rec.relationshipId)) {
+                cleaned.relationshipId = String(rec.relationshipId);
+              }
+              return cleaned;
+            })
+            .filter((item): item is Delivery => Boolean(item))
+        : [];
       if (!relId) return list;
       return list.filter((row) => !row.relationshipId || String(row.relationshipId) === String(relId));
     },

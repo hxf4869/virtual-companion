@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useRelationships } from '../../data/queries/memory';
 import { Select } from '../../design/components/Select';
 import { Switch } from '../../design/components/Switch';
+import { useChatSnapshot } from '../../runtime/session-bridge';
 import { relationshipLabel } from '../../../../extension/vc-model-settings/memory-logic.js';
 import {
   notifySupported,
@@ -21,18 +22,26 @@ export interface InboxRouteProps {
 }
 
 export function InboxRoute({ initialRelationshipId = null }: InboxRouteProps) {
+  const activeChatRelId = useChatSnapshot((s) => s.relationshipId);
   const relationshipsQuery = useRelationships();
   const relationships = relationshipsQuery.data ?? [];
 
-  const [selectedRelId, setSelectedRelId] = useState<string | null>(initialRelationshipId);
+  const [selectedRelId, setSelectedRelId] = useState<string | null>(
+    initialRelationshipId ?? (activeChatRelId ? String(activeChatRelId) : null),
+  );
   const [desktopNotify, setDesktopNotify] = useState<boolean>(() => systemNotifyEnabled());
 
   useEffect(() => {
     if (relationships.length === 0) return;
     if (!selectedRelId || !relationships.some((rel) => String(rel.relationshipId) === selectedRelId)) {
-      setSelectedRelId(String(relationships[0].relationshipId));
+      const fromChat =
+        activeChatRelId &&
+        relationships.some((rel) => String(rel.relationshipId) === String(activeChatRelId))
+          ? String(activeChatRelId)
+          : String(relationships[0].relationshipId);
+      setSelectedRelId(fromChat);
     }
-  }, [relationships, selectedRelId]);
+  }, [relationships, selectedRelId, activeChatRelId]);
 
   const relOptions = relationships.map((rel) => {
     const id = String(rel.relationshipId);

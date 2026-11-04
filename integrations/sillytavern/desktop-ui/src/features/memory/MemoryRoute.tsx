@@ -10,6 +10,7 @@ import {
 import { Select } from '../../design/components/Select';
 import { Switch } from '../../design/components/Switch';
 import { Tabs } from '../../design/components/Tabs';
+import { useChatSnapshot } from '../../runtime/session-bridge';
 import {
   idOf,
   INCOGNITO_LABEL,
@@ -87,9 +88,12 @@ export function MemoryRoute({
   initialRelationshipId = null,
   onNavigateToMessage,
 }: MemoryRouteProps) {
+  const activeChatRelId = useChatSnapshot((s) => s.relationshipId);
   const initialStored = readStoredRouteState();
   const [selectedRelId, setSelectedRelId] = useState<string | null>(
-    initialRelationshipId ?? initialStored.relId,
+    initialRelationshipId ??
+      (activeChatRelId ? String(activeChatRelId) : null) ??
+      initialStored.relId,
   );
   const [activeTab, setActiveTab] = useState<'timeline' | 'diary' | 'favorites'>(
     initialStored.tab,
@@ -108,9 +112,14 @@ export function MemoryRoute({
       selectedRelId &&
       relationships.some((rel) => String(rel.relationshipId) === selectedRelId);
     if (!valid) {
-      setSelectedRelId(String(relationships[0].relationshipId));
+      const fromChat =
+        activeChatRelId &&
+        relationships.some((rel) => String(rel.relationshipId) === String(activeChatRelId))
+          ? String(activeChatRelId)
+          : String(relationships[0].relationshipId);
+      setSelectedRelId(fromChat);
     }
-  }, [relationships, selectedRelId]);
+  }, [relationships, selectedRelId, activeChatRelId]);
 
   useEffect(() => {
     writeStoredRouteState({

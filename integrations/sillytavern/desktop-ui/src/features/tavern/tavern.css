@@ -1,149 +1,4 @@
 @layer features {
-  .vc-settings-shell {
-    container-type: inline-size;
-    height: 100%;
-    min-width: 0;
-    display: grid;
-    grid-template-columns: 240px minmax(0, 1fr);
-    gap: var(--vc-space-sm);
-  }
-
-  .vc-settings-categories {
-    padding: 0 12px 12px;
-    overflow-y: auto;
-    border-radius: var(--vc-radius-xl);
-    background: var(--vc-glass-2);
-    border: 1px solid var(--vc-rim);
-    backdrop-filter: blur(var(--vc-blur-2)) saturate(180%);
-    box-shadow: var(--vc-shadow-rim-panel);
-  }
-
-  .vc-settings-categories h1 {
-    display: flex;
-    align-items: center;
-    height: 64px;
-    margin: 0 12px;
-    font-size: var(--vc-fs-title-1);
-    font-weight: 700;
-  }
-
-  .vc-settings-categories h2 {
-    margin: 16px 12px 8px;
-    font-size: var(--vc-fs-headline);
-    font-weight: 600;
-  }
-
-  .vc-settings-categories > button {
-    display: flex;
-    align-items: center;
-    gap: var(--vc-space-sm);
-    min-height: 44px;
-    width: 100%;
-    padding: 6px 12px;
-    color: var(--vc-ink);
-    background: transparent;
-    border: 0;
-    border-radius: var(--vc-radius-sm);
-    text-align: left;
-    font-size: var(--vc-fs-body);
-    cursor: pointer;
-  }
-
-  .vc-settings-categories > button[aria-current="page"] {
-    color: var(--vc-accent-text);
-    background: var(--vc-select-fill);
-  }
-
-  .vc-settings-categories .vc-tile {
-    width: 28px;
-    height: 28px;
-    border-radius: var(--vc-radius-tile);
-    flex: none;
-    display: inline-grid;
-    place-items: center;
-    color: var(--vc-on-accent);
-  }
-
-  .vc-tile-blue { background: var(--vc-tile-blue); }
-  .vc-tile-indigo { background: var(--vc-tile-indigo); }
-  .vc-tile-purple { background: var(--vc-tile-purple); }
-  .vc-tile-teal { background: var(--vc-tile-teal); }
-  .vc-tile-orange { background: var(--vc-tile-orange); }
-  .vc-tile-green { background: var(--vc-tile-green); }
-  .vc-tile-cyan { background: var(--vc-tile-cyan); }
-  .vc-tile-pink { background: var(--vc-tile-pink); }
-  .vc-tile-red { background: var(--vc-tile-red); }
-  .vc-tile-gray { background: var(--vc-tile-gray); }
-
-  .vc-settings-content {
-    overflow: hidden;
-    display: flex;
-    flex-direction: column;
-    min-width: 0;
-    min-height: 0;
-    border-radius: var(--vc-radius-xl);
-    background: var(--vc-glass-2);
-    border: 1px solid var(--vc-rim);
-    backdrop-filter: blur(var(--vc-blur-2)) saturate(180%);
-    box-shadow: var(--vc-shadow-rim-panel);
-  }
-
-  .vc-settings-header {
-    flex: none;
-    height: 64px;
-    min-height: 64px;
-    width: min(100%, 808px);
-    margin: 0 auto;
-    padding: 0 24px;
-    box-sizing: border-box;
-    display: flex;
-    align-items: center;
-    gap: var(--vc-space-xs);
-  }
-
-  .vc-settings-header h1 {
-    margin: 0;
-    flex: 1;
-    font-size: var(--vc-fs-title-1);
-    font-weight: 700;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  .vc-settings-category-control {
-    display: none;
-  }
-
-  .vc-settings-body {
-    container-type: inline-size;
-    flex: 1;
-    min-height: 0;
-    width: min(100%, 808px);
-    padding: 0 24px 24px;
-    box-sizing: border-box;
-    overflow: auto;
-    margin: 0 auto;
-  }
-
-  @container (max-width: 960px) {
-    .vc-settings-shell {
-      grid-template-columns: minmax(0, 1fr);
-    }
-
-    .vc-settings-shell > .vc-settings-content {
-      grid-column: 1 / -1;
-    }
-
-    .vc-settings-categories {
-      display: none;
-    }
-
-    .vc-settings-category-control {
-      display: contents;
-    }
-  }
-
   .vc-tavern-form,
   .vc-tavern-skeleton {
     container-type: inline-size;
@@ -227,7 +82,7 @@
     width: 100%;
   }
 
-  .vc-tavern-form .vc-desk-field input[type="number"] {
+  .vc-tavern-form .vc-desk-field :is(input[type="number"], input[inputmode="decimal"]) {
     width: 160px;
   }
 
@@ -275,6 +130,7 @@
 
   .vc-tavern-number input[type="range"] {
     width: 100%;
+    height: 36px;
     margin: 0;
     accent-color: var(--vc-accent);
   }
@@ -290,12 +146,19 @@
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    min-height: 36px;
+    min-height: 44px;
     padding: 0 10px;
     border-radius: var(--vc-radius-control);
     border: 0.5px solid var(--vc-raised-edge);
     background: var(--vc-control-fill);
     cursor: pointer;
+  }
+
+  .vc-tavern-check > input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    margin: 0;
+    accent-color: var(--vc-accent);
   }
 
   .vc-tavern-list,

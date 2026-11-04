@@ -4,6 +4,8 @@ import { RouterProvider } from '@tanstack/react-router';
 import { AppProviders } from './providers';
 import { createDesktopRouter, type DesktopRouteComponents } from './router';
 import { createAppClient, type AppClient } from '../data/client';
+import { AppConsentGate } from '../features/settings/AppConsentGate';
+import { DesktopPreferences } from '../shell/DesktopPreferences';
 import '../design/tokens.css';
 import '../design/base.css';
 
@@ -89,7 +91,10 @@ export function App({ client: externalClient, routeOverrides }: AppProps = {}) {
 
   return (
     <AppProviders client={client}>
-      <RouterProvider router={router} />
+      <AppConsentGate>
+        <DesktopPreferences />
+        <RouterProvider router={router} />
+      </AppConsentGate>
     </AppProviders>
   );
 }

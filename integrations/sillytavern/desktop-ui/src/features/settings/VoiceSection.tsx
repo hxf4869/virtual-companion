@@ -19,8 +19,8 @@ import { toast } from '../../design/components/Toast';
 import { useLeaveGuard } from '../../shell/useLeaveGuard';
 import { VoiceForm, voiceFormValues, type VoiceValues } from './VoiceForm';
 
-function ActiveRouterLeaveGuard({ dirty }: { dirty: boolean }) {
-  return <>{useLeaveGuard(dirty)}</>;
+function ActiveRouterLeaveGuard({ dirty, busy }: { dirty: boolean; busy?: boolean }) {
+  return <>{useLeaveGuard(dirty, { busy })}</>;
 }
 
 const SCENES = ['morning', 'night', 'care', 'share', 'default'] as const;
@@ -259,7 +259,7 @@ export function VoiceSection({ relationshipId }: VoiceSectionProps = {}) {
 
   return (
     <section className="vc-settings-section" data-vc-voice-section="">
-      {router ? <ActiveRouterLeaveGuard dirty={isDirty} /> : null}
+      {router ? <ActiveRouterLeaveGuard dirty={isDirty} busy={working} /> : null}
       <header className="vc-settings-header">
         <h1 className="vc-settings-title">语音</h1>
         <div className="vc-settings-actions">
@@ -276,6 +276,7 @@ export function VoiceSection({ relationshipId }: VoiceSectionProps = {}) {
           <Button
             type="button"
             variant="filled"
+            data-voice-save=""
             disabled={working || loading || !loaded || !isDirty}
             onClick={() => void handleSave()}
           >

@@ -645,7 +645,8 @@ export function TavernFieldRow({
       ) : (
         <input
           id={id}
-          type={f.kind === 'number' ? 'number' : 'text'}
+          type="text"
+          inputMode={f.kind === 'number' ? 'decimal' : undefined}
           min={f.min}
           max={f.max}
           step={f.step}
@@ -784,6 +785,7 @@ export function TavernFormContainer({
     <form
       ref={formRef}
       className="vc-tavern-form"
+      aria-busy={busy}
       onSubmit={(e) => {
         e.preventDefault();
         void save();

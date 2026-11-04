@@ -1,0 +1,177 @@
+@layer features {
+  /* The independent route owns this model tree; Native keeps its original stylesheet. */
+  [data-vc-model-section] {
+    min-width: 0;
+    width: 100%;
+    font-size: var(--vc-fs-body);
+    line-height: var(--vc-lh-body);
+    color: var(--vc-ink);
+  }
+
+  [data-vc-model-section] :is(.vcms-header, .vcms-providers-head, .vcms-section-head) {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: var(--vc-space-xs);
+    padding-block: 12px;
+  }
+
+  [data-vc-model-section] :is(.vcms-header-titles, .vcms-main, .vcms-tabpanes, .vcms-form) { min-width: 0; }
+  [data-vc-model-section] :is(.vcms-title, .vcms-section-title, .vcms-desktop-group-title, .vcms-usage-head) {
+    margin: 16px 0 8px;
+    font-size: var(--vc-fs-headline);
+    font-weight: 600;
+  }
+  [data-vc-model-section] .vcms-title { margin: 0; }
+  [data-vc-model-section] :is(.vcms-subtitle, .vcms-muted, .vcms-provider-sub, .vcms-protocol-endpoint, .vcms-model-id, .vcms-section-label) {
+    margin: 4px 0;
+    color: var(--vc-ink-2);
+    font-size: var(--vc-fs-footnote);
+    overflow-wrap: anywhere;
+  }
+
+  [data-vc-model-section] :is(.vcms-header-actions, .vcms-section-tools, .vcms-callout-actions, .vcms-keybox-actions, .vcms-model-actions, .vcms-provider-meta, .vcms-model-row-badges) {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--vc-space-xs);
+  }
+  [data-vc-model-section] .vcms-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-height: 40px;
+    max-width: 100%;
+    padding: 6px 20px;
+    border: 0;
+    border-radius: var(--vc-radius-pill);
+    background: var(--vc-fill);
+    color: var(--vc-accent-text);
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  [data-vc-model-section] .vcms-btn-primary { background: var(--vc-accent); color: var(--vc-on-accent); }
+  [data-vc-model-section] :is(.vcms-btn-danger, .vcms-btn-danger-ghost) { color: var(--vc-danger); }
+  [data-vc-model-section] :is(button, [role="button"]):disabled { opacity: 0.4; cursor: not-allowed; }
+  [data-vc-model-section] :is(button, [role="button"], input, select):focus-visible { outline: 2px solid var(--vc-accent); outline-offset: 2px; }
+
+  [data-vc-model-section] :is(.vcms-layout, .vcms-providers, .vcms-main, .vcms-tabpanes, .vcms-desktop-grid, .vcms-grid3) {
+    display: block;
+    width: 100%;
+    min-width: 0;
+  }
+  [data-vc-model-section] :is(.vcms-provider-list, .vcms-model-list, .vcms-form) { display: grid; gap: var(--vc-space-xs); }
+  [data-vc-model-section] :is(.vcms-provider-list, .vcms-desktop-section, .vcms-internal, .vcms-local .vc-group, .vcms-usage, .vcms-table-wrap) {
+    border: 0.5px solid var(--vc-raised-edge);
+    border-radius: var(--vc-radius-md);
+    background: var(--vc-raised);
+    margin-bottom: var(--vc-space-sm);
+    padding: 4px 16px;
+    min-width: 0;
+  }
+  [data-vc-model-section] :is(.vcms-provider-card, .vcms-model-row) {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: var(--vc-space-xs);
+    min-height: 52px;
+    min-width: 0;
+    width: 100%;
+    padding: 8px;
+    border: 0;
+    border-radius: var(--vc-radius-sm);
+    background: transparent;
+    color: var(--vc-ink);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+  [data-vc-model-section] :is(.vcms-provider-card, .vcms-model-row).is-selected { background: var(--vc-select-fill); }
+  [data-vc-model-section] :is(.vcms-provider-name, .vcms-model-name) { font-weight: 600; overflow-wrap: anywhere; }
+  [data-vc-model-section] .vcms-model-row-main { display: grid; min-width: 0; }
+  [data-vc-model-section] .vcms-tabs { display: flex; border-bottom: 0.5px solid var(--vc-separator); margin-block: 12px; }
+  [data-vc-model-section] .vcms-tab {
+    flex: 1;
+    min-width: 0;
+    min-height: 44px;
+    padding: 8px;
+    border: 0;
+    border-bottom: 2px solid transparent;
+    background: transparent;
+    color: var(--vc-ink-2);
+    font: inherit;
+    cursor: pointer;
+  }
+  [data-vc-model-section] .vcms-tab.is-active { border-bottom-color: var(--vc-accent); color: var(--vc-accent-text); }
+  [data-vc-model-section] :is(.vc-desk-field, .vcms-caprow) {
+    display: grid;
+    grid-template-columns: 200px minmax(0, 1fr);
+    align-items: center;
+    gap: var(--vc-space-xs);
+    min-height: 44px;
+    padding: 4px 0;
+    border-bottom: 0.5px solid var(--vc-raised-edge);
+  }
+  [data-vc-model-section] .vc-desk-field > :is(p, [role="alert"]) { grid-column: 2; }
+  [data-vc-model-section] :is(input:not([type="radio"], [type="checkbox"]), select) { height: 36px; min-height: 36px; }
+  [data-vc-model-section] input[type="number"] { width: min(100%, 160px); }
+  [data-vc-model-section] select { width: min(100%, 240px); }
+  [data-vc-model-section] .vcms-field-err { display: none; margin: 0; color: var(--vc-danger); font-size: var(--vc-fs-footnote); }
+  [data-vc-model-section] .vcms-field-err.is-visible { display: block; }
+  [data-vc-model-section] .vcms-protocols { display: grid; gap: 6px; min-width: 0; }
+  [data-vc-model-section] .vcms-protocol {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    column-gap: 8px;
+    min-height: 44px;
+    padding: 8px;
+    border: 0.5px solid var(--vc-raised-edge);
+    border-radius: var(--vc-radius-control);
+    cursor: pointer;
+  }
+  [data-vc-model-section] .vcms-protocol.is-selected { border-color: var(--vc-accent); background: var(--vc-select-fill); }
+  [data-vc-model-section] .vcms-protocol-endpoint { grid-column: 2; }
+  [data-vc-model-section] :is(.vcms-protocol-name, .vcms-endpoint-line, .vcms-update-meta, .vcms-test-target) { overflow-wrap: anywhere; }
+  [data-vc-model-section] :is(.vcms-callout, .vcms-reauth-bar, .vcms-keyclear-confirm) {
+    padding: 12px;
+    margin-block: 12px;
+    border-radius: var(--vc-radius-md);
+    background: var(--vc-fill);
+    overflow-wrap: anywhere;
+  }
+  [data-vc-model-section] :is(.vcms-callout-danger, .vcms-callout-warn, .vcms-callout-warning) { color: var(--vc-danger); }
+  [data-vc-model-section] :is(.vcms-badge, .vc-status) { font-size: var(--vc-fs-footnote); }
+  [data-vc-model-section] .vcms-badge-danger { color: var(--vc-danger); }
+  [data-vc-model-section] :is(.vcms-keybox-state, .vcms-switch-row, .vcms-check) { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; min-height: 44px; }
+  [data-vc-model-section] :is(.vcms-internal, .vcms-advanced) > summary { display: flex; align-items: center; min-height: 44px; gap: 8px; cursor: pointer; }
+  [data-vc-model-section] .vcms-check input { width: 18px; height: 18px; accent-color: var(--vc-accent); }
+  [data-vc-model-section] .vc-switch { width: 51px; min-width: 51px; height: 31px; min-height: 31px; border-radius: var(--vc-radius-pill); background: var(--vc-fill-2); }
+  [data-vc-model-section] .vc-switch[data-checked] { background: var(--vc-accent); }
+  [data-vc-model-section] .vc-switch > span { position: absolute; left: 2px; width: 27px; height: 27px; border-radius: 50%; background: var(--vc-on-accent); box-shadow: var(--vc-shadow-segment); }
+  [data-vc-model-section] .vc-switch[data-checked] > span { transform: translateX(20px); }
+  [data-vc-model-section] .vcms-seg { position: relative; display: flex; min-width: 0; width: 100%; }
+  [data-vc-model-section] .vcms-seg-btn { position: relative; z-index: 1; flex: 1; min-width: 0; height: 28px; padding: 0 4px; border: 0; border-radius: var(--vc-radius-tile); background: transparent; color: var(--vc-ink); font: inherit; font-size: var(--vc-fs-footnote); cursor: pointer; }
+  [data-vc-model-section] .vc-segment-thumb { position: absolute; inset: 2px auto 2px 2px; border-radius: var(--vc-radius-tile); background: var(--vc-seg-thumb); box-shadow: var(--vc-shadow-segment); }
+  [data-vc-model-section] :is(.vcms-bindings-table, .vcms-bindings-table tbody, .vcms-bindings-table thead) { display: block; width: 100%; }
+  [data-vc-model-section] .vcms-bindings-table tr { display: grid; grid-template-columns: 200px minmax(0, 1fr) 96px; align-items: center; gap: 8px; padding-block: 8px; border-bottom: 0.5px solid var(--vc-raised-edge); }
+  [data-vc-model-section] .vcms-bindings-table :is(th, td) { min-width: 0; text-align: left; overflow-wrap: anywhere; }
+  [data-vc-model-section] .vcms-bindings-table :is(th, td):nth-child(n+4) { display: none; }
+  [data-vc-model-section] .vcms-binding-select { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+  [data-vc-model-section] .vcms-usage-scroll { overflow: auto; }
+  [data-vc-model-section] .vcms-usage-cards { display: none; }
+  [data-vc-model-section] .vcms-usage-table { width: 100%; border-collapse: collapse; font-size: var(--vc-fs-footnote); }
+  [data-vc-model-section] .vcms-usage-table :is(th, td) { padding: 8px; text-align: left; white-space: nowrap; }
+
+  @container vc-settings-detail (max-width: 560px) {
+    [data-vc-model-section] :is(.vc-desk-field, .vcms-caprow, .vcms-bindings-table tr) { grid-template-columns: minmax(0, 1fr); gap: 6px; }
+    [data-vc-model-section] .vc-desk-field > :is(p, [role="alert"]) { grid-column: 1; }
+    [data-vc-model-section] :is(input:not([type="radio"], [type="checkbox"]), select) { width: 100%; max-width: 100%; }
+    [data-vc-model-section] .vcms-header { padding-inline: 16px; }
+    [data-vc-model-section] .vcms-bindings-table thead { display: none; }
+  }
+}

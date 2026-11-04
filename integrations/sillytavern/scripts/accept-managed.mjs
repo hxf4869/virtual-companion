@@ -103,6 +103,7 @@ const GO_TOOLCHAIN = 'go1.26.10';
 
 const argv = process.argv.slice(2);
 const DRY_RUN = argv.includes('--dry-run');
+const CAPTURE = argv.includes('--capture');
 const HELP = argv.includes('--help') || argv.includes('-h');
 const FILTER_IDX = argv.indexOf('--filter');
 const FILTER = FILTER_IDX >= 0 ? argv[FILTER_IDX + 1] : undefined;
@@ -687,11 +688,17 @@ async function runFull() {
     fs.mkdirSync(artifactsDir, { recursive: true, mode: 0o700 });
 
     const secrets = {
-        needsVoice: selected.some((id) => id.startsWith('voice-') || id === 'nf-media'),
+        needsVoice: selected.some(
+            (id) =>
+                id.startsWith('voice-') ||
+                id === 'nf-media' ||
+                id === 'dr2-settings' ||
+                (CAPTURE && id === 'dr2-layout'),
+        ),
         needsASR: selected.includes('voice-input') || selected.includes('voice-real') || selected.includes('nf-media'),
         realVoice: selected.includes('voice-real'),
         needsRights: selected.some((id) => id.startsWith('rights-')),
-        needsMemory: selected.some(id => id.startsWith('memory-')),
+        needsMemory: selected.some(id => id.startsWith('memory-') || id === 'dr2-pages'),
         pgPassword: synthSecret(18),
         ownerBinding: synthServiceToken(),
         restKey: synthRestKey(),
@@ -703,6 +710,7 @@ async function runFull() {
     const results = { startedAt: new Date().toISOString(), selected, scenes: {}, artifactsDir };
     const ctx = {
         secrets, artifactsDir, results,
+        capture: CAPTURE,
         scope: `w03-accept-${ts}`,
         snapshots: {},
         screenshots: [],
@@ -829,7 +837,7 @@ async function main() {
         usage();
         return;
     }
-    if (!DRY_RUN && !FILTER && argv.some((a) => !['--dry-run', '--help', '-h'].includes(a))) {
+    if (!DRY_RUN && !FILTER && argv.some((a) => !['--dry-run', '--help', '-h', '--capture'].includes(a))) {
         usage();
         process.exit(2);
     }

@@ -39,6 +39,7 @@ import { desktopModelsScene } from './desktop-models-accept.mjs';
 import { desktopSettingsScene, desktopProductSettingsScene } from './desktop-settings-accept.mjs';
 import { desktopOverlaysScene } from './desktop-overlays-accept.mjs';
 import { desktopPagesScene } from './desktop-pages-accept.mjs';
+import { dr2LayoutScene, dr2SettingsScene, dr2PagesScene, dr2MvuNewScene } from './desktop-rebuild-accept.mjs';
 import { nativeStartupScene, independentDesktopScene, desktopPerformanceScene } from './desktop-startup-accept.mjs';
 import { desktopPromptScene } from './desktop-prompt-accept.mjs';
 import { desktopChatScene, desktopOperationsScene } from './desktop-chat-accept.mjs';
@@ -112,6 +113,10 @@ export const ACCEPT_SCENES = [
     desktopProductSettingsScene,
     desktopOverlaysScene,
     desktopPagesScene,
+    dr2LayoutScene,
+    dr2SettingsScene,
+    dr2PagesScene,
+    dr2MvuNewScene,
     nativeStartupScene,
     independentDesktopScene,
     desktopPromptScene,

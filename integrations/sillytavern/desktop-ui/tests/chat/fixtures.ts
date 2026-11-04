@@ -28,6 +28,7 @@ export interface CreateTestChatEnvOptions {
         records: any[],
         options: { signal?: AbortSignal; latest?: boolean },
     ) => Promise<void> | void;
+    beforePrepareRuntime?: () => Promise<void> | void;
     streamChunks?: string[];
     holdStream?: boolean;
 }
@@ -136,6 +137,15 @@ export function createTestChatEnv(options: CreateTestChatEnvOptions = {}) {
                 file_name: `${c.file}.jsonl`,
                 mes: c.preview,
                 last_mes: c.updatedAt,
+                chat_metadata: {
+                    vc_f2: { id: `f2-${c.file}`, revision: 1 },
+                    vc_binding: {
+                        relationshipId: c.relationshipId,
+                        conversationId: `conv-${c.file}`,
+                        characterRef: c.characterRef,
+                        mode: c.mode || 'COMPANION',
+                    },
+                },
             })),
         ),
         settings: vi.fn(async () => ({
@@ -230,6 +240,15 @@ export function createTestChatEnv(options: CreateTestChatEnvOptions = {}) {
         },
         go: {
             captureSessionContext: vi.fn(async () => ({ userId: 'u-1', sessionId: 's-1' })),
+            fetchRelationships: vi.fn(async () =>
+                conversations.map(c => ({
+                    relationshipId: c.relationshipId,
+                    conversationId: `conv-${c.file}`,
+                    characterRef: c.characterRef,
+                    displayName: c.title,
+                    mode: c.mode || 'COMPANION',
+                })),
+            ),
         },
     } as unknown as AppClient;
 
@@ -267,6 +286,9 @@ export function createTestChatEnv(options: CreateTestChatEnvOptions = {}) {
             onConflict,
         }: any) => {
             prepareRuntimeCalls += 1;
+            if (options.beforePrepareRuntime) {
+                await options.beforePrepareRuntime();
+            }
             const engineSettings = {
                 username: '你',
                 user_avatar: 'user.png',

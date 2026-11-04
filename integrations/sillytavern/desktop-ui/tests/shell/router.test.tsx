@@ -6,10 +6,22 @@ import { resolve } from 'node:path';
 import type { Root } from 'react-dom/client';
 import { RouterProvider } from '@tanstack/react-router';
 import { App, mountApp } from '../../src/app/main';
-import { AppProviders } from '../../src/app/providers';
+import { AppProviders, queryClient } from '../../src/app/providers';
 import { createDesktopRouter } from '../../src/app/router';
 import { useLeaveGuard } from '../../src/shell/useLeaveGuard';
+import { createTestChatEnv } from '../chat/fixtures';
 import type { AppClient } from '../../src/data/client';
+import {
+  CONSENT_VERSION,
+  REQUIRED_CONSENTS,
+} from '../../../extension/vc-model-settings/consent-logic.js';
+
+const GRANTED_CONSENTS = REQUIRED_CONSENTS.map((item: { type: string }) => ({
+  consentType: item.type,
+  version: CONSENT_VERSION,
+  granted: true,
+  grantedAt: '2026-11-04T09:00:00Z',
+}));
 
 const trackedRoots = new Set<Root>();
 let lastCreatedRoot: Root | null = null;
@@ -63,6 +75,7 @@ function createFakeClient(): AppClient {
     })),
     go: {
       captureSessionContext: vi.fn(async () => ({ userId: 'u-1', sessionId: 's-1' })),
+      listConsents: vi.fn(async () => GRANTED_CONSENTS),
     },
   } as unknown as AppClient;
 }
@@ -70,6 +83,7 @@ function createFakeClient(): AppClient {
 describe('Desktop Router, Entry Auto-Mount & useLeaveGuard', () => {
   beforeEach(() => {
     installMatchMedia();
+    queryClient.clear();
     window.localStorage.clear();
     window.history.replaceState(null, '', '/');
     window.location.hash = '';
@@ -82,6 +96,7 @@ describe('Desktop Router, Entry Auto-Mount & useLeaveGuard', () => {
       }
     });
     lastCreatedRoot = null;
+    queryClient.clear();
     cleanup();
     vi.restoreAllMocks();
   });
@@ -287,6 +302,7 @@ describe('Desktop Router, Entry Auto-Mount & useLeaveGuard', () => {
       }),
       go: {
         captureSessionContext: vi.fn(async () => ({ userId: 'u-1', sessionId: 's-1' })),
+        listConsents: vi.fn(async () => GRANTED_CONSENTS),
       },
     } as unknown as AppClient;
 
@@ -306,5 +322,94 @@ describe('Desktop Router, Entry Auto-Mount & useLeaveGuard', () => {
     });
     expect(retryClient.initialize).toHaveBeenCalledTimes(2);
     expect(retryClient.go.captureSessionContext).toHaveBeenCalledTimes(1);
+    expect(retryClient.go.listConsents).toHaveBeenCalledTimes(1);
+  });
+
+  it('QuickSwitch conversation selection on a dirty route goes through useLeaveGuard before switching SessionBridge', async () => {
+    const keyA = '["alice.png","chat-a"]';
+    const keyB = '["bob.png","chat-b"]';
+    const env = createTestChatEnv({
+      conversations: [
+        { key: keyA, avatar: 'alice.png', file: 'chat-a', title: 'Alice', preview: 'Hi', updatedAt: 2, relationshipId: 'rel-a' },
+        { key: keyB, avatar: 'bob.png', file: 'chat-b', title: 'Bob', preview: 'Yo', updatedAt: 1, relationshipId: 'rel-b' },
+      ],
+      chatsByKey: {
+        [keyA]: [{ name: 'Alice', mes: 'Alice message', is_user: false }],
+        [keyB]: [{ name: 'Bob', mes: 'Bob message', is_user: false }],
+      },
+    });
+    (env.client.go as any).listRelationships = vi.fn(async () => [
+      { relationshipId: 'rel-a', characterRef: 'ref-alice.png', displayName: 'Alice' },
+      { relationshipId: 'rel-b', characterRef: 'ref-bob.png', displayName: 'Bob' },
+    ]);
+    (env.client.go as any).listInbox = vi.fn(async () => []);
+
+    await env.bridge.open(keyA);
+    env.bridge.draft.write(keyA, 'Alice unsent draft');
+    const openSpy = vi.spyOn(env.bridge, 'open');
+
+    function DirtySettingsPage() {
+      const [val, setVal] = useState('dirty-input');
+      const guard = useLeaveGuard(true);
+      return (
+        <div data-testid="dirty-settings">
+          <input aria-label="Dirty Input" value={val} onChange={(e) => setVal(e.target.value)} />
+          {guard}
+        </div>
+      );
+    }
+
+    const router = createDesktopRouter({
+      initialEntry: '/settings/model',
+      routeOverrides: {
+        settings: DirtySettingsPage,
+      },
+    });
+
+    render(
+      <AppProviders client={env.client} queryClient={env.queryClient} sessionBridge={env.bridge}>
+        <RouterProvider router={router} />
+      </AppProviders>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('dirty-settings')).toBeTruthy();
+    });
+
+    // Open QuickSwitch via Ctrl+K and select Bob
+    fireEvent.keyDown(window, { key: 'k', ctrlKey: true });
+    const bobItem = await screen.findByText('Bob');
+    fireEvent.click(bobItem);
+
+    // Leave guard dialog must appear BEFORE bridge.open(keyB) is called
+    await screen.findByText('放弃更改？');
+    expect(openSpy).not.toHaveBeenCalled();
+    expect(env.bridge.getSnapshot().key).toBe(keyA);
+    expect(env.bridge.draft.read(keyA)).toBe('Alice unsent draft');
+
+    // Click "继续编辑" -> stays on dirty settings, Session stays on A, draft intact
+    fireEvent.click(screen.getByRole('button', { name: '继续编辑' }));
+    await waitFor(() => {
+      expect(screen.queryByText('放弃更改？')).toBeNull();
+    });
+    expect(router.state.location.pathname).toBe('/settings/model');
+    expect(openSpy).not.toHaveBeenCalled();
+    expect(env.bridge.getSnapshot().key).toBe(keyA);
+    expect(env.bridge.draft.read(keyA)).toBe('Alice unsent draft');
+    expect((screen.getByLabelText('Dirty Input') as HTMLInputElement).value).toBe('dirty-input');
+
+    // Open QuickSwitch again, select Bob, and confirm "放弃" -> navigates and opens B once
+    fireEvent.keyDown(window, { key: 'k', ctrlKey: true });
+    fireEvent.click(await screen.findByText('Bob'));
+    await screen.findByText('放弃更改？');
+    fireEvent.click(screen.getByRole('button', { name: '放弃' }));
+
+    await waitFor(() => {
+      expect(decodeURIComponent(router.state.location.pathname)).toBe(`/chat/${keyB}`);
+      expect(env.bridge.getSnapshot().key).toBe(keyB);
+    });
+    expect(openSpy).toHaveBeenCalledTimes(1);
+    expect(env.bridge.draft.read(keyA)).toBe('Alice unsent draft');
+    env.bridge.destroy();
   });
 });

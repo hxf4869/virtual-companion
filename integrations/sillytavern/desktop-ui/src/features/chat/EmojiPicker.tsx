@@ -292,6 +292,18 @@ export function EmojiPicker({
                             className="vc-popover vc-glass vc-emoji-panel"
                             aria-label="表情"
                             initialFocus={effectiveTab === 'sticker' ? stickerSearchInputRef : undefined}
+                            onKeyDownCapture={event => {
+                                if (event.key !== 'Escape' || event.nativeEvent.isComposing) return;
+                                const path = event.nativeEvent.composedPath();
+                                const input = path.find(node => node instanceof HTMLInputElement);
+                                // Emoji Mart consumes Escape in its search input. With no search to
+                                // clear, let Escape dismiss our enclosing popover as other fields do.
+                                if (pickerHost && path.includes(pickerHost) && input instanceof HTMLInputElement && input.value === '') {
+                                    event.preventDefault();
+                                    event.stopPropagation();
+                                    setOpen(false);
+                                }
+                            }}
                         >
                             {mode !== 'react' ? (
                                 <Tabs

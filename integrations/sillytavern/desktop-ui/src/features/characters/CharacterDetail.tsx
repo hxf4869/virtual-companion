@@ -203,6 +203,20 @@ export function CharacterDetail({ card, onClose, onDeleted }: CharacterDetailPro
                     <Button
                         type="button"
                         variant="gray"
+                        data-action="edit-card"
+                        onClick={() => {
+                            void navigate({
+                                to: '/settings/tavern/$section',
+                                params: { section: 'right-nav-panel' },
+                                search: { character: card.avatar } as never,
+                            });
+                        }}
+                    >
+                        角色卡设置
+                    </Button>
+                    <Button
+                        type="button"
+                        variant="gray"
                         onClick={() => {
                             void navigate({
                                 to: '/settings/$category',

@@ -5,6 +5,7 @@ import { RouterProvider } from '@tanstack/react-router';
 import { AppProviders, createQueryClient } from '../../src/app/providers';
 import { createDesktopRouter } from '../../src/app/router';
 import { ConflictError, type AppClient } from '../../src/data/client';
+import { SessionBridgeProvider, createSessionBridge } from '../../src/runtime/session-bridge';
 import { PolicyForm } from '../../src/features/inbox/PolicyForm';
 import { InboxRoute } from '../../src/features/inbox/InboxRoute';
 
@@ -276,5 +277,287 @@ describe('PolicyForm', () => {
     await waitFor(() => {
       expect(screen.getByText('地址不能是链接。')).toBeTruthy();
     });
+  });
+
+  it('opening conversation while PolicyForm is dirty runs leave guard before switching Session, and "继续编辑" keeps draft without calling bridge.open', async ({ onTestFinished }) => {
+    const storyRequest = vi.fn(async (method: string, path: string) => {
+      if (path.endsWith('/proactive-policy') && method === 'GET') {
+        return {
+          relationshipId: '101',
+          enabled: true,
+          mode: 'DAILY',
+          dailyLimit: 2,
+          quietHoursStart: '23:00',
+          quietHoursEnd: '07:00',
+          quietHoursTimezone: 'Asia/Shanghai',
+          version: 1,
+        };
+      }
+      if (path.endsWith('/follow-ups') && method === 'GET') return [];
+      if (path === '/api/v1/inbox' && method === 'GET') {
+        return [
+          {
+            eventId: 'evt-1',
+            relationshipId: '101',
+            conversationId: '301',
+            linkStatus: 'present',
+            intent: 'BODY',
+            body: '早安，记得带伞哦',
+            stDelivered: true,
+            read: false,
+          },
+        ];
+      }
+      if (path === '/api/v1/inbox/evt-1/read' && method === 'POST') {
+        return {
+          eventId: 'evt-1',
+          relationshipId: '101',
+          conversationId: '301',
+          linkStatus: 'present',
+          intent: 'BODY',
+          body: '早安，记得带伞哦',
+          stDelivered: true,
+          read: true,
+        };
+      }
+      if (path === '/api/v1/notification-channels' && method === 'GET') return [];
+      if (path === '/api/v1/notification-deliveries' && method === 'GET') return [];
+      return {};
+    });
+
+    const client: AppClient = {
+      initialize: vi.fn(async () => ({
+        characters: [{ avatar: 'alice.png', name: '阿梨' }],
+        chat: [],
+        settings: {},
+      })),
+      recent: vi.fn(async () => [
+        {
+          avatar: 'alice.png',
+          file_name: 'chat-301.jsonl',
+          chat_metadata: {
+            vc_binding: { relationshipId: '101', conversationId: '301' },
+            vc_f2: { id: 'f2-301' },
+          },
+        },
+      ]),
+      readChat: vi.fn(async () => [{ chat_metadata: {
+        vc_binding: { relationshipId: '101', conversationId: '301' },
+        vc_f2: { id: 'f2-301', revision: 0 },
+      } }]),
+      characters: vi.fn(async () => [{ avatar: 'alice.png', name: '阿梨' }]),
+      settings: vi.fn(async () => ({ settings: {} })),
+      getContext: vi.fn(() => ({
+        characters: [{ avatar: 'alice.png', name: '阿梨' }],
+        characterId: 0,
+        chatId: 'chat-initial',
+        chatMetadata: { vc_binding: { relationshipId: '101', conversationId: '100' } },
+        chat: [],
+      })),
+      go: {
+        captureSessionContext: vi.fn(() => ({ userId: 'u-1', sessionId: 's-1' })),
+        listConsents: vi.fn(async () => []),
+        fetchRelationships: vi.fn(async () => [
+          { relationshipId: '101', personaRef: 'st-character', companionName: '阿梨', mode: 'COMPANION' },
+        ]),
+        fetchMemories: vi.fn(async () => ({ items: [], nextCursor: null })),
+        storyRequest,
+        reauth: vi.fn(async () => ({ ok: true })),
+      },
+    } as unknown as AppClient;
+
+    const sessionActivate = vi.fn(async () => true);
+    const bridge = createSessionBridge(client, {
+      prepareRuntime: async () => ({
+        activate: sessionActivate,
+        ready: true,
+        send: async () => {},
+        stop: async () => {},
+        destroy: () => {},
+      }),
+    });
+    onTestFinished(() => bridge.destroy());
+    const openSpy = vi.spyOn(bridge, 'open');
+
+    const router = createDesktopRouter();
+
+    render(
+      <AppProviders client={client} queryClient={createQueryClient()} sessionBridge={bridge}>
+          <RouterProvider router={router} />
+      </AppProviders>,
+    );
+
+    await act(async () => {
+      await router.navigate({ to: '/inbox' });
+    });
+
+    const capInput = (await waitFor(() => screen.getByLabelText('每日上限'))) as HTMLInputElement;
+    await waitFor(() => {
+      expect(capInput.value).toBe('2');
+      expect(screen.getByRole('button', { name: '打开对话' })).toBeTruthy();
+    });
+
+    // Make PolicyForm dirty
+    fireEvent.change(capInput, { target: { value: '7' } });
+    expect(capInput.value).toBe('7');
+
+    // Click "打开对话"
+    fireEvent.click(screen.getByRole('button', { name: '打开对话' }));
+
+    // Leave guard dialog must appear BEFORE bridge.open is ever called
+    const keepBtn = await waitFor(() => screen.getByRole('button', { name: '继续编辑' }));
+    expect(openSpy).toHaveBeenCalledTimes(0);
+    expect(sessionActivate).toHaveBeenCalledTimes(0);
+
+    // User clicks "继续编辑" -> stays on /inbox, draft preserved, Session never switched
+    fireEvent.click(keepBtn);
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: '继续编辑' })).toBeNull();
+    });
+    expect(router.state.location.pathname).toBe('/inbox');
+    expect((screen.getByLabelText('每日上限') as HTMLInputElement).value).toBe('7');
+    expect(openSpy).toHaveBeenCalledTimes(0);
+    expect(sessionActivate).toHaveBeenCalledTimes(0);
+
+    // Click "打开对话" again and choose "放弃" -> navigates to /chat/$conversationKey and ChatRoute calls bridge.open
+    fireEvent.click(screen.getByRole('button', { name: '打开对话' }));
+    const discardBtn = await waitFor(() => screen.getByRole('button', { name: '放弃' }));
+    fireEvent.click(discardBtn);
+
+    await waitFor(() => {
+      expect(router.state.location.pathname).toContain('/chat/');
+      expect(openSpy).toHaveBeenCalledTimes(1);
+      expect(sessionActivate).toHaveBeenCalledTimes(1);
+      expect(bridge.getSnapshot().status).toBe('ready');
+    });
+  });
+
+  it('deferred read receipt resolving after leaving InboxRoute does not navigate to /chat or switch Session', async () => {
+    let resolveReadReceipt: ((val: Record<string, unknown>) => void) | null = null;
+
+    const storyRequest = vi.fn(async (method: string, path: string) => {
+      if (path.endsWith('/proactive-policy') && method === 'GET') {
+        return {
+          relationshipId: '101',
+          enabled: true,
+          mode: 'DAILY',
+          dailyLimit: 2,
+          quietHoursStart: '23:00',
+          quietHoursEnd: '07:00',
+          quietHoursTimezone: 'Asia/Shanghai',
+          version: 1,
+        };
+      }
+      if (path.endsWith('/follow-ups') && method === 'GET') return [];
+      if (path === '/api/v1/inbox' && method === 'GET') {
+        return [
+          {
+            eventId: 'evt-late',
+            relationshipId: '101',
+            conversationId: '301',
+            linkStatus: 'present',
+            intent: 'BODY',
+            body: '迟到已读回执测试',
+            stDelivered: true,
+            read: false,
+          },
+        ];
+      }
+      if (path === '/api/v1/inbox/evt-late/read' && method === 'POST') {
+        return new Promise<Record<string, unknown>>((resolve) => {
+          resolveReadReceipt = resolve;
+        });
+      }
+      if (path === '/api/v1/notification-channels' && method === 'GET') return [];
+      if (path === '/api/v1/notification-deliveries' && method === 'GET') return [];
+      return {};
+    });
+
+    const client: AppClient = {
+      initialize: vi.fn(async () => ({
+        characters: [{ avatar: 'alice.png', name: '阿梨' }],
+        chat: [],
+        settings: {},
+      })),
+      recent: vi.fn(async () => [
+        {
+          avatar: 'alice.png',
+          file_name: 'chat-301.jsonl',
+          chat_metadata: {
+            vc_binding: { relationshipId: '101', conversationId: '301' },
+            vc_f2: { id: 'f2-301' },
+          },
+        },
+      ]),
+      settings: vi.fn(async () => ({ settings: {} })),
+      getContext: vi.fn(() => ({
+        characters: [{ avatar: 'alice.png', name: '阿梨' }],
+        characterId: 0,
+        chatId: 'chat-initial',
+        chatMetadata: {},
+        chat: [],
+      })),
+      go: {
+        captureSessionContext: vi.fn(() => ({ userId: 'u-1', sessionId: 's-1' })),
+        listConsents: vi.fn(async () => []),
+        fetchRelationships: vi.fn(async () => [
+          { relationshipId: '101', personaRef: 'st-character', companionName: '阿梨', mode: 'COMPANION' },
+        ]),
+        storyRequest,
+        reauth: vi.fn(async () => ({ ok: true })),
+      },
+    } as unknown as AppClient;
+
+    const bridge = createSessionBridge(client);
+    const openSpy = vi.spyOn(bridge, 'open');
+
+    const router = createDesktopRouter({
+      routeOverrides: {
+        characters: () => <div data-testid="characters-page">Characters Page</div>,
+      },
+    });
+
+    render(
+      <AppProviders client={client} queryClient={createQueryClient()}>
+        <SessionBridgeProvider bridge={bridge}>
+          <RouterProvider router={router} />
+        </SessionBridgeProvider>
+      </AppProviders>,
+    );
+
+    await act(async () => {
+      await router.navigate({ to: '/inbox' });
+    });
+
+    const openBtn = await waitFor(() => screen.getByRole('button', { name: '打开对话' }));
+    fireEvent.click(openBtn);
+
+    await waitFor(() => {
+      expect(resolveReadReceipt).toBeTypeOf('function');
+    });
+
+    // User leaves /inbox via sidebar while markInboxRead is still in flight
+    await act(async () => {
+      await router.navigate({ to: '/characters' });
+    });
+    expect(router.state.location.pathname).toBe('/characters');
+
+    // Now the late read receipt resolves
+    await act(async () => {
+      resolveReadReceipt?.({
+        eventId: 'evt-late',
+        relationshipId: '101',
+        conversationId: '301',
+        linkStatus: 'present',
+        intent: 'BODY',
+        body: '迟到已读回执测试',
+        stDelivered: true,
+        read: true,
+      });
+    });
+
+    // Late resolution must not pull user to /chat or call bridge.open
+    expect(router.state.location.pathname).toBe('/characters');
+    expect(openSpy).toHaveBeenCalledTimes(0);
   });
 });

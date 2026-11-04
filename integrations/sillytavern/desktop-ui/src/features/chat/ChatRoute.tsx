@@ -3,6 +3,7 @@ import {
     useCallback,
     useContext,
     useEffect,
+    useLayoutEffect,
     useMemo,
     useRef,
     useState,
@@ -56,7 +57,7 @@ export function ChatUiProvider({ children }: { children: ReactNode }) {
         setMessageJump(current => current === request ? null : current);
     }, []);
 
-    useEffect(() => {
+    useLayoutEffect(() => {
         setQuote(null);
         setSearchOpen(false);
         setHistoryAll(false);
@@ -164,18 +165,22 @@ function ChatRouteInner({
         return () => cancelAnimationFrame(frame);
     }, [ui.messageJump, ui.completeMessageJump, ui.historyAll, activeKey, status, isChatRoute, jumpToMessage]);
 
+    const conversationsRef = useRef(conversations);
+    conversationsRef.current = conversations;
+
     useEffect(() => {
-        if (conversationKey) {
-            if (conversationKey !== activeKey) {
-                const matched = conversations.find(c => c.key === conversationKey);
-                void bridge.open(matched ?? conversationKey);
-            }
-            return;
+        if (!isChatRoute || !conversationKey) return undefined;
+        const currentSnap = bridge.getSnapshot();
+        if (currentSnap.status === 'ready' && currentSnap.key === conversationKey) {
+            return undefined;
         }
-        if (!activeKey && status === 'empty' && conversations.length > 0) {
-            void bridge.open(conversations[0]);
-        }
-    }, [conversationKey, activeKey, status, conversations, bridge]);
+        const controller = new AbortController();
+        const matched = conversationsRef.current.find(c => c.key === conversationKey);
+        void bridge.open(matched ?? conversationKey, { signal: controller.signal });
+        return () => {
+            controller.abort();
+        };
+    }, [conversationKey, isChatRoute, bridge]);
 
     return (
         <div

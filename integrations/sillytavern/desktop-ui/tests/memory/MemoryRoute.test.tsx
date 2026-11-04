@@ -7,6 +7,7 @@ import { createDesktopRouter } from '../../src/app/router';
 import { SessionBridgeProvider, createSessionBridge } from '../../src/runtime/session-bridge';
 import type { AppClient } from '../../src/data/client';
 import { MemoryRoute } from '../../src/features/memory/MemoryRoute';
+import { useRelationshipMemoriesQuery } from '../../src/data/queries/chat';
 
 function setupMatchMedia(initialWidth = 1440) {
   vi.stubGlobal(
@@ -191,6 +192,35 @@ describe('MemoryRoute', () => {
   afterEach(() => {
     cleanup();
     vi.restoreAllMocks();
+  });
+
+  it('opens the memory page after the chat preview has populated the same cache', async () => {
+    const { client, fetchMemories } = createMemoryTestClient();
+    function ChatMemoryPreview() {
+      const memories = useRelationshipMemoriesQuery('11');
+      return <p>{memories.isSuccess ? '聊天记忆已加载' : '聊天记忆加载中'}</p>;
+    }
+    const router = createDesktopRouter({
+      initialEntry: '/chat',
+      routeOverrides: {
+        chat: ChatMemoryPreview,
+        memory: () => <MemoryRoute initialRelationshipId="11" />,
+      },
+    });
+    render(
+      <AppProviders client={client} queryClient={createQueryClient()}>
+        <RouterProvider router={router} />
+      </AppProviders>,
+    );
+    await screen.findByText('聊天记忆已加载');
+    await act(async () => {
+      await router.navigate({ to: '/memory' });
+    });
+    await waitFor(() => {
+      expect(screen.getAllByText('喜欢桂花拿铁').length).toBeGreaterThan(0);
+      expect(screen.getAllByText('周末喜欢去海边散步').length).toBeGreaterThan(0);
+    });
+    expect(fetchMemories).toHaveBeenCalledTimes(1);
   });
 
   it('filters combine type+source+date and survive navigation', async () => {

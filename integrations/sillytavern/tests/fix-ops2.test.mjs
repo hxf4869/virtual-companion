@@ -165,15 +165,19 @@ test('场景模块组成有序列表，入口不再 push 或维护实现表', as
     assert.equal(new Set(ids).size, ids.length);
     const extra = [
         'story-view-browser', 'w11-tool-meter', 'w10-inbox-notify', 'hl-proactive', 'ux24-backend', 'voice-backend', 'voice-real', 'voice-chat', 'voice-proactive', 'voice-input', 'voice-settings', 'voice-backup', 'story-outbound', 'story-play',
-        'story-real', 'w15-ui', 'fe4a-ui', 'fe4b-ui', 'f3-settings', 'vc-ui-shell', 'vc-ui-walkthrough', 'f2-chat-ui', 'hl-reply', 'consent-ui', 'hl-persona', 'hl-stickers', 'dr-appearance', 'dr-shell', 'dr-models', 'dr-settings', 'dr-overlays', 'dr-pages', 'nf-startup', 'nf-desktop', 'nf-prompts', 'nf-chat', 'nf-cards', 'nf-operations', 'nf-media', 'nf-settings', 'nf-tavern', 'nf-business', 'nf-performance', 'mb-engine', 'mb-chat',
+        'story-real', 'w15-ui', 'fe4a-ui', 'fe4b-ui', 'f3-settings', 'vc-ui-shell', 'vc-ui-walkthrough', 'f2-chat-ui', 'hl-reply', 'consent-ui', 'hl-persona', 'hl-stickers', 'dr-appearance', 'dr-shell', 'dr-models', 'dr-settings', 'dr-overlays', 'dr-pages', 'dr2-layout', 'dr2-settings', 'dr2-pages', 'dr2-mvu-new', 'nf-startup', 'nf-desktop', 'nf-prompts', 'nf-chat', 'nf-cards', 'nf-operations', 'nf-media', 'nf-settings', 'nf-tavern', 'nf-business', 'nf-performance', 'mb-engine', 'mb-chat',
     ];
     assert.deepEqual(new Set(ids), new Set([...SCENES.map((scene) => scene.id), ...extra]));
-    assert.ok(!resolveSceneFilter(undefined, ACCEPT_SCENES).includes('dr-appearance'), '外观浏览器场景只在显式选择时运行');
-    assert.ok(!resolveSceneFilter(undefined, ACCEPT_SCENES).includes('dr-shell'), '公共壳层浏览器场景只在显式选择时运行');
-    assert.ok(!resolveSceneFilter(undefined, ACCEPT_SCENES).includes('dr-models'), '模型页浏览器场景只在显式选择时运行');
-    assert.ok(!resolveSceneFilter(undefined, ACCEPT_SCENES).includes('dr-settings'), '设置表单浏览器场景只在显式选择时运行');
-    assert.ok(!resolveSceneFilter(undefined, ACCEPT_SCENES).includes('dr-overlays'), '公共弹层浏览器场景只在显式选择时运行');
-    assert.ok(!resolveSceneFilter(undefined, ACCEPT_SCENES).includes('dr-pages'), '业务页浏览器场景只在显式选择时运行');
+    assert.ok(!resolveSceneFilter(undefined, ACCEPT_SCENES).includes('dr-appearance'), '外观浏览器预览只在显式选择时运行');
+    assert.ok(!resolveSceneFilter(undefined, ACCEPT_SCENES).includes('dr-shell'), '公共壳层浏览器预览只在显式选择时运行');
+    assert.ok(!resolveSceneFilter(undefined, ACCEPT_SCENES).includes('dr-models'), '模型页浏览器预览只在显式选择时运行');
+    assert.ok(!resolveSceneFilter(undefined, ACCEPT_SCENES).includes('dr-settings'), '语音与账户设置浏览器预览只在显式选择时运行');
+    assert.ok(!resolveSceneFilter(undefined, ACCEPT_SCENES).includes('dr-overlays'), '弹层与抽屉浏览器预览只在显式选择时运行');
+    assert.ok(!resolveSceneFilter(undefined, ACCEPT_SCENES).includes('dr-pages'), '独立业务页浏览器预览只在显式选择时运行');
+    assert.ok(!resolveSceneFilter(undefined, ACCEPT_SCENES).includes('dr2-layout'), '电脑端布局几何浏览器场景只在显式选择时运行');
+    assert.ok(!resolveSceneFilter(undefined, ACCEPT_SCENES).includes('dr2-settings'), '电脑端产品设置与酒馆设置浏览器场景只在显式选择时运行');
+    assert.ok(!resolveSceneFilter(undefined, ACCEPT_SCENES).includes('dr2-pages'), '电脑端独立页浏览器场景只在显式选择时运行');
+    assert.ok(!resolveSceneFilter(undefined, ACCEPT_SCENES).includes('dr2-mvu-new'), '电脑端复杂卡首条消息浏览器场景只在显式选择时运行');
     for (const scene of ACCEPT_SCENES) {
         assert.equal(typeof scene.id, 'string');
         assert.equal(typeof scene.title, 'string');

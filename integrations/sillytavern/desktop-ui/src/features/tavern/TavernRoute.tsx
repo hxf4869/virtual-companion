@@ -17,6 +17,7 @@ import { InterfacePrefs } from './InterfacePrefs';
 import { Personas } from './Personas';
 import { ReplyConfig } from './ReplyConfig';
 import { WorldInfo } from './WorldInfo';
+import '../settings/settings.css';
 import './tavern.css';
 
 const Formatting = lazy(() =>
@@ -29,6 +30,8 @@ const PRODUCT_CATEGORIES: ReadonlyArray<readonly [string, string, string, string
   ['voice', '语音', 'mic', 'orange'],
   ['notifications', '通知', 'bell', 'pink'],
   ['appearance', '外观', 'monitor', 'purple'],
+  ['companion', '陪伴风格', 'heart', 'pink'],
+  ['stickers', '表情包', 'image', 'orange'],
   ['data', '账户与数据', 'shield', 'green'],
 ];
 

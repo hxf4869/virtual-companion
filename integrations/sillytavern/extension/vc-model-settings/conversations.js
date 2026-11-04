@@ -6,7 +6,7 @@
 // 或者两份文件的最后一句相同（选中角色时自动开的聊天，和紧接着打开的那份）；已知身份不同的聊天始终分别显示。
 // 隔开一段时间另建的实例，或最后一句已经不同的两份聊天，各自一行；看起来一样时才加序号（外壳 · 2）。
 import { instancesFrom, safeImageUrl } from './instance-queries.js';
-import { unreadInboxEvents } from './chat-shell.js';
+import { unreadInboxEvents } from './inbox-logic.js';
 
 export const EMPTY_CONVERSATIONS_COPY = '还没有会话';
 export const CONVERSATIONS_ERROR_COPY = '会话没有加载出来';

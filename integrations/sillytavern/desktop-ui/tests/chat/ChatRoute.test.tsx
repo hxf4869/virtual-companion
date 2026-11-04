@@ -490,6 +490,107 @@ describe('ChatRoute streaming isolation, B5 open lifecycle, and B13 VoiceBubble 
         expect(env.prepareRuntimeCalls).toBe(1);
     });
 
+    it('accepted settings, preset, worldbook and character changes finish before runtime loading and replay in order before prepared', async () => {
+        let releaseRuntime!: () => void;
+        const gate = new Promise<void>(resolve => { releaseRuntime = resolve; });
+        const env = createTestChatEnv({ beforePrepareRuntime: () => gate });
+        const changes = [{ path: ['power_user', 'send_on_enter'], before: { exists: true, value: 1 }, after: { exists: true, value: -1 } }];
+        let accepted = false;
+        const writes = Promise.all([
+            env.bridge.applySettings(changes),
+            env.bridge.applyPreset('openai', 'Default', [], { temperature: 0.8 }),
+            env.bridge.applyWorldbook('Lore', { entries: {} }, 'save'),
+            env.bridge.reloadCharacter('alice.png'),
+        ]).then(() => { accepted = true; });
+        try {
+            await waitFor(() => expect(accepted).toBe(true), { timeout: 300 });
+            expect(env.bridge.getSnapshot().runtime).toBe('preparing');
+            expect(env.runtimeSpies.applySettings).not.toHaveBeenCalled();
+            releaseRuntime();
+            await writes;
+            await waitFor(() => expect(env.bridge.getSnapshot().runtime).toBe('prepared'));
+            expect(env.runtimeSpies.applySettings).toHaveBeenCalledWith(changes);
+            expect(env.runtimeSpies.applyPreset).toHaveBeenCalledWith('openai', 'Default', [], { temperature: 0.8 });
+            expect(env.runtimeSpies.applyWorldbook).toHaveBeenCalledWith('Lore', { entries: {} }, 'save');
+            expect(env.runtimeSpies.reloadCharacter).toHaveBeenCalledWith('alice.png');
+            const order = ['applySettings', 'applyPreset', 'applyWorldbook', 'reloadCharacter'].map(name => (env.runtimeSpies as any)[name].mock.invocationCallOrder[0]);
+            expect(order).toEqual([...order].sort((a, b) => a - b));
+            expect(env.bridge.getSnapshot().enterToSend).toBe(false);
+        } finally {
+            releaseRuntime();
+            await writes;
+            env.bridge.destroy();
+        }
+    });
+
+    it('destroy drops accepted changes queued before runtime and disposes the late runtime', async () => {
+        let releaseRuntime!: () => void;
+        const gate = new Promise<void>(resolve => { releaseRuntime = resolve; });
+        const env = createTestChatEnv({ beforePrepareRuntime: () => gate });
+        let accepted = false;
+        const write = env.bridge.applySettings([]).then(() => { accepted = true; });
+        try {
+            await waitFor(() => expect(accepted).toBe(true), { timeout: 300 });
+        } finally {
+            env.bridge.destroy();
+            releaseRuntime();
+            await write;
+        }
+        await waitFor(() => expect(env.runtimeSpies.destroy).toHaveBeenCalledTimes(1));
+        expect(env.runtimeSpies.applySettings).not.toHaveBeenCalled();
+    });
+
+    it('deleting the committed character before runtime uses its F2 baseline and cannot activate it after preparation', async () => {
+        let releaseRuntime!: () => void;
+        const gate = new Promise<void>(resolve => { releaseRuntime = resolve; });
+        const env = createTestChatEnv({ beforePrepareRuntime: () => gate });
+        const opening = env.bridge.open('["alice.png","chat-1"]');
+        try {
+            await waitFor(() => expect(env.bridge.getSnapshot().key).toBe('["alice.png","chat-1"]'));
+            vi.mocked(env.client.request).mockResolvedValueOnce([{ file_name: 'chat-1.jsonl' }]);
+            await env.bridge.deleteCharacter('alice.png', true);
+            expect(env.client.post).toHaveBeenCalledWith('/api/characters/delete', {
+                avatar_url: 'alice.png', delete_chats: true,
+                vc_f2_chats: [{ path: 'chats/alice/chat-1.jsonl', expected: { id: 'f2-chat-1', revision: 1 } }],
+            });
+            expect(env.bridge.getSnapshot().key).toBe('');
+            releaseRuntime();
+            expect(await opening).toBe('superseded');
+            expect(env.bridge.getSnapshot().status).toBe('empty');
+            expect(env.runtimeSpies.reloadCharacter).toHaveBeenCalledWith('alice.png');
+        } finally {
+            releaseRuntime();
+            await opening;
+            env.bridge.destroy();
+        }
+    });
+
+    it('a queued configuration failure disposes its runtime and preserves accepted settings for retry', async () => {
+        let releaseRuntime!: () => void;
+        const gate = new Promise<void>(resolve => { releaseRuntime = resolve; });
+        const env = createTestChatEnv({ beforePrepareRuntime: () => gate });
+        const states: string[] = [];
+        const unsubscribe = env.bridge.subscribe(() => states.push(env.bridge.getSnapshot().runtime));
+        try {
+            env.runtimeSpies.reloadCharacter.mockRejectedValueOnce(new Error('合成角色读取失败'));
+            const changes = [{ path: ['power_user', 'send_on_enter'], before: { exists: true, value: 1 }, after: { exists: true, value: -1 } }];
+            await env.bridge.applySettings(changes);
+            await env.bridge.reloadCharacter('alice.png');
+            releaseRuntime();
+            await waitFor(() => expect(env.bridge.getSnapshot().runtime).toBe('error'));
+            expect(env.runtimeSpies.destroy).toHaveBeenCalledTimes(1);
+            expect(states).not.toContain('prepared');
+            expect(await env.bridge.open('["alice.png","chat-1"]')).toBe('opened');
+            expect(env.runtimeSpies.applySettings).toHaveBeenCalledTimes(2);
+            expect(env.runtimeSpies.reloadCharacter).toHaveBeenCalledTimes(2);
+            expect(env.bridge.getSnapshot().enterToSend).toBe(false);
+        } finally {
+            releaseRuntime();
+            unsubscribe();
+            env.bridge.destroy();
+        }
+    });
+
     it('real runtime contract updates enterToSend via context.powerUserSettings without fictional runtime.settings and destroy releases SillyTavern rebound by cards for the same context only', async () => {
         const env = createTestChatEnv();
         await env.bridge.open('["alice.png","chat-1"]');
@@ -726,6 +827,810 @@ describe('ChatRoute streaming isolation, B5 open lifecycle, and B13 VoiceBubble 
 
         setVoiceIntegration(null);
         invalidateVoicePolicy();
+        env.bridge.destroy();
+        env.queryClient.clear();
+    });
+
+    it('guards late client.characters() refresh on newly imported character so preempted open A does not overwrite B or call stale activate', async () => {
+        const keyNew = '["new-char.png","chat-new"]';
+        const keyBob = '["bob.png","chat-b"]';
+        const activatedKeys: string[] = [];
+
+        const env = createTestChatEnv({
+            conversations: [
+                { key: keyBob, avatar: 'bob.png', file: 'chat-b', title: 'Bob', preview: '', updatedAt: 1 },
+            ],
+            chatsByKey: {
+                [keyBob]: [{ name: 'Bob', mes: 'Bob steady', is_user: false }],
+            },
+            onActivate: async (row) => {
+                activatedKeys.push(`${row.avatar}:${row.file}`);
+            },
+        });
+
+        // Wait for initial charactersReady to settle with only Bob
+        await act(async () => {
+            expect(await env.bridge.open(keyBob)).toBe('opened');
+        });
+        activatedKeys.length = 0;
+
+        // Now open newly imported character A whose avatar is not yet in context.characters;
+        // hold the refresh client.characters() call while switching back to Bob
+        let resolveFreshChars!: (chars: any[]) => void;
+        (env.client.characters as any).mockImplementationOnce(
+            () =>
+                new Promise(res => {
+                    resolveFreshChars = res;
+                }),
+        );
+
+        const openAPromise = env.bridge.open(keyNew);
+        await waitFor(() => {
+            expect(typeof resolveFreshChars).toBe('function');
+        });
+
+        // Switch back to Bob while A's client.characters() is still in flight
+        const openBPromise = env.bridge.open(keyBob, { latest: true });
+        expect(await openBPromise).toBe('opened');
+        expect(env.bridge.getSnapshot().key).toBe(keyBob);
+        expect(env.bridge.getSnapshot().characterName).toBe('Bob');
+        expect(activatedKeys).toEqual(['bob.png:chat-b']);
+
+        // Now resolve late client.characters() for A -> A must return superseded without overwriting B or calling activate
+        resolveFreshChars([
+            { avatar: 'new-char.png', name: 'NewImported', data: { extensions: { vc_character_ref: 'ref-new' } } },
+        ]);
+        expect(await openAPromise).toBe('superseded');
+        expect(env.bridge.getSnapshot().key).toBe(keyBob);
+        expect(env.bridge.getSnapshot().characterName).toBe('Bob');
+        expect(activatedKeys).toEqual(['bob.png:chat-b']);
+
+        env.bridge.destroy();
+        env.queryClient.clear();
+    });
+
+    it('C1: cancels in-flight conversation read when navigating from chat to settings and restores previous ready conversation and draft on both late success and late failure', async () => {
+        const keyA = '["alice.png","chat-a"]';
+        const keyB = '["bob.png","chat-b"]';
+        const activatedKeys: string[] = [];
+
+        const env = createTestChatEnv({
+            conversations: [
+                { key: keyA, avatar: 'alice.png', file: 'chat-a', title: 'Alice', preview: 'A', updatedAt: 2 },
+                { key: keyB, avatar: 'bob.png', file: 'chat-b', title: 'Bob', preview: 'B', updatedAt: 1 },
+            ],
+            chatsByKey: {
+                [keyA]: [{ name: 'Alice', mes: 'Alice message', is_user: false }],
+                [keyB]: [{ name: 'Bob', mes: 'Bob message', is_user: false }],
+            },
+            onActivate: async row => {
+                activatedKeys.push(`${row.avatar}:${row.file}`);
+            },
+        });
+
+        await act(async () => {
+            expect(await env.bridge.open(keyA)).toBe('opened');
+        });
+        env.bridge.draft.write(keyA, 'NF06 原会话草稿');
+        activatedKeys.length = 0;
+
+        const router = createDesktopRouter('/chat');
+        const { container } = render(
+            <AppProviders
+                client={env.client}
+                queryClient={env.queryClient}
+                sessionBridge={env.bridge}
+            >
+                <RouterProvider router={router} />
+            </AppProviders>,
+        );
+        await act(async () => {
+            await router.load();
+        });
+
+        for (const failed of [false, true]) {
+            let resolveReadB!: (records: any[]) => void;
+            let rejectReadB!: (err: Error) => void;
+            let readBStarted = false;
+            let readBSignal: AbortSignal | undefined;
+
+            const origReadChat = env.client.readChat;
+            (env.client.readChat as any).mockImplementationOnce(
+                ({ avatar, file }: { avatar: string; file: string }, opts?: { signal?: AbortSignal }) => {
+                    if (avatar === 'bob.png' && file === 'chat-b') {
+                        readBStarted = true;
+                        readBSignal = opts?.signal;
+                        return new Promise((res, rej) => {
+                            resolveReadB = res;
+                            rejectReadB = rej;
+                        });
+                    }
+                    return origReadChat({ avatar, file }, opts);
+                },
+            );
+
+            await act(async () => {
+                await router.navigate({
+                    to: '/chat/$conversationKey',
+                    params: { conversationKey: keyB },
+                });
+            });
+
+            await waitFor(() => {
+                expect(readBStarted).toBe(true);
+            });
+
+            // Leave chat route for settings while B's readChat is still in-flight
+            await act(async () => {
+                await router.navigate({
+                    to: '/settings/$category',
+                    params: { category: 'model' },
+                });
+            });
+
+            expect(readBSignal?.aborted).toBe(true);
+            expect(env.bridge.getSnapshot().status).toBe('ready');
+            expect(env.bridge.getSnapshot().key).toBe(keyA);
+            expect(env.bridge.getSnapshot().canSend).toBe(true);
+            expect(env.bridge.draft.read()).toBe('NF06 原会话草稿');
+
+            // Late readChat completion (success or failure) must not activate B or set error
+            await act(async () => {
+                if (failed) {
+                    rejectReadB(new Error('500 synthetic read error'));
+                } else {
+                    resolveReadB([
+                        {
+                            chat_metadata: {
+                                integrity: 'int-chat-b',
+                                vc_f2: { id: 'f2-chat-b', revision: 1 },
+                                vc_binding: {
+                                    relationshipId: 'rel-1',
+                                    conversationId: 'conv-chat-b',
+                                    mode: 'COMPANION',
+                                },
+                            },
+                        },
+                        { name: 'Bob', mes: 'Bob message', is_user: false },
+                    ]);
+                }
+            });
+
+            expect(activatedKeys).toEqual([]);
+            expect(env.bridge.getSnapshot().status).toBe('ready');
+            expect(env.bridge.getSnapshot().key).toBe(keyA);
+            expect(env.bridge.getSnapshot().error).toBe('');
+            expect(env.bridge.getSnapshot().canSend).toBe(true);
+            expect(env.bridge.draft.read()).toBe('NF06 原会话草稿');
+
+            // Navigate back to /chat and verify A and its draft are intact
+            await act(async () => {
+                await router.navigate({ to: '/chat' });
+            });
+            const textarea = container.querySelector('#send_textarea') as HTMLTextAreaElement;
+            const sendBtn = container.querySelector('#send_but') as HTMLButtonElement;
+            expect(textarea?.value).toBe('NF06 原会话草稿');
+            expect(sendBtn?.disabled).toBe(false);
+        }
+
+        env.bridge.destroy();
+        env.queryClient.clear();
+    });
+
+    it('C1: post-commit activation of B survives route leave to settings, and cancelling preflight C while B is activating preserves B until B finishes ready', async () => {
+        const keyA = '["alice.png","chat-a"]';
+        const keyB = '["bob.png","chat-b"]';
+        const keyC = '["carol.png","chat-c"]';
+
+        let holdActivateB = false;
+        let activateBEntered = false;
+        let activateBSignal: AbortSignal | undefined;
+        let releaseActivateB!: () => void;
+
+        const env = createTestChatEnv({
+            conversations: [
+                {
+                    key: keyA,
+                    avatar: 'alice.png',
+                    file: 'chat-a',
+                    title: 'Alice',
+                    preview: 'Alice msg',
+                    updatedAt: 3,
+                    relationshipId: 'rel-1',
+                    mode: 'COMPANION',
+                },
+                {
+                    key: keyB,
+                    avatar: 'bob.png',
+                    file: 'chat-b',
+                    title: 'Bob',
+                    preview: 'Bob msg',
+                    updatedAt: 2,
+                    relationshipId: 'rel-2',
+                    mode: 'COMPANION',
+                },
+                {
+                    key: keyC,
+                    avatar: 'carol.png',
+                    file: 'chat-c',
+                    title: 'Carol',
+                    preview: 'Carol msg',
+                    updatedAt: 1,
+                    relationshipId: 'rel-3',
+                    mode: 'COMPANION',
+                },
+            ],
+            characters: [
+                {
+                    name: 'Alice',
+                    avatar: 'alice.png',
+                    description: 'Alice',
+                    data: { extensions: { vc_character_ref: 'char-ref-alice' } },
+                },
+                {
+                    name: 'Bob',
+                    avatar: 'bob.png',
+                    description: 'Bob',
+                    data: { extensions: { vc_character_ref: 'char-ref-bob' } },
+                },
+                {
+                    name: 'Carol',
+                    avatar: 'carol.png',
+                    description: 'Carol',
+                    data: { extensions: { vc_character_ref: 'char-ref-carol' } },
+                },
+            ],
+            chatsByKey: {
+                [keyA]: [{ name: 'Alice', mes: 'Alice message', is_user: false }],
+                [keyB]: [{ name: 'Bob', mes: 'Bob message', is_user: false }],
+                [keyC]: [{ name: 'Carol', mes: 'Carol message', is_user: false }],
+            },
+            onActivate: async (row, _records, opts) => {
+                if (row.avatar === 'bob.png' && row.file === 'chat-b' && holdActivateB) {
+                    activateBEntered = true;
+                    activateBSignal = opts?.signal;
+                    await new Promise<void>(resolve => {
+                        releaseActivateB = resolve;
+                    });
+                }
+            },
+        });
+
+        await act(async () => {
+            expect(await env.bridge.open(keyA)).toBe('opened');
+        });
+        expect(env.bridge.getSnapshot().status).toBe('ready');
+        expect(env.bridge.getSnapshot().key).toBe(keyA);
+
+        const router = createDesktopRouter('/chat');
+        render(
+            <AppProviders
+                client={env.client}
+                queryClient={env.queryClient}
+                sessionBridge={env.bridge}
+            >
+                <RouterProvider router={router} />
+            </AppProviders>,
+        );
+        await act(async () => {
+            await router.load();
+        });
+
+        // 1) A ready -> B commits readChat and enters onActivate -> navigate to settings -> release B -> B finishes ready
+        holdActivateB = true;
+        activateBEntered = false;
+        await act(async () => {
+            await router.navigate({
+                to: '/chat/$conversationKey',
+                params: { conversationKey: keyB },
+            });
+        });
+        await waitFor(() => {
+            expect(activateBEntered).toBe(true);
+        });
+        expect(env.bridge.getSnapshot().key).toBe(keyB);
+        expect(env.bridge.getSnapshot().status).toBe('switching');
+
+        // Navigate to settings AFTER B has already committed and entered activate
+        await act(async () => {
+            await router.navigate({
+                to: '/settings/$category',
+                params: { category: 'model' },
+            });
+        });
+
+        // Route leave after commit must NOT abort B's active signal or revert to A
+        expect(activateBSignal?.aborted).toBe(false);
+        expect(env.bridge.getSnapshot().key).toBe(keyB);
+
+        // Now while B is still committed & inside onActivate, start preflight C and cancel C before C commits
+        let readCStarted = false;
+        let readCSignal: AbortSignal | undefined;
+        let resolveReadC!: (records: any[]) => void;
+        const origReadChat = env.client.readChat;
+        (env.client.readChat as any).mockImplementationOnce(
+            ({ avatar, file }: { avatar: string; file: string }, opts?: { signal?: AbortSignal }) => {
+                if (avatar === 'carol.png' && file === 'chat-c') {
+                    readCStarted = true;
+                    readCSignal = opts?.signal;
+                    return new Promise(res => {
+                        resolveReadC = res;
+                    });
+                }
+                return origReadChat({ avatar, file }, opts);
+            },
+        );
+
+        const controllerC = new AbortController();
+        const openCPromise = env.bridge.open(keyC, { signal: controllerC.signal });
+        await waitFor(() => {
+            expect(readCStarted).toBe(true);
+        });
+        // Starting C's preflight must NOT abort B's committed activation
+        expect(activateBSignal?.aborted).toBe(false);
+
+        // Cancel C's preflight before C commits -> must restore B's committed in-progress state (NOT revert to A or fake ready)
+        await act(async () => {
+            controllerC.abort();
+        });
+        expect(readCSignal?.aborted).toBe(true);
+        expect(activateBSignal?.aborted).toBe(false);
+        expect(env.bridge.getSnapshot().key).toBe(keyB);
+        expect(env.bridge.getSnapshot().status).toBe('switching');
+        expect(env.bridge.getSnapshot().canSend).toBe(false);
+
+        // Late resolution of C's readChat is ignored and resolves openCPromise as superseded
+        await act(async () => {
+            resolveReadC([
+                {
+                    chat_metadata: {
+                        integrity: 'int-chat-c',
+                        vc_f2: { id: 'f2-chat-c', revision: 1 },
+                        vc_binding: {
+                            relationshipId: 'rel-3',
+                            conversationId: 'conv-chat-c',
+                            mode: 'COMPANION',
+                        },
+                    },
+                },
+                { name: 'Carol', mes: 'Carol message', is_user: false },
+            ]);
+        });
+        expect(await openCPromise).toBe('superseded');
+        expect(env.bridge.getSnapshot().key).toBe(keyB);
+        expect(env.bridge.getSnapshot().status).toBe('switching');
+        expect(env.bridge.getSnapshot().canSend).toBe(false);
+
+        // Release B's activation -> B completes and becomes ready & canSend
+        await act(async () => {
+            releaseActivateB();
+        });
+        await waitFor(() => {
+            expect(env.bridge.getSnapshot().status).toBe('ready');
+        });
+        expect(env.bridge.getSnapshot().key).toBe(keyB);
+        expect(env.bridge.getSnapshot().canSend).toBe(true);
+        expect(env.bridge.getContext().chatId).toBe('chat-b');
+
+        env.bridge.destroy();
+        env.queryClient.clear();
+    });
+
+    it('C2: send catch interprets OVER_LIMIT budget signal to gate sending with BUDGET_COPY and setBudget(NO_BUDGET) restores sending', async () => {
+        const key = '["alice.png","chat-budget"]';
+        const env = createTestChatEnv({
+            conversations: [
+                { key, avatar: 'alice.png', file: 'chat-budget', title: 'Alice', preview: '', updatedAt: 1 },
+            ],
+            chatsByKey: {
+                [key]: [{ name: 'Alice', mes: 'Hello', is_user: false }],
+            },
+        });
+        await env.bridge.open(key);
+
+        vi.spyOn(env.client, 'generate').mockRejectedValueOnce(
+            Object.assign(new Error('429 OVER_LIMIT'), {
+                status: 429,
+                details: {
+                    error: {
+                        code: 'VC_USAGE_REFUSED',
+                        message: '本月额度已用完，本次生成未发送',
+                        reason: 'OVER_LIMIT',
+                    },
+                },
+            }),
+        );
+
+        const router = createDesktopRouter(`/chat/${encodeURIComponent(key)}`);
+        const { container } = render(
+            <AppProviders
+                client={env.client}
+                queryClient={env.queryClient}
+                sessionBridge={env.bridge}
+            >
+                <RouterProvider router={router} />
+            </AppProviders>,
+        );
+        await act(async () => {
+            await router.load();
+        });
+
+        env.bridge.draft.write(key, 'NF06 原会话草稿');
+        await act(async () => {
+            const sent = await env.bridge.send('NF06 原会话草稿');
+            expect(sent).toBe(false);
+        });
+
+        expect(env.bridge.getSnapshot().canSend).toBe(false);
+        expect(env.bridge.getSnapshot().settingsRequired).toBe(true);
+        expect(env.bridge.getSnapshot().notice).toContain('当月可用额度不足，测试与发送暂不可用。设置仍可保存。');
+        expect(env.bridge.draft.read(key)).toBe('NF06 原会话草稿');
+        expect((container.querySelector('#send_textarea') as HTMLTextAreaElement | null)?.value).toBe('NF06 原会话草稿');
+        expect((container.querySelector('#send_but') as HTMLButtonElement | null)?.disabled).toBe(true);
+        expect(container.querySelector('#vc-chat-gen button')?.textContent).toBe('去设置');
+
+        await act(async () => {
+            await env.bridge.setBudget({ known: false, insufficient: false });
+        });
+
+        expect(env.bridge.getSnapshot().canSend).toBe(true);
+        expect(env.bridge.getSnapshot().settingsRequired).toBe(false);
+        expect((container.querySelector('#send_but') as HTMLButtonElement | null)?.disabled).toBe(false);
+
+        env.bridge.destroy();
+        env.queryClient.clear();
+    });
+
+    it('Item 1: ordinary uncanceled readChat 500 publishes errorSnapshot with retry UI, and committed activate failure while newer preflight C is pending surfaces after C cancels', async () => {
+        const keyA = '["alice.png","chat-a"]';
+        const keyB = '["bob.png","chat-b"]';
+        const keyC = '["carol.png","chat-c"]';
+
+        let rejectActivateB: ((err: Error) => void) | null = null;
+        let activateBEntered = false;
+
+        const env = createTestChatEnv({
+            conversations: [
+                { key: keyA, avatar: 'alice.png', file: 'chat-a', title: 'Alice', preview: '', updatedAt: 3 },
+                { key: keyB, avatar: 'bob.png', file: 'chat-b', title: 'Bob', preview: '', updatedAt: 2 },
+                { key: keyC, avatar: 'carol.png', file: 'chat-c', title: 'Carol', preview: '', updatedAt: 1 },
+            ],
+            chatsByKey: {
+                [keyA]: [{ name: 'Alice', mes: 'Alice message', is_user: false }],
+                [keyB]: [{ name: 'Bob', mes: 'Bob message', is_user: false }],
+                [keyC]: [{ name: 'Carol', mes: 'Carol message', is_user: false }],
+            },
+            onActivate: async row => {
+                if (row.avatar === 'bob.png' && row.file === 'chat-b' && rejectActivateB) {
+                    activateBEntered = true;
+                    await new Promise<void>((_res, rej) => {
+                        rejectActivateB = rej;
+                    });
+                }
+            },
+        });
+
+        const router = createDesktopRouter(`/chat/${encodeURIComponent(keyA)}`);
+        const { container } = render(
+            <AppProviders
+                client={env.client}
+                queryClient={env.queryClient}
+                sessionBridge={env.bridge}
+            >
+                <RouterProvider router={router} />
+            </AppProviders>,
+        );
+        await act(async () => {
+            await router.load();
+        });
+        await waitFor(() => {
+            expect(env.bridge.getSnapshot().status).toBe('ready');
+            expect(env.bridge.getSnapshot().key).toBe(keyA);
+        });
+
+        // 1) Ordinary uncanceled readChat 500 failure (no abort / no route leave)
+        (env.client.readChat as any).mockRejectedValueOnce(
+            Object.assign(new Error('500 readChat failed'), { status: 500 }),
+        );
+        let openCRetryResult: string | undefined;
+        await act(async () => {
+            openCRetryResult = await env.bridge.open(keyC);
+        });
+        expect(openCRetryResult).toBe('failed');
+        expect(env.bridge.getSnapshot().status).toBe('error');
+        expect(env.bridge.getSnapshot().canSend).toBe(false);
+        expect(env.bridge.getSnapshot().error).toBe('聊天没有加载出来，请重试。');
+        expect(container.querySelector('.vc-chat-error-state')?.textContent).toContain(
+            '聊天没有加载出来，请重试。',
+        );
+
+        const retryBtn = container.querySelector('.vc-chat-error-state button') as HTMLButtonElement;
+        expect(retryBtn).toBeTruthy();
+        await act(async () => {
+            retryBtn.click();
+        });
+        await waitFor(() => {
+            expect(env.bridge.getSnapshot().key).toBe(keyC);
+            expect(env.bridge.getSnapshot().status).toBe('ready');
+            expect(env.bridge.getSnapshot().error).toBe('');
+            expect(env.bridge.getSnapshot().canSend).toBe(true);
+        });
+
+        // 2) Committed B fails in activate while newer preflight C is still pending -> cancelling C exposes B's error
+        rejectActivateB = () => {};
+        const openBPromise = env.bridge.open(keyB);
+        await waitFor(() => {
+            expect(activateBEntered).toBe(true);
+        });
+
+        let readCStarted = false;
+        const origReadChat = env.client.readChat;
+        (env.client.readChat as any).mockImplementationOnce(
+            ({ avatar, file }: { avatar: string; file: string }, opts?: { signal?: AbortSignal }) => {
+                if (avatar === 'carol.png' && file === 'chat-c') {
+                    readCStarted = true;
+                    return new Promise(() => {});
+                }
+                return origReadChat({ avatar, file }, opts);
+            },
+        );
+        const controllerC = new AbortController();
+        const openCPromise = env.bridge.open(keyC, { signal: controllerC.signal });
+        await waitFor(() => {
+            expect(readCStarted).toBe(true);
+        });
+
+        // Fail B's committed activation while C is still in preflight
+        const triggerFailB = rejectActivateB;
+        rejectActivateB = null;
+        await act(async () => {
+            triggerFailB?.(new Error('activate B failed'));
+        });
+        expect(await openBPromise).toBe('failed');
+
+        // Now cancel preflight C -> must expose B's committed error state and allow retry
+        await act(async () => {
+            controllerC.abort();
+        });
+        expect(env.bridge.getSnapshot().key).toBe(keyB);
+        expect(env.bridge.getSnapshot().status).toBe('error');
+        expect(env.bridge.getSnapshot().error).toBe('聊天没有加载出来，请重试。');
+
+        await act(async () => {
+            expect(await env.bridge.retry()).toBe(true);
+        });
+        expect(env.bridge.getSnapshot().key).toBe(keyB);
+        expect(env.bridge.getSnapshot().status).toBe('ready');
+        expect(env.bridge.getSnapshot().canSend).toBe(true);
+        void openCPromise;
+
+        env.bridge.destroy();
+        env.queryClient.clear();
+    });
+
+    it('Item 2: cancelling preflight B preserves live streaming busy/stop state on A and preserves real F2 conflict and rejected snapshot on A', async () => {
+        const keyA = '["alice.png","chat-a"]';
+        const keyB = '["bob.png","chat-b"]';
+        const env = createTestChatEnv({
+            conversations: [
+                { key: keyA, avatar: 'alice.png', file: 'chat-a', title: 'Alice', preview: '', updatedAt: 2 },
+                { key: keyB, avatar: 'bob.png', file: 'chat-b', title: 'Bob', preview: '', updatedAt: 1 },
+            ],
+            chatsByKey: {
+                [keyA]: [{ name: 'Alice', mes: 'Alice greeting', is_user: false }],
+                [keyB]: [{ name: 'Bob', mes: 'Bob message', is_user: false }],
+            },
+            streamChunks: ['Alice in-progress stream'],
+            holdStream: true,
+        });
+
+        await act(async () => {
+            expect(await env.bridge.open(keyA)).toBe('opened');
+        });
+
+        const router = createDesktopRouter('/chat');
+        const { container } = render(
+            <AppProviders
+                client={env.client}
+                queryClient={env.queryClient}
+                sessionBridge={env.bridge}
+            >
+                <RouterProvider router={router} />
+            </AppProviders>,
+        );
+        await act(async () => {
+            await router.load();
+        });
+
+        // 1) Start streaming on A, then start deferred preflight B and cancel B by navigating to settings
+        let sendPromise!: Promise<boolean>;
+        act(() => {
+            sendPromise = env.bridge.send('Hello while streaming');
+        });
+        await waitFor(() => {
+            expect(env.bridge.getSnapshot().busy).toBe(true);
+            expect(env.bridge.getSnapshot().canSend).toBe(false);
+            expect(container.querySelector('#mes_stop')).toBeTruthy();
+        });
+
+        let readBStarted = false;
+        const origReadChat = env.client.readChat;
+        (env.client.readChat as any).mockImplementationOnce(
+            ({ avatar, file }: { avatar: string; file: string }, opts?: { signal?: AbortSignal }) => {
+                if (avatar === 'bob.png' && file === 'chat-b') {
+                    readBStarted = true;
+                    return new Promise(() => {});
+                }
+                return origReadChat({ avatar, file }, opts);
+            },
+        );
+
+        await act(async () => {
+            await router.navigate({
+                to: '/chat/$conversationKey',
+                params: { conversationKey: keyB },
+            });
+        });
+        await waitFor(() => {
+            expect(readBStarted).toBe(true);
+        });
+
+        // Cancel preflight B by navigating to settings
+        await act(async () => {
+            await router.navigate({
+                to: '/settings/$category',
+                params: { category: 'model' },
+            });
+        });
+
+        // Session A is still generating: busy must stay true, canSend must stay false, stop button must remain
+        expect(env.bridge.getSnapshot().key).toBe(keyA);
+        expect(env.bridge.getSnapshot().status).toBe('ready');
+        expect(env.bridge.getSnapshot().busy).toBe(true);
+        expect(env.bridge.getSnapshot().canSend).toBe(false);
+        expect(env.bridge.getSnapshot().streamingKey).toBeTruthy();
+
+        await act(async () => {
+            await router.navigate({ to: '/chat' });
+        });
+        expect(container.querySelector('#mes_stop')).toBeTruthy();
+        expect(container.querySelector('#send_but')).toBeNull();
+
+        // Finish stream on A -> settles to idle ready
+        await act(async () => {
+            env.streamController?.finish();
+            await sendPromise;
+        });
+        expect(env.bridge.getSnapshot().busy).toBe(false);
+        expect(env.bridge.getSnapshot().canSend).toBe(true);
+
+        // 2) Trigger a real F2 conflict on A via /api/chats/save returning 409, then cancel preflight B
+        const origRaw = env.client.raw;
+        (env.client.raw as any).mockImplementationOnce(async (url: string) => {
+            if (url === '/api/chats/save') {
+                return {
+                    ok: false,
+                    status: 409,
+                    json: async () => ({ error: { code: 'VC_F2_CONFLICT' } }),
+                };
+            }
+            return origRaw(url, '{}');
+        });
+
+        await act(async () => {
+            const ok = await env.bridge.send('Unsaved F2 conflict input');
+            expect(ok).toBe(false);
+        });
+        expect(env.bridge.getSnapshot().conflict).toBe(true);
+        expect(env.bridge.getSnapshot().canSend).toBe(false);
+        expect(env.bridge.getSnapshot().conflictSnapshot?.raw).toContain('Unsaved F2 conflict input');
+
+        let readB2Started = false;
+        (env.client.readChat as any).mockImplementationOnce(
+            ({ avatar, file }: { avatar: string; file: string }, opts?: { signal?: AbortSignal }) => {
+                if (avatar === 'bob.png' && file === 'chat-b') {
+                    readB2Started = true;
+                    return new Promise(() => {});
+                }
+                return origReadChat({ avatar, file }, opts);
+            },
+        );
+        const controllerB2 = new AbortController();
+        const openB2Promise = env.bridge.open(keyB, { signal: controllerB2.signal });
+        await waitFor(() => {
+            expect(readB2Started).toBe(true);
+        });
+
+        await act(async () => {
+            controllerB2.abort();
+        });
+        expect(env.bridge.getSnapshot().key).toBe(keyA);
+        expect(env.bridge.getSnapshot().conflict).toBe(true);
+        expect(env.bridge.getSnapshot().canSend).toBe(false);
+        expect(env.bridge.getSnapshot().conflictSnapshot?.raw).toContain('Unsaved F2 conflict input');
+        expect(await env.bridge.copyRejected()).toBe('Unsaved F2 conflict input');
+        void openB2Promise;
+
+        env.bridge.destroy();
+        env.queryClient.clear();
+    });
+
+    it('Item 3: deferred prepareRuntime on initial open renders plain-text history and keeps draft without mutating context early, then finishes ready after route leave and runtime release', async () => {
+        const keyA = '["alice.png","chat-a"]';
+        let releaseRuntime!: () => void;
+        let prepareEntered = false;
+        delete document.documentElement.dataset.vcRuntime;
+
+        const env = createTestChatEnv({
+            conversations: [
+                { key: keyA, avatar: 'alice.png', file: 'chat-a', title: 'Alice', preview: 'Hi', updatedAt: 1 },
+            ],
+            chatsByKey: {
+                [keyA]: [
+                    { name: 'Alice', mes: 'Delayed runtime message 1', is_user: false },
+                    { name: '你', mes: 'Delayed runtime message 2', is_user: true },
+                ],
+            },
+            beforePrepareRuntime: async () => {
+                prepareEntered = true;
+                await new Promise<void>(resolve => {
+                    releaseRuntime = resolve;
+                });
+            },
+        });
+
+        const router = createDesktopRouter(`/chat/${encodeURIComponent(keyA)}`);
+        const { container } = render(
+            <AppProviders
+                client={env.client}
+                queryClient={env.queryClient}
+                sessionBridge={env.bridge}
+            >
+                <RouterProvider router={router} />
+            </AppProviders>,
+        );
+        await act(async () => {
+            await router.load();
+        });
+
+        await waitFor(() => {
+            expect(prepareEntered).toBe(true);
+            expect(container.querySelectorAll('#chat > .mes')).toHaveLength(2);
+        });
+
+        // Plain-text history is visible, runtime is still not prepared, context is not mutated early, canSend is false
+        expect(document.documentElement.dataset.vcRuntime).toBeUndefined();
+        expect(container.querySelector('#chat')?.textContent).toContain('Delayed runtime message 1');
+        expect(container.querySelector('#chat')?.textContent).toContain('Delayed runtime message 2');
+        expect(env.bridge.getSnapshot().status).toBe('switching');
+        expect(env.bridge.getSnapshot().canSend).toBe(false);
+        expect(env.bridge.getContext().chat).toEqual([]);
+        expect(env.bridge.getContext().chatId).toBe('');
+
+        const textarea = container.querySelector('#send_textarea') as HTMLTextAreaElement;
+        fireEvent.change(textarea, { target: { value: 'NF06 保留草稿' } });
+        expect(env.bridge.draft.read(keyA)).toBe('NF06 保留草稿');
+
+        // Navigate to settings while runtime is still held, then release runtime -> committed session A still becomes ready
+        await act(async () => {
+            await router.navigate({
+                to: '/settings/$category',
+                params: { category: 'model' },
+            });
+        });
+        await act(async () => {
+            releaseRuntime();
+        });
+        await waitFor(() => {
+            expect(document.documentElement.dataset.vcRuntime).toBe('prepared');
+            expect(env.bridge.getSnapshot().status).toBe('ready');
+        });
+        expect(env.bridge.getSnapshot().key).toBe(keyA);
+        expect(env.bridge.getSnapshot().canSend).toBe(true);
+        expect(env.bridge.getContext().chatId).toBe('chat-a');
+        expect(env.bridge.getContext().chat).toHaveLength(2);
+        expect(env.bridge.draft.read(keyA)).toBe('NF06 保留草稿');
+
         env.bridge.destroy();
         env.queryClient.clear();
     });

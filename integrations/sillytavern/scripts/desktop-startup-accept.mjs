@@ -89,14 +89,15 @@ async function sceneNativeStartup(ctx, fixedFixture) {
         for (const cache of ['cold', 'warm']) {
             await page.goto(ctx.w05.stBase + '/native/', { waitUntil: 'domcontentloaded' });
             await page.waitForSelector('#preloader', { state: 'hidden' });
-            await page.locator('#vc-shell .vc-sidebar [data-nav="characters"]').click();
+            await page.locator('#vc-shell .vc-tabbar [data-nav="characters"]').click();
             await page.waitForFunction(() => document.querySelector('#vc-shell')?.dataset.destination === 'characters');
             const uiMs = await page.evaluate(() => Math.round(performance.now()));
             const opening = await page.evaluate(() => performance.now());
             await openStCharacterChat(page, fixture);
             await page.waitForFunction(() => document.querySelectorAll('#chat > .mes').length === 24);
             const historyMs = await page.evaluate(() => Math.round(performance.now()));
-            await page.locator('#vc-shell .vc-sidebar [data-nav="chat"]').click();
+            await page.locator('#vc-shell .vc-tabbar [data-nav="chat"]').click();
+            await page.locator(`[data-convo-list] [data-relationship-id="${fixture.chat[0].chat_metadata.vc_binding.relationshipId}"]`).click();
             await ensureNativeConnection(page);
             await page.waitForFunction(() => Boolean(window.SillyTavern?.getContext?.().chatMetadata?.vc_binding?.relationshipId));
             await page.locator('#send_textarea').fill('合成草稿');
@@ -124,7 +125,7 @@ async function sceneIndependentDesktop(ctx) {
     try {
         const context = await desktopBenchmarkContext(browser, ctx);
         let runtimeRequests = 0;
-        await context.route('**/desktop/standalone/runtime.js', async route => { runtimeRequests++; await gate; await route.continue(); });
+        await context.route(url => url.pathname.endsWith('/desktop/standalone/runtime.js') || url.pathname === '/version', async route => { runtimeRequests++; await gate; await route.continue(); });
         const page = await context.newPage(); page.setDefaultTimeout(20000);
         const requests = [], errors = [];
         page.on('request', request => requests.push(new URL(request.url()).pathname));
@@ -135,15 +136,15 @@ async function sceneIndependentDesktop(ctx) {
         assert.equal(await alias.text(), await entry.text(), '根入口与开发别名必须是同一个应用');
         await page.waitForFunction(() => document.documentElement.dataset.vcApp === 'ready');
         await page.locator('#vc-shell .vc-sidebar [data-nav="characters"]').click();
-        await page.locator('.vc-characters input[type="search"], .vc-characters .vc-search input').first().fill('NF');
+        await page.locator('.vc-characters-route input[type="search"]').first().fill('NF');
         const uiMs = await page.evaluate(() => Math.round(performance.now()));
         assert.equal(runtimeRequests, 1, '真实聊天准备模块仍在等待');
         assert.equal(await page.locator('html').getAttribute('data-vc-runtime'), null);
         await page.locator('#vc-shell .vc-sidebar [data-settings]').click();
         await page.locator('.vc-settings-categories [data-category="appearance"]').click();
-        await page.getByRole('heading', { name: '外观', exact: true, level: 1 }).waitFor();
+        await page.getByRole('heading', { name: '外观', exact: true }).first().waitFor();
         await page.locator('.vc-settings-categories [data-category="model"]').click();
-        await page.locator('.vcms-root').waitFor({ state: 'visible' });
+        await page.locator('.vcms-panel[data-vc-model-section]').waitFor({ state: 'visible' });
         await page.locator('#vc-shell .vc-sidebar [data-nav="chat"]').click();
         const opening = await page.evaluate(() => performance.now());
         const row = page.locator(`[data-convo-list] [data-relationship-id="${fixture.chat[0].chat_metadata.vc_binding.relationshipId}"]`);
@@ -154,7 +155,7 @@ async function sceneIndependentDesktop(ctx) {
         const historyMs = await page.evaluate(() => Math.round(performance.now()));
         assert.equal(await page.locator('iframe').count(), 0);
         const geometry = await page.evaluate(() => ({
-            body: document.querySelector('.vc-shell-chat-body').getBoundingClientRect().width,
+            body: document.querySelector('[data-chat-body]').getBoundingClientRect().width,
             root: document.querySelector('.vc-desktop-chat-root').getBoundingClientRect().width,
             composer: document.querySelector('#form_sheld').getBoundingClientRect().width,
         }));
@@ -266,7 +267,7 @@ async function sceneDesktopPerformance(ctx) {
                 await page.goto(ctx.w05.stBase+'/',{waitUntil:'domcontentloaded'});
                 await page.waitForFunction(()=>document.documentElement.dataset.vcApp==='ready');
                 await page.locator('.vc-sidebar [data-nav=characters]').click();
-                await page.locator('.vc-characters [name=character-search]').fill('NF');
+                await page.locator('.vc-characters-route input[type="search"]').first().fill('NF');
                 const uiMs=await page.evaluate(()=>Math.round(performance.now()));
                 await page.locator('.vc-sidebar [data-nav=chat]').click();
                 const opening=await page.evaluate(()=>performance.now());

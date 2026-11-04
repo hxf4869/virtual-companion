@@ -24,23 +24,26 @@ import {
 } from '../features/chat/ChatRoute';
 import { ChatStatusCard } from '../features/chat/ChatStatusCard';
 import { ConversationList } from '../features/chat/ConversationList';
-import { useChatSnapshot, useSessionBridge } from '../runtime/session-bridge';
+import {
+    CharactersRoute,
+    type CharactersRouteProps,
+} from '../features/characters/CharactersRoute';
+import { InboxRoute } from '../features/inbox/InboxRoute';
+import { MemoryRoute } from '../features/memory/MemoryRoute';
+import {
+    SettingsRoute,
+    type SettingsRouteProps,
+} from '../features/settings/SettingsRoute';
+import {
+    StoryRoute,
+    type StoryRouteProps,
+} from '../features/story/StoryRoute';
+import { TavernRoute } from '../features/tavern/TavernRoute';
+import { useChatSnapshot } from '../runtime/session-bridge';
 import { AppShell, useShellLayout, type ShellConversationItem } from '../shell/AppShell';
 import type { ShellDestination } from '../shell/Sidebar';
 
-export type { ChatRouteProps };
-
-export interface CharactersRouteProps {
-    avatar?: string;
-}
-
-export interface StoryRouteProps {
-    runId?: string;
-}
-
-export interface SettingsRouteProps {
-    category: string;
-}
+export type { ChatRouteProps, CharactersRouteProps, StoryRouteProps, SettingsRouteProps };
 
 export interface TavernSettingsRouteProps {
     section: string;
@@ -66,75 +69,41 @@ export interface CreateDesktopRouterOptions {
     conversations?: readonly ShellConversationItem[];
 }
 
-function DefaultCharactersPlaceholder({ avatar }: CharactersRouteProps) {
+function DefaultStoryRoute({ runId }: StoryRouteProps) {
+    const navigate = useNavigate();
     return (
-        <div
-            className="vc-route-placeholder"
-            data-route="characters"
-            data-avatar={avatar ?? ''}
-        >
-            <h1 className="vc-large-title" data-vc-owned-title="">
-                角色
-            </h1>
-        </div>
+        <StoryRoute
+            runId={runId}
+            onConfigure={() => {
+                void navigate({ to: '/settings/$category', params: { category: 'model' } });
+            }}
+        />
     );
 }
 
-function DefaultMemoryPlaceholder() {
+function DefaultTavernSettingsRoute({ section }: TavernSettingsRouteProps) {
+    const navigate = useNavigate();
+    const initialCharacter = useRouterState({
+        select: s => {
+            const raw = (s.location.search as Record<string, unknown> | undefined)
+                ?.character;
+            return typeof raw === 'string' && raw ? raw : undefined;
+        },
+    });
     return (
-        <div className="vc-route-placeholder" data-route="memory">
-            <h1 className="vc-large-title" data-vc-owned-title="">
-                记忆
-            </h1>
-        </div>
-    );
-}
-
-function DefaultInboxPlaceholder() {
-    return (
-        <div className="vc-route-placeholder" data-route="inbox">
-            <h1 className="vc-large-title" data-vc-owned-title="">
-                陪伴
-            </h1>
-        </div>
-    );
-}
-
-function DefaultStoryPlaceholder({ runId }: StoryRouteProps) {
-    return (
-        <div className="vc-route-placeholder" data-route="story" data-run-id={runId ?? ''}>
-            <h1 className="vc-large-title" data-vc-owned-title="">
-                剧情
-            </h1>
-        </div>
-    );
-}
-
-function DefaultSettingsPlaceholder({ category }: SettingsRouteProps) {
-    return (
-        <div
-            className="vc-route-placeholder"
-            data-route="settings"
-            data-category={category}
-        >
-            <h1 className="vc-large-title" data-vc-owned-title="">
-                设置
-            </h1>
-        </div>
-    );
-}
-
-function DefaultTavernSettingsPlaceholder({ section }: TavernSettingsRouteProps) {
-    return (
-        <div
-            className="vc-route-placeholder"
-            data-route="settings-tavern"
-            data-section={section}
-        >
-            <h1 className="vc-large-title" data-vc-owned-title="">
-                酒馆设置
-            </h1>
-        </div>
+        <TavernRoute
+            section={section}
+            initialCharacter={initialCharacter}
+            onNavigateCategory={category => {
+                void navigate({ to: '/settings/$category', params: { category } });
+            }}
+            onNavigateTavern={nextSection => {
+                void navigate({
+                    to: '/settings/tavern/$section',
+                    params: { section: nextSection },
+                });
+            }}
+        />
     );
 }
 
@@ -262,18 +231,17 @@ export function createDesktopRouter(
     const staticConversations = options.conversations ?? [];
 
     const CustomChatComp = overrides.chat;
-    const CharactersComp = overrides.characters ?? DefaultCharactersPlaceholder;
-    const MemoryComp = overrides.memory ?? DefaultMemoryPlaceholder;
-    const InboxComp = overrides.inbox ?? DefaultInboxPlaceholder;
-    const StoryComp = overrides.story ?? DefaultStoryPlaceholder;
-    const SettingsComp = overrides.settings ?? DefaultSettingsPlaceholder;
+    const CharactersComp = overrides.characters ?? CharactersRoute;
+    const MemoryComp = overrides.memory ?? MemoryRoute;
+    const InboxComp = overrides.inbox ?? InboxRoute;
+    const StoryComp = overrides.story ?? DefaultStoryRoute;
+    const SettingsComp = overrides.settings ?? SettingsRoute;
     const TavernSettingsComp =
-        overrides.tavernSettings ?? DefaultTavernSettingsPlaceholder;
+        overrides.tavernSettings ?? DefaultTavernSettingsRoute;
 
     function RootShellComponent() {
         const pathname = useRouterState({ select: s => s.location.pathname });
         const navigate = useNavigate();
-        const bridge = useSessionBridge();
         const activeSnapshotKey = useChatSnapshot(s => s.key);
         const activeCharName = useChatSnapshot(s => s.characterName);
         const activeCharAvatar = useChatSnapshot(s => s.avatar);
@@ -324,7 +292,6 @@ export function createDesktopRouter(
                             rows={queriedConversations}
                             activeKey={effectiveConversationKey}
                             onSelectConversation={row => {
-                                void bridge.open(row);
                                 void navigate({
                                     to: '/chat/$conversationKey',
                                     params: { conversationKey: row.key },
@@ -345,7 +312,12 @@ export function createDesktopRouter(
                             <ChatRoute
                                 conversationKey={shellState.conversationKey ?? undefined}
                                 hideComposer
-                                onOpenSettings={handleOpenSettings}
+                                onOpenSettings={() => {
+                                    void navigate({
+                                        to: '/settings/$category',
+                                        params: { category: 'model' },
+                                    });
+                                }}
                             />
                         )
                     }
@@ -354,12 +326,6 @@ export function createDesktopRouter(
                     }}
                     onOpenSettings={handleOpenSettings}
                     onSelectConversation={item => {
-                        const matched = queriedConversations.find(c => c.key === item.key);
-                        if (matched) {
-                            void bridge.open(matched);
-                        } else {
-                            void bridge.open(item.key);
-                        }
                         void navigate({
                             to: '/chat/$conversationKey',
                             params: { conversationKey: item.key },

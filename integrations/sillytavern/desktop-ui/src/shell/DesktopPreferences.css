@@ -1,0 +1,17 @@
+@layer features {
+  .vc-tavern-background {
+    position: fixed;
+    inset: 0;
+    z-index: var(--vc-z-backdrop);
+    pointer-events: none;
+    background-position: center;
+    background-repeat: no-repeat;
+  }
+
+  body[data-vc-background="true"] .vc-desktop-aurora { visibility: hidden; }
+  body[data-vc-hide-chat-avatars="true"] #vc-shell #chat .mesAvatarWrapper { display: none; }
+  body[data-vc-avatar-style="1"] #vc-shell #chat .avatar { border-radius: 4px; }
+  body[data-vc-avatar-style="2"] #vc-shell #chat .avatar { border-radius: 0; }
+  body[data-vc-avatar-style="3"] #vc-shell #chat .avatar { border-radius: 12px; }
+  body[data-vc-compact-input="false"] #vc-shell #send_textarea { min-height: 112px; }
+}

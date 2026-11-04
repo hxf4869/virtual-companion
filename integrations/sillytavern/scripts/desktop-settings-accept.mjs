@@ -473,12 +473,30 @@ export async function sceneDesktopProductSettings(ctx) {
     page.on('pageerror',error=>errors.push(error.name+': '+error.message));
     page.on('request',request=>{const pathname=new URL(request.url()).pathname;if(['/', '/script.js','/scripts/extensions.js','/scripts/st-context.js'].includes(pathname))forbidden.push(pathname);});
     let releaseRuntime;const runtimeGate=new Promise(resolve=>{releaseRuntime=resolve;});
-    await page.route('**/desktop/standalone/runtime.js',async route=>{await runtimeGate;await route.continue();});
-    const open = category => page.evaluate(key=>document.querySelector('#vc-shell').openSettings(key),category);
-    const discard = async () => {await page.getByRole('button',{name:'放弃',exact:true}).click();};
-    const keep = async () => {await page.getByRole('button',{name:'继续编辑',exact:true}).click();};
-    const go = destination => page.evaluate(destination=>window.dispatchEvent(new CustomEvent('vc-shell-navigate',{detail:{destination}})),destination);
-    const waitChat=()=>page.waitForFunction(()=>document.querySelector('#vc-shell')?.dataset.destination==='chat'&&document.querySelector('#vc-shell')?.dataset.settings!=='page');
+    await page.route(url=>url.pathname.endsWith('/desktop/standalone/runtime.js')||url.pathname==='/version',async route=>{await runtimeGate;await route.continue();});
+    const open = async category => {
+        const shell = page.locator('#vc-shell');
+        if (await shell.getAttribute('data-settings') !== 'open') {
+            await page.locator('#vc-shell .vc-sidebar [data-settings]').click();
+            await page.waitForFunction(() => document.querySelector('#vc-shell')?.dataset.settings === 'open');
+        }
+        await page.locator(`.vc-settings-categories [data-category="${category}"]`).click();
+        await page.waitForFunction(cat => document.querySelector('.vc-settings-shell')?.dataset.category === cat, category);
+    };
+    const discard = async () => {
+        const dialog = page.locator('[role="alertdialog"][data-open]');
+        await dialog.waitFor({ state: 'visible' });
+        await dialog.getByRole('button', { name: '放弃', exact: true }).click();
+        await page.locator('[role="alertdialog"]').waitFor({ state: 'hidden' });
+    };
+    const keep = async () => {
+        const dialog = page.locator('[role="alertdialog"][data-open]');
+        await dialog.waitFor({ state: 'visible' });
+        await dialog.getByRole('button', { name: '继续编辑', exact: true }).click();
+        await page.locator('[role="alertdialog"]').waitFor({ state: 'hidden' });
+    };
+    const go = destination => page.locator(`#vc-shell .vc-sidebar [data-nav="${destination}"]`).click();
+    const waitChat=()=>page.waitForFunction(()=>document.querySelector('#vc-shell')?.dataset.destination==='chat'&&document.querySelector('#vc-shell')?.dataset.settings!=='open');
     const provider = () => page.locator('[data-action="select-provider"][data-id="vc03m-chat"]');
     const selectProvider = async()=>{await open('model');await provider().click();await page.locator('#vcms-f-display').waitFor({state:'visible'});};
     const models = async()=>await ctx.fixtureHttp.count({protocol:'chat'})+await ctx.fixtureHttp.count({protocol:'responses'})+await ctx.fixtureHttp.count({protocol:'claude'});
@@ -489,9 +507,10 @@ export async function sceneDesktopProductSettings(ctx) {
         for(const viewport of [{width:1440,height:900},{width:390,height:844}])for(const theme of ['light','dark']){
             await page.setViewportSize(viewport);
             await page.evaluate(async theme=>(await import('/scripts/extensions/third-party/vc-model-settings/ui/theme.js')).setThemeMode(theme),theme);
-            await page.evaluate(async()=>{await document.fonts.ready;await Promise.all(document.getAnimations()
-                .filter(animation=>animation.playState==='running'&&animation.effect?.getComputedTiming().iterations!==Infinity)
-                .map(animation=>animation.finished.catch(()=>{})));await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));});
+            await page.evaluate(async()=>{await document.fonts.ready;});
+            await page.waitForFunction(()=>!document.getAnimations().some(animation=>
+                animation.playState==='running'&&animation.effect?.getComputedTiming().iterations!==Infinity));
+            await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
             const geometry=await page.evaluate(()=>({width:innerWidth,overflow:document.documentElement.scrollWidth-innerWidth,
                 inputs:[...document.querySelectorAll('.vc-settings-shell input:not([type="hidden"]),.vc-settings-shell select')].filter(node=>node.getClientRects().length).map(node=>{const b=node.getBoundingClientRect();return{left:b.left,right:b.right};})}));
             await page.screenshot({path:path.join(ctx.artifactsDir,`nf-settings-${category}-${viewport.width}-${theme}.png`)});
@@ -510,12 +529,13 @@ export async function sceneDesktopProductSettings(ctx) {
     };
     try {
         await openDesktopFixture(page,ctx.w05.stBase,fixture);
-        const voiceAsset='**/desktop/settings-voice.js';
-        await page.route(voiceAsset,route=>route.abort());
-        await open('voice');await page.getByText('页面没有加载出来，请重新打开。',{exact:true}).waitFor();
-        await page.unroute(voiceAsset);
-        await Promise.all([page.waitForNavigation({waitUntil:'domcontentloaded'}),page.getByRole('button',{name:'重新加载',exact:true}).click()]);
-        await page.waitForFunction(()=>document.documentElement.dataset.vcApp==='ready');
+        const voiceApi='**/api/v1/voice/settings';
+        await page.route(voiceApi,route=>route.abort());
+        await open('voice');await page.getByText('没有完成，请重试。',{exact:true}).waitFor();
+        await page.unroute(voiceApi);
+        await page.getByRole('button',{name:'加载最新',exact:true}).click();
+        await page.locator('[data-voice-field="dailyChatLimit"]').waitFor({state:'visible'});
+        await go('chat');await waitChat();
         await page.locator(`[data-convo-list] [data-relationship-id="${fixture.chat[0].chat_metadata.vc_binding.relationshipId}"]`).click();
         await page.waitForFunction(()=>document.querySelectorAll('#chat>.mes').length===24);
         await page.locator('#send_textarea').fill('NF06 保留草稿');
@@ -528,22 +548,22 @@ export async function sceneDesktopProductSettings(ctx) {
         assert.equal(await page.locator('html').getAttribute('data-vc-runtime'),null,'聊天模块仍被真实延迟');
         at('leave-guard');
         await page.locator('#vcms-f-display').fill('NF06 尚未保存');await go('memory');await keep();
-        assert.equal(await page.locator('#vc-shell').getAttribute('data-settings'),'page');assert.equal(await page.locator('#vcms-f-display').inputValue(),'NF06 尚未保存');
-        const choosing=page.locator('[data-category="voice"]').click();await discard();await choosing;
+        assert.equal(await page.locator('#vc-shell').getAttribute('data-settings'),'open');assert.equal(await page.locator('#vcms-f-display').inputValue(),'NF06 尚未保存');
+        const choosing=page.locator('.vc-settings-categories [data-category="voice"]').click();await discard();await choosing;
         const daily=page.locator('[data-voice-field="dailyChatLimit"]');await daily.waitFor({state:'visible'});
         const limit=Number(await daily.inputValue());await daily.fill(String(limit+1));
         let voiceRelease,voiceEntered;const voiceGate=new Promise(resolve=>{voiceRelease=resolve;}),voiceSeen=new Promise(resolve=>{voiceEntered=resolve;});
         await page.route('**/api/v1/voice/settings',async route=>{if(route.request().method()!=='PUT'){await route.continue();return;}const response=await route.fetch();voiceEntered(response.status());await voiceGate;await route.fulfill({response});});
         await page.locator('[data-voice-save]').click();assert.equal(await voiceSeen,200,'受管语音设置PUT必须成功');await go('chat');
-        assert.equal(await page.locator('#vc-shell').getAttribute('data-settings'),'page','保存中程序导航不能离开');
+        assert.equal(await page.locator('#vc-shell').getAttribute('data-settings'),'open','保存中程序导航不能离开');
         at('voice-save-settled');voiceRelease();await page.unroute('**/api/v1/voice/settings');
         await page.waitForFunction(()=>document.querySelector('[data-voice-save]')?.disabled&&!document.querySelector('[data-voice-field="dailyChatLimit"]')?.disabled);
         assert.equal((await ctx.admin.call('GET','/api/v1/voice/settings')).json.dailyChatLimit,limit+1);
         await shots('voice');
         at('account/appearance');
-        await open('account');await page.locator('[data-account-go="password"]').click();
+        await open('account');await page.locator('[data-open-account="password"]').click();
         await page.locator('[data-vc-screen="password"]').waitFor({state:'visible'});await page.keyboard.press('Escape');
-        await page.locator('.vc-data-dialog').waitFor({state:'hidden'});
+        await page.locator('[data-vc-screen="password"]').waitFor({state:'hidden'});
         await open('appearance');
         const themePreferences=await page.evaluate(async key=>{const theme=await import('/scripts/extensions/third-party/vc-model-settings/desktop/theme.js');theme.setCharacterThemePreference(key,'aurora');return theme.readThemePreferences();},fixture.chat[0].chat_metadata.vc_binding.characterRef);
         await page.getByRole('radiogroup',{name:'外观',exact:true}).getByRole('radio',{name:'深色',exact:true}).click();
@@ -553,14 +573,15 @@ export async function sceneDesktopProductSettings(ctx) {
         assert.equal(await page.evaluate(()=>localStorage.getItem('vc-reply-style')),'spread');
         assert.deepEqual(await page.evaluate(()=>JSON.parse(localStorage.getItem('vc-desktop-theme'))),themePreferences,'外观保存保留已有角色覆盖');
         await shots('appearance');
-        await open('notifications');assert.equal(await page.locator('[data-open-inbox]').count(),1);
-        await open('data');assert.equal(await page.locator('.vc-settings-open-account').count(),1);
+        await open('notifications');await page.locator('[data-open-inbox]').waitFor({state:'visible'});assert.equal(await page.locator('[data-open-inbox]').count(),1);
+        await open('data');assert.equal(await page.locator('[data-open-data]').count(),1);
         assert.equal(await models(),before);assert.deepEqual(forbidden,[]);
         at('hot-binding');
         releaseRuntime();await page.waitForFunction(()=>document.documentElement.dataset.vcRuntime==='prepared');
         await go('chat');await waitChat();await page.waitForFunction(()=>!document.querySelector('#send_but')?.disabled);
         await open('model');
         const listeners=await page.evaluate(()=>Object.fromEntries(Object.entries(SillyTavern.getContext().eventSource.events).map(([key,value])=>[key,value.length])));
+        await page.getByRole('tab',{name:'用途绑定',exact:true}).click();
         const binding=page.locator('select[data-bind="binding.FOREGROUND_CHAT"]');await binding.selectOption('vc03m-resp::reasoning');
         const bound=page.waitForResponse(response=>response.url().endsWith('/model-purposes/FOREGROUND_CHAT')&&response.request().method()==='PUT');
         await page.locator('[data-action="save-bindings"]').click();assert.equal((await bound).status(),200);
@@ -572,10 +593,10 @@ export async function sceneDesktopProductSettings(ctx) {
         const responseCaptures=await ctx.fixtureHttp.captures({protocol:'responses'});assert.equal(responseCaptures.at(-1).model,'vc03m-reasoning');
         const steadyListeners=await page.evaluate(()=>Object.fromEntries(Object.entries(SillyTavern.getContext().eventSource.events).map(([key,value])=>[key,value.length])));
         at('disabled-binding');
-        await open('model');await page.locator('[data-bind="bindingState.FOREGROUND_CHAT"]').uncheck();
+        await open('model');await page.getByRole('tab',{name:'用途绑定',exact:true}).click();await page.locator('[data-bind="bindingState.FOREGROUND_CHAT"]').uncheck();
         const disabled=page.waitForResponse(response=>response.url().endsWith('/model-purposes/FOREGROUND_CHAT')&&response.request().method()==='PUT');
         await page.locator('[data-action="save-bindings"]').click();assert.equal((await disabled).status(),200);
-        await go('chat');await page.getByRole('button',{name:'模型设置',exact:true}).waitFor({state:'visible'});
+        await go('chat');await page.getByRole('button',{name:'去设置',exact:true}).waitFor({state:'visible'});
         assert.equal(await page.locator('#send_but').isDisabled(),true);
         const noModelsBefore=await models(),unconfigured=await context.newPage();
         try{
@@ -584,10 +605,10 @@ export async function sceneDesktopProductSettings(ctx) {
             await unconfigured.waitForFunction(()=>document.documentElement.dataset.vcRuntime==='prepared'&&SillyTavern.getContext().chat.length===26);
             await unconfigured.locator('#send_textarea').fill('NF06 未配置模型草稿');
             assert.equal(await unconfigured.locator('#send_textarea').isEnabled(),true);assert.equal(await unconfigured.locator('#send_but').isDisabled(),true);
-            await unconfigured.getByRole('button',{name:'模型设置',exact:true}).click();await unconfigured.locator('[data-action="select-provider"][data-id="vc03m-chat"]').waitFor({state:'visible'});
+            await unconfigured.getByRole('button',{name:'去设置',exact:true}).click();await unconfigured.locator('[data-action="select-provider"][data-id="vc03m-chat"]').waitFor({state:'visible'});
             assert.equal(await models(),noModelsBefore,'未配置模型仍能打开历史和设置，不能发生成');
         }finally{await unconfigured.close();}
-        at('restore-binding');await open('model');await page.locator('[data-bind="bindingState.FOREGROUND_CHAT"]').check();
+        at('restore-binding');await open('model');await page.getByRole('tab',{name:'用途绑定',exact:true}).click();await page.locator('[data-bind="bindingState.FOREGROUND_CHAT"]').check();
         const enabled=page.waitForResponse(response=>response.url().endsWith('/model-purposes/FOREGROUND_CHAT')&&response.request().method()==='PUT');
         await page.locator('[data-action="save-bindings"]').click();assert.equal((await enabled).status(),200);
         await go('chat');await waitChat();await page.locator('#send_textarea').fill('NF06 配置恢复草稿');await page.waitForFunction(()=>!document.querySelector('#send_but')?.disabled);
@@ -596,32 +617,59 @@ export async function sceneDesktopProductSettings(ctx) {
         await page.locator('#send_textarea').fill('NF06 原会话草稿');
         for(const failed of [false,true]){
             at(failed?'late-conversation-failure':'late-conversation-success');
-            let readRelease,readStarted=false;const gate=new Promise(resolve=>{readRelease=resolve;});
+            let readRelease,readStarted=false,readFinished=false;const gate=new Promise(resolve=>{readRelease=resolve;});
             await page.route('**/api/chats/get',async route=>{if(route.request().postDataJSON()?.avatar_url!==other.avatar){await route.continue();return;}readStarted=true;await gate;
-                if(failed)await route.fulfill({status:500,contentType:'application/json',body:'{}'});else await route.continue();});
-            await page.evaluate(other=>{globalThis.nf06Opened=null;void document.querySelector('#vc-shell').openConversation(other).then(value=>{globalThis.nf06Opened=value;});},{avatar:other.avatar,file:other.file});await waitFor(()=>readStarted,{label:'迟到会话读取已发出'});
-            await selectProvider();await page.locator('#vcms-f-display').fill('NF06 读取期间的新草稿');readRelease();await keep();
-            await page.waitForFunction(()=>globalThis.nf06Opened===false);await page.unroute('**/api/chats/get');
+                try{if(failed)await route.fulfill({status:500,contentType:'application/json',body:'{}'});else await route.continue();}finally{readFinished=true;}});
+            await page.locator(`[data-convo-list] [data-relationship-id="${other.chat[0].chat_metadata.vc_binding.relationshipId}"]`).click();
+            await waitFor(()=>readStarted,{label:'迟到会话读取已发出'});
+            await selectProvider();await page.locator('#vcms-f-display').fill('NF06 读取期间的新草稿');
+            readRelease();await waitFor(()=>readFinished,{label:'迟到会话读取已返回'});await page.unroute('**/api/chats/get');
+            assert.equal(await page.locator('#vc-shell').getAttribute('data-settings'),'open');
             assert.equal(await page.evaluate(()=>SillyTavern.getContext().characters[SillyTavern.getContext().characterId].avatar),fixture.avatar);
             assert.equal(await page.locator('#vcms-f-display').inputValue(),'NF06 读取期间的新草稿');
             const leaving=go('chat');await discard();await leaving;await waitChat();
             await page.waitForFunction(()=>!document.querySelector('#send_but')?.disabled);assert.equal(await page.locator('#send_textarea').inputValue(),'NF06 原会话草稿');
         }
         at('budget/identity');
-        await page.evaluate(async()=>{(await import('/scripts/extensions/third-party/vc-model-settings/page.js')).mountModelSettings().applyBudget({reason:'OVER_LIMIT'});});
-        assert.equal(await page.locator('#send_but').isDisabled(),true);assert.equal(await page.locator('#send_textarea').inputValue(),'NF06 原会话草稿');
-        await page.evaluate(async()=>{(await import('/scripts/extensions/third-party/vc-model-settings/page.js')).mountModelSettings().applyBudget({reason:'NO_BUDGET'});});
-        await selectProvider();await shots('model');
+        let genRequests=0;
+        await page.route('**/api/backends/chat-completions/generate',async route=>{
+            genRequests+=1;
+            await route.fulfill({
+                status:429,
+                contentType:'application/json',
+                body:JSON.stringify({error:{code:'VC_USAGE_REFUSED',message:'本月额度已用完，本次生成未发送',reason:'OVER_LIMIT'}}),
+            });
+        });
+        await page.locator('#send_but').click();
+        await page.waitForFunction(()=>document.querySelector('#send_but')?.disabled===true&&document.body.dataset.generating!=='true');
+        assert.equal(genRequests,1);
+        assert.equal(await page.locator('#send_but').isDisabled(),true);
+        assert.equal(await page.locator('#send_textarea').inputValue(),'NF06 原会话草稿');
+        await page.getByRole('button',{name:'去设置',exact:true}).waitFor({state:'visible'});
+        assert.match(await page.locator('#vc-chat-gen').textContent()||'',/当月可用额度不足，测试与发送暂不可用。设置仍可保存/);
+        const modelsBeforeBudgetEnter=await models();
+        await page.locator('#send_textarea').press('Enter');
+        assert.equal(await models(),modelsBeforeBudgetEnter);
+        assert.equal(genRequests,1);
+        assert.equal(await page.locator('#send_textarea').inputValue(),'NF06 原会话草稿');
+        await page.unroute('**/api/backends/chat-completions/generate');
+        await openDesktopFixture(page,ctx.w05.stBase,fixture,27);
+        await page.waitForFunction(()=>document.documentElement.dataset.vcRuntime==='prepared'&&!document.querySelector('#send_but')?.disabled);
+        assert.equal(await page.locator('#send_but').isDisabled(),false);
+        assert.equal(await page.locator('#send_textarea').inputValue(),'NF06 原会话草稿');
+        await selectProvider();
+        await shots('model');
+        await open('account');
         let writes=0;page.on('request',request=>{if(request.method()==='PUT'&&new URL(request.url()).pathname.includes('/admin/'))writes++;});
         await page.route('**/api/v1/auth/session',route=>route.fulfill({contentType:'application/json',body:JSON.stringify({accountId:'9007199254740993',sessionId:'9007199254740995'})}));
-        await page.evaluate(async()=>{const api=await import('/scripts/extensions/third-party/vc-model-settings/api.js');try{await api.captureSessionContext();}catch(error){globalThis.nf06IdentityError=error.code;}});
-        assert.equal(await page.evaluate(()=>globalThis.nf06IdentityError),'ACCOUNT_CONTEXT_CHANGED');
+        const sessionChanged=page.waitForResponse(r=>r.url().includes('/api/v1/auth/session'));
+        await selectProvider();await sessionChanged;
         await page.locator('#vcms-f-display').fill('NF06 身份失效保留输入');await page.locator('#vcms-save').click();
         await page.locator('[data-action="context-reload"]').waitFor({state:'visible'});
         assert.equal(writes,0);assert.equal(await page.locator('#vcms-f-display').inputValue(),'NF06 身份失效保留输入');
         assert.deepEqual(errors,[]);assert.deepEqual(forbidden,[]);
         return {heldRuntime:true,saveGenerates:0,leaveGuard:true,voiceSave:true,account:true,appearance:true,notifications:true,data:true,hotBinding:'responses',unconfiguredHistory:true,singleRuntime:true,lateReadCancel:true,lateReadFailureCancel:true,budget:true,fixedIdentity:true,nativeRequests:0};
-    }catch(error){const state=await page.evaluate(()=>({opened:globalThis.nf06Opened,category:document.querySelector('.vc-settings-shell')?.dataset.category,settings:document.querySelector('#vc-shell')?.dataset.settings,destination:document.querySelector('#vc-shell')?.dataset.destination,voiceSaveDisabled:document.querySelector('[data-voice-save]')?.disabled,voiceSaveLabel:document.querySelector('[data-voice-save]')?.textContent,voiceInputDisabled:document.querySelector('[data-voice-field="dailyChatLimit"]')?.disabled,voiceStatus:document.querySelector('.vc-settings-body>p[role=status]')?.textContent}));throw new Error(`NF06 ${stage}: ${error.message}; ${JSON.stringify({state,errors,forbidden})}`);}
+    }catch(error){const state=await page.evaluate(()=>({category:document.querySelector('.vc-settings-shell')?.dataset.category,settings:document.querySelector('#vc-shell')?.dataset.settings,destination:document.querySelector('#vc-shell')?.dataset.destination,voiceSaveDisabled:document.querySelector('[data-voice-save]')?.disabled,voiceSaveLabel:document.querySelector('[data-voice-save]')?.textContent,voiceInputDisabled:document.querySelector('[data-voice-field="dailyChatLimit"]')?.disabled,voiceStatus:document.querySelector('.vc-settings-body>p[role=status],.vc-voice-settings>p[role=status]')?.textContent}));throw new Error(`NF06 ${stage}: ${error.message}; ${JSON.stringify({state,errors,forbidden})}`);}
     finally{releaseRuntime();await browser.close();await ctx.fixtureHttp.setOverride('vc03m-reasoning',null);}
 }
 export const desktopProductSettingsScene={id:'nf-settings',title:'NF-06 独立产品设置、身份与目录刷新',needs:['catalog','stack','browser'],default:false,run:sceneDesktopProductSettings};

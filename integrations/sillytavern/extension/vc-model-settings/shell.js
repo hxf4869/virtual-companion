@@ -590,9 +590,20 @@ export function mountShell(options = {}) {
     let statusCard = null;
     let statusLoading = false;
     let lastIdentityRow = null;
+    const isNativeHost = () => {
+        const pathname = String(
+            doc?.defaultView?.location?.pathname
+            || doc?.location?.pathname
+            || globalThis.location?.pathname
+            || '',
+        );
+        return /^\/native(?:\/|$)/.test(pathname);
+    };
+    const shellChrome = () => chromeForWidth(isNativeHost() ? 0 : globalThis.innerWidth);
+    const shellSidebarPx = () => sidebarCssWidth(isNativeHost() ? 0 : globalThis.innerWidth, collapsed);
     // UX-29 状态卡只在桌面用：桌面首次画标题栏时才加载，手机不多拉模块。
     function loadStatusCard() {
-        if (statusLoading || chromeForWidth(globalThis.innerWidth).nav === 'tabbar') return;
+        if (statusLoading || shellChrome().nav === 'tabbar') return;
         if (typeof doc.addEventListener !== 'function' || typeof whoAvatar.addEventListener !== 'function') return;
         statusLoading = true;
         import('./desktop/status-card.js').then(({ mountStatusCard }) => {
@@ -656,7 +667,7 @@ export function mountShell(options = {}) {
     }
 
     function applyChrome() {
-        const chrome = chromeForWidth(globalThis.innerWidth);
+        const chrome = shellChrome();
         doc.documentElement.dataset.vcLayout = chrome.nav === 'tabbar' ? 'mobile' : 'desktop';
         root.classList.toggle('vc-desktop-shell', chrome.nav !== 'tabbar');
         root.dataset.chrome = chrome.nav;
@@ -669,7 +680,7 @@ export function mountShell(options = {}) {
         frame.update(frameState);
         sidebar.classList.toggle('is-collapsed', chrome.collapsible && collapsed);
         sidebarState.collapsed = chrome.collapsible && collapsed;
-        const sidebarPx = sidebarCssWidth(globalThis.innerWidth, collapsed);
+        const sidebarPx = shellSidebarPx();
         doc.documentElement?.style?.setProperty?.('--vc-sidebar', `${sidebarPx}px`);
         if (chrome.nav !== 'tabbar') chatPane.classList.remove('is-push', 'is-pop');
         const visibleChat = entered && (chrome.nav !== 'tabbar' || root.dataset.destination === 'chat');
@@ -740,7 +751,7 @@ export function mountShell(options = {}) {
         }
         frame.update(frameState); frame.updateTabs({ ...frameState, unreadCount: sidebarState.unreadCount });
         syncSidebarCurrent();
-        const phone = chromeForWidth(globalThis.innerWidth).nav === 'tabbar';
+        const phone = shellChrome().nav === 'tabbar';
         if (nav === 'chat') {
             if (phone && entered) hideChat();
         } else if (phone) {
@@ -825,7 +836,7 @@ export function mountShell(options = {}) {
             listHeldFor = nextId;
         }
         entered = true;
-        const phone = chromeForWidth(globalThis.innerWidth).nav === 'tabbar';
+        const phone = shellChrome().nav === 'tabbar';
         if (phone) {
             paintIdentity(row);
             showChat(row, fromButton);
@@ -975,13 +986,13 @@ export function mountShell(options = {}) {
 
     function releaseCoveredSettings() {
         if (options.independent) return;
-        if (chromeForWidth(globalThis.innerWidth).nav === 'tabbar') return;
+        if (shellChrome().nav === 'tabbar') return;
         if (!coveringPageOpen()) return;
         closeSettings({ immediate: true });
     }
 
     function openSettings(opener) {
-        if ((options.independent || chromeForWidth(globalThis.innerWidth).nav !== 'tabbar') && options.mountDesktopSettings) {
+        if ((options.independent || shellChrome().nav !== 'tabbar') && options.mountDesktopSettings) {
             desktopSettings ??= options.mountDesktopSettings(settingsScroll);
             desktopSettings.resume();
             root.dataset.settings = 'page';
@@ -1009,7 +1020,7 @@ export function mountShell(options = {}) {
                         opener: button,
                         fallback: () => options.openAccount?.(button),
                     }).then((result) => {
-                        if (result === 'off' || chromeForWidth(globalThis.innerWidth).nav === 'tabbar') return;
+                        if (result === 'off' || shellChrome().nav === 'tabbar') return;
                         closeSettings({ immediate: true });
                     });
                 } else if (target === 'models') {
@@ -1034,7 +1045,7 @@ export function mountShell(options = {}) {
                 }
             },
         });
-        if (chromeForWidth(globalThis.innerWidth).nav === 'tabbar') {
+        if (shellChrome().nav === 'tabbar') {
             closeSettings();
             let coverWatch;
             const handle = openSheet({

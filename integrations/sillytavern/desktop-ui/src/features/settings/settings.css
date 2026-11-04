@@ -1,103 +1,210 @@
 @layer features {
   .vc-settings-shell {
-    container-type: inline-size;
-    container-name: vc-settings;
+    height: 100%;
+    min-width: 0;
     display: grid;
     grid-template-columns: 240px minmax(0, 1fr);
-    min-height: 100%;
-    height: 100%;
-    background: var(--vc-canvas);
-    color: var(--vc-ink);
+    gap: var(--vc-space-sm);
   }
 
   .vc-settings-categories {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    width: 240px;
-    padding: 20px 12px;
-    border-right: 1px solid var(--vc-separator, rgba(120, 120, 128, 0.16));
+    padding: 0 12px 12px;
     overflow-y: auto;
+    border-radius: var(--vc-radius-xl);
+    background: var(--vc-glass-2);
+    border: 1px solid var(--vc-rim);
+    backdrop-filter: blur(var(--vc-blur-2)) saturate(180%);
+    box-shadow: var(--vc-shadow-rim-panel);
   }
 
-  .vc-settings-categories-title {
-    margin: 0 0 12px;
-    padding: 0 10px;
-    font-size: 20px;
-    font-weight: 600;
-    line-height: 26px;
-  }
-
-  .vc-settings-categories-section {
-    margin: 16px 0 6px;
-    padding: 0 10px;
-    font-size: 12px;
-    font-weight: 500;
-    color: var(--vc-ink-2, rgba(60, 60, 67, 0.6));
-  }
-
-  .vc-settings-category {
+  .vc-settings-categories h1 {
     display: flex;
     align-items: center;
-    gap: 10px;
-    width: 100%;
-    min-height: 36px;
-    padding: 6px 10px;
-    border: 0;
-    border-radius: 10px;
-    background: transparent;
-    color: var(--vc-ink);
-    font-size: 14px;
-    line-height: 20px;
-    text-align: left;
-    cursor: pointer;
-    transition: background-color 140ms ease;
+    height: 64px;
+    margin: 0 12px;
+    font-size: var(--vc-fs-title-1);
+    font-weight: 700;
   }
 
-  .vc-settings-category:hover {
-    background: var(--vc-fill, rgba(120, 120, 128, 0.1));
-  }
-
-  .vc-settings-category.is-active,
-  .vc-settings-category[aria-current="page"] {
-    background: var(--vc-select-fill, rgba(120, 120, 128, 0.16));
+  .vc-settings-categories h2 {
+    margin: 16px 12px 8px;
+    font-size: var(--vc-fs-headline);
     font-weight: 600;
+  }
+
+  .vc-settings-categories > button {
+    display: flex;
+    align-items: center;
+    gap: var(--vc-space-sm);
+    min-height: 44px;
+    width: 100%;
+    padding: 6px 12px;
+    color: var(--vc-ink);
+    background: transparent;
+    border: 0;
+    border-radius: var(--vc-radius-sm);
+    text-align: left;
+    font-size: var(--vc-fs-body);
+    cursor: pointer;
+  }
+
+  .vc-settings-categories > button[aria-current="page"] {
+    color: var(--vc-accent-text);
+    background: var(--vc-select-fill);
+  }
+
+  .vc-settings-categories .vc-tile {
+    width: 28px;
+    height: 28px;
+    border-radius: var(--vc-radius-tile);
+    flex: none;
+    display: inline-grid;
+    place-items: center;
+    color: var(--vc-on-accent);
+  }
+
+  .vc-tile-blue { background: var(--vc-tile-blue); }
+  .vc-tile-indigo { background: var(--vc-tile-indigo); }
+  .vc-tile-purple { background: var(--vc-tile-purple); }
+  .vc-tile-teal { background: var(--vc-tile-teal); }
+  .vc-tile-orange { background: var(--vc-tile-orange); }
+  .vc-tile-green { background: var(--vc-tile-green); }
+  .vc-tile-cyan { background: var(--vc-tile-cyan); }
+  .vc-tile-pink { background: var(--vc-tile-pink); }
+  .vc-tile-red { background: var(--vc-tile-red); }
+  .vc-tile-gray { background: var(--vc-tile-gray); }
+
+  .vc-settings-detail,
+  .vc-settings-content {
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+    border-radius: var(--vc-radius-xl);
+    background: var(--vc-glass-2);
+    border: 1px solid var(--vc-rim);
+    backdrop-filter: blur(var(--vc-blur-2)) saturate(180%);
+    box-shadow: var(--vc-shadow-rim-panel);
+  }
+
+  .vc-settings-detail-head,
+  .vc-settings-header {
+    flex: none;
+    height: 64px;
+    min-height: 64px;
+    width: min(100%, 808px);
+    margin: 0 auto;
+    padding: 0 24px;
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    gap: var(--vc-space-xs);
+  }
+
+  .vc-settings-detail-title,
+  .vc-settings-header h1 {
+    margin: 0;
+    flex: 1;
+    font-size: var(--vc-fs-title-1);
+    font-weight: 700;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .vc-settings-category-control {
+    display: none;
+  }
+
+  .vc-settings-shell .vc-btn-fill {
+    background: var(--vc-button-fill);
+    color: var(--vc-on-accent);
+    box-shadow: var(--vc-shadow-button);
+  }
+
+  .vc-settings-shell .vc-btn-text {
+    min-width: 0;
+    max-width: none;
+    padding-inline: var(--vc-space-sm);
+    background: transparent;
+    color: var(--vc-ink-2);
+  }
+
+  .vc-settings-shell .vc-btn-danger {
+    background: var(--vc-button-danger-fill);
+    color: var(--vc-on-accent);
+  }
+
+  .vc-settings-detail-body,
+  .vc-settings-body {
+    container-type: inline-size;
+    flex: 1;
+    min-height: 0;
+    width: min(100%, 808px);
+    padding: 0 24px 24px;
+    box-sizing: border-box;
+    overflow: auto;
+    margin: 0 auto;
+  }
+
+  @container vc-main (max-width: 960px) {
+    .vc-settings-shell {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .vc-settings-shell > .vc-settings-content {
+      grid-column: 1 / -1;
+    }
+
+    .vc-settings-categories {
+      display: none;
+    }
+
+    .vc-settings-category-control {
+      display: contents;
+    }
   }
 
   .vc-settings-detail {
     container-type: inline-size;
     container-name: vc-settings-detail;
-    display: flex;
-    flex-direction: column;
-    min-width: 0;
-    height: 100%;
-    overflow-y: auto;
-  }
-
-  .vc-settings-detail-head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    min-height: 56px;
-    padding: 12px 28px;
-    border-bottom: 1px solid var(--vc-separator, rgba(120, 120, 128, 0.14));
-  }
-
-  .vc-settings-detail-title {
-    margin: 0;
-    font-size: 20px;
-    font-weight: 600;
-    line-height: 26px;
   }
 
   .vc-settings-detail-body {
-    width: 100%;
-    max-width: 760px;
-    padding: 24px 28px 48px;
     display: flex;
     flex-direction: column;
-    gap: 20px;
+    gap: var(--vc-space-sm);
+  }
+
+  .vc-settings-detail-body > .vc-settings-section {
+    padding: 4px 16px;
+    border: 0.5px solid var(--vc-raised-edge);
+    border-radius: var(--vc-radius-md);
+    background: var(--vc-raised);
+  }
+
+  .vc-settings-section > h2 {
+    margin: 16px 0 8px;
+    font-size: var(--vc-fs-headline);
+    font-weight: 600;
+  }
+
+  .vc-settings-detail-body :is(input:not([type="checkbox"], [type="radio"], [type="range"]), select, textarea) {
+    width: 100%;
+    min-width: 0;
+    max-width: 360px;
+    padding: 0 12px;
+    border: 0.5px solid var(--vc-raised-edge);
+    border-radius: var(--vc-radius-control);
+    background: var(--vc-control-fill);
+    color: var(--vc-ink);
+    font: inherit;
+  }
+
+  .vc-settings-detail-body textarea {
+    min-height: 80px;
+    padding-block: 8px;
   }
 
   .vc-desk-field {
@@ -105,8 +212,8 @@
     grid-template-columns: 200px minmax(0, 1fr);
     align-items: center;
     gap: 16px;
-    min-height: 36px;
-    padding: 8px 0;
+    min-height: 44px;
+    padding: 4px 0;
   }
 
   .vc-desk-field select,
@@ -494,26 +601,10 @@
     }
   }
 
-  @container vc-settings (max-width: 720px) {
-    .vc-settings-shell {
-      grid-template-columns: minmax(0, 1fr);
-    }
-
-    .vc-settings-categories {
-      width: 100%;
-      flex-direction: row;
-      flex-wrap: wrap;
-      border-right: 0;
-      border-bottom: 1px solid var(--vc-separator, rgba(120, 120, 128, 0.16));
-      padding: 12px 16px;
-    }
-
-    .vc-settings-category {
-      width: auto;
-    }
-  }
-
   @container vc-settings-detail (max-width: 560px) {
+    .vc-settings-detail-head { padding-inline: 16px; }
+    .vc-settings-detail-body { padding-inline: 0; }
+
     .vc-desk-field {
       grid-template-columns: minmax(0, 1fr);
       gap: 6px;

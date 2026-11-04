@@ -32,19 +32,28 @@ async function sceneDesktopTavern(ctx) {
     page.on('pageerror',error=>errors.push(error.name+': '+error.message));
     page.on('request',request=>{const pathname=new URL(request.url()).pathname;if(['/', '/script.js','/scripts/extensions.js','/scripts/st-context.js'].includes(pathname))forbidden.push(pathname);});
     let releaseRuntime;const gate=new Promise(resolve=>{releaseRuntime=resolve;});
-    await page.route('**/desktop/standalone/runtime.js',async route=>{await gate;await route.continue();});
-    const open=async key=>{await page.evaluate(key=>document.querySelector('#vc-shell').openSettings(key),key);await page.locator('.vc-tavern-form').waitFor();};
+    await page.route(url=>url.pathname.endsWith('/desktop/standalone/runtime.js')||url.pathname==='/version',async route=>{await gate;await route.continue();});
+    const open=async key=>{
+        const shell=page.locator('#vc-shell');
+        if(await shell.getAttribute('data-settings')!=='open'){
+            await page.locator('#vc-shell .vc-sidebar [data-settings]').click();
+            await page.waitForFunction(()=>document.querySelector('#vc-shell')?.dataset.settings==='open');
+        }
+        await page.locator(`.vc-settings-categories [data-category="${key}"]`).click();
+        await page.waitForFunction(k=>document.querySelector('.vc-settings-shell')?.dataset.category===k,key);
+        await page.locator('.vc-tavern-form').waitFor();
+    };
     const save=async()=>{await page.locator('[data-tavern-save]').click();await page.waitForFunction(()=>document.querySelector('[data-tavern-save]')?.disabled&&document.querySelector('.vc-tavern-form')?.getAttribute('aria-busy')==='false');};
     const field=name=>page.getByLabel(name,{exact:true});
     const shots=async key=>{
         for(const viewport of [{width:1440,height:900},{width:390,height:844}])for(const theme of ['light','dark']){
             await page.setViewportSize(viewport);
             await page.evaluate(async theme=>(await import('/scripts/extensions/third-party/vc-model-settings/ui/theme.js')).setThemeMode(theme),theme);
-            await page.evaluate(async()=>{await document.fonts.ready;await Promise.all(document.getAnimations().filter(a=>a.playState==='running'&&a.effect?.getComputedTiming().iterations!==Infinity).map(a=>a.finished.catch(()=>{})));});
+            await page.evaluate(()=>document.fonts.ready);await page.waitForFunction(()=>document.getAnimations().every(a=>a.playState!=='running'||a.effect?.getComputedTiming().iterations===Infinity));await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
             await page.screenshot({path:path.join(ctx.artifactsDir,`nf-tavern-${key}-${viewport.width}-${theme}.png`)});
             const geometry=await page.evaluate(()=>({overflow:document.documentElement.scrollWidth-innerWidth,bad:[...document.querySelectorAll('.vc-tavern-form input:not([type=hidden]),.vc-tavern-form textarea,.vc-tavern-form select')].filter(n=>n.getClientRects().length).some(n=>{const r=n.getBoundingClientRect();return r.left<0||r.right>innerWidth+1;})}));
             assert.ok(geometry.overflow<=1&&!geometry.bad,JSON.stringify(geometry));
-            if(viewport.width===1440){const controls=await page.locator('.vc-tavern-form .vc-desk-field input:not([type=hidden]):not([aria-hidden=true])').evaluateAll(nodes=>nodes.map(node=>({height:node.getBoundingClientRect().height,row:node.closest('.vc-desk-field').getBoundingClientRect().height})));assert.ok(controls.every(row=>row.height===36&&row.row>=44),'桌面输入视觉36px，行至少44px');}
+            if(viewport.width===1440){const controls=await page.locator('.vc-tavern-form .vc-desk-field input:not([type=hidden]):not([type=checkbox]):not([aria-hidden=true])').evaluateAll(nodes=>nodes.map(node=>({type:node.type,field:node.closest('.vc-desk-field').dataset.tavernField,height:node.getBoundingClientRect().height,row:node.closest('.vc-desk-field').getBoundingClientRect().height})));assert.ok(controls.every(row=>row.height===36&&row.row>=44),'桌面输入视觉36px，行至少44px '+JSON.stringify(controls));const checks=await page.locator('.vc-tavern-check > input[type=checkbox]').evaluateAll(nodes=>nodes.map(node=>({width:node.getBoundingClientRect().width,height:node.getBoundingClientRect().height,hit:node.closest('label').getBoundingClientRect().height,row:node.closest('.vc-desk-field').getBoundingClientRect().height})));assert.ok(checks.every(row=>row.width===18&&row.height===18&&row.hit>=44&&row.row>=44),'集合复选框18px，标签命中区与表单行至少44px '+JSON.stringify(checks));}
             if(viewport.width===390){
                 const rows=await page.locator('.vc-tavern-form .vc-desk-field').evaluateAll(nodes=>nodes.slice(0,12).map(node=>{
                     const control=node.querySelector('input:not([type=hidden]),textarea,select,.vc-switch,output');
@@ -74,10 +83,10 @@ async function sceneDesktopTavern(ctx) {
         await page.locator('[data-tavern-save]').click();await page.getByRole('button',{name:'加载最新',exact:true}).waitFor();
         assert.equal(await field('Top K').inputValue(),'24');
         await page.getByRole('button',{name:'加载最新',exact:true}).click();await page.getByRole('button',{name:'放弃',exact:true}).click();
-        await page.waitForFunction(()=>document.querySelector('[data-tavern-group=reply] input[data-tavern-field*=top_k_openai]')?.value==='25');
+        await page.waitForFunction(()=>document.querySelector('[data-tavern-group=reply] [data-tavern-field*=top_k_openai] input')?.value==='25');
         at('format');await open('AdvancedFormatting');await field('提示词').fill((await field('提示词').inputValue())+' NF07');await save();
         at('world');await open('WorldInfo');await page.locator('[data-tavern-resource=world]').selectOption(book);
-        await field('内容').fill('NF07 世界书 <%= "已更新" %>');await field('启用世界书').selectOption([book]);await save();
+        await field('内容').fill('NF07 世界书 <%= "已更新" %>');await page.locator('[data-tavern-group=global-world]').getByRole('checkbox',{name:book,exact:true}).check();await save();
         assert.equal((await st.call('POST','/api/worldinfo/get',{name:book})).json.entries[0].content,'NF07 世界书 <%= "已更新" %>');
         at('code-editor');await page.locator('[data-tavern-action=code-edit]').click();
         await page.locator('.vc-world-code-canvas .monaco-editor').waitFor({state:'visible'});
@@ -90,13 +99,13 @@ async function sceneDesktopTavern(ctx) {
             const box=await page.locator('.vc-world-code-canvas').boundingBox();assert.ok(box.width>200&&box.height>=240);
             await page.screenshot({path:path.join(ctx.artifactsDir,`nf-tavern-editor-${viewport.width}-${theme}.png`)});
         }
-        await page.setViewportSize({width:1440,height:900});await page.locator('.vc-sheet-done').click();await page.locator('.vc-sheet').waitFor({state:'detached'});
+        await page.setViewportSize({width:1440,height:900});await page.locator('.vc-sheet').getByRole('button',{name:'完成',exact:true}).click();await page.locator('.vc-sheet').waitFor({state:'detached'});
         assert.equal(await field('内容').inputValue(),'NF07 Monaco <%= "saved" %>');await save();
         assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('st_monaco_editor_settings')).fontSize),16);
         assert.equal(await page.locator('html').getAttribute('data-vc-runtime'),null,'代码编辑器独立于聊天启动');
         assert.equal(await field('绑定世界书').isDisabled(),true,'运行模块未就绪时只禁止聊天绑定');await shots('world');
         for(const key of ['PersonaManagement','Backgrounds','user-settings-block','rm_api_block','right-nav-panel']){
-            at(key);await open(key);assert.equal(await page.locator('.vc-tavern-error').count(),0);
+            at(key);await open(key);assert.equal(await page.locator('.vc-tavern-banner[role=alert]').count(),0);
         }
         at('presentation');await open('user-settings-block');
         const previousCss=await field('自定义 CSS').inputValue();await field('自定义 CSS').fill(previousCss+'\nbody { --nf07-synthetic: 7; }');
@@ -116,7 +125,7 @@ async function sceneDesktopTavern(ctx) {
         await page.locator('[data-tavern-action=background-delete]').click();await page.getByRole('button',{name:'删除',exact:true}).click();await save();
         assert.equal(await page.locator('.vc-tavern-background').isHidden(),true);
         at('character-crud');await open('right-nav-panel');await page.locator('[data-tavern-action=character-new]').click();
-        await page.locator('.vc-sheet input').fill('NF07 新建角色');await page.locator('.vc-sheet-done').click();
+        await page.locator('.vc-sheet input').fill('NF07 新建角色');await page.locator('.vc-sheet').getByRole('button',{name:'完成',exact:true}).click();
         await page.locator('.vc-sheet').waitFor({state:'detached'});
         await page.waitForFunction(()=>document.querySelector('[data-tavern-resource=character]')?.selectedOptions[0]?.textContent==='NF07 新建角色');
         const createdAvatar=await page.locator('[data-tavern-resource=character]').inputValue();
@@ -129,7 +138,7 @@ async function sceneDesktopTavern(ctx) {
         await field('全局变量').fill('{"NF07":"已保存"}');await save();await shots('extensions');
         assert.equal(await ctx.fixtureHttp.count({protocol:'chat'}),beforeSettings,'设置保存不能生成');
         at('runtime');releaseRuntime();await page.waitForFunction(()=>document.documentElement.dataset.vcRuntime==='prepared');
-        await page.evaluate(()=>window.dispatchEvent(new CustomEvent('vc-shell-navigate',{detail:{destination:'chat'}})));
+        await page.locator('#vc-shell .vc-sidebar [data-nav="chat"]').click();
         await page.locator('#send_textarea').fill('NF07 合成草稿');await page.waitForFunction(()=>Boolean(document.querySelector('#send_but')&&!document.querySelector('#send_but').disabled));
         assert.equal(await page.evaluate(()=>SillyTavern.getContext().chatCompletionSettings.top_k_openai),23,'已接受更改在迟到的运行模块中生效');
         assert.equal(await page.evaluate(()=>SillyTavern.getContext().extensionSettings.variables.global.NF07),'已保存');
@@ -139,7 +148,7 @@ async function sceneDesktopTavern(ctx) {
         await page.evaluate(()=>nf07VariableRelease());await page.waitForFunction(()=>globalThis.nf07VariableOutcome===409);
         assert.equal(await page.evaluate(()=>SillyTavern.getContext().extensionSettings.variables.global.NF07),'手工更新');
         await field('全局变量').fill('{"NF07":"已保存"}');await save();
-        await page.evaluate(()=>window.dispatchEvent(new CustomEvent('vc-shell-navigate',{detail:{destination:'chat'}})));
+        await page.locator('#vc-shell .vc-sidebar [data-nav="chat"]').click();
         at('helper-worldbook');
         const helperBook=await page.evaluate(async()=>{
             await TavernHelper.createWorldbook('NF07-helper',[{name:'合成条目',content:'初始',strategy:{type:'constant'}}]);
@@ -174,14 +183,14 @@ async function sceneDesktopTavern(ctx) {
         assert.ok(JSON.stringify((await ctx.fixtureHttp.captures({protocol:'chat'})).at(-1).body.messages).includes('NF07 nested EJS NF07 脚本合成回复。'));
         assert.equal(await page.evaluate(async()=>{try{await nf07ExpiredHelper.generateRaw({user_input:'过期',ordered_prompts:['user_input']});return false;}catch{return true;}}),true,'结束模板不能沿用生成上下文');
         at('input-preferences');await open('user-settings-block');await page.getByRole('switch',{name:'Markdown 快捷键',exact:true}).click();await save();
-        await page.evaluate(()=>window.dispatchEvent(new CustomEvent('vc-shell-navigate',{detail:{destination:'chat'}})));
+        await page.locator('#vc-shell .vc-sidebar [data-nav="chat"]').click();
         await page.locator('#send_textarea').fill('NF07 keyboard');await page.locator('#send_textarea').press('ControlOrMeta+A');await page.locator('#send_textarea').press('Control+b');
         assert.equal(await page.locator('#send_textarea').inputValue(),'**NF07 keyboard**');
         await open('user-settings-block');await page.getByRole('switch',{name:'Markdown 快捷键',exact:true}).click();await save();
         at('continuation');await open('left-nav-panel');await page.getByRole('switch',{name:'发送时续写',exact:true}).click();await page.getByRole('switch',{name:'自动续写',exact:true}).click();await page.getByRole('switch',{name:'允许聊天补全续写',exact:true}).click();
         const tokens=await page.evaluate(()=>SillyTavern.getContext().getTokenCountAsync('NF07 脚本合成回复。',0));await field('续写目标长度').fill(String(tokens+1));await save();
         const beforeContinue=await ctx.fixtureHttp.count({protocol:'chat'});
-        await page.evaluate(()=>window.dispatchEvent(new CustomEvent('vc-shell-navigate',{detail:{destination:'chat'}})));await page.locator('#send_textarea').fill('NF07 自动续写');await page.locator('#send_but').click();
+        await page.locator('#vc-shell .vc-sidebar [data-nav="chat"]').click();await page.locator('#send_textarea').fill('NF07 自动续写');await page.locator('#send_but').click();
         await page.waitForFunction(()=>!document.querySelector('#mes_stop')&&SillyTavern.getContext().chat.at(-1)?.mes==='NF07 脚本合成回复。NF07 脚本合成回复。');
         assert.equal(await ctx.fixtureHttp.count({protocol:'chat'}),beforeContinue+2);
         await open('left-nav-panel');await page.getByRole('switch',{name:'发送时续写',exact:true}).click();await page.getByRole('switch',{name:'自动续写',exact:true}).click();await page.getByRole('switch',{name:'允许聊天补全续写',exact:true}).click();await save();
@@ -189,6 +198,7 @@ async function sceneDesktopTavern(ctx) {
         await field('绑定世界书').selectOption(book);await save();
         assert.equal((await st.call('POST','/api/chats/get',{avatar_url:fixture.avatar,file_name:fixture.file})).json[0].chat_metadata.world_info,book);
         await page.reload({waitUntil:'domcontentloaded'});await page.waitForFunction(()=>document.documentElement.dataset.vcApp==='ready');
+        await page.locator('#vc-shell .vc-sidebar [data-nav="chat"]').click();
         await page.locator(`[data-convo-list] [data-relationship-id="${fixture.chat[0].chat_metadata.vc_binding.relationshipId}"]`).click();
         await page.waitForFunction(()=>document.documentElement.dataset.vcRuntime==='prepared'&&SillyTavern.getContext().chatMetadata.world_info==='NF07-synthetic');
         assert.equal(await page.evaluate(()=>SillyTavern.getContext().chatCompletionSettings.top_k_openai),25,'刷新读取并发端保存的新值');

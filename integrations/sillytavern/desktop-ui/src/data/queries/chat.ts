@@ -9,6 +9,7 @@ import {
 import { listFollowUps } from '../../../../extension/vc-model-settings/inbox-client.js';
 import { useAppClient } from '../../app/providers';
 import { queryKeys } from '../queryKeys';
+import { useMemoryItems } from './memory';
 
 export interface ConversationRow {
     key: string;
@@ -214,14 +215,5 @@ export function useFollowUpsQuery(relationshipId?: string) {
 }
 
 export function useRelationshipMemoriesQuery(relationshipId?: string) {
-    const client = useAppClient();
-    const relId = relationshipId ? String(relationshipId) : '';
-    return useQuery({
-        queryKey: queryKeys.memory(relId),
-        enabled: Boolean(relId),
-        queryFn: () =>
-            typeof client?.go?.fetchMemories === 'function'
-                ? client.go.fetchMemories(relId)
-                : Promise.resolve([]),
-    });
+    return useMemoryItems(relationshipId ? String(relationshipId) : null);
 }

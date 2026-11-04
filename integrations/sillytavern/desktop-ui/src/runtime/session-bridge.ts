@@ -9,7 +9,7 @@ import {
     readDraft,
     writeDraft,
 } from '../../../extension/vc-model-settings/chat-logic.js';
-import { mergeInput } from '../../../extension/vc-model-settings/f2-logic.js';
+import { mergeInput, createF2Client, createNativeF2IO, characterChatPath } from '../../../extension/vc-model-settings/f2-logic.js';
 import { toast } from '../design/components/Toast';
 import type { AppClient } from '../data/client';
 import { queryKeys } from '../data/queryKeys';
@@ -140,7 +140,10 @@ export interface DocumentChange {
 export interface SessionBridge {
     subscribe(listener: () => void): () => void;
     getSnapshot(): ChatSnapshot;
-    open(row: Partial<ConversationRow> | string, opts?: { latest?: boolean }): Promise<OpenResult>;
+    open(
+        row: Partial<ConversationRow> | string,
+        opts?: { latest?: boolean; signal?: AbortSignal },
+    ): Promise<OpenResult>;
     send(
         text: string,
         opts?: {
@@ -223,9 +226,12 @@ export function createSessionBridge(
     let popupSeq = 0;
     let personaSeq = 0;
     let openEpoch = 0;
+    let commitEpoch = 0;
     let inFlightKey = '';
     let inFlightOpen: Promise<OpenResult> | null = null;
-    let openAbort: AbortController | null = null;
+    let inFlightCommitted = false;
+    let readAbort: AbortController | null = null;
+    let activeAbort: AbortController | null = null;
     interface NormalizedRow {
         key: string;
         avatar: string;
@@ -237,11 +243,26 @@ export function createSessionBridge(
     }
 
     let activeRow: NormalizedRow | null = null;
+    let committedRow: NormalizedRow | null = null;
+    let committedMetadata: Record<string, any> | null = null;
+    let committedSnapshot: ChatSnapshot | null = null;
+    let sessionPublishedKey = '';
     let retryRow: NormalizedRow | null = null;
+    let attachCallerSignal: ((signal: AbortSignal) => void) | null = null;
     let runtimeInstance: any = null;
     let runtimePromise: Promise<any> | null = null;
     let charactersReady: Promise<any> = Promise.resolve([]);
     let dead = false;
+    const pendingConfiguration: Array<(runtime: any) => unknown> = [];
+
+    async function applyConfiguration(apply: (runtime: any) => unknown): Promise<void> {
+        if (dead) return;
+        if (!runtimeInstance) {
+            pendingConfiguration.push(apply);
+            return;
+        }
+        await apply(runtimeInstance);
+    }
 
     const eventSource = new EventEmitter([event_types.APP_INITIALIZED, event_types.APP_READY]);
     const context: any = {
@@ -474,6 +495,9 @@ export function createSessionBridge(
 
     function emit() {
         if (dead) return;
+        if (committedRow && snapshot.key === committedRow.key && snapshot.status === 'ready') {
+            committedSnapshot = snapshot;
+        }
         syncGeneratingAttr(snapshot.busy);
         syncMountedLeaves();
         for (const listener of listeners) {
@@ -614,19 +638,37 @@ export function createSessionBridge(
             },
             onConflict: (serialized: string, error: any) => {
                 if (dead) return;
-                snapshot = {
-                    ...snapshot,
-                    conflict: true,
-                    conflictSnapshot: {
-                        raw: serialized,
-                        input: readScopedDraft(snapshot.key, false),
-                        code: error?.code || 'VC_REVISION_CONFLICT',
-                    },
+                const activeKey = committedSnapshot?.key || snapshot.key;
+                const nextConflictSnapshot = {
+                    raw: serialized,
+                    input: readScopedDraft(activeKey, false),
+                    code: error?.code || 'VC_REVISION_CONFLICT',
                 };
-                emit();
+                if (committedSnapshot) {
+                    committedSnapshot = {
+                        ...committedSnapshot,
+                        conflict: true,
+                        conflictSnapshot: nextConflictSnapshot,
+                    };
+                }
+                if (!readAbort) {
+                    snapshot = {
+                        ...snapshot,
+                        conflict: true,
+                        conflictSnapshot: nextConflictSnapshot,
+                    };
+                    emit();
+                }
             },
             onChange: (state: any) => {
-                if (dead || state.key !== snapshot.key) return;
+                if (dead) return;
+                const matchesCommitted = Boolean(
+                    committedSnapshot && state.key === committedSnapshot.key,
+                );
+                const matchesVisible = !readAbort && state.key === snapshot.key;
+                if (!matchesCommitted && !matchesVisible) return;
+
+                const base = matchesVisible ? snapshot : committedSnapshot!;
                 const mapped = mapMessages(state.messages || context.chat, state.messageKeys);
                 const lastMsg = mapped.at(-1);
                 const streamingKey =
@@ -638,12 +680,12 @@ export function createSessionBridge(
                 const binding = context.chatMetadata?.vc_binding;
                 const nextRelId = binding?.relationshipId
                     ? String(binding.relationshipId)
-                    : snapshot.relationshipId;
-                const wasBusy = snapshot.busy;
+                    : base.relationshipId;
+                const wasBusy = base.busy;
                 const nextBusy = Boolean(state.busy);
 
-                snapshot = {
-                    ...snapshot,
+                const nextState: ChatSnapshot = {
+                    ...base,
                     messages: mapped,
                     canSend: Boolean(state.canSend),
                     busy: nextBusy,
@@ -651,25 +693,39 @@ export function createSessionBridge(
                     streamingKey,
                     notice: state.notice || '',
                     conflict: Boolean(state.conflict),
+                    conflictSnapshot: state.conflict
+                        ? (base.conflictSnapshot ?? committedSnapshot?.conflictSnapshot ?? null)
+                        : null,
                     settingsRequired: Boolean(state.settingsRequired),
                     catalogBlocked: Boolean(state.catalogBlocked),
                     relationshipId: nextRelId,
                     conversationId: binding?.conversationId
                         ? String(binding.conversationId)
-                        : snapshot.conversationId,
-                    mode: binding?.mode || snapshot.mode,
+                        : base.conversationId,
+                    mode: binding?.mode || base.mode,
                     enterToSend:
                         state.enterToSend !== undefined
                             ? Boolean(state.enterToSend)
                             : sendOnEnter === undefined
-                              ? snapshot.enterToSend
+                              ? base.enterToSend
                               : Number(sendOnEnter) !== -1,
-                    preferences: power ? { ...power } : snapshot.preferences,
+                    preferences: power ? { ...power } : base.preferences,
                     recalledPrompt: String(
                         context.extensionPrompts?.vc_long_term_memory?.value ?? '',
                     ),
                 };
-                emit();
+
+                if (matchesCommitted && committedSnapshot) {
+                    sessionPublishedKey = state.key;
+                    committedSnapshot = {
+                        ...nextState,
+                        status: committedSnapshot.status,
+                    };
+                }
+                if (matchesVisible) {
+                    snapshot = nextState;
+                    emit();
+                }
                 if (wasBusy && !nextBusy) {
                     invalidateChatQueries(nextRelId);
                 }
@@ -698,6 +754,18 @@ export function createSessionBridge(
             },
         })
             .then(async (rt: any) => {
+                const attemptedConfiguration: Array<(runtime: any) => unknown> = [];
+                try {
+                    while (!dead && pendingConfiguration.length) {
+                        const apply = pendingConfiguration.shift()!;
+                        attemptedConfiguration.push(apply);
+                        await apply(rt);
+                    }
+                } catch (error) {
+                    if (!dead) pendingConfiguration.unshift(...attemptedConfiguration);
+                    rt?.destroy?.();
+                    throw error;
+                }
                 if (dead) {
                     rt?.destroy?.();
                     return rt;
@@ -782,9 +850,9 @@ export function createSessionBridge(
 
     async function open(
         rowOrKey: Partial<ConversationRow> | string,
-        openOpts: { latest?: boolean } = {},
+        openOpts: { latest?: boolean; signal?: AbortSignal } = {},
     ): Promise<OpenResult> {
-        if (dead) return 'superseded';
+        if (dead || openOpts.signal?.aborted) return 'superseded';
         const latest = Boolean(openOpts.latest);
         let target = normalizeRowInput(rowOrKey);
         if (!target && typeof rowOrKey !== 'object') return 'failed';
@@ -792,6 +860,9 @@ export function createSessionBridge(
         const provisionalKey = target?.key || '';
         if (!latest && provisionalKey) {
             if (inFlightOpen && inFlightKey === provisionalKey) {
+                if (openOpts.signal && !inFlightCommitted && attachCallerSignal) {
+                    attachCallerSignal(openOpts.signal);
+                }
                 return inFlightOpen;
             }
             if (snapshot.status === 'ready' && snapshot.key === provisionalKey) {
@@ -799,13 +870,95 @@ export function createSessionBridge(
             }
         }
 
-        openAbort?.abort();
-        const controller = new AbortController();
-        openAbort = controller;
+        readAbort?.abort();
+        const readController = new AbortController();
+        readAbort = readController;
         const ticket = ++openEpoch;
         inFlightKey = provisionalKey;
+        inFlightCommitted = false;
+        let preflightCancelled = false;
+        let committed = false;
+        let commitTicket = 0;
+        let activeController: AbortController | null = null;
+        let runOpen: Promise<OpenResult> | null = null;
+        const callerSignals = new Set<AbortSignal>();
 
-        const stopping = runtimeInstance?.stop?.();
+        const detachCallerSignals = () => {
+            for (const sig of callerSignals) {
+                sig.removeEventListener('abort', onCallerAbort);
+            }
+            callerSignals.clear();
+            if (attachCallerSignal === addCallerSignal) {
+                attachCallerSignal = null;
+            }
+        };
+
+        const callerAborted = () => {
+            for (const sig of callerSignals) {
+                if (sig.aborted) return true;
+            }
+            return false;
+        };
+
+        const onCallerAbort = () => {
+            if (dead || committed || preflightCancelled || ticket !== openEpoch) return;
+            preflightCancelled = true;
+            openEpoch += 1;
+            detachCallerSignals();
+            readController.abort();
+            if (readAbort === readController) {
+                readAbort = null;
+            }
+            if (inFlightOpen === runOpen) {
+                inFlightOpen = null;
+                inFlightKey = '';
+                inFlightCommitted = false;
+            }
+            if (committedSnapshot && committedRow) {
+                activeRow = committedRow;
+                if (committedSnapshot.status === 'error') {
+                    retryRow = committedRow;
+                }
+                readScopedDraft(committedSnapshot.key, true);
+                snapshot = {
+                    ...committedSnapshot,
+                };
+                if (committedSnapshot.status === 'ready') {
+                    runtimeInstance?.refreshView?.();
+                }
+            } else {
+                activeRow = null;
+                snapshot = {
+                    ...snapshot,
+                    key: '',
+                    messages: [],
+                    status: 'empty',
+                    busy: false,
+                    streamingKey: null,
+                    notice: '',
+                    error: '',
+                    conflict: false,
+                    conflictSnapshot: null,
+                    canSend: false,
+                };
+            }
+            emit();
+        };
+
+        const addCallerSignal = (sig: AbortSignal) => {
+            if (committed || preflightCancelled) return;
+            if (sig.aborted) {
+                onCallerAbort();
+                return;
+            }
+            callerSignals.add(sig);
+            sig.addEventListener('abort', onCallerAbort, { once: true });
+        };
+
+        attachCallerSignal = addCallerSignal;
+        if (openOpts.signal) {
+            addCallerSignal(openOpts.signal);
+        }
 
         if (provisionalKey) {
             readScopedDraft(provisionalKey, true);
@@ -815,6 +968,10 @@ export function createSessionBridge(
             ...snapshot,
             status: 'switching',
             key: provisionalKey || snapshot.key,
+            messages:
+                provisionalKey && provisionalKey === snapshot.key
+                    ? snapshot.messages
+                    : [],
             busy: false,
             streamingKey: null,
             notice: '',
@@ -825,7 +982,6 @@ export function createSessionBridge(
         };
         emit();
 
-        let runOpen: Promise<OpenResult> | null = null;
         runOpen = (async (): Promise<OpenResult> => {
             try {
                 if (
@@ -837,7 +993,13 @@ export function createSessionBridge(
                         await client.recent(),
                         rowOrKey as any,
                     );
-                    if (dead || ticket !== openEpoch || controller.signal.aborted) {
+                    if (
+                        dead ||
+                        preflightCancelled ||
+                        ticket !== openEpoch ||
+                        readController.signal.aborted ||
+                        callerAborted()
+                    ) {
                         return 'superseded';
                     }
                     if (!resolved) throw new Error('source-unavailable');
@@ -860,32 +1022,104 @@ export function createSessionBridge(
                 const key = target.key;
                 readScopedDraft(key, true);
 
-                const [records, rt] = await Promise.all([
-                    client.readChat(
-                        { avatar: target.avatar, file: target.file },
-                        { signal: controller.signal },
-                    ),
-                    ensureRuntime(),
-                    charactersReady,
-                ]);
-                await stopping;
+                const runtimeTask = ensureRuntime();
+                void runtimeTask.catch(() => {});
+                const records = await client.readChat(
+                    { avatar: target.avatar, file: target.file },
+                    { signal: readController.signal },
+                );
 
-                if (dead || ticket !== openEpoch || controller.signal.aborted) {
+                if (
+                    dead ||
+                    preflightCancelled ||
+                    ticket !== openEpoch ||
+                    readController.signal.aborted ||
+                    callerAborted()
+                ) {
                     return 'superseded';
                 }
                 if (!Array.isArray(records) || !records[0]?.chat_metadata) {
                     throw new Error('聊天没有加载出来');
                 }
 
+                // Commit boundary: preflight readChat succeeded, detach caller route-leave signals
+                // and promote this session to the committed active session.
+                committed = true;
+                inFlightCommitted = true;
+                detachCallerSignals();
+                if (readAbort === readController) {
+                    readAbort = null;
+                }
+                activeAbort?.abort();
+                activeController = new AbortController();
+                activeAbort = activeController;
+                commitTicket = ++commitEpoch;
+
+                committedRow = target;
+                committedMetadata = records[0].chat_metadata;
                 activeRow = target;
                 retryRow = null;
-                const card = context.characters.find((c: any) => c.avatar === target!.avatar);
+                sessionPublishedKey = '';
+                readScopedDraft(key, true);
+                const binding = records[0].chat_metadata?.vc_binding;
+                const initialCard = context.characters.find((c: any) => c.avatar === target!.avatar);
+                const initialTitle =
+                    initialCard?.name || target.title || target.avatar.replace(/\.png$/i, '');
+
+                committedSnapshot = {
+                    ...snapshot,
+                    status: 'switching',
+                    key,
+                    messages: !runtimeInstance ? mapMessages(records.slice(1)) : snapshot.messages,
+                    avatar: target.avatar,
+                    avatarUrl: avatarUrl(target.avatar),
+                    characterName: initialTitle,
+                    characterRef:
+                        initialCard?.data?.extensions?.vc_character_ref ||
+                        target.characterRef ||
+                        target.avatar,
+                    relationshipId: binding?.relationshipId
+                        ? String(binding.relationshipId)
+                        : target.relationshipId,
+                    conversationId: binding?.conversationId
+                        ? String(binding.conversationId)
+                        : undefined,
+                    mode: binding?.mode || target.mode || 'COMPANION',
+                    busy: false,
+                    streamingKey: null,
+                    notice: '',
+                    error: '',
+                    conflict: false,
+                    conflictSnapshot: null,
+                    canSend: false,
+                };
+                if (!readAbort) {
+                    snapshot = committedSnapshot;
+                    emit();
+                }
+
+                const [rt] = await Promise.all([runtimeTask, charactersReady]);
+
+                if (dead || commitTicket !== commitEpoch || activeController.signal.aborted) {
+                    return 'superseded';
+                }
+
+                let card = context.characters.find((c: any) => c.avatar === target!.avatar);
+                if (!card && typeof client.characters === 'function') {
+                    const freshChars = await client.characters().catch(() => null);
+                    if (dead || commitTicket !== commitEpoch || activeController.signal.aborted) {
+                        return 'superseded';
+                    }
+                    if (Array.isArray(freshChars)) {
+                        context.characters = freshChars;
+                        card = context.characters.find((c: any) => c.avatar === target!.avatar);
+                    }
+                }
                 const title =
                     card?.name || target.title || target.avatar.replace(/\.png$/i, '');
-                const binding = records[0].chat_metadata?.vc_binding;
 
-                snapshot = {
-                    ...snapshot,
+                committedSnapshot = {
+                    ...(committedSnapshot ?? snapshot),
                     key,
                     avatar: target.avatar,
                     avatarUrl: avatarUrl(target.avatar),
@@ -902,13 +1136,16 @@ export function createSessionBridge(
                         : undefined,
                     mode: binding?.mode || target.mode || 'COMPANION',
                 };
+                if (!readAbort) {
+                    snapshot = committedSnapshot;
+                }
 
                 if (rt) {
                     await rt.activate(
                         { avatar: target.avatar, file: target.file },
                         records,
                         {
-                            signal: controller.signal,
+                            signal: activeController.signal,
                             latest,
                         },
                     );
@@ -918,31 +1155,54 @@ export function createSessionBridge(
                     context.chatId = target.file;
                 }
 
-                if (dead || ticket !== openEpoch || controller.signal.aborted) {
+                if (dead || commitTicket !== commitEpoch || activeController.signal.aborted) {
                     return 'superseded';
                 }
 
                 const finalMessages = context.chat;
-                snapshot = {
-                    ...snapshot,
+                const baseReady = committedSnapshot ?? snapshot;
+                const readySnapshot: ChatSnapshot = {
+                    ...baseReady,
                     status: 'ready',
                     key,
-                    canSend: rt ? Boolean(rt.ready ?? snapshot.canSend) : true,
+                    canSend: rt
+                        ? sessionPublishedKey === key
+                            ? Boolean(baseReady.canSend)
+                            : Boolean(rt.ready ?? true)
+                        : true,
                     messages: mapMessages(finalMessages),
                     recalledPrompt: String(
                         context.extensionPrompts?.vc_long_term_memory?.value ?? '',
                     ),
                 };
-                emit();
+                committedSnapshot = readySnapshot;
+                if (!readAbort) {
+                    snapshot = readySnapshot;
+                    emit();
+                }
+                if (queryClient) {
+                    void queryClient.invalidateQueries({ queryKey: queryKeys.recentChats });
+                }
                 return 'opened';
             } catch (error: any) {
-                if (dead || ticket !== openEpoch || controller.signal.aborted) {
+                if (!committed) {
+                    if (
+                        dead ||
+                        preflightCancelled ||
+                        ticket !== openEpoch ||
+                        readController.signal.aborted ||
+                        callerAborted()
+                    ) {
+                        return 'superseded';
+                    }
+                } else if (dead || commitTicket !== commitEpoch || activeController?.signal.aborted) {
                     return 'superseded';
                 }
                 retryRow = target;
-                snapshot = {
-                    ...snapshot,
+                const errorSnapshot: ChatSnapshot = {
+                    ...(committed ? (committedSnapshot ?? snapshot) : snapshot),
                     status: 'error',
+                    messages: [],
                     canSend: false,
                     busy: false,
                     error:
@@ -950,12 +1210,26 @@ export function createSessionBridge(
                             ? '登录状态或聊天已变化，请重新打开页面。'
                             : '聊天没有加载出来，请重试。',
                 };
-                emit();
+                if (committed) {
+                    committedSnapshot = errorSnapshot;
+                }
+                if (!readAbort || readAbort === readController) {
+                    if (readAbort === readController) {
+                        readAbort = null;
+                    }
+                    snapshot = errorSnapshot;
+                    emit();
+                }
                 return 'failed';
             } finally {
+                detachCallerSignals();
+                if (readAbort === readController) {
+                    readAbort = null;
+                }
                 if (inFlightOpen === runOpen) {
                     inFlightOpen = null;
                     inFlightKey = '';
+                    inFlightCommitted = false;
                 }
             }
         })();
@@ -1115,43 +1389,35 @@ export function createSessionBridge(
             },
         },
         async applySettings(changes) {
-            if (dead) return;
-            const rt = runtimeInstance ?? (await ensureRuntime());
-            if (dead || !rt) return;
-            await rt.applySettings(changes);
-            if (dead) return;
-            const power = context.powerUserSettings;
-            if (power) {
-                const sendOnEnter = power.send_on_enter;
-                snapshot = {
-                    ...snapshot,
-                    enterToSend:
-                        sendOnEnter === undefined ? snapshot.enterToSend : Number(sendOnEnter) !== -1,
-                    preferences: { ...power },
-                };
-                emit();
-            }
+            await applyConfiguration(async rt => {
+                await rt.applySettings(changes);
+                if (dead) return;
+                const power = context.powerUserSettings;
+                if (power) {
+                    const sendOnEnter = power.send_on_enter;
+                    snapshot = {
+                        ...snapshot,
+                        enterToSend:
+                            sendOnEnter === undefined ? snapshot.enterToSend : Number(sendOnEnter) !== -1,
+                        preferences: { ...power },
+                    };
+                    emit();
+                }
+            });
         },
         async applyPreset(apiId, name, changes, value) {
-            if (dead) return;
-            const rt = runtimeInstance ?? (await ensureRuntime());
-            if (dead || !rt) return;
-            await rt.applyPreset(apiId, name, changes, value);
+            await applyConfiguration(rt => rt.applyPreset(apiId, name, changes, value));
         },
         async applyWorldbook(name, value, action) {
-            if (dead) return;
-            const rt = runtimeInstance ?? (await ensureRuntime());
-            if (dead || !rt) return;
-            await rt.applyWorldbook(name, value, action);
+            await applyConfiguration(rt => rt.applyWorldbook(name, value, action));
         },
         async reloadCharacter(avatar) {
-            if (dead) return;
-            const rt = runtimeInstance ?? (await ensureRuntime());
-            if (dead || !rt) return;
-            await rt.reloadCharacter(avatar);
-            if (!dead && queryClient) {
-                void queryClient.invalidateQueries({ queryKey: queryKeys.characters });
-            }
+            await applyConfiguration(async rt => {
+                await rt.reloadCharacter(avatar);
+                if (!dead && queryClient) {
+                    void queryClient.invalidateQueries({ queryKey: queryKeys.characters });
+                }
+            });
         },
         async commitMetadata(changes, expectedKey = snapshot.key) {
             if (dead) return;
@@ -1162,18 +1428,33 @@ export function createSessionBridge(
         async deleteCharacter(avatar, deleteChats) {
             if (dead) return;
             if (parseConversationKey(inFlightKey)?.avatar === avatar) {
-                openAbort?.abort();
+                readAbort?.abort();
+                readAbort = null;
                 openEpoch += 1;
                 inFlightOpen = null;
                 inFlightKey = '';
+                inFlightCommitted = false;
             }
-            const rt = runtimeInstance ?? (await ensureRuntime());
-            if (dead || !rt) return;
-            await rt.deleteCharacter(avatar, deleteChats);
+            const rt = runtimeInstance;
+            if (rt) {
+                await rt.deleteCharacter(avatar, deleteChats);
+            } else {
+                const f2 = createF2Client();
+                if (committedRow && committedMetadata) {
+                    f2.loaded(characterChatPath(committedRow.avatar, committedRow.file), committedMetadata);
+                }
+                const io = createNativeF2IO({ getRequestHeaders: client.headers, client: f2 });
+                const rows = deleteChats
+                    ? await client.request('/api/characters/chats', { avatar_url: avatar, simple: true })
+                    : [];
+                const baselines = await io.baselines((Array.isArray(rows) ? rows : []).map(row => ({ avatar, file: row.file_name })));
+                if (dead) return;
+                await client.post('/api/characters/delete', { avatar_url: avatar, delete_chats: deleteChats, vc_f2_chats: baselines });
+            }
             if (dead) return;
             await bridge.cancelForCharacterDelete(avatar);
             if (dead) return;
-            await rt.reloadCharacter?.(avatar);
+            await bridge.reloadCharacter(avatar);
             if (!dead && queryClient) {
                 void queryClient.invalidateQueries({ queryKey: queryKeys.characters });
                 void queryClient.invalidateQueries({ queryKey: queryKeys.relationships });
@@ -1289,12 +1570,24 @@ export function createSessionBridge(
             emit();
         },
         async cancelForCharacterDelete(avatar) {
-            if (activeRow?.avatar === avatar || parseConversationKey(inFlightKey)?.avatar === avatar) {
-                openAbort?.abort();
+            if (
+                activeRow?.avatar === avatar ||
+                committedRow?.avatar === avatar ||
+                parseConversationKey(inFlightKey)?.avatar === avatar
+            ) {
+                readAbort?.abort();
+                readAbort = null;
+                activeAbort?.abort();
+                activeAbort = null;
                 openEpoch += 1;
+                commitEpoch += 1;
                 inFlightOpen = null;
                 inFlightKey = '';
+                inFlightCommitted = false;
                 activeRow = null;
+                committedRow = null;
+                committedMetadata = null;
+                committedSnapshot = null;
                 retryRow = null;
                 await runtimeInstance?.stop?.();
                 snapshot = {
@@ -1318,7 +1611,10 @@ export function createSessionBridge(
         },
         destroy() {
             dead = true;
-            openAbort?.abort();
+            pendingConfiguration.length = 0;
+            committedMetadata = null;
+            readAbort?.abort();
+            activeAbort?.abort();
             listeners.clear();
             for (const [host, entry] of mountedLeaves.entries()) {
                 if (typeof entry.cardCleanup === 'function') {

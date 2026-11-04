@@ -1,6 +1,9 @@
 import React, { Suspense, useCallback, useEffect, useState } from 'react';
 import { useRouter } from '@tanstack/react-router';
 import './settings.css';
+import './model-settings.css';
+import { IconButton } from '../../design/components/IconButton';
+import { Menu, type MenuItemDef } from '../../design/components/Menu';
 import { AccountSection } from './AccountSection';
 import { AppearanceSection } from './AppearanceSection';
 import { CompanionStyle } from './CompanionStyle';
@@ -92,6 +95,20 @@ export function SettingsRoute({ category = 'account' }: SettingsRouteProps = {})
     [router],
   );
 
+  const categoryMenuItems: MenuItemDef[] = [
+    ...PRODUCT_SETTINGS_CATEGORIES.map((item) => ({
+      id: `cat-${item.key}`,
+      label: item.label,
+      onSelect: () => handleSelectCategory(item.key),
+    })),
+    ...DEFAULT_TAVERN_CATEGORIES.map((item, index) => ({
+      id: `tavern-${item.panel}`,
+      label: item.label,
+      separator: index === 0,
+      onSelect: () => handleSelectTavern(item.panel),
+    })),
+  ];
+
   const renderSection = () => {
     switch (activeCategory) {
       case 'account':
@@ -120,19 +137,25 @@ export function SettingsRoute({ category = 'account' }: SettingsRouteProps = {})
   };
 
   return (
-    <div className="vc-settings-shell" data-vc-settings="">
+    <div className="vc-settings-shell" data-vc-settings="" data-category={activeCategory}>
       <SettingsNav
         current={activeCategory}
         onSelectCategory={handleSelectCategory}
         onSelectTavern={handleSelectTavern}
       />
-      <div className="vc-settings-main" data-vc-settings-category={activeCategory}>
-        <header className="vc-settings-header">
-          <h1 className="vc-settings-title" data-vc-owned-title="">
+      <div className="vc-settings-detail" data-vc-settings-category={activeCategory}>
+        <header className="vc-settings-detail-head">
+          <span className="vc-settings-category-control">
+            <Menu
+              items={categoryMenuItems}
+              trigger={<IconButton icon="settings" aria-label="设置" data-settings-categories="" />}
+            />
+          </span>
+          <h1 className="vc-settings-detail-title" data-vc-owned-title="">
             {activeMeta.label}
           </h1>
         </header>
-        <div className="vc-settings-content">{renderSection()}</div>
+        <div className="vc-settings-detail-body">{renderSection()}</div>
       </div>
     </div>
   );

@@ -7,6 +7,7 @@ export interface LeaveGuardOptions {
   description?: string;
   confirmLabel?: string;
   cancelLabel?: string;
+  busy?: boolean;
 }
 
 /**
@@ -19,22 +20,28 @@ export function useLeaveGuard(
   dirty: boolean,
   messageOrOptions?: string | LeaveGuardOptions,
 ): React.ReactNode {
-  const blocker = useBlocker({
-    shouldBlockFn: () => Boolean(dirty),
-    withResolver: true,
-  });
-
   const opts: LeaveGuardOptions =
     typeof messageOrOptions === 'string'
       ? { description: messageOrOptions }
       : messageOrOptions ?? {};
+
+  const blocker = useBlocker({
+    shouldBlockFn: () => Boolean(dirty || opts.busy),
+    withResolver: true,
+  });
+
+  React.useEffect(() => {
+    if (opts.busy && blocker.status === 'blocked') {
+      blocker.reset?.();
+    }
+  }, [opts.busy, blocker]);
 
   const title = opts.title ?? '放弃更改？';
   const description = opts.description ?? '关闭后本次输入将丢失。';
   const confirmLabel = opts.confirmLabel ?? '放弃';
   const cancelLabel = opts.cancelLabel ?? '继续编辑';
 
-  const isBlocked = blocker.status === 'blocked';
+  const isBlocked = blocker.status === 'blocked' && !opts.busy;
 
   return React.createElement(AlertDialog, {
     open: isBlocked,
