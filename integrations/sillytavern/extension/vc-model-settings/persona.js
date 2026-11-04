@@ -2,102 +2,36 @@
 import { icon } from './ui/icons.js';
 import { openSheet } from './ui/sheet.js';
 import { PLANNER_KEY } from './reply-planner.js';
-import { STYLE_NOTE, DEFAULT_GLOBAL_RULES, RULES_KEY, readGlobalRules, moodGuidance } from './instance-logic.js';
+import {
+    STYLE_NOTE,
+    DEFAULT_GLOBAL_RULES,
+    RULES_KEY,
+    readGlobalRules,
+    moodGuidance,
+    MES_EXAMPLE,
+    RELATIONS,
+    GENDERS,
+    STYLE_OPTIONS,
+    pronounFor,
+    restoreDefaultRules,
+    buildCharacterCard,
+} from './instance-logic.js';
 
-export { STYLE_NOTE, DEFAULT_GLOBAL_RULES, readGlobalRules, moodGuidance };
-
-export const MES_EXAMPLE = `<START>
-{{user}}: 今天好累
-{{char}}: 抱抱
-{{char}}: 是加班了还是被谁烦到了
-<START>
-{{user}}: 我升职了！
-{{char}}: 真的假的！！
-{{char}}: 今晚必须吃顿好的，你请客`;
-
-export const RELATIONS = ['好朋友', '恋人', '倾听者'];
-export const GENDERS = ['女生', '男生', '不设定'];
-export const STYLE_OPTIONS = ['口语短句，偶尔表情', '幽默会接梗', '好奇你的生活', '分享自己的日常'];
-
-const RELATION_COPY = {
-    好朋友: {
-        relationLine: '你是{{user}}很熟的朋友，认识挺久了，什么都能聊，会关心也会吐槽。',
-        scenarioLine: '你们平时用手机断断续续地聊天，想到什么说什么。',
-        first: '在吗～ 刚下班，累瘫了。对了，以后我怎么叫你比较好？',
-    },
-    恋人: {
-        relationLine: '你和{{user}}在谈恋爱，喜欢黏着对方，会想念、会撒娇，也会关心对方有没有好好吃饭睡觉。',
-        scenarioLine: '你们每天用手机聊天，分享各自的日常。',
-        first: '你来啦！今天想你好几次了。对了，我该叫你什么呀？',
-    },
-    倾听者: {
-        relationLine: '你是{{user}}信任的人，性子温和，善于倾听，不急着给建议，让对方愿意把心里话说出来。',
-        scenarioLine: '{{user}}想说话的时候会来找你，你也会在合适的时候问候一下。',
-        first: '嗨，我在。今天过得怎么样？对了，你希望我怎么称呼你？',
-    },
-};
-
-const PERSONALITY_BASE = '真诚，有点小迷糊，情绪写在脸上，开心了话会变多，累了就懒得打字。';
-const STYLE_LINES = {
-    '口语短句，偶尔表情': '说话随意，习惯短句，偶尔用个表情或颜文字。',
-    '幽默会接梗': '爱开玩笑也接得住梗，偶尔嘴硬，但心软。',
-    '好奇你的生活': '对{{user}}的生活很好奇，会追问细节，也记得对方之前提过的事。',
-    '分享自己的日常': '有自己的小日常，会主动分享今天遇到的事和想法。',
+export {
+    STYLE_NOTE,
+    DEFAULT_GLOBAL_RULES,
+    readGlobalRules,
+    moodGuidance,
+    MES_EXAMPLE,
+    RELATIONS,
+    GENDERS,
+    STYLE_OPTIONS,
+    pronounFor,
+    restoreDefaultRules,
+    buildCharacterCard,
 };
 
 const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
-
-export function pronounFor(gender, name) {
-    if (gender === '男生') return '他';
-    if (gender === '女生') return '她';
-    return String(name || '');
-}
-
-export function restoreDefaultRules(settings) {
-    if (settings && typeof settings === 'object') settings[RULES_KEY] = DEFAULT_GLOBAL_RULES;
-    return DEFAULT_GLOBAL_RULES;
-}
-
-export function buildCharacterCard({ name, relation = '好朋友', gender = '女生', styles = [] } = {}) {
-    const cleanName = String(name || '').trim();
-    const copy = RELATION_COPY[relation] || RELATION_COPY['好朋友'];
-    const pronoun = pronounFor(gender, cleanName);
-    const apply = (text) => String(text).replaceAll('{{name}}', cleanName).replaceAll('{{代词}}', pronoun);
-    const chosen = (Array.isArray(styles) ? styles : []).filter((item) => STYLE_LINES[item]);
-    const description = apply(`${cleanName}，二十多岁，在城市里工作和生活。${copy.relationLine}\n平时下班喜欢窝着看剧、拍拍路边的猫，周末偶尔去逛展或者找家没去过的小店。`);
-    const personality = apply([PERSONALITY_BASE, ...chosen.map((item) => STYLE_LINES[item])].join(''));
-    const scenario = apply(copy.scenarioLine);
-    const first = copy.first;
-    const data = {
-        name: cleanName,
-        description,
-        personality,
-        scenario,
-        first_mes: first,
-        mes_example: MES_EXAMPLE,
-        creator_notes: '',
-        system_prompt: '',
-        post_history_instructions: '',
-        alternate_greetings: [],
-        tags: [],
-        creator: '',
-        character_version: '1.0',
-        extensions: {
-            vc_persona: { relation, gender, styles: chosen },
-        },
-    };
-    return {
-        spec: 'chara_card_v2',
-        spec_version: '2.0',
-        name: cleanName,
-        description,
-        personality,
-        scenario,
-        first_mes: first,
-        mes_example: MES_EXAMPLE,
-        data,
-    };
-}
 
 export function renderCompanionStyle(text, { plannerEnabled = false } = {}) {
     return `<div data-planner-row><div class="vc-group"><div class="vc-cell"><span class="vc-grow">先想再说</span><button type="button" class="vc-switch" role="switch" aria-label="先想再说" aria-describedby="vc-planner-cost" aria-checked="${plannerEnabled?'true':'false'}" data-action="toggle-planner"><span></span></button></div></div><p class="vc-footnote" id="vc-planner-cost">可能增加一次模型用量。</p></div><label class="vc-style-rule"><textarea data-field="rules" aria-label="陪伴风格">${esc(text)}</textarea></label><button type="button" class="vc-btn vc-btn-text" data-action="restore-rules">恢复默认</button>`;

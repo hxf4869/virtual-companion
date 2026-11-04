@@ -1,7 +1,23 @@
-import { instancesFrom, safeImageUrl } from './instance-queries.js';
-export { instancesFrom, safeImageUrl } from './instance-queries.js';
 // UI-P02：角色卡模板来自宿主卡，陪伴实例来自已有 relationships 与 POST /api/v1/st/bindings。
-import { fetchRelationships, resolveSTBinding, storyRequest } from './api.js';
+import {
+    instancesFrom,
+    safeImageUrl,
+    IMPORT_FAILED_COPY,
+    UNSAVED_INSTANCE_COPY,
+    sanitizeInstanceName,
+    cardsFromContext,
+    bindingsFromContext,
+    pngHasChara,
+    inspectCharacterFile,
+    instanceLabel,
+    prefsBody,
+    saveInstanceName,
+    createCompanionInstance,
+    createInstancePage,
+    characterModel,
+    formatWhen,
+    characterAvatarSrc,
+} from './instance-logic.js';
 import { saveNativePersona } from './persona.js';
 import { confirmAlert } from './ui/alert.js';
 import { iconSpriteUrl } from './ui/icons.js';
@@ -13,157 +29,25 @@ import { openRelationshipVoiceSettings, voiceSettingsAvailable } from './voice-s
 import { popMenu } from './ui/menu.js';
 import { desktopLayout } from './desktop/presentation.js';
 
-export const IMPORT_FAILED_COPY = '文件不是受支持的角色卡格式，原有角色未发生变动。请核对 JSON / PNG 角色元数据规范。';
-export const UNSAVED_INSTANCE_COPY = '当前存在未保存更改，切换实例前请先保存。';
-
-const PNG = [137, 80, 78, 71, 13, 10, 26, 10];
-const ENUMS = {
-    replyLength: ['SHORT', 'MEDIUM', 'LONG'],
-    initiative: ['LOW', 'MEDIUM', 'HIGH'],
-    humor: ['NONE', 'LIGHT', 'WARM'],
-    advicePref: ['ASK_FIRST', 'DIRECT', 'RARE'],
-    memoryShareScope: ['SESSION', 'RELATIONSHIP'],
-    gender: ['FEMALE', 'MALE', 'NEUTRAL'],
-    avatarRef: ['AVATAR_FEMALE_01', 'AVATAR_MALE_01', 'AVATAR_NEUTRAL_01'],
+export {
+    instancesFrom,
+    safeImageUrl,
+    IMPORT_FAILED_COPY,
+    UNSAVED_INSTANCE_COPY,
+    sanitizeInstanceName,
+    cardsFromContext,
+    bindingsFromContext,
+    pngHasChara,
+    inspectCharacterFile,
+    instanceLabel,
+    prefsBody,
+    saveInstanceName,
+    createCompanionInstance,
+    createInstancePage,
+    characterModel,
+    formatWhen,
+    characterAvatarSrc,
 };
-const AVOID = new Set(['WORK', 'FAMILY', 'HEALTH', 'ROMANCE', 'MONEY', 'POLITICS', 'SUBSTANCE', 'RELIGION']);
-const ID = /^[1-9][0-9]{0,18}$/;
-
-const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
-
-function initial(name) {
-    const text = String(name || '').replace(/[^\p{L}\p{N}]/gu, '');
-    return [...text][0] || '角';
-}
-
-export function sanitizeInstanceName(value) {
-    const raw = String(value ?? '');
-    if ([...raw].some((char) => char.charCodeAt(0) < 0x20 || char.charCodeAt(0) === 0x7f)) {
-        return { ok: false, reason: '实例名称最多 32 个字。' };
-    }
-    const collapsed = raw.trim().replace(/\s+/g, ' ');
-    if (!collapsed) return { ok: false, reason: '先填写实例名称。' };
-    if ([...collapsed].length > 32) return { ok: false, reason: '实例名称最多 32 个字。' };
-    return { ok: true, value: collapsed };
-}
-
-export function cardsFromContext(context) {
-    const list = Array.isArray(context?.characters) ? context.characters : [];
-    return list.filter(Boolean).map((card) => {
-        const book = card.data?.character_book?.name;
-        const world = card.data?.extensions?.world;
-        return {
-            characterRef: typeof card.data?.extensions?.vc_character_ref === 'string' ? card.data.extensions.vc_character_ref : '',
-            name: card.name || '未命名角色卡',
-            description: typeof card.description === 'string' ? card.description : (typeof card.data?.description === 'string' ? card.data.description : ''),
-            worldName: typeof book === 'string' ? book : (typeof world === 'string' ? world : ''),
-        };
-    });
-}
-
-function nonEmptyRef(value) {
-    return typeof value === 'string' ? value.trim() : '';
-}
-
-export function bindingsFromContext(context) {
-    const binding = context?.chatMetadata?.vc_binding;
-    if (binding?.relationshipId == null || binding.relationshipId === '') return [];
-    const card = context?.characters?.[context.characterId];
-    const stored = nonEmptyRef(binding.characterRef);
-    const fromCard = nonEmptyRef(card?.data?.extensions?.vc_character_ref);
-    return [{
-        relationshipId: String(binding.relationshipId),
-        characterRef: stored || fromCard,
-        chatIdentity: typeof context?.chatMetadata?.vc_f2?.id === 'string' ? context.chatMetadata.vc_f2.id : '',
-        mode: binding.mode || 'COMPANION',
-    }];
-}
-
-export function inspectCharacterFile(bytes, filename = '') {
-    const data = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes || []);
-    if (data.length >= 8 && PNG.every((byte, index) => data[index] === byte)) {
-        return { ok: pngHasChara(data), format: 'png' };
-    }
-    const name = String(filename || '');
-    const text = new TextDecoder().decode(data);
-    if (name.toLowerCase().endsWith('.json') || text.trimStart().startsWith('{')) {
-        try {
-            const parsed = JSON.parse(text);
-            const cardName = typeof parsed?.name === 'string' ? parsed.name : parsed?.data?.name;
-            if (parsed && typeof parsed === 'object' && !Array.isArray(parsed) && typeof cardName === 'string' && cardName.trim()) {
-                return { ok: true, format: 'json' };
-            }
-        } catch {
-            return { ok: false, format: '' };
-        }
-    }
-    return { ok: false, format: '' };
-}
-
-function pngHasChara(bytes) {
-    let offset = 8;
-    while (offset + 12 <= bytes.length) {
-        const length = new DataView(bytes.buffer, bytes.byteOffset + offset, 4).getUint32(0);
-        const type = String.fromCharCode(...bytes.subarray(offset + 4, offset + 8));
-        const start = offset + 8;
-        const end = start + length;
-        if (end + 4 > bytes.length) return false;
-        if (type === 'tEXt' || type === 'zTXt' || type === 'iTXt') {
-            const chunk = bytes.subarray(start, end);
-            const nul = chunk.indexOf(0);
-            const keyword = new TextDecoder().decode(nul >= 0 ? chunk.subarray(0, nul) : chunk);
-            if (keyword === 'chara') return true;
-        }
-        offset = end + 4;
-    }
-    return false;
-}
-
-
-export function instanceLabel(item, items) {
-    const same = items.filter((row) => row.name === item.name);
-    if (same.length < 2) return item.name;
-    return `${item.name} ${same.findIndex((row) => row.relationshipId === item.relationshipId) + 1}`;
-}
-
-function prefsBody(relationship, name) {
-    const id = String(relationship?.relationshipId ?? '');
-    if (!ID.test(id) || typeof relationship?.remindersAllowed !== 'boolean' || !Array.isArray(relationship.avoidTopics)) return null;
-    for (const topic of relationship.avoidTopics) {
-        if (!AVOID.has(topic)) return null;
-    }
-    for (const [key, allowed] of Object.entries(ENUMS)) {
-        if (!allowed.includes(relationship[key])) return null;
-    }
-    const address = relationship.userAddressAs;
-    if (!(address == null || typeof address === 'string')) return null;
-    return {
-        companionName: name,
-        userAddressAs: address,
-        replyLength: relationship.replyLength,
-        initiative: relationship.initiative,
-        humor: relationship.humor,
-        advicePref: relationship.advicePref,
-        remindersAllowed: relationship.remindersAllowed,
-        memoryShareScope: relationship.memoryShareScope,
-        avoidTopics: relationship.avoidTopics,
-        gender: relationship.gender,
-        avatarRef: relationship.avatarRef,
-    };
-}
-
-export async function saveInstanceName(relationship, name) {
-    const clean = sanitizeInstanceName(name);
-    if (!clean.ok) throw Object.assign(new Error(clean.reason), { code: 'INVALID_NAME' });
-    const id = String(relationship?.relationshipId ?? '');
-    const body = prefsBody(relationship, clean.value);
-    if (!body) throw Object.assign(new Error('名称尚未保存'), { code: 'INVALID_NAME' });
-    return storyRequest('PATCH', `/api/v1/relationships/${id}`, body);
-}
-
-export async function createCompanionInstance({ characterRef, displayName, chatIdentity, mode = 'COMPANION' } = {}) {
-    return resolveSTBinding({ characterRef, displayName, chatIdentity, mode });
-}
 
 /** SillyTavern 1.19 的 importCharacter 未导出。processDroppedFiles 是会调用它的公开入口。 */
 export async function importNativeCharacterFile({
@@ -206,208 +90,6 @@ export async function importNativeCharacterFile({
         description,
         worldName: typeof book === 'string' ? book : (typeof world === 'string' ? world : ''),
     };
-}
-
-export function createInstancePage({
-    loadRelationships = fetchRelationships,
-    getCards = () => [],
-    getBindings = () => [],
-    createBinding = createCompanionInstance,
-    saveName = saveInstanceName,
-    importCard = null,
-    newId = () => crypto.randomUUID(),
-    onChange = () => {},
-} = {}) {
-    const state = {
-        open: false, cards: [], relationships: [], bindings: [], selectedCharacterRef: '', selectedRelationshipId: '',
-        creating: false, draftName: '', savedName: '', importError: '', unsaved: null, nameError: '', loadError: '', busy: false,
-    };
-    let dead = false;
-    const emit = () => { if (!dead) onChange(state); };
-    const dirty = () => state.draftName !== state.savedName && (state.creating || state.selectedRelationshipId);
-    let loadGeneration = 0;
-    let creationIdentity = '';
-    function applyInstance(id) {
-        const row = instancesFrom(state.relationships).find((item) => item.relationshipId === String(id));
-        state.creating = false;
-        state.unsaved = null;
-        state.nameError = '';
-        state.selectedRelationshipId = row?.relationshipId || '';
-        state.savedName = row?.name && row.name !== '未命名实例' ? row.name : (state.relationships.find((item) => String(item.relationshipId) === String(id))?.companionName || '');
-        if (!state.savedName && row) state.savedName = row.name === '未命名实例' ? '' : row.name;
-        state.draftName = state.savedName;
-    }
-    return {
-        state,
-        async open() {
-            if (dead || state.busy) return;
-            const ticket = ++loadGeneration;
-            state.open = true;
-            state.loadError = '';
-            try {
-                const [relationships, cards, bindings] = await Promise.all([
-                    loadRelationships(), Promise.resolve(getCards()), Promise.resolve(getBindings()),
-                ]);
-                if (dead || ticket !== loadGeneration) return;
-                state.relationships = Array.isArray(relationships) ? relationships : [];
-                state.cards = (Array.isArray(cards) ? cards : []).map((item) => ({
-                    characterRef: item?.characterRef || '', name: item?.name || '未命名角色卡',
-                    description: item?.description || '', worldName: item?.worldName || '',
-                }));
-                state.bindings = Array.isArray(bindings) ? bindings : [];
-                state.selectedCharacterRef = state.cards.find((item) => item.characterRef)?.characterRef || state.cards[0]?.characterRef || '';
-                const first = instancesFrom(state.relationships)[0];
-                state.creating = false;
-                state.unsaved = null;
-                state.importError = '';
-                state.nameError = '';
-                state.selectedRelationshipId = first?.relationshipId || '';
-                const source = state.relationships.find((item) => String(item.relationshipId) === state.selectedRelationshipId);
-                state.savedName = source?.companionName || '';
-                state.draftName = state.savedName;
-            } catch {
-                if (dead || ticket !== loadGeneration) return;
-                state.loadError = '加载失败，请重试。';
-            }
-            if (dead || ticket !== loadGeneration) return;
-            emit();
-        },
-        destroy() { dead = true; loadGeneration++; },
-        setName(value) { if (dead || state.busy) return; state.draftName = String(value ?? ''); emit(); },
-        selectInstance(id) {
-            if (dead || state.busy) return false;
-            if (!state.creating && String(id) === state.selectedRelationshipId) return true;
-            if (dirty()) {
-                state.unsaved = { type: 'select', id: String(id) };
-                emit();
-                return false;
-            }
-            applyInstance(id);
-            emit();
-            return true;
-        },
-        selectTemplate(characterRef) {
-            if (dead || state.busy) return;
-            state.selectedCharacterRef = String(characterRef || '');
-            emit();
-        },
-        cancelUnsaved() { if (dead || state.busy) return; state.unsaved = null; emit(); },
-        confirmDiscard() {
-            if (dead || state.busy) return;
-            const pending = state.unsaved;
-            state.unsaved = null;
-            if (pending?.type === 'select') applyInstance(pending.id);
-            else if (pending?.type === 'create') beginCreate();
-            else if (pending?.type === 'close') {
-                state.creating = false;
-                state.draftName = state.savedName;
-            }
-            emit();
-        },
-        startCreate() {
-            if (dead || state.busy) return false;
-            if (dirty()) {
-                state.unsaved = { type: 'create' };
-                emit();
-                return false;
-            }
-            beginCreate();
-            emit();
-            return true;
-        },
-        async save() {
-            if (dead || state.busy) return;
-            const clean = sanitizeInstanceName(state.draftName);
-            if (!clean.ok) {
-                state.nameError = clean.reason;
-                emit();
-                return;
-            }
-            if (!state.creating && clean.value === state.savedName) return;
-            state.busy = true;
-            state.nameError = '';
-            emit();
-            try {
-                if (state.creating) {
-                    const card = state.cards.find((item) => item.characterRef === state.selectedCharacterRef) || state.cards[0];
-                    if (!card) throw new Error('no-card');
-                    if (!card.characterRef) card.characterRef = newId();
-                    const created = await createBinding({
-                        characterRef: card.characterRef,
-                        displayName: clean.value,
-                        chatIdentity: creationIdentity ||= newId(),
-                        mode: 'COMPANION',
-                    });
-                    if (dead) return;
-                    state.relationships = [...state.relationships, {
-                        relationshipId: String(created?.relationshipId || ''),
-                        characterRef: card.characterRef,
-                        personaRef: 'st-character',
-                        companionName: clean.value,
-                    }];
-                    state.creating = false;
-                    creationIdentity = '';
-                    state.selectedRelationshipId = String(created?.relationshipId || '');
-                    state.savedName = clean.value;
-                    state.draftName = clean.value;
-                } else {
-                    const row = state.relationships.find((item) => String(item.relationshipId) === state.selectedRelationshipId);
-                    await saveName(row, clean.value);
-                    if (dead) return;
-                    if (row) row.companionName = clean.value;
-                    state.savedName = clean.value;
-                    state.draftName = clean.value;
-                }
-                state.nameError = '';
-            } catch {
-                state.nameError = '名称尚未保存';
-            } finally {
-                state.busy = false;
-                emit();
-            }
-        },
-        async importFile({ name = '', bytes } = {}) {
-            if (dead || state.busy) return;
-            const inspected = inspectCharacterFile(bytes, name);
-            if (!inspected.ok) {
-                state.importError = IMPORT_FAILED_COPY;
-                emit();
-                return;
-            }
-            if (typeof importCard !== 'function') {
-                state.importError = '';
-                emit();
-                return;
-            }
-            state.busy = true; emit();
-            try {
-                const created = await importCard({ name, format: inspected.format, bytes });
-                if (dead) return;
-                if (created?.name) {
-                    state.cards = [...state.cards, {
-                        characterRef: created.characterRef || '',
-                        name: created.name,
-                        description: created.description || '',
-                        worldName: created.worldName || '',
-                    }];
-                }
-                state.importError = '';
-            } catch {
-                state.importError = IMPORT_FAILED_COPY;
-            } finally { state.busy = false; }
-            emit();
-        },
-    };
-
-    function beginCreate() {
-        creationIdentity = '';
-        state.creating = true;
-        state.unsaved = null;
-        state.nameError = '';
-        state.selectedRelationshipId = '';
-        state.savedName = '';
-        state.draftName = '';
-    }
 }
 
 function ensureInstanceStyles() {
@@ -490,77 +172,6 @@ function isVcUiOn() {
         /* 文档不可用时只看存储标志。 */
     }
     return readVcUiFlag();
-}
-
-function characterModel(state) {
-    const cards = (Array.isArray(state.cards) ? state.cards : []).map((card) => ({
-        characterRef: card?.characterRef || '',
-        name: card?.name || '未命名角色卡',
-        description: card?.description || '',
-        worldName: card?.worldName || '',
-        avatar: typeof card?.avatar === 'string' ? card.avatar : '',
-        instances: [],
-    }));
-    const byRef = new Map();
-    for (const card of cards) {
-        const ref = nonEmptyRef(card.characterRef);
-        if (ref) byRef.set(ref, card);
-    }
-    const instances = instancesFrom(state.relationships).map((item) => {
-        const row = (state.relationships || []).find((rel) => String(rel?.relationshipId) === item.relationshipId) || {};
-        return {
-            ...item,
-            characterRef: nonEmptyRef(row.characterRef),
-            lastAt: row.lastChatAt || row.lastMessageAt || '',
-            chatIdentity: '',
-        };
-    });
-    const placed = new Set();
-    const instanceOrder = new Map(instances.map((item, index) => [item.relationshipId, index]));
-    for (const binding of Array.isArray(state.bindings) ? state.bindings : []) {
-        const ref = nonEmptyRef(binding?.characterRef);
-        const card = ref ? byRef.get(ref) : undefined;
-        const inst = instances.find((item) => item.relationshipId === String(binding?.relationshipId ?? ''));
-        if (!card || !inst || placed.has(inst.relationshipId)) continue;
-        card.instances.push({ ...inst, chatIdentity: typeof binding.chatIdentity === 'string' ? binding.chatIdentity : '' });
-        placed.add(inst.relationshipId);
-    }
-    for (const inst of instances) {
-        if (placed.has(inst.relationshipId)) continue;
-        const card = inst.characterRef ? byRef.get(inst.characterRef) : undefined;
-        if (!card) continue;
-        card.instances.push(inst);
-        placed.add(inst.relationshipId);
-    }
-    for (const card of cards) card.instances.sort((a, b) => instanceOrder.get(a.relationshipId) - instanceOrder.get(b.relationshipId));
-    const loose = instances.filter((item) => !placed.has(item.relationshipId));
-    if (loose.length && cards.length === 1) {
-        cards[0].instances.push(...loose);
-        loose.length = 0;
-    }
-    return { cards, loose };
-}
-
-function formatWhen(value) {
-    if (!value) return '';
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return '';
-    const now = new Date();
-    const hm = date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false });
-    if (date.toDateString() === now.toDateString()) return hm;
-    const yesterday = new Date(now);
-    yesterday.setDate(now.getDate() - 1);
-    if (date.toDateString() === yesterday.toDateString()) return `昨天 ${hm}`;
-    return `${date.getMonth() + 1}月${date.getDate()}日 ${hm}`;
-}
-
-
-export function characterAvatarSrc(avatar) {
-    const safe = safeImageUrl(avatar);
-    if (safe) return safe;
-    const file = String(avatar ?? '').trim();
-    if (!file) return '';
-    return `/characters/${file}`;
 }
 
 // 数据关联、作用域与名称规则仍属于原控制器；React 仅消费此视图数据。
