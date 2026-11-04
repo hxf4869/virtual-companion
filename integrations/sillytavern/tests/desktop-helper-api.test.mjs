@@ -745,6 +745,7 @@ function createFixture() {
         container,
         refreshed,
         f2Saves,
+        capturedDocs,
         sessionStates,
         get session() { return session; },
         get savedChatCount() { return f2Saves.length; },
@@ -905,6 +906,21 @@ test('Batch 2: setLorebookSettings、triggerSlash/triggerSlashWithResult 与 _re
     assert.equal(typeof th.unregisterMacroLike, 'function');
     assert.equal(typeof th._bind._registerMacroLike, 'function');
 
+    // EjsTemplate.evalTemplate 保持原生 ST-Prompt-Template 行为，不叠加全局宏前后包裹
+    let ejsProbeCalls = 0;
+    const probeHandle = th.registerMacroLike(/DR2_EJS_MACRO_PROBE/g, (_ctx, match) => {
+        ejsProbeCalls++;
+        return `${match}x`;
+    });
+    try {
+        const probeOut = await globalThis.EjsTemplate.evalTemplate('DR2_EJS_MACRO_PROBE<%= 1 + 1 %>', null, {});
+        assert.equal(ejsProbeCalls, 0, 'EjsTemplate.evalTemplate 不得在模板求值前后直接执行 replaceMacroLike');
+        assert.equal(probeOut, 'DR2_EJS_MACRO_PROBE2');
+        assert.equal(probeOut.length, 20);
+    } finally {
+        probeHandle.unregister();
+    }
+
     const mockIframeWin = Object.assign(new EventTarget(), {
         frameElement: { isConnected: true },
     });
@@ -915,9 +931,9 @@ test('Batch 2: setLorebookSettings、triggerSlash/triggerSlashWithResult 与 _re
     );
     assert.equal(typeof handle?.unregister, 'function');
 
-    // 在真实 EJS 调用中生效
-    const ejsOut = await globalThis.EjsTemplate.evalTemplate('结果=<%= 1 + 1 %> {{custom_tag::EJS_OK}} {{get_chat_variable::from_ejs}}');
-    assert.equal(ejsOut, '结果=2 [TAG:EJS_OK] 77');
+    // 在真实展示渲染管线中生效
+    const displayOut = th.formatAsDisplayedMessage('结果={{custom_tag::DISPLAY_OK}} {{get_chat_variable::from_ejs}}', { message_id: 0 });
+    assert.ok(displayOut.includes('结果=[TAG:DISPLAY_OK] 77'));
 
     // 在生成提示词事件钩子中生效
     const promptData = { prompt: [{ role: 'user', content: '请处理 {{custom_tag::PROMPT_OK}}' }] };
@@ -926,8 +942,8 @@ test('Batch 2: setLorebookSettings、triggerSlash/triggerSlashWithResult 与 _re
 
     // iframe pagehide 自动卸载
     mockIframeWin.dispatchEvent(new Event('pagehide'));
-    const afterUnload = await globalThis.EjsTemplate.evalTemplate('{{custom_tag::EJS_OK}}');
-    assert.equal(afterUnload, '{{custom_tag::EJS_OK}}');
+    const afterUnload = th.formatAsDisplayedMessage('{{custom_tag::DISPLAY_OK}}', { message_id: 0 });
+    assert.ok(!afterUnload.includes('[TAG:DISPLAY_OK]'));
 });
 
 test('Batch 3: 世界书旧名包装、消息增删旋转、提示词注入、只读角色/人设、展示/正则、builtin 与不支持接口报错', async () => {
@@ -1231,7 +1247,7 @@ test('Batch 3: 世界书旧名包装、消息增删旋转、提示词注入、�
         addEventListener() {},
     };
     iframeWin.window = iframeWin;
-    new Function('window', '$', '_', predefineSource)(iframeWin, globalThis.$, globalThis._);
+    new Function('window', '$', '_', `with (window) {\n${predefineSource}\n}`)(iframeWin, globalThis.$, globalThis._);
     const batchNames = [
         'getAllEnabledScriptButtons', 'errorCatched', 'isPresetSystemPrompt', 'isPresetNormalPrompt',
         'isPresetPlaceholderPrompt', 'default_preset', 'RawCharacter', 'builtin_prompt_default_order',
@@ -1255,19 +1271,16 @@ test('Batch 3: 世界书旧名包装、消息增删旋转、提示词注入、�
     assert.equal(iframeWin.TavernHelper.RawCharacter.find({ name: 'current' })?.getAvatarId(), 'helper-test.png');
 });
 
-test('Audit 1 & 2: iframe _injectPrompts 与 _registerMacroLike 经 closeScripts()/jQuery pagehide 同步清理且幂等', async () => {
+test('Audit 1 & 2: iframe _injectPrompts 与 _registerMacroLike 经生产 [data-vc-card-scripts] 与 closeScripts() 立即同步清理且幂等', async () => {
     const f = createFixture();
     const cards = await f.init();
+    const th = globalThis.TavernHelper;
     const predefineSource = fs.readFileSync(
         new URL('../extension/vc-model-settings/desktop/standalone/cards/predefine.js', import.meta.url),
         'utf8',
     );
-    const scriptHost = document.getElementById('TH-script-frames') || (() => {
-        const div = document.createElement('div');
-        div.id = 'TH-script-frames';
-        document.body.appendChild(div);
-        return div;
-    })();
+    const scriptHost = document.querySelector('[data-vc-card-scripts]');
+    assert.ok(scriptHost, 'initializeCards 必须创建生产 [data-vc-card-scripts] 容器');
     const frameEl = document.createElement('iframe');
     frameEl.id = 'TH-script--script-1';
     scriptHost.appendChild(frameEl);
@@ -1280,7 +1293,7 @@ test('Audit 1 & 2: iframe _injectPrompts 与 _registerMacroLike 经 closeScripts
     });
     iframeWin.window = iframeWin;
     Object.defineProperty(frameEl, 'contentWindow', { value: iframeWin, configurable: true });
-    new Function('window', '$', '_', predefineSource)(iframeWin, globalThis.$, globalThis._);
+    new Function('window', '$', '_', `with (window) {\n${predefineSource}\n}`)(iframeWin, globalThis.$, globalThis._);
 
     iframeWin.injectPrompts(
         [{ id: 'iframe-leak-check', position: 'in_chat', depth: 1, role: 'system', content: '来自子frame的持久注入' }],
@@ -1289,15 +1302,25 @@ test('Audit 1 & 2: iframe _injectPrompts 与 _registerMacroLike 经 closeScripts
     assert.equal(f.context.extensionPrompts['iframe-leak-check']?.value, '来自子frame的持久注入');
 
     iframeWin.registerMacroLike(/\{\{iframe_macro\}\}/g, () => 'IFRAME_MACRO_ACTIVE');
-    assert.equal(await globalThis.EjsTemplate.evalTemplate('{{iframe_macro}}'), 'IFRAME_MACRO_ACTIVE');
+    assert.ok(th.formatAsDisplayedMessage('{{iframe_macro}}', { message_id: 0 }).includes('IFRAME_MACRO_ACTIVE'));
+    const activePrompt = { prompt: [{ role: 'user', content: '{{iframe_macro}}' }] };
+    await f.context.eventSource.emit(event_types.GENERATE_AFTER_DATA, activePrompt, false);
+    assert.equal(activePrompt.prompt[0].content, 'IFRAME_MACRO_ACTIVE');
 
-    // closeScripts 使用 jquery(view).triggerHandler('pagehide') 并 off('pagehide')，不派发原生 Event('pagehide')
+    // closeScripts 遍历生产 [data-vc-card-scripts] 并触发 jQuery pagehide；不派发原生 Event('pagehide') 前即须完成清理
     await cards.closeScripts();
+
+    assert.equal(f.context.extensionPrompts['iframe-leak-check'], undefined, 'closeScripts 后（未触发原生 pagehide 前）子 frame 的 once:false 注入必须立即清空');
+    assert.ok(
+        !th.formatAsDisplayedMessage('{{iframe_macro}}', { message_id: 0 }).includes('IFRAME_MACRO_ACTIVE'),
+        'closeScripts 后（未触发原生 pagehide 前）子 frame 的展示宏必须立即注销',
+    );
+    const closedPrompt = { prompt: [{ role: 'user', content: '{{iframe_macro}}' }] };
+    await f.context.eventSource.emit(event_types.GENERATE_AFTER_DATA, closedPrompt, false);
+    assert.equal(closedPrompt.prompt[0].content, '{{iframe_macro}}', 'closeScripts 后生成提示词宏必须立即注销');
+
     // 即使随后再触发原生 pagehide 也应幂等不报错
     iframeWin.dispatchEvent(new Event('pagehide'));
-
-    assert.equal(f.context.extensionPrompts['iframe-leak-check'], undefined, 'closeScripts 后子 frame 的 once:false 注入必须清空');
-    assert.equal(await globalThis.EjsTemplate.evalTemplate('{{iframe_macro}}'), '{{iframe_macro}}', 'closeScripts 后子 frame 的宏必须同步注销');
 });
 
 test('Audit 3: createChatMessages 事件顺序 (SENT/RECEIVED -> refresh -> RENDERED -> 单次 F2 保存含 MVU 回调写入)', async () => {
@@ -1343,21 +1366,25 @@ test('Audit 3: createChatMessages 事件顺序 (SENT/RECEIVED -> refresh -> REND
     assert.equal(savedPayload.chat[4].variables[0].mvu_floor_applied, true, 'RENDERED 回调写入的楼层变量必须进入同一次 F2 保存');
 });
 
-test('Audit 4, 5, 6: 楼层变量宏 message_id 上下文、GENERATE_AFTER_DATA 单次替换与 formatAsTavernRegexedString role 传递', async () => {
+test('Audit 4, 5, 6: 楼层变量宏 message_id 上下文、GENERATE_AFTER_DATA 单次替换与 formatAsTavernRegexedString role/depth 传递', async () => {
     const f = createFixture();
     await f.init();
     const th = globalThis.TavernHelper;
 
-    // Audit 4: 两楼层不同变量 + demacroOnPrompt 行 role 上下文
+    // Audit 4: 两楼层不同变量经真实展示/正则管线按 message_id 读取对应楼层变量
     f.context.chat[0].variables[0].floor_only = 'FLOOR_ZERO';
     f.context.chat[1].variables[0].floor_only = 'FLOOR_ONE';
-    const outFloor0 = await globalThis.EjsTemplate.evalTemplate(
+    const outFloor0 = th.formatAsTavernRegexedString(
         '{{get_message_variable::floor_only}}|{{format_message_variable::floor_only}}|{{format_message_variable_quoted::floor_only}}',
-        { _th_context: { source: 'message', message_id: 0, role: 'assistant' } },
+        'ai_output',
+        'display',
+        { depth: 1 },
     );
-    const outFloor1 = await globalThis.EjsTemplate.evalTemplate(
+    const outFloor1 = th.formatAsTavernRegexedString(
         '{{get_message_variable::floor_only}}|{{format_message_variable::floor_only}}|{{format_message_variable_quoted::floor_only}}',
-        { _th_context: { source: 'message', message_id: 1, role: 'user' } },
+        'user_input',
+        'display',
+        { depth: 0 },
     );
     assert.equal(outFloor0, 'FLOOR_ZERO|FLOOR_ZERO|"FLOOR_ZERO"');
     assert.equal(outFloor1, 'FLOOR_ONE|FLOOR_ONE|"FLOOR_ONE"');
@@ -1382,11 +1409,11 @@ test('Audit 4, 5, 6: 楼层变量宏 message_id 上下文、GENERATE_AFTER_DATA 
         handle.unregister();
     }
 
-    // Audit 6: formatAsTavernRegexedString 调用中宏回调必须拿到真实 role/source/message_id 而非被 ejs-host.substituteParams 提前用 source:'other' 吞掉
-    const roleHandle = th.registerMacroLike(/CTX_ROLE_CHECK/g, ctx => `${ctx.source}:${ctx.role}`);
+    // Audit 6: formatAsTavernRegexedString 调用中宏回调必须拿到真实 role/source/message_id（含 depth:0 的最后一条消息索引）
+    const roleHandle = th.registerMacroLike(/CTX_ROLE_CHECK/g, ctx => `${ctx.source}:${ctx.role}:${ctx.message_id}`);
     try {
         const formatted = th.formatAsTavernRegexedString('CTX_ROLE_CHECK', 'ai_output', 'display', { depth: 0 });
-        assert.equal(formatted, 'display:assistant');
+        assert.equal(formatted, 'display:assistant:1');
     } finally {
         roleHandle.unregister();
     }
@@ -1451,20 +1478,44 @@ test('Audit 7, 9, 10: RawCharacter.getCardData 完整角色对象与缺省值、
     }
 });
 
-test('Audit 8: updateLorebookEntriesWith 单次读取基线与字段级 CAS（异字段并发保留远端修改，同字段并发冲突报 409）', async () => {
+test('Audit 8: updateLorebookEntriesWith 单次读取基线与字段级 CAS（异字段并发保留远端修改并同步返回值/capture/WORLDINFO_UPDATED，同字段并发冲突报 409）', async () => {
     const f = createFixture();
     await f.init();
     const th = globalThis.TavernHelper;
 
-    // 1. 异字段并发：updater 修改 comment 期间远端修改了 content，提交应成功且保留远端 content
-    await th.updateLorebookEntriesWith('测试世界书', async entries => {
-        // 模拟在初次读取之后、写回之前，另一处并发更新了同一条目的 content
-        f.worldStore['测试世界书'].entries[0].content = '远端并发新内容';
-        entries[0].comment = '本地更新备注';
-        return entries;
-    });
-    assert.equal(f.worldStore['测试世界书'].entries[0].comment, '本地更新备注');
-    assert.equal(f.worldStore['测试世界书'].entries[0].content, '远端并发新内容', '不得用 updater 内部的旧快照覆盖未修改的远端字段');
+    const updatedEvents = [];
+    const onWorldInfoUpdated = (name, doc) => {
+        updatedEvents.push({ name, doc: structuredClone(doc) });
+    };
+    f.context.eventSource.on(event_types.WORLDINFO_UPDATED, onWorldInfoUpdated);
+    try {
+        // 1. 异字段并发：updater 修改 comment 期间远端修改了 content，提交应成功且磁盘、返回值、captureWorldbook 与 WORLDINFO_UPDATED 均包含远端 content 与未知字段
+        const returnedEntries = await th.updateLorebookEntriesWith('测试世界书', async entries => {
+            // 模拟在初次读取之后、写回之前，另一处并发更新了同一条目的 content
+            f.worldStore['测试世界书'].entries[0].content = '远端并发新内容';
+            entries[0].comment = '本地更新备注';
+            return entries;
+        });
+        assert.equal(f.worldStore['测试世界书'].entries[0].comment, '本地更新备注');
+        assert.equal(f.worldStore['测试世界书'].entries[0].content, '远端并发新内容', '不得用 updater 内部的旧快照覆盖未修改的远端字段');
+        assert.equal(f.worldStore['测试世界书'].entries[0].custom_raw_field, 'preserved_0');
+
+        assert.equal(returnedEntries[0].comment, '本地更新备注');
+        assert.equal(returnedEntries[0].content, '远端并发新内容', 'updateLorebookEntriesWith 返回值必须包含远端保留的并发字段');
+        assert.equal(returnedEntries[0].custom_raw_field, 'preserved_0', 'updateLorebookEntriesWith 返回值必须保留未知字段');
+
+        assert.equal(f.capturedDocs['测试世界书']?.entries?.[0]?.comment, '本地更新备注');
+        assert.equal(f.capturedDocs['测试世界书']?.entries?.[0]?.content, '远端并发新内容', 'captureWorldbook 缓存必须接收合并后的权威文档');
+        assert.equal(f.capturedDocs['测试世界书']?.entries?.[0]?.custom_raw_field, 'preserved_0');
+
+        assert.equal(updatedEvents.length, 1);
+        assert.equal(updatedEvents[0].name, '测试世界书');
+        assert.equal(updatedEvents[0].doc?.entries?.[0]?.comment, '本地更新备注');
+        assert.equal(updatedEvents[0].doc?.entries?.[0]?.content, '远端并发新内容', 'WORLDINFO_UPDATED 事件必须接收合并后的权威文档');
+        assert.equal(updatedEvents[0].doc?.entries?.[0]?.custom_raw_field, 'preserved_0');
+    } finally {
+        f.context.eventSource.removeListener(event_types.WORLDINFO_UPDATED, onWorldInfoUpdated);
+    }
 
     // 2. 同字段并发：updater 修改 comment 期间远端也修改了 comment，提交必须因 CAS 基线不匹配抛 409 且不覆盖远端值
     await assert.rejects(
@@ -1529,16 +1580,50 @@ test('Audit 11, 12, 13: builtin.duringGenerating 真实生成态、builtin.rende
     assert.ok(mdHtml.includes('<del>删除线</del>'), 'renderMarkdown 应支持删除线');
     assert.ok(mdHtml.includes('第一行<br>\n第二行'), 'renderMarkdown 应支持单换行转 <br>');
 
-    // Audit 13: /let 与 /var 使用每次执行局部的 SlashCommandScope，不污染持久化 chat_metadata.variables
+    // Audit 13: /let 与 /var 严格复用锁定 SlashCommandScope 语义（前导零数值归一、非 JSON 索引 catch 分支、同次共享/跨次隔离、不写 chat_metadata）
+    const leadingZeroOut = await th.triggerSlash('/let x 001 | /var x');
+    assert.equal(leadingZeroOut, '1', 'SlashCommandScope.getVariable 必须将 "001" 数值归一为 1');
+    assert.equal(f.context.chatMetadata.variables.x, undefined, '/let 与 /var 不得写入持久化 chat_metadata.variables');
+
     const scopedOut = await th.triggerSlash('/let x 10 | /var x 25 | /var x');
     assert.equal(scopedOut, '25');
-    assert.equal(f.context.chatMetadata.variables.x, undefined, '/let 与 /var 不得写入持久化 chat_metadata.variables');
+    assert.equal(f.context.chatMetadata.variables.x, undefined);
 
     const namedScopedOut = await th.triggerSlash('/let key=arr [10,20] | /var index=1 arr 99 | /var index=1 arr');
     assert.equal(namedScopedOut, '99');
     assert.equal(f.context.chatMetadata.variables.arr, undefined);
 
+    const objScopedOut = await th.triggerSlash('/let key=obj {"a":1} | /var index=b as=number obj 2 | /var obj');
+    assert.equal(objScopedOut, '{"a":1,"b":2}');
+
+    await assert.rejects(
+        () => th.triggerSlash('/let s hello | /var index=0 s X'),
+        /Cannot assign to read only property/,
+        '非 JSON 字符串带 index 赋值走锁定 catch 分支 v[index]=...，在严格模式下抛错而非覆盖整串变量',
+    );
+
     // 跨次执行不泄漏上次局部作用域，读取未声明局部变量抛错，重复 /let 同名变量抛错
-    await assert.rejects(() => th.triggerSlash('/var x'), /Variable "x" not found/);
-    await assert.rejects(() => th.triggerSlash('/let dup 1 | /let dup 2'), /Variable "dup" already exists/);
+    await assert.rejects(() => th.triggerSlash('/var x'), /No such variable: "x"/);
+    await assert.rejects(() => th.triggerSlash('/let dup 1 | /let dup 2'), /Variable named "dup" already exists\./);
+});
+
+test('Residual 1: cards.destroy() 公开销毁入口不抛 ReferenceError 且完整移除脚本容器、全局 API 与事件监听', async () => {
+    const f = createFixture();
+    const cards = await f.init();
+    assert.ok(document.querySelector('[data-vc-card-scripts]'), '销毁前 [data-vc-card-scripts] 应存在');
+    assert.ok(globalThis.TavernHelper, '销毁前 globalThis.TavernHelper 应存在');
+    const handle = globalThis.TavernHelper.registerMacroLike(/DESTROY_CHECK_MACRO/g, () => 'REPLACED');
+
+    try {
+        assert.doesNotThrow(() => cards.destroy(), '公开 cards.destroy() 不得因悬空监听器抛错');
+        assert.equal(document.querySelector('[data-vc-card-scripts]'), null, 'destroy() 后 [data-vc-card-scripts] 必须移除');
+        assert.equal(globalThis.TavernHelper, undefined, 'destroy() 后 globalThis.TavernHelper 必须清理');
+        assert.equal(globalThis.triggerSlash, undefined, 'destroy() 后顶层 helper 导出必须清理');
+
+        const promptData = { prompt: [{ role: 'user', content: 'DESTROY_CHECK_MACRO' }] };
+        await f.context.eventSource.emit(event_types.GENERATE_AFTER_DATA, promptData, false);
+        assert.equal(promptData.prompt[0].content, 'DESTROY_CHECK_MACRO', 'destroy() 后 GENERATE_AFTER_DATA 监听必须已移除');
+    } finally {
+        handle.unregister();
+    }
 });

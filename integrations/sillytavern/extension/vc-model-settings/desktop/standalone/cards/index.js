@@ -149,23 +149,6 @@ export async function initializeCards(options) {
     Object.assign(globalThis, { SillyTavern: { getContext: () => context } });
     const runtime = await import('/scripts/extensions/third-party/ST-Prompt-Template/dist/desktop.js');
     ejs = await runtime.initializeDesktop(); setHelperSchemaLibrary(ejs.z); globalThis.z = ejs.z;
-    if (globalThis.EjsTemplate && !globalThis.EjsTemplate.__vcMacroWrapped) {
-        const rawEvalTemplate = globalThis.EjsTemplate.evalTemplate.bind(globalThis.EjsTemplate);
-        globalThis.EjsTemplate.evalTemplate = async (code, ctx = null, opts = {}) => {
-            const macroCtx = ctx?._th_context ?? {
-                source: 'other',
-                ...(typeof ctx?.message_id === 'number'
-                    ? { message_id: ctx.message_id }
-                    : typeof ctx?.runID === 'number' && ctx.runID >= 0
-                      ? { message_id: ctx.runID }
-                      : {}),
-            };
-            const pre = typeof code === 'string' ? util.replaceMacroLike(code, macroCtx) : code;
-            const out = await rawEvalTemplate(pre, ctx, opts);
-            return typeof out === 'string' ? util.replaceMacroLike(out, macroCtx) : out;
-        };
-        Object.defineProperty(globalThis.EjsTemplate, '__vcMacroWrapped', { value: true });
-    }
     const onGenerateAfterData = (eventData, dryRun) => util.demacroOnPrompt(eventData, dryRun);
     context.eventSource.on(context.eventTypes.GENERATE_AFTER_DATA, onGenerateAfterData);
 
@@ -365,7 +348,6 @@ export async function initializeCards(options) {
     const api = { surface, bindContext: refreshCardHost, closeScripts, getPreset: presetsApi.getPreset,
         destroy() {
             context.eventSource.removeListener?.(context.eventTypes.GENERATE_AFTER_DATA, onGenerateAfterData);
-            context.eventSource.removeListener?.(context.eventTypes.CHAT_COMPLETION_SETTINGS_READY, onChatCompletionReady);
             releaseFrames(scriptFrames);
             scriptFrames.remove();
             actions.remove();

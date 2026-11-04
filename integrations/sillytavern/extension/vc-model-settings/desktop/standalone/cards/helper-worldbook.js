@@ -333,9 +333,10 @@ async function commitWorldbookRaw(name, converted, raw, before = raw) {
         throw error;
     }
     if (!world_names.includes(name)) world_names.push(name);
-    client.documents.captureWorldbook(name,next);
-    await context.eventSource.emit(context.eventTypes.WORLDINFO_UPDATED,name,next);
-    return next;
+    const authoritative = (await loadWorldInfo(name)) ?? next;
+    client.documents.captureWorldbook(name, authoritative);
+    await context.eventSource.emit(context.eventTypes.WORLDINFO_UPDATED, name, authoritative);
+    return authoritative;
 }
 async function writeWorldbook(name, entries, raw, before = raw) {
     const converted = handleWorldbookEntriesCollision(entries).map(fromWorldbookEntry);

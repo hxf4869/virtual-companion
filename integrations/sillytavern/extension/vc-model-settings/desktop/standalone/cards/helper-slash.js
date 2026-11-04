@@ -27,44 +27,56 @@ import { chat, extension_prompts } from '../engine/ports.js';
 import { replaceMacroLike } from './helper-util.js';
 import { createChatMessages, deleteChatMessages, setChatMessages } from './helper-message.js';
 
-export class SlashCommandScopeVariableExistsError extends Error {
-    constructor(key) {
-        super(`Variable "${key}" already exists`);
-    }
-}
-
-export class SlashCommandScopeVariableNotFoundError extends Error {
-    constructor(key) {
-        super(`Variable "${key}" not found`);
-    }
-}
-
+// Vendor-adapted from SillyTavern public/scripts/slash-commands/SlashCommandScope.js:4-115
 export class SlashCommandScope {
-    parent;
+    variableNames = [];
+    get allVariableNames() {
+        const names = [...this.variableNames, ...(this.parent?.allVariableNames ?? [])];
+        return names.filter((it, idx) => idx == names.indexOf(it));
+    }
     variables = {};
     macros = {};
+    get macroList() {
+        return [...Object.keys(this.macros).map(key => ({ key, value: this.macros[key] })), ...(this.parent?.macroList ?? [])];
+    }
+    parent;
+    #pipe;
+    get pipe() {
+        return this.#pipe ?? this.parent?.pipe;
+    }
+    set pipe(value) {
+        this.#pipe = value;
+    }
 
-    constructor(parent = null) {
+    constructor(parent) {
         this.parent = parent;
     }
 
-    existsVariableInScope(key) {
-        return Object.hasOwn(this.variables, key);
+    getCopy() {
+        const scope = new SlashCommandScope(this.parent);
+        scope.variableNames = [...this.variableNames];
+        scope.variables = Object.assign({}, this.variables);
+        scope.macros = Object.assign({}, this.macros);
+        scope.#pipe = this.#pipe;
+        return scope;
     }
 
-    existsVariable(key) {
-        return this.existsVariableInScope(key) || (this.parent?.existsVariable(key) ?? false);
-    }
-
-    letVariable(key, value = '', type = null) {
-        if (this.existsVariableInScope(key)) {
-            throw new SlashCommandScopeVariableExistsError(key);
-        } else {
-            this.variables[key] = convertValueType(value, type);
-            return this.variables[key];
+    setMacro(key, value, overwrite = true) {
+        if (overwrite || !this.macroList.find(it => it.key == key)) {
+            this.macros[key] = value;
         }
     }
 
+    existsVariableInScope(key) {
+        return Object.keys(this.variables).includes(key);
+    }
+    existsVariable(key) {
+        return Object.keys(this.variables).includes(key) || this.parent?.existsVariable(key);
+    }
+    letVariable(key, value = undefined) {
+        if (this.existsVariableInScope(key)) throw new SlashCommandScopeVariableExistsError(`Variable named "${key}" already exists.`);
+        this.variables[key] = value;
+    }
     setVariable(key, value, index = null, type = null) {
         if (this.existsVariableInScope(key)) {
             if (index !== null && index !== undefined) {
@@ -73,63 +85,53 @@ export class SlashCommandScope {
                     v = JSON.parse(v);
                     const numIndex = Number(index);
                     if (Number.isNaN(numIndex)) {
-                        if (v[index] === undefined) {
-                            v[index] = '';
-                        }
                         v[index] = convertValueType(value, type);
                     } else {
-                        if (v[numIndex] === undefined) {
-                            v[numIndex] = '';
-                        }
                         v[numIndex] = convertValueType(value, type);
                     }
-                    this.variables[key] = JSON.stringify(v);
-                    return v[index];
+                    v = JSON.stringify(v);
                 } catch {
-                    this.variables[key] = convertValueType(value, type);
-                    return this.variables[key];
+                    v[index] = convertValueType(value, type);
                 }
+                this.variables[key] = v;
             } else {
-                this.variables[key] = convertValueType(value, type);
-                return this.variables[key];
+                this.variables[key] = value;
             }
-        } else if (this.parent?.existsVariable(key)) {
-            return this.parent.setVariable(key, value, index, type);
-        } else {
-            throw new SlashCommandScopeVariableNotFoundError(key);
+            return value;
         }
+        if (this.parent) {
+            return this.parent.setVariable(key, value, index, type);
+        }
+        throw new SlashCommandScopeVariableNotFoundError(`No such variable: "${key}"`);
     }
-
     getVariable(key, index = null) {
         if (this.existsVariableInScope(key)) {
             if (index !== null && index !== undefined) {
                 let v = this.variables[key];
-                try {
-                    v = JSON.parse(v);
-                    const numIndex = Number(index);
-                    if (Number.isNaN(numIndex)) {
-                        v = v[index];
-                    } else {
-                        v = v[numIndex];
-                    }
-                    if (typeof v == 'object') {
-                        return JSON.stringify(v);
-                    }
-                    return v;
-                } catch {
-                    return v;
+                try { v = JSON.parse(v); } catch { /* empty */ }
+                const numIndex = Number(index);
+                if (Number.isNaN(numIndex)) {
+                    v = v[index];
+                } else {
+                    v = v[numIndex];
                 }
+                if (typeof v == 'object') return JSON.stringify(v);
+                return v ?? '';
             } else {
                 const value = this.variables[key];
-                return (value || value === 0) ? value.toString() : '';
+                return (value?.trim?.() === '' || isNaN(Number(value))) ? (value || '') : Number(value);
             }
-        } else if (this.parent?.existsVariable(key)) {
-            return this.parent.getVariable(key, index);
-        } else {
-            throw new SlashCommandScopeVariableNotFoundError(key);
         }
+        if (this.parent) {
+            return this.parent.getVariable(key, index);
+        }
+        throw new SlashCommandScopeVariableNotFoundError(`No such variable: "${key}"`);
     }
 }
+
+export class SlashCommandScopeVariableExistsError extends Error {}
+
+export class SlashCommandScopeVariableNotFoundError extends Error {}
 
 export const ARGUMENT_TYPE = {
     STRING: 'string',
@@ -309,29 +311,34 @@ function registerBuiltinCommands() {
         aliases: ['delglobalvar'],
         callback: (args, value) => String(deleteGlobalVariable(args.key ?? args.name ?? value) ?? ''),
     });
+    // Vendor-adapted from SillyTavern public/scripts/variables.js:822-876 (letCallback / varCallback)
     registerCommand({
         name: 'let',
         splitUnnamedArguments: true,
         callback: (args, value) => {
             if (!Array.isArray(value)) value = [value];
-            let key;
             if (args.key !== undefined) {
-                key = args.key;
-                if (!args._hasUnnamedArgument) {
-                    value = [];
+                const key = args.key;
+                if (typeof key != 'string') throw new Error('Key must be a string');
+                if (args._hasUnnamedArgument) {
+                    const val = typeof value[0] == 'string' ? value.join(' ') : value[0];
+                    args._scope.letVariable(key, val);
+                    return val;
+                } else {
+                    args._scope.letVariable(key);
+                    return '';
                 }
+            }
+            const key = value.shift();
+            if (typeof key != 'string') throw new Error('Key must be a string');
+            if (value.length > 0) {
+                const val = typeof value[0] == 'string' ? value.join(' ') : value[0];
+                args._scope.letVariable(key, val);
+                return val;
             } else {
-                key = value.shift();
+                args._scope.letVariable(key);
+                return '';
             }
-            const val = value.join(' ');
-            if (!key) {
-                throw new Error('Must provide a variable name via named or unnamed argument.');
-            }
-            const v = args._scope.letVariable(key, val, args.type);
-            if (typeof v == 'object') {
-                return JSON.stringify(v);
-            }
-            return v ?? '';
         },
     });
     registerCommand({
@@ -339,31 +346,26 @@ function registerBuiltinCommands() {
         splitUnnamedArguments: true,
         callback: (args, value) => {
             if (!Array.isArray(value)) value = [value];
-            let v;
             if (args.key !== undefined) {
                 const key = args.key;
+                if (typeof key != 'string') throw new Error('Key must be a string');
                 if (args._hasUnnamedArgument) {
-                    v = value.join(' ');
-                    v = args._scope.setVariable(key, v, args.index, args.type ?? args.as);
+                    const val = typeof value[0] == 'string' ? value.join(' ') : value[0];
+                    args._scope.setVariable(key, val, args.index, args.as);
+                    return val;
                 } else {
-                    v = args._scope.getVariable(key, args.index);
+                    return args._scope.getVariable(key, args.index);
                 }
-            } else if (!args._hasUnnamedArgument) {
-                throw new Error('Must provide a variable name via named or unnamed argument.');
-            } else if (value.length > 1) {
-                const key = value.shift();
-                v = value.join(' ');
-                v = args._scope.setVariable(key, v, args.index, args.type ?? args.as);
-            } else if (value.length == 1) {
-                const key = value[0];
-                v = args._scope.getVariable(key, args.index);
+            }
+            const key = value.shift();
+            if (typeof key != 'string') throw new Error('Key must be a string');
+            if (value.length > 0) {
+                const val = typeof value[0] == 'string' ? value.join(' ') : value[0];
+                args._scope.setVariable(key, val, args.index, args.as);
+                return val;
             } else {
-                throw new Error('Must provide a variable name via named or unnamed argument.');
+                return args._scope.getVariable(key, args.index);
             }
-            if (typeof v == 'object') {
-                return JSON.stringify(v);
-            }
-            return v ?? '';
         },
     });
     registerCommand({
