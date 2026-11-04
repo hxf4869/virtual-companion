@@ -42,6 +42,24 @@ integrationDirectDependencies:
   - name: zustand
     licenseFamily: MIT
     scope: runtime
+  - name: emoji-mart
+    licenseFamily: MIT
+    scope: runtime
+  - name: "@emoji-mart/data"
+    licenseFamily: MIT
+    scope: runtime
+  - name: "wavesurfer.js"
+    licenseFamily: BSD-3-Clause
+    scope: runtime
+  - name: yet-another-react-lightbox
+    licenseFamily: MIT
+    scope: runtime
+  - name: react-hook-form
+    licenseFamily: MIT
+    scope: runtime
+  - name: zod
+    licenseFamily: MIT
+    scope: runtime
   - name: vite
     licenseFamily: MIT
     scope: dev

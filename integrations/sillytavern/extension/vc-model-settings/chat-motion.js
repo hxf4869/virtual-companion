@@ -1,49 +1,27 @@
 // UX-25 桌面生成控制与动效：入场规则、正在输入防闪、候选切换标注、编辑 / 切换时的气泡高度过渡、快捷键、页面不可见时暂停动画。
 // 时长与曲线全部来自 CSS 语义变量（--vc-motion-*），这里只读取，不写样式值。
 import { prefersReducedMotion } from './ui/motion.js';
+import {
+    TYPING_DELAY_MS,
+    ARRIVE_SETTLE_MS,
+    shouldArrive,
+    typingVisible,
+    pagerPlan,
+    heightMotion,
+    keyAction,
+    actionLine,
+} from './chat-logic.js';
 
-export const TYPING_DELAY_MS = 450;
-export const ARRIVE_SETTLE_MS = 800;
-
-/** 只有会话稳定之后、末尾新到且不是流式产生的消息才入场；历史、切会话、向上加载不动。 */
-export function shouldArrive({ primed, sinceChatMs, streaming, system, isLast }) {
-    return Boolean(primed && sinceChatMs >= ARRIVE_SETTLE_MS && !streaming && !system && isLast);
-}
-
-/** 正在输入：生成开始后 450ms 内就有内容则不显示，避免一闪而过。 */
-export const typingVisible = (elapsedMs) => Number(elapsedMs) >= TYPING_DELAY_MS;
-
-/** 候选切换只出现在最后一条角色消息；末位的「›」就是重新生成。 */
-export function pagerPlan({ last, at, n }) {
-    if (!last || !(Number(n) > 1)) return null;
-    const atEnd = Number(at) >= Number(n);
-    return { prev: '上一个回复', next: atEnd ? '重新生成' : '下一个回复', atEnd };
-}
-
-/** 气泡高度过渡：减少动效时只做淡入淡出。 */
-export function heightMotion(from, to, reduced) {
-    if (reduced) return { height: false };
-    return { height: Math.abs(Number(to) - Number(from)) >= 2 };
-}
-
-/** 快捷键意图。⌘F 由会话内搜索自己监听，这里只管 ⌘K 与 ↑。 */
-export function keyAction(event, { inputEmpty = false, overlayOpen = false } = {}) {
-    if (!event || event.isComposing) return null;
-    const mod = event.metaKey || event.ctrlKey;
-    if (mod && !event.altKey && !event.shiftKey && String(event.key).toLowerCase() === 'k') return 'quick-switch';
-    if (event.key === 'ArrowUp' && !mod && !event.altKey && !event.shiftKey && inputEmpty && !overlayOpen) return 'edit-last';
-    return null;
-}
-
-/** 整段是（…）或 *…* 的动作描写。返回是否动作行与显示文字（*…* 去掉星号）。 */
-export function actionLine(text) {
-    const t = String(text ?? '').trim();
-    const star = /^\*([^*]+)\*$/.exec(t);
-    if (star) return { action: true, text: star[1].trim() };
-    const paren = /^[（(]([^（）()]+)[）)]$/.exec(t);
-    if (paren) return { action: true, text: t };
-    return { action: false, text: String(text ?? '') };
-}
+export {
+    TYPING_DELAY_MS,
+    ARRIVE_SETTLE_MS,
+    shouldArrive,
+    typingVisible,
+    pagerPlan,
+    heightMotion,
+    keyAction,
+    actionLine,
+};
 
 function cssMs(name, fallback) {
     try {

@@ -43,6 +43,13 @@ export const app = defineConfig({
         emptyOutDir: true,
         assetsDir: 'assets',
         sourcemap: false,
+        rollupOptions: {
+            external: [
+                '/lib.js',
+                '/scripts/vc-runtime/source-identity.js',
+                '/scripts/extensions/third-party/ST-Prompt-Template/dist/desktop.js',
+            ],
+        },
     },
 });
 

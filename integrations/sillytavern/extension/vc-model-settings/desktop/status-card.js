@@ -5,103 +5,39 @@ import { requestShellDestination } from '../chat-shell.js';
 import { celebrate, patCharacter } from '../chat-react.js';
 import { reducedMotion } from './transition.js';
 import { mountStatusCardView } from './build/index.js';
+import {
+    COPY,
+    REFRESH_MS,
+    MILESTONES,
+    MILESTONE_KEY,
+    clock,
+    dayCount,
+    isMilestone,
+    nextMilestone,
+    milestoneHint,
+    firstChatDate,
+    subtitleOf,
+    barPercent,
+    pendingMilestone,
+    insertMilestone,
+} from '../status-logic.js';
 
-export const COPY = Object.freeze({
-    today: (vibe) => `今天：${vibe}`,
-    doing: '在做什么',
-    closeness: '亲近',
-    mood: '心情',
-    energy: '精力',
-    day: (n) => `认识第 ${n} 天`,
-    next: (left, day) => `再过 ${left} 天是我们认识 ${day} 天`,
-    busy: (time) => `忙到 ${time}`,
-    pat: '拍一拍',
-    memory: '查看记忆',
-    milestone: (n) => `我们认识 ${n} 天啦`,
-    milestoneSub: (date) => `${date} 第一次聊天`,
-});
-export const REFRESH_MS = 10 * 60 * 1000;
-export const MILESTONES = Object.freeze([7, 30, 100, 365]);
-export const MILESTONE_KEY = 'vc_milestones';
-
-// ---- 纯逻辑（单测直接覆盖） ----
-
-const pad = (n) => String(n).padStart(2, '0');
-export const clock = (date) => `${pad(date.getHours())}:${pad(date.getMinutes())}`;
-
-function localDay(value) {
-    const date = value instanceof Date ? value : new Date(value);
-    return Number.isNaN(date.getTime()) ? NaN : Date.UTC(date.getFullYear(), date.getMonth(), date.getDate());
-}
-
-// 认识第 N 天：createdAt 到 now 的本地自然日，含当天；无效返回 0。
-export function dayCount(createdAt, now = new Date()) {
-    const from = localDay(createdAt);
-    const to = localDay(now);
-    if (Number.isNaN(from) || Number.isNaN(to) || to < from) return 0;
-    return Math.round((to - from) / 86400000) + 1;
-}
-
-export function isMilestone(day) {
-    return Number.isInteger(day) && day > 0 && (MILESTONES.includes(day) || (day > 365 && day % 365 === 0));
-}
-
-// 下一个里程碑：7 / 30 / 100 / 365，之后每满一年。day 为 0 时返回 7。
-export function nextMilestone(day) {
-    const n = Math.max(0, Math.floor(Number(day) || 0));
-    return MILESTONES.find((item) => item > n) ?? (Math.floor(n / 365) + 1) * 365;
-}
-
-export function milestoneHint(day) {
-    const target = nextMilestone(day);
-    return { left: target - day, day: target };
-}
-
-export function firstChatDate(createdAt) {
-    const date = new Date(createdAt);
-    return Number.isNaN(date.getTime()) ? '' : `${date.getMonth() + 1}月${date.getDate()}日`;
-}
-
-// 副标题：忙到（未来）优先，否则「心情 · 在做什么」。
-export function subtitleOf(state, now = new Date()) {
-    if (!state) return '';
-    const until = state.busyUntil ? new Date(state.busyUntil) : null;
-    if (until && !Number.isNaN(until.getTime()) && until.getTime() > now.getTime()) return COPY.busy(clock(until));
-    return [state.mood?.vibe, state.activity].map((part) => String(part ?? '').trim()).filter(Boolean).join(' · ');
-}
-
-export const barPercent = (value) => Math.max(0, Math.min(100, Math.round(Number(value) || 0)));
-
-// 今天正好达成且本会话还没记录过的里程碑，返回天数，否则 0。
-export function pendingMilestone({ createdAt, now = new Date(), metadata } = {}) {
-    const day = dayCount(createdAt, now);
-    if (!isMilestone(day)) return 0;
-    const done = Array.isArray(metadata?.[MILESTONE_KEY]) ? metadata[MILESTONE_KEY] : [];
-    return done.includes(day) ? 0 : day;
-}
-
-// 插入里程碑系统消息（参照拍一拍）。依赖注入便于单测；返回插入的天数或 0。
-export async function insertMilestone({ ctx, createdAt, relationshipId, now = new Date() } = {}) {
-    if (!ctx || !Array.isArray(ctx.chat)) return 0;
-    if (String(ctx.chatMetadata?.vc_binding?.relationshipId ?? '') !== String(relationshipId ?? '')) return 0;
-    const day = pendingMilestone({ createdAt, now, metadata: ctx.chatMetadata });
-    if (!day) return 0;
-    const done = Array.isArray(ctx.chatMetadata[MILESTONE_KEY]) ? ctx.chatMetadata[MILESTONE_KEY] : [];
-    ctx.chatMetadata[MILESTONE_KEY] = [...done, day];
-    const row = {
-        name: '',
-        is_user: false,
-        is_system: true,
-        send_date: now.toISOString(),
-        mes: COPY.milestone(day),
-        extra: { type: 'narrator', vc_kind: 'milestone', vc_sub: COPY.milestoneSub(firstChatDate(createdAt)) },
-    };
-    ctx.chat.push(row);
-    ctx.addOneMessage?.(row);
-    await ctx.saveChat?.();
-    await ctx.saveMetadata?.();
-    return day;
-}
+export {
+    COPY,
+    REFRESH_MS,
+    MILESTONES,
+    MILESTONE_KEY,
+    clock,
+    dayCount,
+    isMilestone,
+    nextMilestone,
+    milestoneHint,
+    firstChatDate,
+    subtitleOf,
+    barPercent,
+    pendingMilestone,
+    insertMilestone,
+};
 
 // ---- 挂载 ----
 

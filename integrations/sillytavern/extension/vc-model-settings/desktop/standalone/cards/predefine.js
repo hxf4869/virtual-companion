@@ -8,15 +8,20 @@ if (iframeId) {
     window.name = iframeId;
   }
 }
-let result = _(window);
-result = result.merge(_.pick(window.parent, ['EjsTemplate', 'TavernHelper', 'YAML', 'showdown', 'toastr', 'z']));
-result = result.merge(_.omit(_.get(window.parent, 'TavernHelper'), '_bind'));
-result = result.merge(
-  ...Object.entries(_.get(window.parent, 'TavernHelper')._bind).map(([key, value]) => ({
-    [key.replace('_', '')]: value.bind(window),
-  })),
+const parentHelper = _.get(window.parent, 'TavernHelper');
+const boundMethods = Object.fromEntries(
+  Object.entries(parentHelper._bind).map(([key, value]) => [key.replace(/^_/, ''), value.bind(window)]),
 );
+let result = _(window);
+result = result.merge(_.pick(window.parent, ['EjsTemplate', 'YAML', 'showdown', 'toastr', 'z']));
+result = result.merge(_.omit(parentHelper, '_bind'));
+result = result.merge(boundMethods);
 result.value();
+window.TavernHelper = {
+  ..._.omit(parentHelper, '_bind'),
+  ...boundMethods,
+  _bind: parentHelper._bind,
+};
 
 // pinia 4.0.0+ 必须设置这个, 考虑到影响了非常多脚本/前端, 直接在这里统一设置
 _.set(window, '__VUE_PROD_DEVTOOLS__', true);  // 不使用 vue devtools 时不会有性能开销, 默认启用即可

@@ -56,6 +56,7 @@ const EXACT_WHITELIST = new Set([
     'theme-logic.js',
     'status-logic.js',
     'projection-logic.js',
+    'memory-injection-logic.js',
     // Plan §2 desktop/standalone/** 允许集合
     'desktop/standalone/client.js',
     'desktop/standalone/business.js',
@@ -81,6 +82,9 @@ const RESOLVE_EXTENSIONS = ['.ts', '.tsx', '.js', '.mjs', '.css'];
 
 function resolveLocalSpecifier(fromFile, specifier) {
     if (!specifier) return null;
+    if (specifier === '/scripts/vc-runtime/source-identity.js') {
+        return resolveFileCandidate(path.join(ST_ROOT, 'server-plugin', 'virtual-companion', 'lib', 'source-identity.js'));
+    }
     if (specifier.startsWith('/scripts/vc-runtime/')) {
         const subPath = specifier.slice('/scripts/vc-runtime/'.length);
         return resolveFileCandidate(path.join(EXTENSION_ROOT, subPath));

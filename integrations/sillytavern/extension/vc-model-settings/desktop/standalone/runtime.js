@@ -1,14 +1,55 @@
 // 与页面启动解耦的聊天准备入口；后续聊天计算/生成只在此模块接线，保存设置不会触发它。
 import { fetchModelPurposes, fetchProviders } from '../../api.js';
-import { resolveForegroundProjection, buildScope, characterKeyOf, chatKeyOf } from '../../projection.js';
+import { resolveForegroundProjection, buildScope, characterKeyOf, chatKeyOf } from '../../projection-logic.js';
 import { createChatEngine, runtimeSettings, projectModelSettings, settingsForSave } from './engine/runtime.js';
 import { createDesktopSession } from './session.js';
 import { readGenerationResponse } from './engine/response.js';
 import { prepareSourceIdentities } from '/scripts/vc-runtime/source-identity.js';
-import { installDesktopMedia } from './media.js';
+import { voicePlayer, installChatVoice, requestChatVoice } from '../../voice-logic.js';
+import { planSticker, readSettings, listStickerPicks, stripStickerTags } from '../../stickers-logic.js';
+import { injectNudges } from '../../chat-logic.js';
 import { initializeCards } from './cards/index.js';
 
-export async function prepareChatRuntime({ client, context, choosePersona, readInput, onChange, onTakeDraft, onRestoreDraft, onConflict, paint = () => {} }) {
+function installRuntimeMediaBindings({ context, paint = () => {} }) {
+    const getContext = () => ({ ...context });
+    const voice = installChatVoice({ getContext, saveChat: () => context.saveChatConditional(), ready: Promise.resolve() });
+    const changed = () => { voicePlayer.stop(); paint(); };
+    const refreshed = () => paint();
+    const generated = async () => {
+        context.setExtensionPrompt?.('vc_react_nudge', '', 1, 0);
+        const message = context.chat.at(-1);
+        if (message && !message.is_user && !message.is_system && !message.extra?.no_memory) await requestChatVoice(context.chat.length - 1);
+        paint();
+    };
+    const before = () => injectNudges(getContext());
+    const settle = index => {
+        if (context.chatMetadata.vc_binding?.mode !== 'COMPANION') return;
+        const message = context.chat[index];
+        if (!message || message.is_user || message.is_system) return;
+        const settings = readSettings(), user = context.chat.slice(0, index).findLast(row => row.is_user);
+        const result = planSticker({ segments: [message.mes], metadata: context.chatMetadata, userText: user?.mes || '',
+            turnId: String(index), live: true, enabled: settings.enabled, frequency: settings.frequency, assets: listStickerPicks() });
+        if (/<sticker\b/i.test(message.mes)) {
+            message.mes = stripStickerTags(message.mes); message.extra ||= {};
+            message.extra.vc_sticker = result.sticker; message.extra.vc_sticker_settled = true;
+        }
+    };
+    const bindings = [[context.eventTypes.CHAT_CHANGED, changed], [context.eventTypes.MESSAGE_SWIPED, changed], [context.eventTypes.MESSAGE_EDITED, changed],
+        [context.eventTypes.CHARACTER_MESSAGE_RENDERED, settle], [context.eventTypes.GENERATION_ENDED, generated],
+        [context.eventTypes.GENERATION_STARTED, before]];
+    for (const [type, handler] of bindings) context.eventSource.on(type, handler);
+    if (typeof document !== 'undefined') document.addEventListener('vc-chat-retry', refreshed);
+    return {
+        destroy() {
+            voicePlayer.stop();
+            voice.destroy();
+            if (typeof document !== 'undefined') document.removeEventListener('vc-chat-retry', refreshed);
+            for (const [type, handler] of bindings) context.eventSource.removeListener(type, handler);
+        },
+    };
+}
+
+export async function prepareChatRuntime({ client, context, choosePersona, callGenericPopup, readInput, onChange, onTakeDraft, onRestoreDraft, onConflict, onToast, paint = () => {} }) {
     const [purposes, providers, packet] = await Promise.all([fetchModelPurposes(), fetchProviders(), client.settings()]);
     const decision = resolveForegroundProjection(purposes, providers);
     const settings = runtimeSettings(JSON.parse(packet.settings));
@@ -18,8 +59,8 @@ export async function prepareChatRuntime({ client, context, choosePersona, readI
     client.documents.seedPresets(packet);
     const presets = Object.fromEntries(packet.openai_setting_names.map((name, index) => [name, JSON.parse(packet.openai_settings[index])]));
     const models = providers.flatMap(provider => provider.models.map(model => ({ id: model.modelId, ...model })));
-    const engine = await createChatEngine({ client, context, settings, decision, presets, models, readInput,
-        initializeCards: args => initializeCards({ ...args, packet }) });
+    const engine = await createChatEngine({ client, context, settings, decision, presets, models, readInput, onToast,
+        initializeCards: args => initializeCards({ ...args, packet, callGenericPopup }) });
     const session = createDesktopSession({ client, context, engine, prepareSourceIdentities, readResponse: readGenerationResponse,
         choosePersona, onChange, onTakeDraft, onRestoreDraft, onConflict });
     session.setCatalogStatus(decision.eligible, decision.eligible ? '' : '请先配置聊天模型。', !decision.eligible);
@@ -44,10 +85,12 @@ export async function prepareChatRuntime({ client, context, choosePersona, readI
                 ? '登录状态或聊天已变化，请重新打开页面。' : '模型配置没有加载出来，请重试。');
         }
     }
-    const media = installDesktopMedia({ context, session, paint });
+    const media = installRuntimeMediaBindings({ context, paint });
     const restartFor = changes => changes.some(({ path }) => !path.length || path[0] === 'oai_settings' && (path.length === 1 || path[1] === 'preset_settings_openai')
         || path[0] === 'extension_settings' && (path.length === 1 || path[1] === 'tavern_helper' && (path.length === 2 || path[2] === 'script')));
-    return Object.assign(session, media, { refreshCatalog, story: engine.story, renderMessage: engine.cards.renderMessage, mountCardActions: engine.cards.mountCardActions,
+    return Object.assign(session, media, {
+        destroy() { media.destroy(); session.destroySession?.(); },
+        refreshCatalog, story: engine.story, renderMessage: engine.cards.renderMessage, mountCardActions: engine.cards.mountCardActions,
         applySettings(changes) { return session.configure(async () => {
             engine.applySettings(changes);
             client.documents.acceptSettings(changes, engine.settingsForSave());

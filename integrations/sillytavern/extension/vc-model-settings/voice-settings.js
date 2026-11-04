@@ -1,14 +1,11 @@
 import { fetchRelationships, fetchVoiceEngines, fetchVoiceSettings, previewVoice, saveVoiceSettings, storyRequest } from './api.js';
-import { invalidateVoicePolicy, waitForVoiceClip } from './voice-chat.js';
-import { voicePlayer } from './voice.js';
+import { invalidateVoicePolicy, waitForVoiceClip, voicePlayer, voiceSettingsAvailable, refreshVoiceAvailability } from './voice-logic.js';
 import { confirmDiscard } from './ui/alert.js';
 import { showToast } from './ui/toast.js';
 import { openSheet } from './ui/sheet.js';
 import { mountVoiceFormView, voiceFormValues } from './desktop/build/index.js';
 
-let available=false;
-export const voiceSettingsAvailable=()=>available;
-export async function refreshVoiceAvailability(){try{const caps=await fetchVoiceEngines();available=caps.tts.some((engine)=>engine.configured)||caps.asr.configured;}catch{available=false;}return available;}
+export { voiceSettingsAvailable, refreshVoiceAvailability };
 export function readGlobalVoiceSettings(form,settings){
     const {revision,updatedAt,...values}=settings;
     const next={...values,expectedRevision:revision,cosyVoiceInstructions:{...settings.cosyVoiceInstructions},proactiveVoiceRates:{...settings.proactiveVoiceRates},kokoroMoodSpeeds:{...settings.kokoroMoodSpeeds}};

@@ -16,16 +16,15 @@ import { createChatComputation } from './computation.js';
 import { readGenerationResponse } from './response.js';
 import { openaiDefaults, powerUserDefaults } from './defaults.js';
 import { installHistoryWindow } from '../../../prompt-history.js';
-import { createMemoryInjection } from '../../../memory-injection.js';
+import { createMemoryInjection } from '../../../memory-injection-logic.js';
 import { injectCompanionPrompt } from '../../../companion-prompt.js';
 import { planReply } from '../../../reply-planner.js';
 import { createStoryContext } from '../../../story-context.js';
 import { companionToolSpecs, companionToolsShouldRegister, attachCompanionIdentity, COMPANION_TOOL_ACTION_ERROR } from '../../../companion-tools.js';
 import { recallSTMemory, resolveSTBinding } from '../../../api.js';
-import { loadBundledManifest } from '../../../stickers.js';
-import { showToast } from '../../../ui/toast.js';
+import { loadBundledManifest } from '../../../stickers-logic.js';
 import { applyDocumentValues } from '../../../settings-documents.js';
-import { buildScope, characterKeyOf, chatKeyOf, advanceRunState, isToolContinuation, rewriteGenerateData, restoreManagedReasoningEffort, parseBindingMarker, settingsMarkerFor } from '../../../projection.js';
+import { buildScope, characterKeyOf, chatKeyOf, advanceRunState, isToolContinuation, rewriteGenerateData, restoreManagedReasoningEffort, parseBindingMarker, settingsMarkerFor } from '../../../projection-logic.js';
 
 let initialized = false, owner = Promise.resolve();
 // 只为脱离 loadSettings 的现有设置补原缺省值；数组与已保存额外键保留，不维护另一份业务模型。
@@ -82,10 +81,10 @@ export function projectModelSettings(settings, decision, scope) {
     if (decision.pinned.reasoningEffort !== undefined) oai.reasoning_effort = decision.pinned.reasoningEffort;
 }
 
-export async function createChatEngine({ client, context, settings, decision, presets, models, extensions = [], readInput = () => '', initializeCards }) {
+export async function createChatEngine({ client, context, settings, decision, presets, models, extensions = [], readInput = () => '', initializeCards, onToast = () => {} }) {
     const getContext = () => context;
     const state = { runId: 0 };
-    const toast = { error: message => showToast(String(message), { type: 'failure' }), warning: message => showToast(String(message)) };
+    const toast = { error: message => onToast(String(message), { type: 'failure' }), warning: message => onToast(String(message)) };
     const t = (strings, ...values) => String.raw({ raw: strings }, ...values);
     context.extensionPrompts ||= {};
     context.extensionSettings = settings.extension_settings;

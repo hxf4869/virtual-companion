@@ -16,9 +16,7 @@ import { klona } from './klona.js';
 import { ToolManager } from '../engine/tools.js';
 import { substituteParamsExtended, getCharacterCardFields } from '../engine/st/script.js';
 import { MacrosParser } from '../engine/st/scripts/macros.js';
-import { openSheet } from '../../../ui/sheet.js';
-import { renderReplyBubbles } from '../../../chat-view.js';
-import { confirmAlert } from '../../../ui/alert.js';
+import { renderReplyBubbles } from './reply-bubbles.js';
 
 const base = new URL('./', import.meta.url).href;
 const vendor = '/scripts/extensions/third-party/JS-Slash-Runner/lib/vendor/';
@@ -44,19 +42,41 @@ export async function initializeCards(options) {
         })(),
     ]);
     Object.assign(globalThis, { _: lodash, YAML: yaml, showdown, klona });
-    const nodes = new Map(), pending = new Set(), frameUrls = new Map();
+    const nodes = new Map(), byNode = new WeakMap(), pending = new Set(), frameUrls = new Map();
     let ejs, serial = 0, activeMetadata, renderQueue = Promise.resolve();
     const actions = document.createElement('div'); actions.className = 'vc-card-actions';
     const scriptFrames = document.createElement('div'); scriptFrames.dataset.vcCardScripts = '';
     document.body.append(scriptFrames);
-    function valid(node, index, message, ticket) {
-        return node.isConnected && nodes.get(index)?.ticket === ticket && context.chat[index] === message;
+    function signatureOf(message) {
+        return `${message?.swipe_id ?? 0}:${message?.extra?.display_text ?? ''}\u0000${message?.mes ?? ''}`;
+    }
+    function rebindMessageFrames(node, index) {
+        let number = 0;
+        for (const frame of node.querySelectorAll('iframe')) {
+            const match = /^TH-message--\d+--(\d+(?:_\d+)?)$/.exec(frame.id || frame.name || '');
+            const suffix = match ? match[1] : String(number);
+            const nextId = `TH-message--${index}--${suffix}`;
+            frame.id = nextId;
+            frame.name = nextId;
+            try {
+                if (frame.contentWindow) {
+                    frame.contentWindow.name = nextId;
+                    frame.contentWindow.__TH_IFRAME_ID = nextId;
+                }
+            } catch { /* same-origin srcdoc/blob frames allow name update */ }
+            number++;
+        }
+    }
+    function valid(entry, ticket) {
+        return Boolean(entry && entry.node.isConnected && byNode.get(entry.node) === entry && entry.ticket === ticket && context.chat[entry.index] === entry.message);
     }
     function format(index, message = context.chat[index]) {
-        const node = nodes.get(index)?.node;
+        const entry = nodes.get(index), node = entry?.node;
         if (node && message) {
+            entry.rendered = false;
+            entry.formattedSignature = signatureOf(message);
             releaseFrames(node);
-            const entry = nodes.get(index); for (const timer of entry.timers) clearTimeout(timer); entry.timers.clear();
+            for (const timer of entry.timers) clearTimeout(timer); entry.timers.clear();
             node.removeAttribute('data-vc-segs'); node.classList.remove('vc-segmented');
             const content = document.createElement('div'); content.className = 'mes_text';
             content.innerHTML = messageFormatting(message.extra?.display_text || message.mes,
@@ -68,15 +88,26 @@ export async function initializeCards(options) {
         const entry = nodes.get(index), message = context.chat[index];
         if (!entry || !message) return;
         const { node, ticket } = entry;
-        format(index, message);
-        if (evaluate) await ejs.render(String(index), 'desktop', true);
-        if (!valid(node, index, message, ticket)) return;
-        mountHtml(node, index);
+        const nextSignature = signatureOf(message);
+        const rawText = String(message.extra?.display_text || message.mes || '');
+        if (entry.message === message && entry.formattedSignature === nextSignature && node.querySelector('iframe') && !/<%/.test(rawText)) {
+            rebindMessageFrames(node, entry.index);
+            decorateCodes(node, { afterHtml: true });
+            entry.signature = nextSignature;
+            entry.rendered = true;
+            return;
+        }
+        format(entry.index, message);
+        if (evaluate) await ejs.render(String(entry.index), 'desktop', true);
+        if (!valid(entry, ticket)) return;
+        mountHtml(node, entry.index);
         decorateCodes(node,{afterHtml:true});
+        entry.signature = nextSignature;
+        entry.rendered = true;
         if (context.chatMetadata.vc_binding?.mode === 'COMPANION' && !message.is_user && !message.is_system
             && !message.extra?.vc_voice && !/<%|<script|```/.test(message.mes) && !node.querySelector('iframe, img, video, .TH-render')) {
             renderReplyBubbles(node, message.extra?.display_text || message.mes, { reducedMotion: message !== context.liveReply,
-                schedule(fn, delay) { const timer = setTimeout(() => { entry.timers.delete(timer); if (valid(node, index, message, ticket)) fn(); }, delay); entry.timers.add(timer); } });
+                schedule(fn, delay) { const timer = setTimeout(() => { entry.timers.delete(timer); if (valid(entry, ticket)) fn(); }, delay); entry.timers.add(timer); } });
         }
     }
     const track = promise => { pending.add(promise); void promise.finally(() => pending.delete(promise)).catch(() => {}); return promise; };
@@ -96,23 +127,17 @@ export async function initializeCards(options) {
         registerMacro: (...args) => MacrosParser.registerMacro(...args), unregisterMacro: name => MacrosParser.unregisterMacro(name),
         POPUP_TYPE: { TEXT: 1, CONFIRM: 2, INPUT: 3 }, POPUP_RESULT: { AFFIRMATIVE: 1, NEGATIVE: 0, CANCELLED: null },
         async callGenericPopup(content, type, initial = '') {
-            if (type === 2) return await confirmAlert({ title: '角色卡', message: String(content), action: '确认' }) ? 1 : 0;
-            return new Promise(resolve => {
-                const body = document.createElement('div');
-                const text = document.createElement('div'); text.innerHTML = content; body.append(text);
-                let input;
-                if (type === 3) { input = document.createElement('input'); input.value = initial; input.className = 'vc-input'; body.append(input); }
-                let result = null;
-                const sheet = openSheet({ title: '角色卡', body, onDone: () => resolve(result) });
-                sheet.done.addEventListener('click', () => { result = input ? input.value : 1; }, { capture: true });
-            });
+            if (typeof options.callGenericPopup !== 'function') {
+                throw new Error('callGenericPopup port is not configured');
+            }
+            return options.callGenericPopup(content, type, initial);
         } });
     Object.assign(globalThis, { SillyTavern: { getContext: () => context } });
     const runtime = await import('/scripts/extensions/third-party/ST-Prompt-Template/dist/desktop.js');
     ejs = await runtime.initializeDesktop(); setHelperSchemaLibrary(ejs.z); globalThis.z = ejs.z;
 
     function assertFrame(frame) {
-        if (!frame.isConnected || context.chatMetadata !== activeMetadata) throw new Error('VC_STALE_CARD_RUNTIME');
+        if (!frame || !frame.isConnected || context.chatMetadata !== activeMetadata) throw new Error('VC_STALE_CARD_RUNTIME');
     }
     const bind = {};
     for (const [name, fn] of Object.entries({ ...variables, ...events, ...util, ...scriptApi, ...globals })) {
@@ -232,12 +257,52 @@ export async function initializeCards(options) {
         },
         mountCardActions(node) { node.append(actions); return () => actions.remove(); },
         renderMessage(node, index, message, streaming) {
-            const ticket = ++serial; nodes.set(index, { node, ticket, timers: new Set() });
+            const signature = signatureOf(message);
+            const isStreaming = Boolean(streaming);
+            const prev = byNode.get(node);
+            if (prev && prev.message === message && prev.signature === signature && prev.streaming === isStreaming && node.querySelector('.mes_text')) {
+                if (prev.index !== index) {
+                    if (nodes.get(prev.index) === prev) nodes.delete(prev.index);
+                    prev.index = index;
+                    rebindMessageFrames(node, index);
+                }
+                nodes.set(index, prev);
+                return prev.cleanup;
+            }
+            if (prev) {
+                for (const timer of prev.timers) clearTimeout(timer);
+                prev.timers.clear();
+                if (nodes.get(prev.index) === prev) nodes.delete(prev.index);
+            }
+            const ticket = ++serial;
+            const entry = {
+                node,
+                index,
+                message,
+                ticket,
+                timers: new Set(),
+                signature,
+                formattedSignature: prev && prev.message === message ? prev.formattedSignature : '',
+                streaming: isStreaming,
+                rendered: false,
+                cleanup: () => {
+                    if (byNode.get(node) !== entry) return;
+                    byNode.delete(node);
+                    for (const timer of entry.timers) clearTimeout(timer);
+                    entry.timers.clear();
+                    if (nodes.get(entry.index) === entry) nodes.delete(entry.index);
+                    node.removeAttribute('data-vc-segs');
+                    releaseFrames(node);
+                    node.replaceChildren();
+                },
+            };
+            byNode.set(node, entry);
+            nodes.set(index, entry);
             const ready = context.chat[index] === message;
             if (!ready) { const text = document.createElement('div'); text.className = 'mes_text'; text.textContent = message.mes; node.replaceChildren(text); }
-            else if (streaming) {format(index, message);if(settings.extension_settings.tavern_helper?.render?.allow_streaming)mountHtml(node,index);}
+            else if (isStreaming) {format(index, message);if(settings.extension_settings.tavern_helper?.render?.allow_streaming)mountHtml(node,index);}
             else void schedule(index).catch(() => { node.setAttribute('data-card-error', ''); });
-            return () => { const entry = nodes.get(index); if (entry?.ticket === ticket) { for (const timer of entry.timers) clearTimeout(timer); nodes.delete(index); } node.removeAttribute('data-vc-segs'); releaseFrames(node); node.replaceChildren(); };
+            return entry.cleanup;
         },
         async settle() { await Promise.allSettled([...pending]); await Promise.all(context.cardWrites?.splice(0) || []); },
         async open({ signal } = {}) {
@@ -262,7 +327,15 @@ export async function initializeCards(options) {
             }
             drawActions();
             if (enabledScripts.some(({ script }) => script.content?.includes('/user/files/mvu-bundle-d03b7dc8.js'))) {
-                await waitUntil(() => { signal?.throwIfAborted(); return globalThis.Mvu && context.chat.some(message => message.variables?.some(value => value?.stat_data)); }, { timeout: 25000 });
+                try {
+                    await waitUntil(() => {
+                        signal?.throwIfAborted();
+                        return globalThis.Mvu && (context.chat.length === 0 || context.chat.some(message => message.variables?.some(value => value?.stat_data)));
+                    }, { timeout: 25000 });
+                } catch (error) {
+                    await closeScripts();
+                    throw error;
+                }
             }
         },
     };

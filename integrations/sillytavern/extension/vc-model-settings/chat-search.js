@@ -4,33 +4,13 @@ import { iconSpriteUrl } from './ui/icons.js';
 import { mountChatSearchView } from './desktop/build/index.js';
 import { reducedMotion } from './desktop/transition.js';
 import { jumpToMessage } from './chat-scroll.js';
+import { textMatches, spanOf } from './chat-logic.js';
+
+export { textMatches, spanOf };
 
 const STYLE_ID = 'vc-desktop-chat-search-css';
 const DEBOUNCE_MS = 250;
 const MESSAGE_EVENTS = ['MESSAGE_SENT', 'MESSAGE_RECEIVED', 'MESSAGE_EDITED', 'MESSAGE_DELETED', 'MESSAGE_SWIPED'];
-
-// 在一段文本里找全部不重叠的匹配，大小写不敏感。返回 [start, end) 偏移。
-export function textMatches(text, query) {
-    const needle = String(query ?? '').trim();
-    if (!needle) return [];
-    const lower = text.toLowerCase(), lowerNeedle = needle.toLowerCase();
-    const [hay, key] = lower.length === text.length && lowerNeedle.length === needle.length ? [lower, lowerNeedle] : [text, needle];
-    const found = [];
-    for (let at = hay.indexOf(key); at >= 0; at = hay.indexOf(key, at + key.length)) found.push([at, at + key.length]);
-    return found;
-}
-
-// 把拼接文本里的 [start, end) 还原为文本节点序号与节点内偏移。parts 是各文本节点的内容。
-export function spanOf(parts, start, end) {
-    let base = 0, from = null, to = null;
-    for (let i = 0; i < parts.length; i += 1) {
-        const next = base + parts[i].length;
-        if (from == null && start < next) from = { part: i, offset: start - base };
-        if (end <= next) { to = { part: i, offset: end - base }; break; }
-        base = next;
-    }
-    return from && to ? { from, to } : null;
-}
 
 function ensureStyle(doc) {
     if (doc.getElementById(STYLE_ID) || !doc.head) return;

@@ -27,11 +27,55 @@ import { mountQuickSwitch } from './desktop/quick-switch.js';
 import { NEUTRAL_TINT, tintOf } from './ui/tint.js';
 import { clearMessageVoice, renderMessageVoice, voicePlayer } from './voice.js';
 import { chatVoiceAvailable, readReplyAloud, requestChatVoice } from './voice-chat.js';
+import {
+    REPLY_STYLE_KEY,
+    PRESS_MS,
+    PRESS_SLOP,
+    NEAR_BOTTOM_PX,
+    GROUP_GAP_MS,
+    PILL_GAP_MS,
+    SENT_COPY,
+    isNearBottom,
+    keepsTail,
+    shouldShowNewReply,
+    pressExceeded,
+    isDirectChat,
+    parseSendDate,
+    clockText,
+    gapLabel,
+    planMessageMarks,
+    safeAvatarUrl,
+    recalledItems,
+} from './chat-logic.js';
+import {
+    clearReplyBubbles,
+    appendReplySegment,
+    renderReplyBubbles,
+} from './desktop/standalone/cards/reply-bubbles.js';
 
-export const REPLY_STYLE_KEY = 'vc-reply-style';
-export const PRESS_MS = 420;
-export const PRESS_SLOP = 8;
-export const NEAR_BOTTOM_PX = 80;
+export {
+    REPLY_STYLE_KEY,
+    PRESS_MS,
+    PRESS_SLOP,
+    NEAR_BOTTOM_PX,
+    GROUP_GAP_MS,
+    PILL_GAP_MS,
+    SENT_COPY,
+    isNearBottom,
+    keepsTail,
+    shouldShowNewReply,
+    pressExceeded,
+    isDirectChat,
+    parseSendDate,
+    clockText,
+    gapLabel,
+    planMessageMarks,
+    safeAvatarUrl,
+    recalledItems,
+    clearReplyBubbles,
+    appendReplySegment,
+    renderReplyBubbles,
+};
 const MEMORY_PROMPT = 'vc_long_term_memory';
 
 let contextGetter = null;
@@ -116,39 +160,6 @@ export function applyReplyStyle(doc, style) {
     else removeClass(body, 'vc-reply-bubble');
 }
 
-export function isNearBottom(metrics, threshold = NEAR_BOTTOM_PX) {
-    const height = Number(metrics?.scrollHeight);
-    const top = Number(metrics?.scrollTop);
-    const client = Number(metrics?.clientHeight);
-    if (![height, top, client].every(Number.isFinite)) return true;
-    return height - top - client <= threshold;
-}
-
-/** 打开后的短时贴底仍用 80px。人已经停在可滚列的最顶上时，即使总溢出还不到 80px，也不再拽回底部。 */
-export function keepsTail(metrics, { pin = false, threshold = NEAR_BOTTOM_PX } = {}) {
-    const height = Number(metrics?.scrollHeight);
-    const top = Number(metrics?.scrollTop);
-    const client = Number(metrics?.clientHeight);
-    if (![height, top, client].every(Number.isFinite)) return true;
-    const gap = height - top - client;
-    if (gap <= 1) return true;
-    if (!pin && top <= 1) return false;
-    return gap <= threshold;
-}
-
-export function shouldShowNewReply({ nearBottom, grew = false, pending = false } = {}) {
-    if (nearBottom) return false;
-    return Boolean(grew || pending);
-}
-
-export function pressExceeded(dx, dy, slop = PRESS_SLOP) {
-    return Math.hypot(Number(dx) || 0, Number(dy) || 0) > slop;
-}
-
-export function isDirectChat(ctx) {
-    return !String(ctx?.groupId ?? '').trim();
-}
-
 export function syncDirectChat(doc, ctx) {
     const body = doc?.body;
     if (!body?.classList) return;
@@ -166,104 +177,11 @@ export function markSpeakers(rows) {
     });
 }
 
-export const GROUP_GAP_MS = 5 * 60 * 1000;
-export const PILL_GAP_MS = 20 * 60 * 1000;
-export const SENT_COPY = '已发送';
-const WEEKDAYS = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
-
-/** send_date 可能是毫秒数、ISO 串或宿主旧格式；解析不了就返回 null，不猜。 */
-export function parseSendDate(value, toMoment) {
-    if (typeof value === 'number' && Number.isFinite(value)) return value;
-    if (typeof value !== 'string' || !value.trim()) return null;
-    const direct = Date.parse(value);
-    if (Number.isFinite(direct)) return direct;
-    try {
-        const ms = toMoment?.(value)?.valueOf?.();
-        return Number.isFinite(ms) ? ms : null;
-    } catch {
-        return null;
-    }
-}
-
-const pad2 = (n) => String(n).padStart(2, '0');
-
-export function clockText(ms) {
-    const date = new Date(ms);
-    return `${pad2(date.getHours())}:${pad2(date.getMinutes())}`;
-}
-
-function dayStart(ms) {
-    const date = new Date(ms);
-    return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
-}
-
-/** 日期 / 间隔胶囊：今天、昨天、7 天内周几、更早月日，跨年带年份。 */
-export function gapLabel(ms, now = Date.now()) {
-    const date = new Date(ms);
-    const days = Math.round((dayStart(now) - dayStart(ms)) / 86400000);
-    const clock = clockText(ms);
-    if (days === 0) return `今天 ${clock}`;
-    if (days === 1) return `昨天 ${clock}`;
-    if (days > 1 && days < 7) return `${WEEKDAYS[date.getDay()]} ${clock}`;
-    const year = date.getFullYear() === new Date(now).getFullYear() ? '' : `${date.getFullYear()}年`;
-    return `${year}${date.getMonth() + 1}月${date.getDate()}日 ${clock}`;
-}
-
-/**
- * 成组 / 胶囊 / 组尾时间。rows: { user, system, name, ts, rich, empty }。
- * 系统消息、富消息、空消息不入组、不带标记；返回与 rows 等长的 { gap, time, pos, tail, foot }。
- */
-export function planMessageMarks(rows, { now = Date.now() } = {}) {
-    const marks = rows.map(() => ({ gap: '', time: '', pos: '', tail: false, foot: '' }));
-    const eligible = rows.map((row) => !row?.system && !row?.rich && !row?.empty);
-    const key = (row) => (row.user ? 'user' : `c:${row.name || ''}`);
-    let lastTs = null;
-    const joins = rows.map(() => false);
-    rows.forEach((row, i) => {
-        const ts = Number.isFinite(row?.ts) ? row.ts : null;
-        if (eligible[i]) {
-            const showGap = ts !== null && (lastTs === null || dayStart(ts) !== dayStart(lastTs) || Math.abs(ts - lastTs) >= PILL_GAP_MS);
-            if (showGap) marks[i].gap = gapLabel(ts, now);
-            if (ts !== null) marks[i].time = clockText(ts);
-            const prev = rows[i - 1];
-            joins[i] = Boolean(i > 0 && eligible[i - 1] && !showGap && ts !== null && Number.isFinite(prev?.ts)
-                && key(prev) === key(row) && Math.abs(ts - prev.ts) < GROUP_GAP_MS);
-        }
-        if (ts !== null && !row?.system && !row?.empty) lastTs = ts;
-    });
-    let lastUser = -1;
-    rows.forEach((row, i) => { if (row?.user && !row?.system && !row?.empty) lastUser = i; });
-    rows.forEach((_, i) => {
-        if (!eligible[i]) return;
-        const joinedNext = Boolean(joins[i + 1]);
-        const joinedPrev = joins[i];
-        marks[i].pos = joinedPrev && joinedNext ? 'mid' : joinedPrev ? 'end' : joinedNext ? 'start' : 'solo';
-        marks[i].tail = !joinedNext;
-        if (marks[i].tail) {
-            const sent = i === lastUser && eligible[i];
-            marks[i].foot = [marks[i].time, sent ? SENT_COPY : ''].filter(Boolean).join(' · ');
-        }
-    });
-    return marks;
-}
-
 export function refreshIndexes(count, streaming) {
     const total = Number(count) || 0;
     if (total <= 0) return [];
     if (streaming) return [total - 1];
     return Array.from({ length: total }, (_, index) => index);
-}
-
-const DATA_IMAGE = /^data:image\/(png|jpeg|webp|gif)(;|,)/i;
-
-export function safeAvatarUrl(value) {
-    const raw = String(value ?? '').trim();
-    if (!raw || raw.startsWith('//')) return '';
-    if (raw.startsWith('/')) return raw;
-    if (/^https?:\/\//i.test(raw)) return raw;
-    if (DATA_IMAGE.test(raw)) return raw;
-    if (/^[a-z][a-z0-9+.-]*:/i.test(raw)) return '';
-    return `/thumbnail?type=avatar&file=${encodeURIComponent(raw)}`;
 }
 
 function nodeConnected(node, doc) {
@@ -297,12 +215,6 @@ export function commitHostDelete(mes, ctx) {
         ok: true,
         run: () => remove(id, undefined, false, true),
     };
-}
-
-export function recalledItems(items, block) {
-    const text = String(block || '');
-    if (!text.trim()) return [];
-    return (Array.isArray(items) ? items : []).filter((item) => typeof item?.summary === 'string' && item.summary.length > 0 && text.includes(item.summary));
 }
 
 /** 只改内存中的宿主开关，不派发 input，避免 saveSettingsDebounced。 */
@@ -961,128 +873,6 @@ function messageSource(mes) {
 
 function richMessage(mes) {
     return Boolean(mes.querySelector?.('.mes_text')?.querySelector?.('iframe, img, video, .TH-render'));
-}
-
-function clearReplyBubbles(mes) {
-    removeNode(mes.querySelector?.('.vc-segs'));
-    removeClass(mes, 'vc-segmented');
-    mes.removeAttribute?.('data-vc-segs');
-    mes.querySelector?.('.mes_text')?.removeAttribute?.('aria-hidden');
-}
-
-function segmentMark(segment) {
-    if (segment && typeof segment === 'object' && segment.type === 'sticker') {
-        return `sticker:${segment.tag || ''}:${segment.kind || ''}:${segment.text || segment.src || ''}`;
-    }
-    return String(segment ?? '');
-}
-
-function appendReplySegment(box, segment) {
-    if (segment && typeof segment === 'object' && segment.type === 'sticker') {
-        const node = document.createElement('div');
-        node.className = 'vc-sticker-bubble';
-        node.setAttribute('data-vc-sticker', segment.tag || '');
-        if (segment.kind === 'kaomoji') {
-            const span = document.createElement('span');
-            span.className = 'vc-sticker-kaomoji';
-            span.textContent = segment.text || '';
-            node.append(span);
-        } else {
-            const img = document.createElement('img');
-            img.alt = segment.tag || '';
-            img.src = segment.src || '';
-            node.append(img);
-        }
-        box.append(node);
-        return;
-    }
-    const text = String(segment ?? '');
-    const seg = document.createElement('p');
-    seg.className = text.startsWith('<sticker') ? 'vc-seg vc-seg-sticker' : 'vc-seg';
-    seg.textContent = text;
-    if (desktopLayout() && !text.startsWith('<sticker')) {
-        // 动作描写（整段为（…）或 *…*）：无气泡的淡色斜体小字，样式在 desktop/chat.css。
-        const line = actionLine(text);
-        if (line.action) {
-            seg.classList.add('vc-seg-action');
-            seg.textContent = line.text;
-        }
-    }
-    box.append(seg);
-}
-
-export function renderReplyBubbles(mes, text, { reducedMotion = false, schedule = setTimeout } = {}) {
-    if (!mes) return;
-    const segments = splitReply(String(text ?? ''));
-    const prose = segments.filter((item) => typeof item === 'string' && !item.startsWith('<sticker')).join('\n');
-    const foldable = [...prose].length > 360;
-    if (segments.length <= 1 && !foldable) {
-        clearReplyBubbles(mes);
-        return;
-    }
-    const key = segments.map(segmentMark).join('\u0001');
-    const existing = mes.querySelector?.('.vc-segs');
-    if (mes.getAttribute?.('data-vc-segs') === key && existing) return;
-    clearReplyBubbles(mes);
-    mes.setAttribute?.('data-vc-segs', key);
-    addClass(mes, 'vc-segmented');
-    const textEl = mes.querySelector?.('.mes_text');
-    textEl?.setAttribute?.('aria-hidden', 'true');
-    const box = document.createElement('div');
-    box.className = 'vc-segs';
-    const parent = textEl?.parentElement || textEl?.parent || mes;
-    if (textEl) insertBefore(parent, box, textEl.nextSibling || null);
-    else parent.append?.(box);
-    if (foldable) {
-        const content = document.createElement('div');
-        content.className = 'vc-segs';
-        content.id = `vc-reply-full-${++foldSequence}`;
-        const toggle = document.createElement('button');
-        toggle.type = 'button';
-        toggle.className = 'vc-btn vc-btn-text vc-reply-expand';
-        toggle.setAttribute('aria-controls', content.id);
-        let expanded = false;
-        const paintFold = () => {
-            clearChildren(content);
-            const visible = expanded ? segments : splitReply(`${[...prose].slice(0,180).join('')}…`);
-            for (const segment of visible) appendReplySegment(content, segment);
-            if (!expanded) for (const segment of segments.filter((item) => typeof item === 'object' || item.startsWith('<sticker'))) appendReplySegment(content, segment);
-            toggle.setAttribute('aria-expanded', String(expanded));
-            toggle.textContent = expanded ? '收起' : '展开全文';
-        };
-        toggle.addEventListener('click', () => { expanded = !expanded; paintFold(); });
-        box.append(content,toggle);
-        paintFold();
-        return;
-    }
-    const paint = (count, typing) => {
-        clearChildren(box);
-        for (let index = 0; index < count; index += 1) appendReplySegment(box, segments[index]);
-        if (typing) {
-            const note = document.createElement('p');
-            note.className = 'vc-typing';
-            note.setAttribute('role', 'status');
-            note.textContent = TYPING_COPY;
-            box.append(note);
-        }
-    };
-    if (reducedMotion || prefersReducedMotion()) {
-        paint(segments.length, false);
-        return;
-    }
-    let spent = 0;
-    const step = (index) => {
-        if (mes.getAttribute?.('data-vc-segs') !== key) return;
-        paint(index + 1, index + 1 < segments.length);
-        if (index + 1 >= segments.length) return;
-        const delay = typingDelay(segmentMark(segments[index + 1]), index + 1, { spentMs: spent });
-        spent += delay;
-        schedule(() => step(index + 1), delay);
-    };
-    const first = typingDelay(segments[0], 0, { spentMs: 0 });
-    paint(0, true);
-    spent = first;
-    schedule(() => step(0), first);
 }
 
 function paintReplyMessages(list) {

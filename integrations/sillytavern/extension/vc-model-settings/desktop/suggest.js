@@ -3,54 +3,35 @@
 // chip 容器放在 #form_sheld 内、#send_form 之前，不碰 #chat；请求失败静默。
 import { fetchReplySuggestions } from '../api.js';
 import { mountSuggestionsView } from './build/index.js';
+import {
+    SUGGEST_KEY,
+    META_KEY,
+    MAX_MESSAGES,
+    MAX_CHARS,
+    MAX_ITEMS,
+    suggestEnabled,
+    cleanText,
+    buildMessages,
+    normalizeItems,
+    lastCharacterIndex,
+    storedFor,
+} from '../status-logic.js';
 
-export const SUGGEST_KEY = 'vc-reply-suggestions';
-export const META_KEY = 'vc_suggestions';
-export const MAX_MESSAGES = 8;
-export const MAX_CHARS = 500;
-export const MAX_ITEMS = 3;
+export {
+    SUGGEST_KEY,
+    META_KEY,
+    MAX_MESSAGES,
+    MAX_CHARS,
+    MAX_ITEMS,
+    suggestEnabled,
+    cleanText,
+    buildMessages,
+    normalizeItems,
+    lastCharacterIndex,
+    storedFor,
+};
+
 const LABEL = '建议回复';
-
-export function suggestEnabled(storage = globalThis.localStorage) {
-    try { return !['off', '0', 'false'].includes(String(storage?.getItem(SUGGEST_KEY) ?? '').toLowerCase()); } catch { return true; }
-}
-
-// 去掉 <sticker …/>、<voice/> 等标记后的纯正文。
-export function cleanText(text) {
-    return String(text ?? '').replace(/<[^<>]*>/g, '').replace(/\s+/g, ' ').trim().slice(0, MAX_CHARS);
-}
-
-// 最近 ≤ 8 条非系统消息，旧到新。
-export function buildMessages(chat, max = MAX_MESSAGES) {
-    const out = [];
-    for (const message of Array.isArray(chat) ? chat : []) {
-        if (!message || message.is_system) continue;
-        const text = cleanText(message.mes);
-        if (text) out.push({ role: message.is_user ? 'user' : 'character', text });
-    }
-    return out.slice(-max);
-}
-
-export function normalizeItems(result) {
-    const list = Array.isArray(result) ? result : result?.suggestions;
-    if (!Array.isArray(list)) return [];
-    return list.filter((item) => typeof item === 'string').map((item) => item.trim()).filter(Boolean).slice(0, MAX_ITEMS);
-}
-
-// 末条必须是角色的非系统消息，返回其下标；否则 -1。
-export function lastCharacterIndex(chat) {
-    if (!Array.isArray(chat) || !chat.length) return -1;
-    const last = chat[chat.length - 1];
-    return last && !last.is_user && !last.is_system && cleanText(last.mes) ? chat.length - 1 : -1;
-}
-
-// 保存的建议仍对应当前最后一条角色消息时才可显示。
-export function storedFor(chat, metadata) {
-    const saved = metadata?.[META_KEY];
-    const index = lastCharacterIndex(chat);
-    if (index < 0 || !saved || saved.mesid !== index) return [];
-    return normalizeItems(saved.items);
-}
 
 export function mountSuggest({ getContext, document: doc = globalThis.document, fetchSuggestions = fetchReplySuggestions, storage } = {}) {
     if (!doc?.body || doc.body.getAttribute('data-vc-suggest') === 'on') return null;

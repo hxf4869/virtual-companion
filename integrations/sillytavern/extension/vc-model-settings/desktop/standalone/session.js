@@ -1,8 +1,8 @@
 // 桌面唯一聊天写入/生成 owner。原始JSONL始终经ST的既有F2/CAS保存。
-import { createF2Client, createSourceGuard, createNativeF2IO, characterChatPath, F2ConflictError, F2_CONFLICT_COPY, extractUnsavedUserInput } from '../../f2-client.js';
+import { createF2Client, createSourceGuard, createNativeF2IO, characterChatPath, F2ConflictError, F2_CONFLICT_COPY, extractUnsavedUserInput } from '../../f2-logic.js';
 import { createInstanceBinding } from '../../instance-binding.js';
 import { resolveSTBinding, reconcileSTSources } from '../../api.js';
-import { toggleReaction, addNudge, dropNudge, reactionNudge, runPat } from '../../chat-react.js';
+import { toggleReaction, addNudge, dropNudge, reactionNudge, runPat } from '../../chat-logic.js';
 import { createPersonaSelection } from './personas.js';
 import { BUDGET_COPY } from '../../model-logic.js';
 import { applyDocumentValues, documentEqual, documentValue } from '../../settings-documents.js';
@@ -15,6 +15,37 @@ export function createDesktopSession({ client, context, engine, prepareSourceIde
     resolveBinding = resolveSTBinding, reconcileSources = reconcileSTSources, confirmProjection = confirmStoryProjection }) {
     let current, job, epoch = 0, savingSettled = false, opening = Promise.resolve();
     let budget, catalogReady = true, catalogNotice = '', catalogNeedsSettings = false, lastOperation = Promise.resolve();
+    let metadataDirtyFlag = Boolean(context.metadataDirty);
+    let metadataRevision = metadataDirtyFlag ? 1 : 0;
+    Object.defineProperty(context, 'metadataDirty', {
+        get: () => metadataDirtyFlag,
+        set: value => {
+            const next = Boolean(value);
+            if (next) {
+                metadataDirtyFlag = true;
+                metadataRevision += 1;
+            } else {
+                metadataDirtyFlag = false;
+            }
+        },
+        configurable: true,
+        enumerable: true,
+    });
+    const messageKeys = new WeakMap();
+    let messageSeq = 0;
+    function messageKeyOf(target, message, initialIndex = 0) {
+        if (!message || typeof message !== 'object') return `${target?.key || ''}:msg:${initialIndex}`;
+        let key = messageKeys.get(message);
+        if (!key) {
+            key = `${target?.key || ''}:${String(message.send_date ?? '')}:${initialIndex}:${++messageSeq}`;
+            messageKeys.set(message, key);
+        }
+        return key;
+    }
+    function seedMessageKeys(target) {
+        if (!target || !Array.isArray(target.messages)) return [];
+        return target.messages.map((msg, idx) => messageKeyOf(target, msg, idx));
+    }
     const rejected = new Map(), patState = {};
     const helperRuns = new Map();
     const f2 = createF2Client();
@@ -37,7 +68,8 @@ export function createDesktopSession({ client, context, engine, prepareSourceIde
     const binding = createInstanceBinding({ resolveBinding, getSource: source });
     const publish = target => {
         if (!target || target !== current || target.signal?.aborted) return;
-        onChange({ key: target.key, messages: target.messages, busy: Boolean(job && job.target === target && job.kind !== 'opening'),
+        const keys = seedMessageKeys(target);
+        onChange({ key: target.key, messages: target.messages, messageKeys: keys, busy: Boolean(job && job.target === target && job.kind !== 'opening'),
             canSend: target.ready && !target.blocked && !job && catalogReady && !budget?.insufficient,
             notice: target.blocked ? target.notice : budget?.insufficient ? BUDGET_COPY : target.notice || catalogNotice,
             conflict: target.blocked, catalogBlocked: !catalogReady, settingsRequired: !target.blocked && (catalogNeedsSettings || Boolean(budget?.insufficient)),
@@ -53,6 +85,7 @@ export function createDesktopSession({ client, context, engine, prepareSourceIde
     }
     async function save(target, { settled = !job && guard.isSettled() } = {}) {
         if (target.blocked) throw new F2ConflictError();
+        const savedMetadataRevision = metadataRevision;
         const payload = { avatar_url: target.row.avatar, file_name: target.row.file,
             chat: [{ ...target.header, chat_metadata: target.metadata }, ...target.messages] };
         savingSettled = settled;
@@ -60,7 +93,10 @@ export function createDesktopSession({ client, context, engine, prepareSourceIde
             const result = await f2.save(target.path, payload, { live: true,
                 send: serialized => client.raw('/api/chats/save', serialized),
                 apply(token) { target.metadata.vc_f2 = token; } });
-            if (target === current) { context.metadataDirty = false; publish(target); }
+            if (target === current) {
+                if (metadataRevision === savedMetadataRevision) metadataDirtyFlag = false;
+                publish(target);
+            }
             return result;
         } catch (error) { throw reject(target, error, JSON.stringify(payload), job?.kind === 'mutation'); }
     }
@@ -98,6 +134,7 @@ export function createDesktopSession({ client, context, engine, prepareSourceIde
         f2.leave();
         const target = { key: JSON.stringify([row.avatar, row.file]), path: characterChatPath(row.avatar, row.file), row,
             header: records[0], metadata: records[0].chat_metadata, messages: records.slice(1), signal, ready: false, blocked: false, notice: '' };
+        seedMessageKeys(target);
         const previousFinish = target.messages.at(-1)?.extra?.finish_reason;
         if (previousFinish === 'cancelled') target.notice = '已停止';
         if (previousFinish === 'error') target.notice = '没有发送成功';
@@ -140,10 +177,10 @@ export function createDesktopSession({ client, context, engine, prepareSourceIde
             if (context.metadataDirty) await save(target, { settled: guard.isSettled() });
             await saveSettings();
             signal?.throwIfAborted(); if (ticket !== epoch) return false;
-            await engine.cards?.open({ signal });
             const firstMessage = !target.messages.length && engine.firstMessage?.();
-            if (firstMessage?.mes) { target.messages.push(firstMessage); context.metadataDirty = true; }
+            if (firstMessage?.mes) { messageKeyOf(target, firstMessage, 0); target.messages.push(firstMessage); context.metadataDirty = true; }
             await context.eventSource.emit(context.eventTypes.CHAT_CHANGED, row.file);
+            await engine.cards?.open({ signal });
             if (firstMessage?.mes) {
                 await context.eventSource.emit(context.eventTypes.CHAT_CREATED);
                 await context.eventSource.emit(context.eventTypes.MESSAGE_RECEIVED, 0, 'first_message');
@@ -152,6 +189,7 @@ export function createDesktopSession({ client, context, engine, prepareSourceIde
             await context.eventSource.emit(context.eventTypes.CHAT_LOADED, { detail: { id: index, character: card } });
             await engine.cards?.surface.refresh(target.messages.map((_, index) => index));
             if (context.metadataDirty) await save(target, { settled: guard.isSettled() });
+            await saveSettings();
             target.ready = true; publish(target); return true;
         } catch (error) {
             if (ticket === epoch && !signal?.aborted) {
@@ -160,12 +198,18 @@ export function createDesktopSession({ client, context, engine, prepareSourceIde
             throw error;
         } finally { if (job === operation) { job = null; publish(target); } }
     }
-    function send(input, { retry = false, type = 'normal', voiceInput, draftInput = input } = {}) {
+    function send(input, { retry = false, type = 'normal', voiceInput, draftInput = input, _fromAutoContinue = false } = {}) {
         const target = current;
         if(type==='normal'&&!retry&&!input.trim()&&engine.settings.power_user.continue_on_send&&target?.messages.at(-1)&&!target.messages.at(-1).is_user&&!target.messages.at(-1).is_system)type='continue';
-        if (!target?.ready || target.signal?.aborted || target.blocked || job || !catalogReady || budget?.insufficient || (type === 'normal' && !retry && !input.trim())) return Promise.resolve(false);
+        if (!target?.ready || target.signal?.aborted || target.blocked || job || !catalogReady || budget?.insufficient || (type === 'normal' && !retry && !input.trim())) {
+            if (_fromAutoContinue && target) return Promise.resolve(context.eventSource.emit(context.eventTypes.GENERATION_ENDED, target.messages.length)).then(() => { publish(target); return false; });
+            return Promise.resolve(false);
+        }
         const previous = target.messages.at(-1);
-        if (type !== 'normal' && (!previous || previous.is_user || previous.is_system)) return Promise.resolve(false);
+        if (type !== 'normal' && (!previous || previous.is_user || previous.is_system)) {
+            if (_fromAutoContinue && target) return Promise.resolve(context.eventSource.emit(context.eventTypes.GENERATION_ENDED, target.messages.length)).then(() => { publish(target); return false; });
+            return Promise.resolve(false);
+        }
         const active = { target, controller: new AbortController(), promise: null, phase: 'preparing' }; active.leaf = active;
         job = active; target.notice = ''; target.retryType = type; publish(target);
         const signal = active.controller.signal;
@@ -192,6 +236,7 @@ export function createDesktopSession({ client, context, engine, prepareSourceIde
                     if (draftInput !== null) onTakeDraft(target.key, draftInput);
                     const prepared = await engine.userMessage(input); signal.throwIfAborted();
                     const message = prepared.message; bias = prepared.bias;
+                    messageKeyOf(target, message, target.messages.length);
                     if (voiceInput) message.extra.vc_voice_input = voiceInput;
                     target.messages.push(message); target.metadata.tainted = true; publish(target);
                     await save(target, { settled: false }); savedUser = true;
@@ -234,9 +279,12 @@ export function createDesktopSession({ client, context, engine, prepareSourceIde
                     }
                     Object.assign(assistant.extra, { api: packet.body.chat_completion_source, model: packet.body.model });
                     candidate = assistant.swipe_id; assistant.gen_started = Date.now(); assistant.send_date = new Date().toISOString();
-                } else assistant = { name: context.name2, is_user: false, is_system: false, send_date: new Date().toISOString(),
-                    mes: '', swipe_id: 0, swipes: [''], swipe_info: [], gen_started: Date.now(),
-                    extra: { api: packet.body.chat_completion_source, model: packet.body.model } };
+                } else {
+                    assistant = { name: context.name2, is_user: false, is_system: false, send_date: new Date().toISOString(),
+                        mes: '', swipe_id: 0, swipes: [''], swipe_info: [], gen_started: Date.now(),
+                        extra: { api: packet.body.chat_completion_source, model: packet.body.model } };
+                    messageKeyOf(target, assistant, target.messages.length);
+                }
                 if (type !== 'swipe' && type !== 'continue') target.messages.push(assistant);
                 publish(target);
                 const update = (result, incomplete) => {
@@ -271,6 +319,15 @@ export function createDesktopSession({ client, context, engine, prepareSourceIde
                 await save(target, { settled: guard.isSettled() });
                 finalSaved = true;
                 active.autoChunk = result.text;
+                if (!signal.aborted && type !== 'swipe' && result.finishReason !== 'cancelled' && current === target) {
+                    try {
+                        active.willAutoContinue = Boolean(await engine.shouldAutoContinue?.(active.autoChunk, { signal }))
+                            && !signal.aborted && current === target;
+                    } catch {
+                        active.willAutoContinue = false;
+                    }
+                }
+                if (signal.aborted && !target.blocked) target.notice = '已停止';
                 return true;
             } catch (error) {
                 if (assistant) {
@@ -298,13 +355,21 @@ export function createDesktopSession({ client, context, engine, prepareSourceIde
                 target.pendingInput = null;
                 if (!target.blocked && (context.metadataDirty || (savedUser && !finalSaved))) { try { await save(target, { settled: guard.isSettled() }); } catch { /* 同上。 */ } }
                 try { await saveSettings(); } catch { target.notice ||= '没有完成，请重试。'; }
+                const continuing = Boolean(active.willAutoContinue && current === target && !signal.aborted && !target.blocked && catalogReady && !budget?.insufficient);
+                active.willAutoContinue = continuing;
                 if (job === active) job = null;
-                await context.eventSource.emit(context.eventTypes.GENERATION_ENDED, target.messages.length);
+                if (!continuing) await context.eventSource.emit(context.eventTypes.GENERATION_ENDED, target.messages.length);
                 publish(target);
             }
         })();
         active.promise=active.promise.then(async result=>{
-            if(result&&current===target&&!signal.aborted&&!job&&await engine.shouldAutoContinue?.(active.autoChunk)&&current===target&&!job&&!signal.aborted)return send('',{type:'continue'});
+            if (active.willAutoContinue) {
+                if (result && current === target && !signal.aborted && !job) {
+                    return send('', { type: 'continue', _fromAutoContinue: true });
+                }
+                await context.eventSource.emit(context.eventTypes.GENERATION_ENDED, target.messages.length);
+                publish(target);
+            }
             return result;
         });
         lastOperation = active.promise;
@@ -483,6 +548,18 @@ export function createDesktopSession({ client, context, engine, prepareSourceIde
             });
         },
         save: () => save(current), get busy() { return Boolean(job); },
+        messageKey: (message, index = 0) => messageKeyOf(current, message, index),
+        destroySession() {
+            epoch++;
+            if (job?.controller && !job.controller.signal.aborted) job.controller.abort();
+            for (const controller of helperRuns.values()) controller.abort();
+            helperRuns.clear();
+            f2.leave();
+            current = null;
+            job = null;
+            const sym = Symbol.for('virtual-companion.f2-source');
+            if (globalThis[sym] === guard) delete globalThis[sym];
+        },
         retry: () => send('', { retry: true, type: current?.retryType || 'normal' }), async copyRejected() {
             const target = current, entry = rejected.get(target?.path);
             if (!entry) return '';

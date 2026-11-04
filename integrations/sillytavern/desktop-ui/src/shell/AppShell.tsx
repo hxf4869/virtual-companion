@@ -58,6 +58,7 @@ export interface AppShellProps {
   chatHeaderSlot?: React.ReactNode;
   characterPanel?: React.ReactNode;
   composer?: React.ReactNode;
+  persistentChatSlot?: React.ReactNode;
   onSelectDestination?: (nav: ShellDestination) => void;
   onOpenSettings?: () => void;
   onSelectConversation?: (item: ShellConversationItem) => void;
@@ -78,6 +79,7 @@ export function AppShell({
   chatHeaderSlot,
   characterPanel,
   composer,
+  persistentChatSlot,
   onSelectDestination,
   onOpenSettings,
   onSelectConversation,
@@ -326,9 +328,9 @@ export function AppShell({
             data-shell-main=""
             hidden={mainHidden}
           >
-            {isChatMode ? (
+            {persistentChatSlot !== undefined || isChatMode ? (
               <>
-                <header className="vc-chat-header" data-chat-header="">
+                <header className="vc-chat-header" data-chat-header="" hidden={!isChatMode}>
                   {chatHeaderSlot ?? (
                     <>
                       <div className="vc-chat-header__lead">
@@ -362,9 +364,9 @@ export function AppShell({
                   )}
                 </header>
 
-                <div className="vc-chat-body" data-chat-body="">
+                <div className="vc-chat-body" data-chat-body="" hidden={!isChatMode}>
                   <div className="vc-chat-content" data-chat-content="">
-                    {children}
+                    {persistentChatSlot ?? children}
                   </div>
                   {isCompactOrNarrow ? (
                     <aside
@@ -379,10 +381,12 @@ export function AppShell({
                 </div>
 
                 {composer !== undefined ? (
-                  <div className="vc-chat-composer" data-chat-composer="">
+                  <div className="vc-chat-composer" data-chat-composer="" hidden={!isChatMode}>
                     {composer}
                   </div>
                 ) : null}
+
+                {!isChatMode ? children : null}
               </>
             ) : (
               children

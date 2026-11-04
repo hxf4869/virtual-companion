@@ -1,206 +1,73 @@
 // UX-26 表情与回应（桌面）：纯 emoji 放大、表情 / 贴纸面板、消息回应、拍一拍、关键词轻特效。
 // 规格 docs/planning/2026-11-02-ux24-desktop-experience.md §1 UX-26；文案 companion-copy §20。
 // 只在 html[data-vc-layout="desktop"] 生效；不往 #chat 插节点，不往 .mes_text 子树插节点。
-import { quoteSummary } from './chat-compose.js';
 import { mountEmojiPanelView, mountReactionToolbarView } from './desktop/build/index.js';
 import { reducedMotion } from './desktop/transition.js';
 import { listStickerPicks } from './stickers.js';
 import { mountSuggest } from './desktop/suggest.js';
+import {
+    REACT_COPY as COPY,
+    REACTIONS,
+    MAX_REACTIONS,
+    RECENT_KEY,
+    RECENT_MAX,
+    EFFECTS_KEY,
+    NUDGE_KEY,
+    NUDGE_PROMPT,
+    PAT_WINDOW_MS,
+    EFFECT_MS,
+    emojiCount,
+    toggleReaction,
+    reactionNudge,
+    patNudge,
+    addNudge,
+    dropNudge,
+    takeNudges,
+    injectNudges,
+    planPat,
+    runPat,
+    keywordEffect,
+    effectsEnabled,
+    pushRecent,
+    readRecent,
+    writeRecent,
+    EMOJI,
+    searchEmoji,
+    searchStickers,
+    stickerMarkup,
+} from './chat-logic.js';
 
-export const COPY = Object.freeze({
-    searchPlaceholder: '搜索表情',
-    emojiTab: '表情',
-    stickerTab: '贴纸',
-    recent: '最近',
-    empty: '没有找到',
-    more: '更多',
-    patLine: (name) => `你拍了拍${name}`,
-});
-export const REACTIONS = Object.freeze([
-    { emoji: '❤️', label: '喜欢' },
-    { emoji: '👍', label: '赞' },
-    { emoji: '😂', label: '哈哈' },
-    { emoji: '😮', label: '惊讶' },
-    { emoji: '😢', label: '难过' },
-    { emoji: '🤗', label: '抱抱' },
-]);
-export const MAX_REACTIONS = 3;
-export const RECENT_KEY = 'vc-emoji-recent';
-export const RECENT_MAX = 16;
-export const EFFECTS_KEY = 'vc-keyword-effects';
-export const NUDGE_KEY = 'vc_pending_nudges';
-export const NUDGE_PROMPT = 'vc_react_nudge';
-export const PAT_WINDOW_MS = 10000;
-export const EFFECT_MS = 1100;
-
-// ---- 纯逻辑（单测直接覆盖） ----
-
-const SINGLE = /^(?:\p{Extended_Pictographic}[\p{Emoji_Modifier}️‍\p{Extended_Pictographic}\u{E0020}-\u{E007F}]*|\p{Regional_Indicator}{2}|[0-9#*]️?⃣)$/u;
-const SEGMENTER = typeof Intl !== 'undefined' && typeof Intl.Segmenter === 'function' ? new Intl.Segmenter('zh', { granularity: 'grapheme' }) : null;
-
-function graphemes(body) {
-    if (SEGMENTER) return [...SEGMENTER.segment(body)].map((item) => item.segment);
-    return body.match(/\p{Extended_Pictographic}[\p{Emoji_Modifier}️‍\p{Extended_Pictographic}]*|\p{Regional_Indicator}{2}|[0-9#*]️?⃣|[\s\S]/gu) || [];
-}
-
-// 只有 1–3 个 emoji（空白除外）返回个数，夹杂文字或超过 3 个返回 0。
-export function emojiCount(text) {
-    const body = String(text ?? '').replace(/\s+/g, '');
-    if (!body) return 0;
-    const parts = graphemes(body);
-    if (parts.length < 1 || parts.length > 3) return 0;
-    for (const part of parts) {
-        if (!SINGLE.test(part)) return 0;
-        // ©、®、™ 这类单码点符号默认是文字样式，不当作表情。
-        if (/^\p{Extended_Pictographic}$/u.test(part) && part.codePointAt(0) < 0x2190) return 0;
-    }
-    return parts.length;
-}
-
-export function toggleReaction(list, emoji, max = MAX_REACTIONS) {
-    const current = Array.isArray(list) ? list.filter((item) => typeof item === 'string' && item) : [];
-    if (current.includes(emoji)) return current.filter((item) => item !== emoji);
-    return [...current, emoji].slice(-max);
-}
-
-export function reactionNudge({ user = '', text = '', emoji = '' } = {}) {
-    return `（${user}对「${quoteSummary(text)}」回应了${emoji}）`;
-}
-
-export function patNudge({ user = '', name = '' } = {}) {
-    return `（${user}拍了拍${name}）`;
-}
-
-export function addNudge(metadata, { id, text }) {
-    if (!metadata || !id || !text) return;
-    const rest = (Array.isArray(metadata[NUDGE_KEY]) ? metadata[NUDGE_KEY] : []).filter((item) => item?.id !== id);
-    metadata[NUDGE_KEY] = [...rest, { id, text }];
-}
-
-export function dropNudge(metadata, id) {
-    if (!Array.isArray(metadata?.[NUDGE_KEY])) return;
-    const rest = metadata[NUDGE_KEY].filter((item) => item?.id !== id);
-    if (rest.length) metadata[NUDGE_KEY] = rest;
-    else delete metadata[NUDGE_KEY];
-}
-
-// 取走全部待注入记录：返回合并后的提示词（没有则空串），并清空记录，保证只注入一次。
-export function takeNudges(metadata) {
-    const list = Array.isArray(metadata?.[NUDGE_KEY]) ? metadata[NUDGE_KEY] : [];
-    if (metadata && NUDGE_KEY in metadata) delete metadata[NUDGE_KEY];
-    return list.map((item) => item?.text).filter(Boolean).join('\n');
-}
-
-export async function injectNudges(ctx) {
-    if (!ctx?.setExtensionPrompt) return;
-    const text = takeNudges(ctx.chatMetadata);
-    if (!text) return;
-    ctx.setExtensionPrompt(NUDGE_PROMPT, text, 1, 0, false, 0);
-    await ctx.saveMetadata?.();
-}
-
-export function planPat({ now, last } = {}) {
-    return { generate: !(Number.isFinite(last) && now - last < PAT_WINDOW_MS) };
-}
-
-const KEYWORDS = [
-    ['生日快乐', 'confetti'],
-    ['新年快乐', 'confetti'],
-    ['圣诞快乐', 'confetti'],
-    ['晚安', 'stars'],
-];
-
-export function keywordEffect(text) {
-    const body = String(text ?? '');
-    return KEYWORDS.find(([word]) => body.includes(word))?.[1] || null;
-}
-
-export function effectsEnabled(storage = globalThis.localStorage) {
-    try { return !['off', '0', 'false'].includes(String(storage?.getItem(EFFECTS_KEY) ?? '').toLowerCase()); } catch { return true; }
-}
-
-export function pushRecent(list, entry, max = RECENT_MAX) {
-    const rest = (Array.isArray(list) ? list : []).filter((item) => !(item?.k === entry.k && item?.v === entry.v));
-    return [entry, ...rest].slice(0, max);
-}
-
-export function readRecent(storage = globalThis.localStorage) {
-    try {
-        const list = JSON.parse(storage?.getItem(RECENT_KEY) || '[]');
-        return Array.isArray(list) ? list.filter((item) => (item?.k === 'e' || item?.k === 's') && typeof item.v === 'string').slice(0, RECENT_MAX) : [];
-    } catch { return []; }
-}
-
-export function writeRecent(list, storage = globalThis.localStorage) {
-    try { storage?.setItem(RECENT_KEY, JSON.stringify(list)); } catch { /* 隐私模式下最近使用只是不保存 */ }
-}
-
-// 名称里的空格分隔同义词；搜索按子串匹配名称或 emoji 本身。
-export const EMOJI = Object.freeze([
-    ['😀', '开心 笑'], ['😃', '大笑 开心'], ['😄', '笑 高兴'], ['😁', '露齿笑'], ['😆', '哈哈 大笑'], ['😅', '尴尬 汗'], ['😂', '笑哭 哈哈'], ['🤣', '笑翻'],
-    ['🙂', '微笑'], ['😉', '眨眼'], ['😊', '害羞 微笑'], ['😇', '天使'], ['🥰', '喜欢 爱'], ['😍', '花痴 喜欢'], ['🤩', '星星眼 惊喜'], ['😘', '飞吻 亲亲'],
-    ['😗', '亲'], ['😋', '好吃 馋'], ['😛', '吐舌'], ['😜', '调皮 眨眼'], ['🤪', '疯狂'], ['🤗', '抱抱 拥抱'], ['🤭', '捂嘴 偷笑'], ['🤫', '嘘 安静'],
-    ['🤔', '思考 想想'], ['😐', '无语 面无表情'], ['😑', '无奈'], ['😶', '沉默'], ['😏', '得意 坏笑'], ['😒', '不屑'], ['🙄', '白眼'], ['😬', '龇牙 紧张'],
-    ['😌', '安心 放松'], ['😔', '失落'], ['😪', '困'], ['🤤', '流口水'], ['😴', '睡觉 晚安'], ['😷', '口罩 生病'], ['🤒', '发烧'], ['🤧', '喷嚏'],
-    ['🥵', '热'], ['🥶', '冷'], ['😵', '晕'], ['🤯', '爆炸 震惊'], ['🥳', '庆祝 派对'], ['😎', '酷 墨镜'], ['🤓', '书呆子'], ['😕', '困惑'],
-    ['😟', '担心'], ['🙁', '不开心'], ['😮', '惊讶 哇'], ['😯', '吃惊'], ['😲', '震惊'], ['😳', '脸红 害羞'], ['🥺', '拜托 可怜'], ['😦', '惊愕'],
-    ['😨', '害怕'], ['😰', '冷汗'], ['😥', '失望'], ['😢', '难过 哭'], ['😭', '大哭 痛哭'], ['😱', '尖叫 吓'], ['😖', '纠结'], ['😞', '失望'],
-    ['😓', '汗'], ['😩', '累 崩溃'], ['😫', '疲惫'], ['🥱', '哈欠 困'], ['😤', '生气 哼'], ['😡', '愤怒'], ['😠', '生气'], ['🤬', '骂'],
-    ['😈', '坏 恶魔'], ['💀', '骷髅 笑死'], ['💩', '便便'], ['🤡', '小丑'], ['👻', '幽灵'], ['👽', '外星人'], ['🤖', '机器人'], ['😺', '猫 开心'],
-    ['❤️', '喜欢 爱心 红心'], ['🧡', '橙心'], ['💛', '黄心'], ['💚', '绿心'], ['💙', '蓝心'], ['💜', '紫心'], ['🖤', '黑心'], ['🤍', '白心'],
-    ['💔', '心碎'], ['💕', '两颗心'], ['💖', '闪亮的心'], ['💗', '心跳'], ['💘', '爱心箭'], ['💝', '礼物 爱心'], ['💯', '一百分'], ['💢', '怒'],
-    ['💥', '碰撞'], ['💫', '晕 星星'], ['💦', '汗水 水滴'], ['💤', '睡'], ['👍', '赞 点赞'], ['👎', '踩'], ['👌', '好的 OK'], ['✌️', '耶 胜利'],
-    ['🤞', '祈祷 好运'], ['🤟', '爱你'], ['🤘', '摇滚'], ['👏', '鼓掌'], ['🙌', '举手 欢呼'], ['🤝', '握手'], ['🙏', '拜托 谢谢 祈祷'], ['💪', '加油 肌肉'],
-    ['👋', '你好 挥手 再见'], ['🤙', '打电话'], ['👈', '左'], ['👉', '右'], ['👆', '上'], ['👇', '下'], ['🫶', '比心'], ['🫡', '敬礼'],
-    ['👀', '看 眼睛'], ['🧠', '大脑'], ['🔥', '火 热门'], ['✨', '闪亮 星光'], ['⭐', '星星'], ['🌟', '亮星'], ['🌙', '月亮 晚安'], ['☀️', '太阳'],
-    ['🌈', '彩虹'], ['☁️', '云'], ['🌧️', '下雨'], ['❄️', '雪'], ['🌸', '樱花 花'], ['🌹', '玫瑰'], ['🌻', '向日葵'], ['🍀', '四叶草 幸运'],
-    ['🎉', '庆祝 恭喜'], ['🎊', '彩带'], ['🎂', '生日 蛋糕'], ['🎁', '礼物'], ['🎈', '气球'], ['🎵', '音乐'], ['🎮', '游戏'], ['📷', '拍照 相机'],
-    ['🍎', '苹果'], ['🍓', '草莓'], ['🍉', '西瓜'], ['🍰', '蛋糕'], ['🍫', '巧克力'], ['🍦', '冰淇淋'], ['🍕', '披萨'], ['🍔', '汉堡'],
-    ['🍜', '面 拉面'], ['🍚', '米饭'], ['🍺', '啤酒'], ['🍷', '红酒'], ['☕', '咖啡'], ['🍵', '茶'], ['🧋', '奶茶'], ['🥤', '饮料'],
-    ['🐶', '狗'], ['🐱', '猫'], ['🐰', '兔子'], ['🐻', '熊'], ['🐼', '熊猫'], ['🐷', '猪'], ['🐸', '青蛙'], ['🐧', '企鹅'],
-    ['🏠', '家'], ['🚗', '车'], ['✈️', '飞机'], ['📱', '手机'], ['💻', '电脑'], ['📚', '书'], ['💡', '灵感 灯泡'], ['🔔', '提醒 铃'],
-    ['✅', '完成 对'], ['❌', '错 取消'], ['❓', '问号'], ['❗', '感叹号'], ['💬', '聊天 对话'], ['🎯', '目标'], ['🏆', '奖杯 冠军'], ['🌃', '夜晚 晚安'],
-]);
-
-export function searchEmoji(query, list = EMOJI) {
-    const needle = String(query ?? '').trim().toLowerCase();
-    if (!needle) return list;
-    return list.filter(([emoji, name]) => emoji.includes(needle) || name.toLowerCase().includes(needle));
-}
-
-export function searchStickers(query, picks) {
-    const needle = String(query ?? '').trim().toLowerCase();
-    return needle ? picks.filter((pick) => pick.tag.toLowerCase().includes(needle)) : picks;
-}
-
-export function stickerMarkup(tag) {
-    return `<sticker tag="${tag}"/>`;
-}
-
-// 拍一拍：注入宿主系统消息、待注入记录并触发一次生成；依赖可注入，便于单测。
-export async function runPat({ ctx, now = Date.now(), state, busy = false, shake = () => {} } = {}) {
-    const decision = planPat({ now, last: state?.last });
-    shake();
-    if (!decision.generate || !ctx || !Array.isArray(ctx.chat)) return { generated: false, posted: false };
-    state.last = now;
-    const name = ctx.name2 || '';
-    const row = {
-        name: '',
-        is_user: false,
-        is_system: true,
-        send_date: new Date(now).toISOString(),
-        mes: COPY.patLine(name),
-        extra: { type: 'narrator', vc_kind: 'pat' },
-    };
-    ctx.chat.push(row);
-    ctx.addOneMessage?.(row);
-    await ctx.saveChat?.();
-    if (busy || typeof ctx.generate !== 'function') return { generated: false, posted: true };
-    ctx.chatMetadata = ctx.chatMetadata || {};
-    addNudge(ctx.chatMetadata, { id: `pat:${now}`, text: patNudge({ user: ctx.name1 || '', name }) });
-    await ctx.generate('normal');
-    return { generated: true, posted: true };
-}
+export {
+    COPY,
+    REACTIONS,
+    MAX_REACTIONS,
+    RECENT_KEY,
+    RECENT_MAX,
+    EFFECTS_KEY,
+    NUDGE_KEY,
+    NUDGE_PROMPT,
+    PAT_WINDOW_MS,
+    EFFECT_MS,
+    emojiCount,
+    toggleReaction,
+    reactionNudge,
+    patNudge,
+    addNudge,
+    dropNudge,
+    takeNudges,
+    injectNudges,
+    planPat,
+    runPat,
+    keywordEffect,
+    effectsEnabled,
+    pushRecent,
+    readRecent,
+    writeRecent,
+    EMOJI,
+    searchEmoji,
+    searchStickers,
+    stickerMarkup,
+};
 
 // ---- 挂载 ----
 

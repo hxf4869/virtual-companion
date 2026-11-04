@@ -1,6 +1,6 @@
 // 拟人提示：全局规则在角色卡之后（IN_PROMPT），状态与篇幅档在最末（IN_CHAT depth 0）。仅陪伴模式。
-import { moodGuidance, readGlobalRules, STYLE_NOTE } from './persona.js';
-import { chatVoiceGuidance } from './voice-chat.js';
+import { moodGuidance, readGlobalRules, STYLE_NOTE } from './instance-logic.js';
+import { chatVoiceGuidance } from './voice-logic.js';
 import { userExpressionHint } from './user-expressions.js';
 
 export const COMPANION_RULES_PROMPT = 'vc_companion_rules';
@@ -32,7 +32,7 @@ async function tagsFrom(listTags) {
         return Array.isArray(tags) ? tags.map((item) => String(item || '').trim()).filter(Boolean) : [];
     }
     try {
-        const mod = await import('./stickers.js');
+        const mod = await import('./stickers-logic.js');
         if (typeof mod.listTags !== 'function') return [];
         const tags = mod.listTags();
         return Array.isArray(tags) ? tags.map((item) => String(item || '').trim()).filter(Boolean) : [];

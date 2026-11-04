@@ -12,6 +12,7 @@ import {
     mergeInput,
     setDefaultSourceConflict,
     createSourceGuard,
+    createNativeF2IO as createNativeF2IOCore,
 } from './f2-logic.js';
 
 export {
@@ -351,35 +352,7 @@ export const vcF2 = createF2Client({ onConflict: showF2Draft });
  * A background chat may be read once; an already observed chat never silently
  * borrows the latest server revision. */
 export function createNativeF2IO({ getRequestHeaders, fetchImpl = fetch, client = vcF2 }) {
-    const parse = async (response, payload) => {
-        let data;
-        try { data = await response.json(); } catch { data = null; }
-        if (!response.ok) {
-            const error = new F2ConflictError(data?.code || 'VC_WRITE_FAILED');
-            showF2Draft(JSON.stringify(payload), error); throw error;
-        }
-        return data;
-    };
-    async function baseline({ avatar, file, isGroup = false }) {
-        const path = isGroup ? groupChatPath(file) : characterChatPath(avatar, file);
-        if (client.known(path)) return client.expected(path);
-        const body = isGroup ? { id: String(file).replace(/\.jsonl$/, '') }
-            : { avatar_url: avatar, file_name: String(file).replace(/\.jsonl$/, '') };
-        const data = await parse(await fetchImpl(isGroup ? '/api/chats/group/get' : '/api/chats/get', {
-            method: 'POST', headers: getRequestHeaders(), body: JSON.stringify(body),
-        }), body);
-        const token = data?.[0]?.chat_metadata?.vc_f2;
-        if (!validToken(token)) throw new F2ConflictError('VC_REVISION_REQUIRED');
-        client.remember(path, token);
-        return structuredClone(token);
-    }
-    async function baselines(targets) {
-        return Promise.all(targets.map(async (target) => ({
-            path: target.isGroup ? groupChatPath(target.file) : characterChatPath(target.avatar, target.file),
-            expected: await baseline(target),
-        })));
-    }
-    return { baseline, baselines, parse };
+    return createNativeF2IOCore({ getRequestHeaders, fetchImpl, client, onConflict: showF2Draft });
 }
 
 setDefaultSourceConflict((serialized, error) => showF2Draft(serialized, error));

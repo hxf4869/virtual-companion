@@ -1,309 +1,501 @@
 import React, { useMemo } from 'react';
 import {
-  Outlet,
-  createHashHistory,
-  createRootRoute,
-  createRoute,
-  createRouter,
-  redirect,
-  useParams,
-  useRouterState,
-  useNavigate,
-  type RouterHistory,
+    Outlet,
+    createHashHistory,
+    createMemoryHistory,
+    createRootRoute,
+    createRoute,
+    createRouter,
+    redirect,
+    useNavigate,
+    useParams,
+    useRouterState,
+    type RouterHistory,
 } from '@tanstack/react-router';
-import { AppShell, type ShellConversationItem } from '../shell/AppShell';
+import { useConversationsQuery } from '../data/queries/chat';
+import { Icon } from '../design/components/Icon';
+import { ChatCharacterPanel } from '../features/chat/ChatCharacterPanel';
+import {
+    ChatComposerSlot,
+    ChatRoute,
+    ChatUiProvider,
+    useChatUi,
+    type ChatRouteProps,
+} from '../features/chat/ChatRoute';
+import { ChatStatusCard } from '../features/chat/ChatStatusCard';
+import { ConversationList } from '../features/chat/ConversationList';
+import { useChatSnapshot, useSessionBridge } from '../runtime/session-bridge';
+import { AppShell, useShellLayout, type ShellConversationItem } from '../shell/AppShell';
 import type { ShellDestination } from '../shell/Sidebar';
 
-export interface ChatRouteProps {
-  conversationKey?: string;
-}
+export type { ChatRouteProps };
 
 export interface CharactersRouteProps {
-  avatar?: string;
+    avatar?: string;
 }
 
 export interface StoryRouteProps {
-  runId?: string;
+    runId?: string;
 }
 
 export interface SettingsRouteProps {
-  category: string;
+    category: string;
 }
 
 export interface TavernSettingsRouteProps {
-  section: string;
+    section: string;
 }
 
 /**
  * Minimal route component slots for T5–T10 feature modules.
  */
 export interface DesktopRouteComponents {
-  chat?: React.ComponentType<ChatRouteProps>;
-  characters?: React.ComponentType<CharactersRouteProps>;
-  memory?: React.ComponentType;
-  inbox?: React.ComponentType;
-  story?: React.ComponentType<StoryRouteProps>;
-  settings?: React.ComponentType<SettingsRouteProps>;
-  tavernSettings?: React.ComponentType<TavernSettingsRouteProps>;
+    chat?: React.ComponentType<ChatRouteProps>;
+    characters?: React.ComponentType<CharactersRouteProps>;
+    memory?: React.ComponentType;
+    inbox?: React.ComponentType;
+    story?: React.ComponentType<StoryRouteProps>;
+    settings?: React.ComponentType<SettingsRouteProps>;
+    tavernSettings?: React.ComponentType<TavernSettingsRouteProps>;
 }
 
 export interface CreateDesktopRouterOptions {
-  history?: RouterHistory;
-  routeOverrides?: DesktopRouteComponents;
-  conversations?: readonly ShellConversationItem[];
-}
-
-function DefaultChatPlaceholder({ conversationKey }: ChatRouteProps) {
-  return (
-    <div className="vc-route-placeholder" data-route="chat" data-conversation-key={conversationKey ?? ''}>
-      <p>{conversationKey ? `会话：${conversationKey}` : '选择一个会话开始聊天'}</p>
-    </div>
-  );
+    history?: RouterHistory;
+    initialEntry?: string;
+    routeOverrides?: DesktopRouteComponents;
+    conversations?: readonly ShellConversationItem[];
 }
 
 function DefaultCharactersPlaceholder({ avatar }: CharactersRouteProps) {
-  return (
-    <div className="vc-route-placeholder" data-route="characters" data-avatar={avatar ?? ''}>
-      <h1 className="vc-large-title" data-vc-owned-title="">角色</h1>
-    </div>
-  );
+    return (
+        <div
+            className="vc-route-placeholder"
+            data-route="characters"
+            data-avatar={avatar ?? ''}
+        >
+            <h1 className="vc-large-title" data-vc-owned-title="">
+                角色
+            </h1>
+        </div>
+    );
 }
 
 function DefaultMemoryPlaceholder() {
-  return (
-    <div className="vc-route-placeholder" data-route="memory">
-      <h1 className="vc-large-title" data-vc-owned-title="">记忆</h1>
-    </div>
-  );
+    return (
+        <div className="vc-route-placeholder" data-route="memory">
+            <h1 className="vc-large-title" data-vc-owned-title="">
+                记忆
+            </h1>
+        </div>
+    );
 }
 
 function DefaultInboxPlaceholder() {
-  return (
-    <div className="vc-route-placeholder" data-route="inbox">
-      <h1 className="vc-large-title" data-vc-owned-title="">陪伴</h1>
-    </div>
-  );
+    return (
+        <div className="vc-route-placeholder" data-route="inbox">
+            <h1 className="vc-large-title" data-vc-owned-title="">
+                陪伴
+            </h1>
+        </div>
+    );
 }
 
 function DefaultStoryPlaceholder({ runId }: StoryRouteProps) {
-  return (
-    <div className="vc-route-placeholder" data-route="story" data-run-id={runId ?? ''}>
-      <h1 className="vc-large-title" data-vc-owned-title="">剧情</h1>
-    </div>
-  );
+    return (
+        <div className="vc-route-placeholder" data-route="story" data-run-id={runId ?? ''}>
+            <h1 className="vc-large-title" data-vc-owned-title="">
+                剧情
+            </h1>
+        </div>
+    );
 }
 
 function DefaultSettingsPlaceholder({ category }: SettingsRouteProps) {
-  return (
-    <div className="vc-route-placeholder" data-route="settings" data-category={category}>
-      <h1 className="vc-large-title" data-vc-owned-title="">设置</h1>
-    </div>
-  );
+    return (
+        <div
+            className="vc-route-placeholder"
+            data-route="settings"
+            data-category={category}
+        >
+            <h1 className="vc-large-title" data-vc-owned-title="">
+                设置
+            </h1>
+        </div>
+    );
 }
 
 function DefaultTavernSettingsPlaceholder({ section }: TavernSettingsRouteProps) {
-  return (
-    <div className="vc-route-placeholder" data-route="settings-tavern" data-section={section}>
-      <h1 className="vc-large-title" data-vc-owned-title="">酒馆设置</h1>
-    </div>
-  );
+    return (
+        <div
+            className="vc-route-placeholder"
+            data-route="settings-tavern"
+            data-section={section}
+        >
+            <h1 className="vc-large-title" data-vc-owned-title="">
+                酒馆设置
+            </h1>
+        </div>
+    );
 }
 
 function resolveShellStateFromPath(pathname: string): {
-  destination: ShellDestination;
-  settingsActive: boolean;
-  conversationKey: string | null;
+    destination: ShellDestination;
+    settingsActive: boolean;
+    conversationKey: string | null;
 } {
-  const clean = pathname.replace(/^\/+/, '');
-  const parts = clean.split('/').filter(Boolean);
-  const head = parts[0] ?? 'chat';
+    const clean = pathname.replace(/^\/+/, '');
+    const parts = clean.split('/').filter(Boolean);
+    const head = parts[0] ?? 'chat';
 
-  if (head === 'settings') {
+    if (head === 'settings') {
+        return {
+            destination: 'chat',
+            settingsActive: true,
+            conversationKey: null,
+        };
+    }
+    if (
+        head === 'characters' ||
+        head === 'memory' ||
+        head === 'inbox' ||
+        head === 'story'
+    ) {
+        return {
+            destination: head,
+            settingsActive: false,
+            conversationKey: null,
+        };
+    }
     return {
-      destination: 'chat',
-      settingsActive: true,
-      conversationKey: null,
+        destination: 'chat',
+        settingsActive: false,
+        conversationKey: parts[1] ? decodeURIComponent(parts[1]) : null,
     };
-  }
-  if (head === 'characters' || head === 'memory' || head === 'inbox' || head === 'story') {
-    return {
-      destination: head,
-      settingsActive: false,
-      conversationKey: null,
-    };
-  }
-  return {
-    destination: 'chat',
-    settingsActive: false,
-    conversationKey: parts[1] ? decodeURIComponent(parts[1]) : null,
-  };
 }
 
-export function createDesktopRouter(options: CreateDesktopRouterOptions = {}) {
-  const history = options.history ?? createHashHistory();
-  const overrides = options.routeOverrides ?? {};
-  const initialConversations = options.conversations ?? [];
+function DesktopChatHeader({
+    title,
+    onOpenMemory,
+}: {
+    title: string;
+    onOpenMemory: () => void;
+}) {
+    const {
+        chrome,
+        characterPanelOpen,
+        setCharacterPanelOpen,
+        toggleCharacterPanel,
+        setConversationListOpen,
+    } = useShellLayout();
+    const chatUi = useChatUi();
 
-  const ChatComp = overrides.chat ?? DefaultChatPlaceholder;
-  const CharactersComp = overrides.characters ?? DefaultCharactersPlaceholder;
-  const MemoryComp = overrides.memory ?? DefaultMemoryPlaceholder;
-  const InboxComp = overrides.inbox ?? DefaultInboxPlaceholder;
-  const StoryComp = overrides.story ?? DefaultStoryPlaceholder;
-  const SettingsComp = overrides.settings ?? DefaultSettingsPlaceholder;
-  const TavernSettingsComp = overrides.tavernSettings ?? DefaultTavernSettingsPlaceholder;
-
-  function RootShellComponent() {
-    const pathname = useRouterState({ select: (s) => s.location.pathname });
-    const navigate = useNavigate();
-
-    const shellState = useMemo(() => resolveShellStateFromPath(pathname), [pathname]);
+    const handleReopenList = () => {
+        setConversationListOpen(true);
+        if (chrome === 'regular' && characterPanelOpen) {
+            setCharacterPanelOpen(false);
+        }
+    };
 
     return (
-      <AppShell
-        destination={shellState.destination}
-        settingsActive={shellState.settingsActive}
-        activeConversationKey={shellState.conversationKey}
-        conversations={initialConversations}
-        onSelectDestination={(nav) => {
-          void navigate({ to: `/${nav}` });
-        }}
-        onOpenSettings={() => {
-          void navigate({ to: '/settings/$category', params: { category: 'account' } });
-        }}
-        onSelectConversation={(item) => {
-          void navigate({
-            to: '/chat/$conversationKey',
-            params: { conversationKey: item.key },
-          });
-        }}
-      >
-        <Outlet />
-      </AppShell>
+        <>
+            <div className="vc-chat-header__lead">
+                <button
+                    type="button"
+                    className="vc-icon-btn"
+                    data-list-toggle=""
+                    data-chat-back=""
+                    aria-label="返回会话列表"
+                    title="会话列表"
+                    onClick={handleReopenList}
+                >
+                    <Icon name="panel-left" size={18} />
+                </button>
+                <ChatStatusCard
+                    onOpenMemory={onOpenMemory}
+                    trigger={
+                        <button type="button" className="vc-chat-header__title-btn">
+                            <h1 className="vc-chat-header__title">{title}</h1>
+                        </button>
+                    }
+                />
+            </div>
+            <div className="vc-chat-header__actions">
+                <button
+                    type="button"
+                    className="vc-icon-btn vc-desk-search-toggle"
+                    aria-label="搜索聊天内容"
+                    title="搜索聊天内容 (⌘F)"
+                    onClick={() => chatUi?.toggleSearch()}
+                >
+                    <Icon name="search" size={18} />
+                </button>
+                <button
+                    type="button"
+                    className="vc-icon-btn"
+                    data-panel-toggle=""
+                    aria-label={characterPanelOpen ? '收起角色档案' : '展开角色档案'}
+                    aria-expanded={characterPanelOpen}
+                    title="角色档案"
+                    onClick={toggleCharacterPanel}
+                >
+                    <Icon name="user-round" size={18} />
+                </button>
+            </div>
+        </>
     );
-  }
+}
 
-  const rootRoute = createRootRoute({
-    component: RootShellComponent,
-  });
+export function createDesktopRouter(
+    optionsOrInitialEntry: CreateDesktopRouterOptions | string = {},
+) {
+    const options: CreateDesktopRouterOptions =
+        typeof optionsOrInitialEntry === 'string'
+            ? { initialEntry: optionsOrInitialEntry }
+            : optionsOrInitialEntry;
 
-  const indexRoute = createRoute({
-    getParentRoute: () => rootRoute,
-    path: '/',
-    beforeLoad: () => {
-      throw redirect({ to: '/chat' });
-    },
-  });
+    const history =
+        options.history ??
+        (options.initialEntry
+            ? createMemoryHistory({ initialEntries: [options.initialEntry] })
+            : createHashHistory());
+    const overrides = options.routeOverrides ?? {};
+    const staticConversations = options.conversations ?? [];
 
-  const chatIndexRoute = createRoute({
-    getParentRoute: () => rootRoute,
-    path: '/chat',
-    component: function ChatIndexPage() {
-      return <ChatComp />;
-    },
-  });
+    const CustomChatComp = overrides.chat;
+    const CharactersComp = overrides.characters ?? DefaultCharactersPlaceholder;
+    const MemoryComp = overrides.memory ?? DefaultMemoryPlaceholder;
+    const InboxComp = overrides.inbox ?? DefaultInboxPlaceholder;
+    const StoryComp = overrides.story ?? DefaultStoryPlaceholder;
+    const SettingsComp = overrides.settings ?? DefaultSettingsPlaceholder;
+    const TavernSettingsComp =
+        overrides.tavernSettings ?? DefaultTavernSettingsPlaceholder;
 
-  const chatConversationRoute = createRoute({
-    getParentRoute: () => rootRoute,
-    path: '/chat/$conversationKey',
-    component: function ChatConversationPage() {
-      const { conversationKey } = useParams({ from: chatConversationRoute.id });
-      return <ChatComp conversationKey={conversationKey} />;
-    },
-  });
+    function RootShellComponent() {
+        const pathname = useRouterState({ select: s => s.location.pathname });
+        const navigate = useNavigate();
+        const bridge = useSessionBridge();
+        const activeSnapshotKey = useChatSnapshot(s => s.key);
+        const activeCharName = useChatSnapshot(s => s.characterName);
+        const activeCharAvatar = useChatSnapshot(s => s.avatar);
+        const activeCharAvatarUrl = useChatSnapshot(s => s.avatarUrl);
+        const { rows: queriedConversations } = useConversationsQuery();
 
-  const charactersIndexRoute = createRoute({
-    getParentRoute: () => rootRoute,
-    path: '/characters',
-    component: function CharactersIndexPage() {
-      return <CharactersComp />;
-    },
-  });
+        const shellState = useMemo(() => resolveShellStateFromPath(pathname), [pathname]);
+        const effectiveConversationKey =
+            shellState.conversationKey ?? (activeSnapshotKey || null);
 
-  const characterDetailRoute = createRoute({
-    getParentRoute: () => rootRoute,
-    path: '/characters/$avatar',
-    component: function CharacterDetailPage() {
-      const { avatar } = useParams({ from: characterDetailRoute.id });
-      return <CharactersComp avatar={avatar} />;
-    },
-  });
+        const mergedConversations = useMemo<readonly ShellConversationItem[]>(() => {
+            if (staticConversations.length > 0) return staticConversations;
+            return queriedConversations.map(row => ({
+                key: row.key,
+                title: row.title,
+                avatar: row.avatarUrl || row.avatar,
+                preview: row.preview,
+                updatedAt: row.timeText,
+                relationshipId: row.relationshipId,
+            }));
+        }, [staticConversations, queriedConversations]);
 
-  const memoryRoute = createRoute({
-    getParentRoute: () => rootRoute,
-    path: '/memory',
-    component: function MemoryPage() {
-      return <MemoryComp />;
-    },
-  });
+        const resolvedTitle =
+            activeCharName ||
+            mergedConversations.find(c => c.key === effectiveConversationKey)?.title ||
+            '选择一个会话开始聊天';
 
-  const inboxRoute = createRoute({
-    getParentRoute: () => rootRoute,
-    path: '/inbox',
-    component: function InboxPage() {
-      return <InboxComp />;
-    },
-  });
+        const handleOpenSettings = () => {
+            void navigate({ to: '/settings/$category', params: { category: 'account' } });
+        };
 
-  const storyIndexRoute = createRoute({
-    getParentRoute: () => rootRoute,
-    path: '/story',
-    component: function StoryIndexPage() {
-      return <StoryComp />;
-    },
-  });
+        const handleOpenMemory = () => {
+            void navigate({ to: '/memory' });
+        };
 
-  const storyRunRoute = createRoute({
-    getParentRoute: () => rootRoute,
-    path: '/story/$runId',
-    component: function StoryRunPage() {
-      const { runId } = useParams({ from: storyRunRoute.id });
-      return <StoryComp runId={runId} />;
-    },
-  });
+        return (
+            <ChatUiProvider>
+                <AppShell
+                    destination={shellState.destination}
+                    settingsActive={shellState.settingsActive}
+                    activeConversationKey={effectiveConversationKey}
+                    activeCharacterId={activeCharAvatar || null}
+                    activeCharacterName={activeCharName}
+                    activeCharacterAvatar={activeCharAvatarUrl}
+                    conversations={mergedConversations}
+                    conversationListSlot={
+                        <ConversationList
+                            rows={queriedConversations}
+                            activeKey={effectiveConversationKey}
+                            onSelectConversation={row => {
+                                void bridge.open(row);
+                                void navigate({
+                                    to: '/chat/$conversationKey',
+                                    params: { conversationKey: row.key },
+                                });
+                            }}
+                        />
+                    }
+                    chatHeaderSlot={
+                        <DesktopChatHeader
+                            title={resolvedTitle}
+                            onOpenMemory={handleOpenMemory}
+                        />
+                    }
+                    characterPanel={<ChatCharacterPanel />}
+                    composer={<ChatComposerSlot />}
+                    persistentChatSlot={
+                        CustomChatComp ? undefined : (
+                            <ChatRoute
+                                conversationKey={shellState.conversationKey ?? undefined}
+                                hideComposer
+                                onOpenSettings={handleOpenSettings}
+                            />
+                        )
+                    }
+                    onSelectDestination={nav => {
+                        void navigate({ to: `/${nav}` });
+                    }}
+                    onOpenSettings={handleOpenSettings}
+                    onSelectConversation={item => {
+                        const matched = queriedConversations.find(c => c.key === item.key);
+                        if (matched) {
+                            void bridge.open(matched);
+                        } else {
+                            void bridge.open(item.key);
+                        }
+                        void navigate({
+                            to: '/chat/$conversationKey',
+                            params: { conversationKey: item.key },
+                        });
+                    }}
+                >
+                    <Outlet />
+                </AppShell>
+            </ChatUiProvider>
+        );
+    }
 
-  const settingsIndexRoute = createRoute({
-    getParentRoute: () => rootRoute,
-    path: '/settings',
-    beforeLoad: () => {
-      throw redirect({ to: '/settings/$category', params: { category: 'account' } });
-    },
-  });
+    const rootRoute = createRootRoute({
+        component: RootShellComponent,
+    });
 
-  const settingsCategoryRoute = createRoute({
-    getParentRoute: () => rootRoute,
-    path: '/settings/$category',
-    component: function SettingsCategoryPage() {
-      const { category } = useParams({ from: settingsCategoryRoute.id });
-      return <SettingsComp category={category} />;
-    },
-  });
+    const indexRoute = createRoute({
+        getParentRoute: () => rootRoute,
+        path: '/',
+        beforeLoad: () => {
+            throw redirect({ to: '/chat' });
+        },
+    });
 
-  const settingsTavernRoute = createRoute({
-    getParentRoute: () => rootRoute,
-    path: '/settings/tavern/$section',
-    component: function SettingsTavernPage() {
-      const { section } = useParams({ from: settingsTavernRoute.id });
-      return <TavernSettingsComp section={section} />;
-    },
-  });
+    const chatIndexRoute = createRoute({
+        getParentRoute: () => rootRoute,
+        path: '/chat',
+        component: function ChatIndexPage() {
+            return CustomChatComp ? <CustomChatComp /> : null;
+        },
+    });
 
-  const routeTree = rootRoute.addChildren([
-    indexRoute,
-    chatIndexRoute,
-    chatConversationRoute,
-    charactersIndexRoute,
-    characterDetailRoute,
-    memoryRoute,
-    inboxRoute,
-    storyIndexRoute,
-    storyRunRoute,
-    settingsIndexRoute,
-    settingsCategoryRoute,
-    settingsTavernRoute,
-  ]);
+    const chatConversationRoute = createRoute({
+        getParentRoute: () => rootRoute,
+        path: '/chat/$conversationKey',
+        component: function ChatConversationPage() {
+            const { conversationKey } = useParams({ from: chatConversationRoute.id });
+            return CustomChatComp ? (
+                <CustomChatComp conversationKey={conversationKey} />
+            ) : null;
+        },
+    });
 
-  return createRouter({
-    routeTree,
-    history,
-  });
+    const charactersIndexRoute = createRoute({
+        getParentRoute: () => rootRoute,
+        path: '/characters',
+        component: function CharactersIndexPage() {
+            return <CharactersComp />;
+        },
+    });
+
+    const characterDetailRoute = createRoute({
+        getParentRoute: () => rootRoute,
+        path: '/characters/$avatar',
+        component: function CharacterDetailPage() {
+            const { avatar } = useParams({ from: characterDetailRoute.id });
+            return <CharactersComp avatar={avatar} />;
+        },
+    });
+
+    const memoryRoute = createRoute({
+        getParentRoute: () => rootRoute,
+        path: '/memory',
+        component: function MemoryPage() {
+            return <MemoryComp />;
+        },
+    });
+
+    const inboxRoute = createRoute({
+        getParentRoute: () => rootRoute,
+        path: '/inbox',
+        component: function InboxPage() {
+            return <InboxComp />;
+        },
+    });
+
+    const storyIndexRoute = createRoute({
+        getParentRoute: () => rootRoute,
+        path: '/story',
+        component: function StoryIndexPage() {
+            return <StoryComp />;
+        },
+    });
+
+    const storyRunRoute = createRoute({
+        getParentRoute: () => rootRoute,
+        path: '/story/$runId',
+        component: function StoryRunPage() {
+            const { runId } = useParams({ from: storyRunRoute.id });
+            return <StoryComp runId={runId} />;
+        },
+    });
+
+    const settingsIndexRoute = createRoute({
+        getParentRoute: () => rootRoute,
+        path: '/settings',
+        beforeLoad: () => {
+            throw redirect({ to: '/settings/$category', params: { category: 'account' } });
+        },
+    });
+
+    const settingsCategoryRoute = createRoute({
+        getParentRoute: () => rootRoute,
+        path: '/settings/$category',
+        component: function SettingsCategoryPage() {
+            const { category } = useParams({ from: settingsCategoryRoute.id });
+            return <SettingsComp category={category} />;
+        },
+    });
+
+    const settingsTavernRoute = createRoute({
+        getParentRoute: () => rootRoute,
+        path: '/settings/tavern/$section',
+        component: function SettingsTavernPage() {
+            const { section } = useParams({ from: settingsTavernRoute.id });
+            return <TavernSettingsComp section={section} />;
+        },
+    });
+
+    const routeTree = rootRoute.addChildren([
+        indexRoute,
+        chatIndexRoute,
+        chatConversationRoute,
+        charactersIndexRoute,
+        characterDetailRoute,
+        memoryRoute,
+        inboxRoute,
+        storyIndexRoute,
+        storyRunRoute,
+        settingsIndexRoute,
+        settingsCategoryRoute,
+        settingsTavernRoute,
+    ]);
+
+    return createRouter({
+        routeTree,
+        history,
+    });
 }

@@ -25,6 +25,66 @@ function toLorebookSettings(world_info_settings) {
 export function getLorebookSettings() {
     return klona(toLorebookSettings(getWorldInfoSettings()));
 }
+export function setLorebookSettings(settings) {
+    if (settings.selected_global_lorebooks !== undefined) {
+        const inexisting_lorebooks = settings.selected_global_lorebooks.filter(
+            lorebook => !world_names.includes(lorebook),
+        );
+        if (inexisting_lorebooks.length > 0) {
+            throw Error(`尝试修改要全局启用的世界书, 但未找到以下世界书: ${JSON.stringify(inexisting_lorebooks)}`);
+        }
+    }
+    const original_settings = getLorebookSettings();
+    const diff_settings = _.omitBy(settings, (value, key) => value === undefined || value === original_settings[key]);
+    if (Object.keys(diff_settings).length === 0) return;
+    const host = getCardHost();
+    const target = host.settings;
+    target.world_info ||= {};
+    if (diff_settings.selected_global_lorebooks !== undefined) {
+        target.world_info.globalSelect = [...diff_settings.selected_global_lorebooks];
+    }
+    if (diff_settings.scan_depth !== undefined) {
+        target.world_info_depth = diff_settings.scan_depth;
+    }
+    if (diff_settings.context_percentage !== undefined) {
+        target.world_info_budget = diff_settings.context_percentage;
+    }
+    if (diff_settings.budget_cap !== undefined) {
+        target.world_info_budget_cap = diff_settings.budget_cap;
+    }
+    if (diff_settings.min_activations !== undefined) {
+        target.world_info_min_activations = diff_settings.min_activations;
+    }
+    if (diff_settings.max_depth !== undefined) {
+        target.world_info_min_activations_depth_max = diff_settings.max_depth;
+    }
+    if (diff_settings.max_recursion_steps !== undefined) {
+        target.world_info_max_recursion_steps = diff_settings.max_recursion_steps;
+    }
+    if (diff_settings.insertion_strategy !== undefined) {
+        target.world_info_character_strategy = { evenly: 0, character_first: 1, global_first: 2 }[diff_settings.insertion_strategy];
+    }
+    if (diff_settings.include_names !== undefined) {
+        target.world_info_include_names = diff_settings.include_names;
+    }
+    if (diff_settings.recursive !== undefined) {
+        target.world_info_recursive = diff_settings.recursive;
+    }
+    if (diff_settings.case_sensitive !== undefined) {
+        target.world_info_case_sensitive = diff_settings.case_sensitive;
+    }
+    if (diff_settings.match_whole_words !== undefined) {
+        target.world_info_match_whole_words = diff_settings.match_whole_words;
+    }
+    if (diff_settings.use_group_scoring !== undefined) {
+        target.world_info_use_group_scoring = diff_settings.use_group_scoring;
+    }
+    if (diff_settings.overflow_alert !== undefined) {
+        target.world_info_overflow_alert = diff_settings.overflow_alert;
+    }
+    refreshCardHost();
+    host.context.saveSettingsDebounced();
+}
 export function getCharLorebooks({ name = 'current' } = {}) {
     const character = RawCharacter.find({ name: name });
     const books = { primary: null, additional: [] };

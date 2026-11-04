@@ -1,35 +1,8 @@
 import { fetchVoiceEngines, fetchVoiceSettings, transcribeVoice } from './api.js';
 import { icon } from './ui/icons.js';
+import { INPUT_COPY, encodeMonoWAV, recordingWAV } from './voice-logic.js';
 
-export const INPUT_COPY={hold:'按住说话',start:'开始录音',stop:'结束录音',recording:'松开发送，上滑取消',cancel:'松开取消',listening:'正在听…',failed:'没听清，再说一次？'};
-
-export function encodeMonoWAV(samples, sampleRate=16000) {
-    const data=new ArrayBuffer(44+samples.length*2);const view=new DataView(data);
-    const word=(offset,text)=>[...text].forEach((ch,i)=>view.setUint8(offset+i,ch.charCodeAt(0)));
-    word(0,'RIFF');view.setUint32(4,data.byteLength-8,true);word(8,'WAVE');word(12,'fmt ');
-    view.setUint32(16,16,true);view.setUint16(20,1,true);view.setUint16(22,1,true);
-    view.setUint32(24,sampleRate,true);view.setUint32(28,sampleRate*2,true);view.setUint16(32,2,true);view.setUint16(34,16,true);
-    word(36,'data');view.setUint32(40,samples.length*2,true);
-    for(let i=0;i<samples.length;i++) {const value=Math.max(-1,Math.min(1,samples[i]));view.setInt16(44+i*2,value<0?value*32768:value*32767,true);}
-    return new Blob([data],{type:'audio/wav'});
-}
-
-export async function recordingWAV(blob, {maxSeconds=60,AudioContext: Context=globalThis.AudioContext || globalThis.webkitAudioContext, OfflineAudioContext: Offline=globalThis.OfflineAudioContext || globalThis.webkitOfflineAudioContext}={}) {
-    const decoder=new Context();
-    try {
-        const decoded=await decoder.decodeAudioData(await blob.arrayBuffer());
-        const frames=Math.min(maxSeconds*16000,Math.ceil(decoded.duration*16000));
-        if (!frames || frames>60*16000) throw new Error('duration');
-        const mono=decoder.createBuffer(1,decoded.length,decoded.sampleRate);
-        const target=mono.getChannelData(0);
-        for(let channel=0;channel<decoded.numberOfChannels;channel++) {
-            const values=decoded.getChannelData(channel);
-            for(let i=0;i<values.length;i++) target[i]+=values[i]/decoded.numberOfChannels;
-        }
-        const offline=new Offline(1,frames,16000);const source=offline.createBufferSource();source.buffer=mono;source.connect(offline.destination);source.start();
-        const result=await offline.startRendering();return {wav:encodeMonoWAV(result.getChannelData(0)),durationMs:Math.ceil(result.duration*1000)};
-    } finally {await decoder.close();}
-}
+export { INPUT_COPY, encodeMonoWAV, recordingWAV };
 
 export function installVoiceInput({getContext,sendText,doc=globalThis.document,recognize=transcribeVoice,host}={}) {
     const form=doc.querySelector('#send_form');const box=doc.querySelector('#send_textarea');

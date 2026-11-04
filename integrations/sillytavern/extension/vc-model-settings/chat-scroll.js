@@ -2,26 +2,59 @@
 // 不改宿主 #chat 结构：标记只写在 .mes 的 data-vc-* 上，浮层（回到最新、日期胶囊）放在 #chat 外。
 import { icon } from './ui/icons.js';
 import { prefersReducedMotion } from './ui/motion.js';
+import {
+    ATTACH_PX,
+    LATEST_PX,
+    LAND_OFFSET,
+    LAND_MS,
+    READ_DWELL_MS,
+    RESTORE_FRAMES,
+    CHIP_HIDE_MS,
+    FLASH_MS,
+    UNREAD_OFFSET,
+    nextFollow,
+    latestVisible,
+    badgeText,
+    latestLabel,
+    landingTop,
+    shouldLand,
+    centerTop,
+    scrollDuration,
+    nextRead,
+    unreadInfo,
+    anchorDelta,
+    readKey,
+    posKey,
+    readStoredNumber,
+    writeStoredNumber,
+} from './chat-logic.js';
 
-export const ATTACH_PX = 24;
-export const LATEST_PX = 300;
-export const LAND_OFFSET = 24;
-export const LAND_MS = 1600;
-export const READ_DWELL_MS = 1000;
-export const RESTORE_FRAMES = 30;
-export const CHIP_HIDE_MS = 3000;
-export const FLASH_MS = 2000;
-export const UNREAD_OFFSET = 48;
-
-/** 跟随 / 脱离两态。只有用户输入造成的滚动与发送会改状态；内容增长、程序滚动不改。 */
-export function nextFollow(state, event) {
-    if (event?.type === 'send') return 'follow';
-    if (event?.type === 'user-scroll') {
-        if (event.up) return 'detached';
-        return Number(event.gap) <= ATTACH_PX ? 'follow' : state;
-    }
-    return state;
-}
+export {
+    ATTACH_PX,
+    LATEST_PX,
+    LAND_OFFSET,
+    LAND_MS,
+    READ_DWELL_MS,
+    RESTORE_FRAMES,
+    CHIP_HIDE_MS,
+    FLASH_MS,
+    UNREAD_OFFSET,
+    nextFollow,
+    latestVisible,
+    badgeText,
+    latestLabel,
+    landingTop,
+    shouldLand,
+    centerTop,
+    scrollDuration,
+    nextRead,
+    unreadInfo,
+    anchorDelta,
+    readKey,
+    posKey,
+    readStoredNumber,
+    writeStoredNumber,
+};
 
 /** 独立桌面的跟随端口；沿用上面的用户滚动规则，异步HTML/iframe增长不改变阅读状态。 */
 export function mountDesktopFollow(chat, { floatingHost, getChatId = () => '', dateLabel = () => '', getAutoFollow = () => true } = {}) {
@@ -49,83 +82,8 @@ export function mountDesktopFollow(chat, { floatingHost, getChatId = () => '', d
         destroy() { dead = true; resize.disconnect(); mutation.disconnect(); view.cancelAnimationFrame(frame); view.removeEventListener('resize', schedule); api.destroy(); } };
 }
 
-export const latestVisible = (gap) => Number(gap) > LATEST_PX;
-
-export function badgeText(count) {
-    const n = Math.floor(Number(count) || 0);
-    if (n <= 0) return '';
-    return n > 99 ? '99+' : String(n);
-}
-
-export function latestLabel(count) {
-    const n = Math.floor(Number(count) || 0);
-    return n > 0 ? `回到最新，${n} 条新消息` : '回到最新';
-}
-
-/** 让回复首行停在视口顶部下 offset 处所需的 scrollTop。 */
-export function landingTop({ chatTop, mesTop, scrollTop, offset = LAND_OFFSET }) {
-    return Math.max(0, scrollTop + (mesTop - chatTop) - offset);
-}
-
-/** 只有回复比可视区还高时才落地到首行；短回复保持贴底。 */
-export function shouldLand({ following, mesHeight, viewHeight }) {
-    return Boolean(following) && Number(mesHeight) > Number(viewHeight) - LAND_OFFSET;
-}
-
-/** 把消息居中的 scrollTop，夹在可滚范围内。 */
-export function centerTop({ chatTop, mesTop, mesHeight, viewHeight, scrollTop, max }) {
-    const raw = scrollTop + (mesTop - chatTop) - (viewHeight - mesHeight) / 2;
-    return Math.min(Math.max(0, raw), Math.max(0, max));
-}
-
-/** 滚动时长随距离 250–600ms。 */
-export function scrollDuration(distance) {
-    return Math.round(Math.min(600, Math.max(250, 250 + Math.abs(Number(distance) || 0) * 0.25)));
-}
-
-/** 已读只前进不后退。 */
-export function nextRead(lastRead, id) {
-    if (!Number.isInteger(id)) return lastRead;
-    return !Number.isInteger(lastRead) || id > lastRead ? id : lastRead;
-}
-
-/** rows: { id, user, system }。返回第一条未读角色消息与未读数；没有已读记录时视为无未读。 */
-export function unreadInfo(lastRead, rows) {
-    if (!Number.isInteger(lastRead)) return { first: null, count: 0 };
-    let first = null;
-    let count = 0;
-    for (const row of rows) {
-        if (row.user || row.system || !(row.id > lastRead)) continue;
-        if (first === null) first = row.id;
-        count += 1;
-    }
-    return { first, count };
-}
-
-/** 向上加载历史后，把 scrollTop 补回锚点位移。 */
-export const anchorDelta = (beforeOffset, afterOffset) => afterOffset - beforeOffset;
-
-export const readKey = (chatId) => `vc-read:${chatId}`;
-export const posKey = (chatId) => `vc-pos:${chatId}`;
-
-function store() {
-    try { return globalThis.localStorage || null; } catch { return null; }
-}
-function readNumber(key, storage = store()) {
-    try {
-        const raw = storage?.getItem?.(key);
-        if (raw == null || raw === '') return null;
-        const n = Number(raw);
-        return Number.isInteger(n) && n >= 0 ? n : null;
-    } catch { return null; }
-}
-function writeNumber(key, value, storage = store()) {
-    try {
-        if (value == null) storage?.removeItem?.(key);
-        else storage?.setItem?.(key, String(value));
-    } catch { /* 记不住就算了，下次按底部打开 */ }
-}
-export { readNumber as readStoredNumber, writeNumber as writeStoredNumber };
+const readNumber = readStoredNumber;
+const writeNumber = writeStoredNumber;
 
 const nowMs = () => (typeof globalThis.performance?.now === 'function' ? globalThis.performance.now() : Date.now());
 const raf = (fn) => (typeof globalThis.requestAnimationFrame === 'function' ? globalThis.requestAnimationFrame(fn) : setTimeout(fn, 16));

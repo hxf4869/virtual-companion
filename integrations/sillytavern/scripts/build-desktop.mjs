@@ -27,7 +27,11 @@ export async function buildDesktop() {
                 if (!clean.startsWith(path.join(INTEGRATION, 'node_modules/'))) continue;
                 let directory = path.dirname(clean);
                 while (directory.includes(`${path.sep}node_modules${path.sep}`)) {
-                    if (fs.existsSync(path.join(directory, 'package.json'))) { packages.add(directory); break; }
+                    const pkgPath = path.join(directory, 'package.json');
+                    if (fs.existsSync(pkgPath) && JSON.parse(fs.readFileSync(pkgPath, 'utf8')).name) {
+                        packages.add(directory);
+                        break;
+                    }
                     directory = path.dirname(directory);
                 }
             }

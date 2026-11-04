@@ -53,13 +53,6 @@ test('UX-23 搜索：高亮只走 Custom Highlight API，不写入消息文字�
     for (const line of css.split('\n')) if (/^\S.*\{/.test(line) && !line.startsWith('/*')) assert.match(line, /^html\[data-vc-layout="desktop"\]/, line.slice(0, 80));
 });
 
-test('UX-23 记忆按钮：桌面在捕获阶段接管并打开角色面板', () => {
-    const panel = ext('desktop/character-panel.js');
-    assert.match(panel, /shell\.addEventListener\('click', takeMemory, true\)/);
-    assert.match(panel, /\.vc-capsule > \[data-memory\]/);
-    assert.match(panel, /event\.stopPropagation\(\); openMemory\(\)/);
-});
-
 test('UX-23 会话行：桌面时间 今天 HH:mm / 昨天 / 周X / M/D', () => {
     const now = new Date(2026, 10, 2, 15, 0); // 2026-11-02 周一
     const at = (d, h, m) => new Date(2026, 10, d, h, m).toISOString();

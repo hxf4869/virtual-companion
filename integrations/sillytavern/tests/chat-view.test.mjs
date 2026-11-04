@@ -822,7 +822,6 @@ test('一对一不显示发送者名字，群聊仍标记发言人', () => {
 });
 
 const DESKTOP_CHAT_CSS = new URL('../extension/vc-model-settings/desktop/chat.css', import.meta.url);
-const CHARACTER_PANEL_JS = new URL('../extension/vc-model-settings/desktop/character-panel.js', import.meta.url);
 const desktopRule = (css, selector) => {
     const at = css.indexOf(`${selector} {`);
     assert.ok(at >= 0, selector);

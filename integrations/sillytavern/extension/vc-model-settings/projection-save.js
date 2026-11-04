@@ -1,5 +1,5 @@
 // 投影补写提交前核对读到的消息基线。宿主在读取之后追加的消息不能被快照 splice 掉。
-import { F2ConflictError } from './f2-client.js';
+import { F2ConflictError } from './f2-logic.js';
 
 function eventId(message) {
     const extra = message?.extra;

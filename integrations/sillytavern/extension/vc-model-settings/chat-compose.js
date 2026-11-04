@@ -10,146 +10,50 @@ import { mountQuoteView } from './desktop/build/index.js';
 import { popMenu } from './ui/menu.js';
 import { showToast } from './ui/toast.js';
 import { chatVoiceAvailable } from './voice-chat.js';
+import {
+    QUOTE_MAX,
+    SLOW_MS,
+    COMPOSE_COPY as COPY,
+    REMIND_MAX,
+    COMPOSER_MAX_LINES,
+    quoteSummary,
+    quoteLine,
+    withQuote,
+    draftKey,
+    readDraft,
+    writeDraft,
+    sendsOnEnter,
+    takesError,
+    isCopiedToast,
+    messageMenuPlan,
+    rfc3339,
+    reminderChoices,
+    messageInstant,
+    composerHeight,
+} from './chat-logic.js';
 
-export const QUOTE_MAX = 30;
-export const SLOW_MS = 60000;
-export const COPY = Object.freeze({
-    quote: '引用',
-    copy: '复制',
-    read: '朗读',
-    edit: '编辑',
-    regenerate: '重新生成',
-    continue: '继续',
-    remove: '删除',
-    copied: '已复制',
-    failed: '没有发送成功',
-    retry: '重试',
-    slow: '回复较慢，可以继续等或停止',
-    deleteTitle: '删除这条消息？',
-    deleteBody: '删除后无法恢复。',
-    deleteFailed: '这条消息没有删掉',
-    favorite: '收藏',
-    favorited: '已收藏',
-    remind: '稍后提醒',
-    reminded: '好，到时候提醒你',
-    remindIn20: '20 分钟后',
-    remindTonight: '今晚 21:00',
-    remindTomorrow: '明天早上',
-    remindPick: '选择时间…',
-    actionFailed: '没有完成，请重试。',
-});
-export const REMIND_MAX = 30;
-const DRAFT_PREFIX = 'vc-draft:';
+export {
+    QUOTE_MAX,
+    SLOW_MS,
+    COPY,
+    REMIND_MAX,
+    quoteSummary,
+    quoteLine,
+    withQuote,
+    draftKey,
+    readDraft,
+    writeDraft,
+    sendsOnEnter,
+    takesError,
+    isCopiedToast,
+    messageMenuPlan,
+    rfc3339,
+    reminderChoices,
+    messageInstant,
+    composerHeight,
+};
+
 const DRAFT_MS = 500;
-const COMPOSER_MAX_LINES = 6;
-
-// ---- 纯逻辑（单测直接覆盖） ----
-
-export function quoteSummary(text, max = QUOTE_MAX) {
-    const body = String(text ?? '')
-        .split(/\r?\n/)
-        .filter((line) => !/^\s*>/.test(line)) // 被引用的消息本身带的引用行不再套娃
-        .join(' ')
-        .replace(/<[^>]*>/g, '')
-        .replace(/[*_`~]+/g, '')
-        .replace(/\s+/g, ' ')
-        .trim();
-    const chars = [...body];
-    return chars.length > max ? `${chars.slice(0, max).join('')}…` : body;
-}
-
-export function quoteLine(name, text) {
-    const who = String(name ?? '').replace(/\s+/g, ' ').trim();
-    const summary = quoteSummary(text);
-    return `> ${who ? `${who}：` : ''}${summary}`;
-}
-
-export function withQuote(quote, text) {
-    const body = String(text ?? '');
-    if (!quote || !body.trim()) return body;
-    return `${quoteLine(quote.name, quote.text)}\n\n${body}`;
-}
-
-export function draftKey(chatId) {
-    const id = String(chatId ?? '').trim();
-    return id ? `${DRAFT_PREFIX}${id}` : '';
-}
-
-export function readDraft(chatId, storage = globalThis.localStorage) {
-    const key = draftKey(chatId);
-    if (!key) return '';
-    try { return storage?.getItem(key) || ''; } catch { return ''; }
-}
-
-export function writeDraft(chatId, text, storage = globalThis.localStorage) {
-    const key = draftKey(chatId);
-    if (!key) return;
-    try {
-        if (String(text ?? '').trim()) storage?.setItem(key, String(text));
-        else storage?.removeItem(key);
-    } catch { /* 隐私模式下草稿只是不保存 */ }
-}
-
-// 与宿主 shouldSendOnEnter 同一判定：桌面窗口里 AUTO 等于回车发送。
-export function sendsOnEnter(powerUser) {
-    const mode = Number(powerUser?.send_on_enter ?? 0);
-    return mode !== -1;
-}
-
-// 生成中的宿主错误 toast 由本模块接管；保存类错误仍交给宿主。
-export function takesError({ generating, title = '', message = '' } = {}) {
-    if (!generating) return false;
-    return !/saved|保存/i.test(`${title} ${message}`);
-}
-
-export function isCopiedToast(message) {
-    return /^(copied!?|已复制)$/i.test(String(message ?? '').trim());
-}
-
-export function messageMenuPlan({ system = false, character = false, last = false, voice = false, busy = false, bound = false } = {}) {
-    const plan = [];
-    if (!system) plan.push('quote');
-    plan.push('copy');
-    if (voice) plan.push('read');
-    if (bound && !system) plan.push('favorite', 'remind'); // 收藏与提醒需要已绑定的陪伴会话
-    plan.push('-', 'edit');
-    if (character && last && !busy) plan.push('regenerate');
-    plan.push('-', 'remove');
-    return plan;
-}
-
-const pad2 = (n) => String(n).padStart(2, '0');
-
-/** RFC3339，带本地时区偏移（后端要求 Z 或数值偏移）。 */
-export function rfc3339(date) {
-    const offset = -date.getTimezoneOffset();
-    const sign = offset >= 0 ? '+' : '-';
-    const abs = Math.abs(offset);
-    return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}T${pad2(date.getHours())}:${pad2(date.getMinutes())}:${pad2(date.getSeconds())}${sign}${pad2(Math.floor(abs / 60))}:${pad2(abs % 60)}`;
-}
-
-/** 20 分钟后 / 今晚 21:00（已过则明天 21:00）/ 明天早上 08:00。 */
-export function reminderChoices(now = new Date()) {
-    const at = (dayOffset, hour) => new Date(now.getFullYear(), now.getMonth(), now.getDate() + dayOffset, hour, 0, 0, 0);
-    const tonight = at(0, 21);
-    return [
-        { id: 'in20', label: COPY.remindIn20, at: new Date(now.getTime() + 20 * 60000) },
-        { id: 'tonight', label: COPY.remindTonight, at: tonight.getTime() > now.getTime() ? tonight : at(1, 21) },
-        { id: 'tomorrow', label: COPY.remindTomorrow, at: at(1, 8) },
-    ];
-}
-
-/** ST 的 send_date 格式不固定：能解析就给 ISO，解析不了就不带。 */
-export function messageInstant(value) {
-    if (value === undefined || value === null || value === '') return undefined;
-    const date = new Date(value);
-    return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
-}
-
-export function composerHeight({ contentHeight = 0, lineHeight = 0, padding = 0, min = 0, lines = COMPOSER_MAX_LINES } = {}) {
-    const max = Math.round(lineHeight * lines + padding);
-    return Math.max(min, Math.min(max, Math.ceil(contentHeight)));
-}
 
 // ---- 挂载 ----
 
