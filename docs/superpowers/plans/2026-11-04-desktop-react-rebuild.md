@@ -24,7 +24,7 @@
   codex/grok 类执行者）。T12 由 Codex 产出截图矩阵与 `NOTES.md` 后暂停，等 Claude 终审。
 - **Claude 回来后做**：整体审计（`desktop-react-rebuild` 对 `codex/desktop-independent-frontend` 全量 diff）+ T12 视觉终审。
 - **交接时状态**：设计与计划已提交；**T1 已由 Claude 审核并合入（`0948800b`），下一步派 T2**。T1 期间
-  Gemini 曾 rebase 冲突（其分支基于旧提交），合入改用 cherry-pick；后续任务分支务必基于最新 desktop-react-rebuild 创建。
+  T1 分支创建后 desktop-react-rebuild 又提交了文档，无法快进，改用 cherry-pick 合入；任务进行中主分支有新提交时同样用 cherry-pick 或先 rebase 任务分支。
 - **参考材料**（已忽略不提交，仅本机）：`.review-queue/DR2/handoff/`
   - `recon/R1–R4`：功能清单与模块分类、token/CSS 表、引擎与上游差异及 Helper 缺口、测试与场景 DOM 钩子。派任务时把相关文件
     路径写进 Gemini 提示词（T3 → R2；T5–T10 → R1 对应章节；T11 → R4；T14/T15 → R3）。
