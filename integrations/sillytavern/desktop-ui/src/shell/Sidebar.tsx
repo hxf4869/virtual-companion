@@ -63,23 +63,19 @@ export function Sidebar({
       lens.style.opacity = '0';
       return;
     }
-    lens.style.opacity = '1';
     const r = activeEl.getBoundingClientRect();
     const p = sidebar.getBoundingClientRect();
-    if (r.width > 0 && r.height > 0) {
-      lens.style.width = `${r.width}px`;
-      lens.style.height = `${r.height}px`;
-      lens.style.transform = `translate(${r.left - p.left}px, ${r.top - p.top + sidebar.scrollTop}px)`;
-    } else {
-      const w = activeEl.offsetWidth || (effectiveCollapsed ? 44 : 176);
-      const h = activeEl.offsetHeight || 40;
-      const x = activeEl.offsetLeft || 0;
-      const y = activeEl.offsetTop || 0;
-      lens.style.width = `${w}px`;
-      lens.style.height = `${h}px`;
-      lens.style.transform = `translate(${x}px, ${y}px)`;
+    if (r.width <= 0 || r.height <= 0) {
+      lens.style.opacity = '0';
+      return;
     }
-  }, [effectiveCollapsed]);
+    const x = r.left - p.left - (sidebar.clientLeft || 0) + (sidebar.scrollLeft || 0);
+    const y = r.top - p.top - (sidebar.clientTop || 0) + (sidebar.scrollTop || 0);
+    lens.style.opacity = '1';
+    lens.style.width = `${r.width}px`;
+    lens.style.height = `${r.height}px`;
+    lens.style.transform = `translate(${x}px, ${y}px)`;
+  }, []);
 
   useLayoutEffect(() => {
     syncLens();
@@ -161,7 +157,7 @@ export function Sidebar({
               onClick={() => onSelectDestination?.(item.nav)}
             >
               <span className="vc-side-icon" aria-hidden="true">
-                <Icon name={item.icon} size={20} />
+                <Icon name={item.icon} size={22} />
               </span>
               {!effectiveCollapsed ? <span className="vc-side-label">{item.label}</span> : null}
               {item.nav === 'chat' ? (
@@ -206,7 +202,7 @@ export function Sidebar({
           onClick={() => onOpenSettings?.()}
         >
           <span className="vc-side-icon" aria-hidden="true">
-            <Icon name="settings" size={20} />
+            <Icon name="settings" size={22} />
           </span>
           {!effectiveCollapsed ? <span className="vc-side-label">设置</span> : null}
         </button>

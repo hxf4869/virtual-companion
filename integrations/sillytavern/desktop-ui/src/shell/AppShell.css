@@ -212,8 +212,8 @@
     align-items: center;
     gap: var(--vc-space-sm);
     width: 100%;
-    height: 40px;
-    min-height: 40px;
+    height: 44px;
+    min-height: 44px;
     padding: 0 var(--vc-space-sm);
     border: 0;
     border-radius: var(--vc-radius-sm);
@@ -259,8 +259,8 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 20px;
-    height: 20px;
+    width: 22px;
+    height: 22px;
     flex-shrink: 0;
   }
 
@@ -354,9 +354,9 @@
   .vc-convo-title {
     margin: 0;
     font-family: var(--vc-font);
-    font-size: var(--vc-fs-title-2);
-    line-height: var(--vc-lh-title-2);
-    font-weight: 600;
+    font-size: var(--vc-fs-title-1);
+    line-height: var(--vc-lh-title-1);
+    font-weight: 700;
     color: var(--vc-ink);
   }
 
@@ -460,9 +460,9 @@
   .vc-chat-header__title {
     margin: 0;
     font-family: var(--vc-font);
-    font-size: var(--vc-fs-headline);
-    line-height: var(--vc-lh-headline);
-    font-weight: 600;
+    font-size: var(--vc-fs-title-1);
+    line-height: var(--vc-lh-title-1);
+    font-weight: 700;
     color: var(--vc-ink);
     overflow: hidden;
     text-overflow: ellipsis;

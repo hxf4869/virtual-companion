@@ -328,8 +328,13 @@ describe('AppShell layout, portal host & reduced motion', () => {
     expect(lens).toBeTruthy();
     expect(lens.getAttribute('aria-hidden')).toBe('true');
     expect(lens.dataset.lensTarget).toBe('chat');
+    // Without layout geometry (0x0 rect in HappyDOM), lens stays hidden instead of using magic fallback dimensions
+    expect(lens.style.opacity).toBe('0');
+    expect(lens.style.width).toBe('');
 
-    // Provide real bounding boxes for sidebar and nav items to verify lens geometry & reflow
+    // Simulate 1px border on sidebar (clientLeft/clientTop = 1) and provide bounding boxes for sidebar + nav items
+    Object.defineProperty(sidebar, 'clientLeft', { value: 1, configurable: true });
+    Object.defineProperty(sidebar, 'clientTop', { value: 1, configurable: true });
     vi.spyOn(sidebar, 'getBoundingClientRect').mockReturnValue({
       left: 24,
       top: 24,
@@ -345,41 +350,41 @@ describe('AppShell layout, portal host & reduced motion', () => {
     const memoryBtn = sidebar.querySelector('[data-nav="memory"]') as HTMLElement;
     const settingsBtn = sidebar.querySelector('[data-settings]') as HTMLElement;
     vi.spyOn(chatBtn, 'getBoundingClientRect').mockReturnValue({
-      left: 36,
-      top: 84,
+      left: 37,
+      top: 85,
       width: 176,
-      height: 40,
-      right: 212,
-      bottom: 124,
-      x: 36,
-      y: 84,
+      height: 44,
+      right: 213,
+      bottom: 129,
+      x: 37,
+      y: 85,
       toJSON: () => ({}),
     });
     let memoryWidth = 176;
     vi.spyOn(memoryBtn, 'getBoundingClientRect').mockImplementation(() => ({
-      left: 36,
-      top: 172,
+      left: 37,
+      top: 173,
       width: memoryWidth,
-      height: 40,
-      right: 36 + memoryWidth,
-      bottom: 212,
-      x: 36,
-      y: 172,
+      height: 44,
+      right: 37 + memoryWidth,
+      bottom: 217,
+      x: 37,
+      y: 173,
       toJSON: () => ({}),
     }));
     vi.spyOn(settingsBtn, 'getBoundingClientRect').mockReturnValue({
-      left: 36,
-      top: 760,
+      left: 37,
+      top: 761,
       width: 176,
-      height: 40,
-      right: 212,
-      bottom: 800,
-      x: 36,
-      y: 760,
+      height: 44,
+      right: 213,
+      bottom: 805,
+      x: 37,
+      y: 761,
       toJSON: () => ({}),
     });
 
-    // Switching destination updates lens target and real position/dimensions
+    // Switching destination updates lens target and real position/dimensions (subtracting sidebar border clientLeft/clientTop = 1)
     rerender(
       <AppProviders client={client}>
         <AppShell destination="memory" settingsActive={false}>
@@ -388,8 +393,9 @@ describe('AppShell layout, portal host & reduced motion', () => {
       </AppProviders>,
     );
     expect(lens.dataset.lensTarget).toBe('memory');
+    expect(lens.style.opacity).toBe('1');
     expect(lens.style.width).toBe('176px');
-    expect(lens.style.height).toBe('40px');
+    expect(lens.style.height).toBe('44px');
     expect(lens.style.transform).toBe('translate(12px, 148px)');
 
     // Collapsing sidebar reflows the lens to the collapsed item width
@@ -397,7 +403,7 @@ describe('AppShell layout, portal host & reduced motion', () => {
     const collapseBtn = sidebar.querySelector('[data-collapse]') as HTMLButtonElement;
     fireEvent.click(collapseBtn);
     expect(lens.style.width).toBe('44px');
-    expect(lens.style.height).toBe('40px');
+    expect(lens.style.height).toBe('44px');
 
     rerender(
       <AppProviders client={client}>

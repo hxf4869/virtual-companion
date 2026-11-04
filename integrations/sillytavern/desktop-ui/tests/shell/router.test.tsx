@@ -3,12 +3,40 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, act, cleanup } from '@testing-library/react';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import type { Root } from 'react-dom/client';
 import { RouterProvider } from '@tanstack/react-router';
 import { App, mountApp } from '../../src/app/main';
 import { AppProviders } from '../../src/app/providers';
 import { createDesktopRouter } from '../../src/app/router';
 import { useLeaveGuard } from '../../src/shell/useLeaveGuard';
 import type { AppClient } from '../../src/data/client';
+
+const trackedRoots = new Set<Root>();
+let lastCreatedRoot: Root | null = null;
+
+vi.mock('react-dom/client', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('react-dom/client')>();
+  return {
+    ...actual,
+    createRoot: vi.fn((...args: Parameters<typeof actual.createRoot>): Root => {
+      const root = actual.createRoot(...args);
+      const origUnmount = root.unmount.bind(root);
+      let unmounted = false;
+      const wrappedRoot: Root = {
+        render: root.render.bind(root),
+        unmount: () => {
+          if (unmounted) return;
+          unmounted = true;
+          trackedRoots.delete(wrappedRoot);
+          origUnmount();
+        },
+      };
+      trackedRoots.add(wrappedRoot);
+      lastCreatedRoot = wrappedRoot;
+      return wrappedRoot;
+    }),
+  };
+});
 
 function installMatchMedia() {
   vi.stubGlobal(
@@ -48,6 +76,12 @@ describe('Desktop Router, Entry Auto-Mount & useLeaveGuard', () => {
   });
 
   afterEach(() => {
+    act(() => {
+      for (const root of Array.from(trackedRoots)) {
+        root.unmount();
+      }
+    });
+    lastCreatedRoot = null;
     cleanup();
     vi.restoreAllMocks();
   });
@@ -176,11 +210,19 @@ describe('Desktop Router, Entry Auto-Mount & useLeaveGuard', () => {
       expect(document.getElementById('vc-app-root')).toBeNull();
 
       // 1) Execute module top-level auto-mount path on #root from index.html
+      lastCreatedRoot = null;
       vi.resetModules();
       await import('../../src/app/main');
+      const autoMountedRoot = lastCreatedRoot;
+      expect(autoMountedRoot).toBeTruthy();
       expect(document.documentElement.dataset.vcApp).toBe('booting');
       await waitFor(() => {
         expect(rootEl!.querySelector('#vc-desktop-startup')).toBeTruthy();
+      });
+
+      // Unmount the auto-mounted root before replacing DOM
+      act(() => {
+        autoMountedRoot?.unmount();
       });
 
       // 2) Also verify default mountApp() with injected client boots to ready on #root and routes to #/chat
@@ -200,6 +242,7 @@ describe('Desktop Router, Entry Auto-Mount & useLeaveGuard', () => {
       act(() => {
         reactRoot?.unmount();
       });
+      expect(trackedRoots.size).toBe(0);
     }
   });
 
