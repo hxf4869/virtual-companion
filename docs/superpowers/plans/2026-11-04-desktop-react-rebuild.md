@@ -53,6 +53,22 @@ docs/superpowers/plans/2026-11-04-desktop-react-rebuild.md 的第 0–3 节与�
 
 调用：`cd <worktree> && /Users/hxf/.local/bin/agy -p "$(cat <prompt>)" --model gemini-4-argon-high --dangerously-skip-permissions --print-timeout 0 > /tmp/vc-dr2-t<N>.log 2>&1`
 
+### 0.1a agy CLI 用法（本机实测 2026-11-04）
+
+- 路径：`/Users/hxf/.local/bin/agy`（不在 PATH 时用绝对路径）。`agy models` 列出可用模型；本项目只用 `gemini-4-argon-high`。
+- 非交互执行一个任务：`agy -p "<提示词>" --model gemini-4-argon-high ...`（`-p` = `--print`，跑完一个回合就退出，输出打到 stdout）。
+- **写代码任务**必须加 `--dangerously-skip-permissions`：无头模式不能弹权限确认，不加时所有命令会被自动拒绝，输出
+  `a tool required the "command" permission that headless mode cannot prompt for`。工作目录就是 `cd` 进去的 worktree，Gemini 只能看到这里。
+- **只读任务**（摸底、审计）不要用上面那个参数，改用：
+  `--mode plan --sandbox --settings '{"permissions":{"allow":["command(*)","read(*)"]}}'`（只规划不写、终端受限、读和命令放行）。
+- 需要读 worktree 外的目录（例如 `upstream` 软链接指向的上游源码）时加 `--add-dir <绝对路径>`；不加会读不到，Gemini 会空转后结束。
+- `--print-timeout 0` 表示不限时（写代码任务用）；只读任务给 `1800s` 上限。没有 `timeout` 命令，不要用 `timeout ... agy`。
+- 长任务放后台：`( agy ... > /tmp/vc-dr2-t<N>.log 2>&1; echo "exit=$?" >> /tmp/vc-dr2-t<N>.log ) &`，结束后看日志尾部的 `exit=` 与 Gemini 的总结。
+- 并行：多个任务各自 `cd` 进自己的 worktree 后各起一个 `agy` 进程；只读任务可同时跑 4 路（已实测），写任务按并行图且文件不重叠。
+- 继续同一个会话补充指令：`agy -c -p "<追加指令>" ...`（`-c` 续接当前目录最近一次会话），用于"测试没过，按这个根因修"之类的追问；
+  换任务一律新开（不加 `-c`）。
+- Gemini 输出中文 Markdown，带 `file:///…#L` 链接；它的结论要按 0.2 复核，审计类结论误报较多，必须对照上游源码或实测确认。
+
 ### 0.2 每个任务的合入检查（调度者）
 
 1. `git -C <worktree> log --oneline desktop-react-rebuild..HEAD` 有且只有该任务的提交；`git diff desktop-react-rebuild...HEAD --stat` 只含任务 Files（另允许 `package*.json`、`license-inventory.yaml`）。
