@@ -188,7 +188,7 @@ export async function setChatMessages(chat_messages, { refresh = 'affected' } = 
     await refreshMessages(refresh, chat_messages.map(message => message.message_id));
 }
 
-function runChatMessagesMutation(refresh, change) {
+function runChatMessagesMutation(refresh, change, afterRefresh) {
     const host = getCardHost();
     const context = host?.context;
     const expectedMetadata = context?.chatMetadata;
@@ -200,7 +200,7 @@ function runChatMessagesMutation(refresh, change) {
     return context.mutateChatMessages(
         expectedMetadata,
         messages => change(messages, refreshIndices),
-        { refresh: refreshOption },
+        { refresh: refreshOption, afterRefresh },
     ).then(ok => {
         if (!ok) throw new Error('VC_CHAT_MUTATION_REJECTED');
     });
@@ -232,25 +232,42 @@ export async function createChatMessages(chat_messages, { insert_at, insert_befo
         }
         return result.value();
     };
-    await runChatMessagesMutation(refresh, async (messages, refreshIndices) => {
-        const targetInsert = insert_at ?? insert_before;
-        const raw_index = targetInsert === 'end' ? messages.length : _.clamp(targetInsert, -messages.length, messages.length);
-        const actual_insert = raw_index < 0 ? Math.max(0, messages.length + raw_index) : Math.min(messages.length, raw_index);
-        const converted = chat_messages.map(convert);
-        messages.splice(actual_insert, 0, ...converted);
-        if (refresh === 'affected') {
-            refreshIndices.push(..._.range(actual_insert, messages.length));
-        }
-        await Promise.all(
-            converted.map((message, index) =>
-                eventSource?.emit?.(
-                    message.is_user ? event_types.MESSAGE_SENT : event_types.MESSAGE_RECEIVED,
-                    actual_insert + index,
-                    'extension',
+    let insertedStart = 0;
+    let insertedMessages = [];
+    await runChatMessagesMutation(
+        refresh,
+        async (messages, refreshIndices) => {
+            const targetInsert = insert_at ?? insert_before;
+            const raw_index = targetInsert === 'end' ? messages.length : _.clamp(targetInsert, -messages.length, messages.length);
+            const actual_insert = raw_index < 0 ? Math.max(0, messages.length + raw_index) : Math.min(messages.length, raw_index);
+            const converted = chat_messages.map(convert);
+            insertedStart = actual_insert;
+            insertedMessages = converted;
+            messages.splice(actual_insert, 0, ...converted);
+            if (refresh === 'affected') {
+                refreshIndices.push(..._.range(actual_insert, messages.length));
+            }
+            await Promise.all(
+                converted.map((message, index) =>
+                    eventSource?.emit?.(
+                        message.is_user ? event_types.MESSAGE_SENT : event_types.MESSAGE_RECEIVED,
+                        actual_insert + index,
+                        'extension',
+                    ),
                 ),
-            ),
-        );
-    });
+            );
+        },
+        async () => {
+            await Promise.all(
+                insertedMessages.map((message, index) =>
+                    eventSource?.emit?.(
+                        message.is_user ? event_types.USER_MESSAGE_RENDERED : event_types.CHARACTER_MESSAGE_RENDERED,
+                        insertedStart + index,
+                    ),
+                ),
+            );
+        },
+    );
 }
 
 export async function deleteChatMessages(message_ids, { refresh = 'affected' } = {}) {

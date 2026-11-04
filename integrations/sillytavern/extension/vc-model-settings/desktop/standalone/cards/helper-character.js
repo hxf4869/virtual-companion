@@ -1,4 +1,4 @@
-// PolyForm-Noncommercial-1.0.0. JS-Slash-Runner 437412b20c8c33bcd4dbbe1ffaeae5abebfd2fb6 / src/function/raw_character.ts, character.ts
+// PolyForm-Noncommercial-1.0.0. JS-Slash-Runner 0af42106 / src/function/raw_character.ts, character.ts
 import { characters, name2 } from '../engine/ports.js';
 import { RawCharacter, getCardHost, getThumbnailUrl } from './ejs-host.js';
 import { getCharWorldbookNames } from './helper-worldbook.js';
@@ -29,7 +29,7 @@ export function getCharData(name = 'current') {
         name = !name ? 'current' : name;
         const characterData = RawCharacter.find({ name });
         if (!characterData) return null;
-        return klona(characterData.character ?? characterData);
+        return klona(characterData.getCardData());
     } catch (err) {
         const error = err instanceof Error ? err : new Error(String(err));
         throw Error(`获取${name ? ` '${name}' ` : '未知'}角色卡数据失败: ${error.message}`);
@@ -70,10 +70,14 @@ export async function getChatHistoryBrief(name = 'current') {
     }
     const host = getCardHost();
     const chats = await host.client.request('/api/characters/chats', { avatar_url: character.getAvatarId() });
-    if (!Array.isArray(chats)) {
+    if (!chats || typeof chats !== 'object' || (!Array.isArray(chats) && 'error' in chats)) {
         return [];
     }
-    return attachCharacterToChats(chats, character);
+    const sorted = Object.values(chats)
+        .filter(item => typeof item?.file_name === 'string' && item.file_name.length > 0)
+        .sort((a, b) => a.file_name.localeCompare(b.file_name))
+        .reverse();
+    return attachCharacterToChats(sorted, character);
 }
 
 export async function getChatHistoryDetail(data = 'current', isGroupChat = false) {

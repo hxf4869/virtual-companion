@@ -2,6 +2,7 @@
 import { lodash, yaml, showdown, hljs } from '/lib.js';
 import { bindCardHost, refreshCardHost, messageFormatting, getCardHost, getChatCompletionModel, getTokenCountAsync, loadWorldInfo,
     getRegexedString, getThumbnailUrl, MessageFormatter, parseRegexFromString } from './ejs-host.js';
+import { renderMarkdown } from './format.js';
 import { scripts, createScriptState, setHelperSchemaLibrary, notifyScriptButtons, onScriptButtonsChanged, waitUntil, getButtonId } from './helper-host.js';
 import * as variables from './helper-variables.js';
 import * as events from './helper-event.js';
@@ -87,7 +88,11 @@ export async function initializeCards(options) {
             for (const timer of entry.timers) clearTimeout(timer); entry.timers.clear();
             node.removeAttribute('data-vc-segs'); node.classList.remove('vc-segmented');
             const content = document.createElement('div'); content.className = 'mes_text';
-            const rawMes = util.replaceMacroLike(message.extra?.display_text || message.mes, { source: 'display', message_id: index });
+            const rawMes = util.replaceMacroLike(message.extra?.display_text || message.mes, {
+                source: 'display',
+                message_id: index,
+                role: message.is_user ? 'user' : message.is_system ? 'system' : 'assistant',
+            });
             content.innerHTML = messageFormatting(rawMes,
                 message.name, message.is_system, message.is_user, index);
             content.dataset.vcFormatted = ''; node.replaceChildren(content);
@@ -147,18 +152,22 @@ export async function initializeCards(options) {
     if (globalThis.EjsTemplate && !globalThis.EjsTemplate.__vcMacroWrapped) {
         const rawEvalTemplate = globalThis.EjsTemplate.evalTemplate.bind(globalThis.EjsTemplate);
         globalThis.EjsTemplate.evalTemplate = async (code, ctx = null, opts = {}) => {
-            const pre = typeof code === 'string' ? util.replaceMacroLike(code, { source: 'other' }) : code;
+            const macroCtx = ctx?._th_context ?? {
+                source: 'other',
+                ...(typeof ctx?.message_id === 'number'
+                    ? { message_id: ctx.message_id }
+                    : typeof ctx?.runID === 'number' && ctx.runID >= 0
+                      ? { message_id: ctx.runID }
+                      : {}),
+            };
+            const pre = typeof code === 'string' ? util.replaceMacroLike(code, macroCtx) : code;
             const out = await rawEvalTemplate(pre, ctx, opts);
-            return typeof out === 'string' ? util.replaceMacroLike(out, { source: 'other' }) : out;
+            return typeof out === 'string' ? util.replaceMacroLike(out, macroCtx) : out;
         };
         Object.defineProperty(globalThis.EjsTemplate, '__vcMacroWrapped', { value: true });
     }
     const onGenerateAfterData = (eventData, dryRun) => util.demacroOnPrompt(eventData, dryRun);
-    const onChatCompletionReady = generateData => {
-        if (generateData?.messages) util.demacroOnPrompt({ prompt: generateData.messages }, false);
-    };
     context.eventSource.on(context.eventTypes.GENERATE_AFTER_DATA, onGenerateAfterData);
-    context.eventSource.on(context.eventTypes.CHAT_COMPLETION_SETTINGS_READY, onChatCompletionReady);
 
     function assertFrame(frame) {
         if (!frame || !frame.isConnected || context.chatMetadata !== activeMetadata) throw new Error('VC_STALE_CARD_RUNTIME');
@@ -206,8 +215,8 @@ export async function initializeCards(options) {
         };
     }
     for (const [name, fn] of Object.entries({ ...messages, ...books, ...generation, ...presetsApi, ...charactersApi, ...personasApi, ...injectApi, ...regexApi, ...unsupportedApi })) {
-        if (name.startsWith('_') || name === 'RawCharacter' || typeof fn !== 'function') continue;
-        bind['_' + name] = function (...args) { assertFrame(this.frameElement); return fn(...args); };
+        if (name.startsWith('_') || name === 'RawCharacter' || typeof fn !== 'function' || Object.hasOwn(bind, '_' + name)) continue;
+        bind['_' + name] = function (...args) { assertFrame(this.frameElement); return fn.apply(this, args); };
     }
     const INTERNAL_HELPER_EXPORTS = new Set([
         'get_variables_without_clone',
@@ -254,7 +263,7 @@ export async function initializeCards(options) {
             saveSettings: () => context.saveSettingsDebounced(),
             uuidv4,
             copyText: async text => { await globalThis.navigator?.clipboard?.writeText?.(String(text ?? '')); },
-            renderMarkdown: text => new showdown.Converter().makeHtml(String(text ?? '')),
+            renderMarkdown,
             parseRegexFromString,
             duringGenerating: () => Boolean(context.isGenerating),
             addOneMessage: unsupportedHelper('builtin.addOneMessage'),

@@ -1,17 +1,33 @@
 // AGPL-3.0-only. JS-Slash-Runner 0af421068 / src/iframe/exported/util.ts
 // 保留本地预编译拷贝：上游为 TypeScript 源码，此处绑定 ../engine/st/script.js 的 substituteParamsExtended 与 helper-host.js 的 zod 实例。
 import { lodash } from '/lib.js';
+import { chat } from '../engine/ports.js';
 import { substituteParamsExtended } from '../engine/st/script.js';
 import { z } from './helper-host.js';
 import { get_variables_without_clone } from './helper-variables.js';
 const isPromise=value=>value!=null&&typeof value.then==='function';
 
+function getVariableOption(context, type = 'chat') {
+    const resolved = (type ?? 'chat').toLowerCase();
+    return resolved !== 'message'
+        ? { type: resolved }
+        : {
+              type: 'message',
+              message_id:
+                  context?.message_id ??
+                  chat.findLastIndex(message => {
+                      const vars = message?.variables?.[message?.swipe_id ?? 0];
+                      return Boolean(vars && typeof vars === 'object');
+                  }),
+          };
+}
+
 const macros = [
     {
         regex: /\{\{get_(?:(global|preset|character|chat|message)_)?variable::(.*?)\}\}/g,
-        replace: (_context, _match, type, path) => {
+        replace: (context, _match, type, path) => {
             try {
-                const variables = get_variables_without_clone({ type: type ?? 'chat' });
+                const variables = get_variables_without_clone(getVariableOption(context, type));
                 const variable = lodash.get(variables, path);
                 if (typeof variable === 'string') return variable;
                 if (variable === undefined) return 'undefined';
@@ -23,9 +39,9 @@ const macros = [
     },
     {
         regex: /\{\{format_(?:(global|preset|character|chat|message)_)?variable_quoted::(.*?)\}\}/g,
-        replace: (_context, _match, type, path) => {
+        replace: (context, _match, type, path) => {
             try {
-                const variables = get_variables_without_clone({ type: type ?? 'chat' });
+                const variables = get_variables_without_clone(getVariableOption(context, type));
                 const variable = lodash.get(variables, path);
                 return String(JSON.stringify(variable));
             } catch {
@@ -35,9 +51,9 @@ const macros = [
     },
     {
         regex: /\{\{format_(?:(global|preset|character|chat|message)_)?variable::(.*?)\}\}/g,
-        replace: (_context, _match, type, path) => {
+        replace: (context, _match, type, path) => {
             try {
-                const variables = get_variables_without_clone({ type: type ?? 'chat' });
+                const variables = get_variables_without_clone(getVariableOption(context, type));
                 const variable = lodash.get(variables, path);
                 return typeof variable === 'string' ? variable : String(JSON.stringify(variable));
             } catch {
@@ -57,14 +73,19 @@ export function registerMacroLike(regex, replace) {
 }
 export function _registerMacroLike(regex, replace) {
     const { unregister } = registerMacroLike(regex, replace);
+    let cleaned = false;
+    const onceUnregister = () => {
+        if (cleaned) return;
+        cleaned = true;
+        unregister();
+    };
     try {
-        if (this && typeof this.addEventListener === 'function') {
-            this.addEventListener('pagehide', unregister, { once: true });
-        } else if (typeof globalThis.jQuery === 'function' && this) {
-            globalThis.jQuery(this).on?.('pagehide', unregister);
-        }
+        const win = this && this !== globalThis.TavernHelper ? (this.window ?? this) : null;
+        const jq = win?.jQuery ?? globalThis.jQuery ?? globalThis.$;
+        jq?.(win)?.on?.('pagehide', onceUnregister);
+        win?.addEventListener?.('pagehide', onceUnregister, { once: true });
     } catch {}
-    return { unregister };
+    return { unregister: onceUnregister };
 }
 export function unregisterMacroLike(regex) {
     const index = macros.findIndex(macro => macro.regex.source === regex.source);
@@ -75,22 +96,25 @@ export function unregisterMacroLike(regex) {
 export function replaceMacroLike(text, context = {}) {
     if (typeof text !== 'string') return text;
     const ctx = { source: 'other', ...context };
-    return macros.reduce((acc, macro) => acc.replace(macro.regex, (...args) => macro.replace(ctx, ...args)), text);
+    return macros.reduce((acc, macro) => {
+        macro.regex.lastIndex = 0;
+        return acc.replace(macro.regex, (...args) => macro.replace(ctx, ...args));
+    }, text);
 }
 export function demacroOnPrompt(event_data, dry_run = false) {
     if (dry_run || !event_data) return;
-    const replace = text => replaceMacroLike(text, { source: 'prompt' });
     if (typeof event_data.prompt === 'string') {
-        event_data.prompt = replace(event_data.prompt);
+        event_data.prompt = replaceMacroLike(event_data.prompt, { source: 'prompt' });
     } else if (Array.isArray(event_data.prompt)) {
         for (const data of event_data.prompt) {
             if (!data) continue;
+            const ctx = { source: 'prompt', role: data.role };
             if (typeof data.content === 'string') {
-                data.content = replace(data.content);
+                data.content = replaceMacroLike(data.content, ctx);
             } else if (Array.isArray(data.content)) {
                 for (const item of data.content) {
                     if (item?.type === 'text' && typeof item.text === 'string') {
-                        item.text = replace(item.text);
+                        item.text = replaceMacroLike(item.text, ctx);
                     }
                 }
             }

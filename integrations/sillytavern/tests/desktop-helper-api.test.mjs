@@ -207,14 +207,41 @@ registerHooks({
                     export const yaml = { parse: JSON.parse, stringify: JSON.stringify };
                     export const showdown = {
                         Converter: class {
-                            addExtension() {}
+                            constructor(options = {}) {
+                                this.options = options;
+                                this.extensions = [...(options.extensions || [])].flatMap(ext => typeof ext === 'function' ? ext() : ext);
+                            }
+                            addExtension(ext) {
+                                const list = typeof ext === 'function' ? ext() : Array.isArray(ext) ? ext : [ext];
+                                this.extensions.push(...list);
+                            }
                             makeHtml(t) {
-                                const s = String(t ?? '');
+                                let s = String(t ?? '');
                                 if (s.includes('html>')) {
                                     const escaped = s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
                                     return '<pre><code>' + escaped + '</code></pre>';
                                 }
-                                return s.replace(/\\*\\*(.+?)\\*\\*/g, '<strong>$1</strong>');
+                                for (const ext of this.extensions) {
+                                    if (ext?.type === 'lang' && typeof ext.filter === 'function') {
+                                        s = ext.filter(s, this, this.options);
+                                    }
+                                }
+                                s = s.replace(/\\*\\*(.+?)\\*\\*/g, '<strong>$1</strong>');
+                                if (this.options.strikethrough) {
+                                    s = s.replace(/~~(.+?)~~/g, '<del>$1</del>');
+                                }
+                                if (this.options.tables && /^\\|.+\\|\\r?\\n\\|[-:| ]+\\|/m.test(s)) {
+                                    s = '<table>' + s + '</table>';
+                                }
+                                if (this.options.simpleLineBreaks) {
+                                    s = s.replace(/([^>])\\n(?!\\n)/g, '$1<br>\\n');
+                                }
+                                for (const ext of this.extensions) {
+                                    if (ext?.type === 'output' && typeof ext.filter === 'function') {
+                                        s = ext.filter(s, this, this.options);
+                                    }
+                                }
+                                return s;
                             }
                         },
                     };
@@ -266,6 +293,21 @@ const wrapJqNodes = nodes => Object.assign(nodes, {
         return this;
     },
 });
+const jqHandlers = new WeakMap();
+const getJqBucket = (target, event) => {
+    if (!target || (typeof target !== 'object' && typeof target !== 'function')) return [];
+    let map = jqHandlers.get(target);
+    if (!map) {
+        map = new Map();
+        jqHandlers.set(target, map);
+    }
+    let list = map.get(event);
+    if (!list) {
+        list = [];
+        map.set(event, list);
+    }
+    return list;
+};
 const jQueryFn = selector => {
     if (typeof selector === 'string') {
         return wrapJqNodes([...happyWindow.document.querySelectorAll(selector)]);
@@ -276,14 +318,29 @@ const jQueryFn = selector => {
     }
     return {
         on(event, handler) {
-            selector?.addEventListener?.(event, handler);
+            if (typeof handler === 'function') {
+                getJqBucket(selector, event).push(handler);
+            }
             return this;
         },
         off(event, handler) {
-            selector?.removeEventListener?.(event, handler);
+            const list = getJqBucket(selector, event);
+            if (!handler) {
+                list.length = 0;
+            } else {
+                const idx = list.indexOf(handler);
+                if (idx >= 0) list.splice(idx, 1);
+            }
             return this;
         },
-        triggerHandler: async () => {},
+        async triggerHandler(event) {
+            const list = [...getJqBucket(selector, event)];
+            let last;
+            for (const fn of list) {
+                last = await fn.call(selector, { type: event, target: selector });
+            }
+            return last;
+        },
     };
 };
 jQueryFn.ui = {};
@@ -323,6 +380,7 @@ const { openaiDefaults, powerUserDefaults } = await import('../extension/vc-mode
 const { initializeCards } = await import('../extension/vc-model-settings/desktop/standalone/cards/index.js');
 const { createDesktopSession } = await import('../extension/vc-model-settings/desktop/standalone/session.js');
 const { prepareSourceIdentities } = await import('../server-plugin/virtual-companion/lib/source-identity.js');
+const { documentEqual, documentValue, applyDocumentValues } = await import('../extension/vc-model-settings/settings-documents.js');
 
 function createFixture() {
     const worldStore = {
@@ -553,11 +611,12 @@ function createFixture() {
     };
     const presets = { Default: structuredClone(settings.oai_settings) };
     card.data.extensions.vc_character_ref = 'helper-test-ref';
+    const capturedDocs = {};
     const client = {
         headers: () => ({}),
         documents: {
             captureWorldbook(name, next) {
-                worldStore[name] = structuredClone(next);
+                capturedDocs[name] = structuredClone(next);
             },
         },
         saveSettings: async () => {
@@ -617,7 +676,19 @@ function createFixture() {
         },
         async post(url, body) {
             if (url === '/api/worldinfo/edit') {
-                if (body.data) worldStore[body.name] = structuredClone(body.data);
+                if (Array.isArray(body.vc_changes)) {
+                    const current = worldStore[body.name];
+                    for (const change of body.vc_changes) {
+                        const actual = documentValue(current, change.path);
+                        const expected = change.before;
+                        if (Boolean(actual.exists) !== Boolean(expected?.exists) || (actual.exists && !documentEqual(actual.value, expected.value))) {
+                            return new Response(JSON.stringify({ code: 'VC_CONFLICT' }), { status: 409 });
+                        }
+                    }
+                    worldStore[body.name] = applyDocumentValues(current === undefined ? undefined : structuredClone(current), body.vc_changes);
+                } else if (body.data) {
+                    worldStore[body.name] = structuredClone(body.data);
+                }
                 if (!worldNames.includes(body.name)) worldNames.push(body.name);
                 return new Response('{}', { status: 200 });
             }
@@ -757,10 +828,12 @@ test('Batch 1: 补挂漏挂接口并移除 10 个内部 _ 函数顶层泄漏', a
     assert.equal(typeof th.isPresetPlaceholderPrompt, 'function');
     assert.equal(typeof th.default_preset, 'object');
     assert.equal(th.isPresetSystemPrompt({ id: 'main' }), true);
-    assert.equal(th.isPresetPlaceholderPrompt({ id: 'chat_history' }), true);
+    assert.equal(th.isPresetPlaceholderPrompt({ id: 'chatHistory' }), true);
+    assert.equal(th.isPresetPlaceholderPrompt({ id: 'chat_history' }), false);
     assert.equal(th.isPresetNormalPrompt({ id: 'custom_prompt_1' }), true);
     assert.equal(th.isPresetNormalPrompt({ id: 'main' }), false);
-    assert.equal(th.isPresetNormalPrompt({ id: 'chat_history' }), false);
+    assert.equal(th.isPresetNormalPrompt({ id: 'chatHistory' }), false);
+    assert.equal(th.isPresetNormalPrompt({ id: 'chat_history' }), true);
 
     assert.equal(typeof th.RawCharacter, 'function');
     const rawChar = th.RawCharacter.find({ name: 'current' });
@@ -847,9 +920,9 @@ test('Batch 2: setLorebookSettings、triggerSlash/triggerSlashWithResult 与 _re
     assert.equal(ejsOut, '结果=2 [TAG:EJS_OK] 77');
 
     // 在生成提示词事件钩子中生效
-    const promptPacket = { messages: [{ role: 'user', content: '请处理 {{custom_tag::PROMPT_OK}}' }] };
-    await f.context.eventSource.emit(f.context.eventTypes.CHAT_COMPLETION_SETTINGS_READY, promptPacket);
-    assert.equal(promptPacket.messages[0].content, '请处理 [TAG:PROMPT_OK]');
+    const promptData = { prompt: [{ role: 'user', content: '请处理 {{custom_tag::PROMPT_OK}}' }] };
+    await f.context.eventSource.emit(f.context.eventTypes.GENERATE_AFTER_DATA, promptData);
+    assert.equal(promptData.prompt[0].content, '请处理 [TAG:PROMPT_OK]');
 
     // iframe pagehide 自动卸载
     mockIframeWin.dispatchEvent(new Event('pagehide'));
@@ -1180,4 +1253,292 @@ test('Batch 3: 世界书旧名包装、消息增删旋转、提示词注入、�
     }
     assert.equal(typeof iframeWin.TavernHelper.RawCharacter.find, 'function');
     assert.equal(iframeWin.TavernHelper.RawCharacter.find({ name: 'current' })?.getAvatarId(), 'helper-test.png');
+});
+
+test('Audit 1 & 2: iframe _injectPrompts 与 _registerMacroLike 经 closeScripts()/jQuery pagehide 同步清理且幂等', async () => {
+    const f = createFixture();
+    const cards = await f.init();
+    const predefineSource = fs.readFileSync(
+        new URL('../extension/vc-model-settings/desktop/standalone/cards/predefine.js', import.meta.url),
+        'utf8',
+    );
+    const scriptHost = document.getElementById('TH-script-frames') || (() => {
+        const div = document.createElement('div');
+        div.id = 'TH-script-frames';
+        document.body.appendChild(div);
+        return div;
+    })();
+    const frameEl = document.createElement('iframe');
+    frameEl.id = 'TH-script--script-1';
+    scriptHost.appendChild(frameEl);
+    const iframeWin = Object.assign(new EventTarget(), {
+        parent: globalThis,
+        frameElement: frameEl,
+        name: 'TH-script--script-1',
+        jQuery: globalThis.jQuery,
+        $: globalThis.$,
+    });
+    iframeWin.window = iframeWin;
+    Object.defineProperty(frameEl, 'contentWindow', { value: iframeWin, configurable: true });
+    new Function('window', '$', '_', predefineSource)(iframeWin, globalThis.$, globalThis._);
+
+    iframeWin.injectPrompts(
+        [{ id: 'iframe-leak-check', position: 'in_chat', depth: 1, role: 'system', content: '来自子frame的持久注入' }],
+        { once: false },
+    );
+    assert.equal(f.context.extensionPrompts['iframe-leak-check']?.value, '来自子frame的持久注入');
+
+    iframeWin.registerMacroLike(/\{\{iframe_macro\}\}/g, () => 'IFRAME_MACRO_ACTIVE');
+    assert.equal(await globalThis.EjsTemplate.evalTemplate('{{iframe_macro}}'), 'IFRAME_MACRO_ACTIVE');
+
+    // closeScripts 使用 jquery(view).triggerHandler('pagehide') 并 off('pagehide')，不派发原生 Event('pagehide')
+    await cards.closeScripts();
+    // 即使随后再触发原生 pagehide 也应幂等不报错
+    iframeWin.dispatchEvent(new Event('pagehide'));
+
+    assert.equal(f.context.extensionPrompts['iframe-leak-check'], undefined, 'closeScripts 后子 frame 的 once:false 注入必须清空');
+    assert.equal(await globalThis.EjsTemplate.evalTemplate('{{iframe_macro}}'), '{{iframe_macro}}', 'closeScripts 后子 frame 的宏必须同步注销');
+});
+
+test('Audit 3: createChatMessages 事件顺序 (SENT/RECEIVED -> refresh -> RENDERED -> 单次 F2 保存含 MVU 回调写入)', async () => {
+    const f = createFixture();
+    await f.init();
+    const th = globalThis.TavernHelper;
+
+    const trace = [];
+    const origRefresh = f.engine.cards.surface.refresh.bind(f.engine.cards.surface);
+    f.engine.cards.surface.refresh = async (indices, opts) => {
+        trace.push(`refresh:${Array.isArray(indices) ? indices.join(',') : indices}`);
+        return origRefresh(indices, opts);
+    };
+
+    f.context.eventSource.on(event_types.MESSAGE_SENT, idx => trace.push(`MESSAGE_SENT:${idx}`));
+    f.context.eventSource.on(event_types.MESSAGE_RECEIVED, (idx, tag) => trace.push(`MESSAGE_RECEIVED:${idx}:${tag}`));
+    f.context.eventSource.on(event_types.USER_MESSAGE_RENDERED, idx => {
+        trace.push(`USER_MESSAGE_RENDERED:${idx}`);
+    });
+    f.context.eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, idx => {
+        trace.push(`CHARACTER_MESSAGE_RENDERED:${idx}`);
+        // 模拟 MVU 在 CHARACTER_MESSAGE_RENDERED 回调中非阻塞 applyResult 写入 chatMetadata 与楼层变量
+        f.context.chatMetadata.variables.mvu_rendered_applied = `applied_at_${idx}`;
+        f.context.chat[idx].variables[0].mvu_floor_applied = true;
+    });
+
+    const savesBefore = f.savedChatCount;
+    await th.createChatMessages([
+        { role: 'user', message: '新增用户消息' },
+        { role: 'assistant', message: '新增助手消息' },
+    ]);
+
+    assert.equal(f.savedChatCount, savesBefore + 1, '包含 RENDERED 回调修改的 createChatMessages 仍只能触发 1 次 F2 保存');
+    assert.deepEqual(trace, [
+        'MESSAGE_SENT:2',
+        'MESSAGE_RECEIVED:3:extension',
+        'refresh:2,3',
+        'USER_MESSAGE_RENDERED:2',
+        'CHARACTER_MESSAGE_RENDERED:3',
+    ]);
+    const savedPayload = f.f2Saves.at(-1);
+    assert.equal(savedPayload.chat[0].chat_metadata.variables.mvu_rendered_applied, 'applied_at_3', 'RENDERED 回调写入的 chatMetadata 必须进入同一次 F2 保存');
+    assert.equal(savedPayload.chat[4].variables[0].mvu_floor_applied, true, 'RENDERED 回调写入的楼层变量必须进入同一次 F2 保存');
+});
+
+test('Audit 4, 5, 6: 楼层变量宏 message_id 上下文、GENERATE_AFTER_DATA 单次替换与 formatAsTavernRegexedString role 传递', async () => {
+    const f = createFixture();
+    await f.init();
+    const th = globalThis.TavernHelper;
+
+    // Audit 4: 两楼层不同变量 + demacroOnPrompt 行 role 上下文
+    f.context.chat[0].variables[0].floor_only = 'FLOOR_ZERO';
+    f.context.chat[1].variables[0].floor_only = 'FLOOR_ONE';
+    const outFloor0 = await globalThis.EjsTemplate.evalTemplate(
+        '{{get_message_variable::floor_only}}|{{format_message_variable::floor_only}}|{{format_message_variable_quoted::floor_only}}',
+        { _th_context: { source: 'message', message_id: 0, role: 'assistant' } },
+    );
+    const outFloor1 = await globalThis.EjsTemplate.evalTemplate(
+        '{{get_message_variable::floor_only}}|{{format_message_variable::floor_only}}|{{format_message_variable_quoted::floor_only}}',
+        { _th_context: { source: 'message', message_id: 1, role: 'user' } },
+    );
+    assert.equal(outFloor0, 'FLOOR_ZERO|FLOOR_ZERO|"FLOOR_ZERO"');
+    assert.equal(outFloor1, 'FLOOR_ONE|FLOOR_ONE|"FLOOR_ONE"');
+
+    // Audit 5: 同一生成连续触发 GENERATE_AFTER_DATA 与 CHAT_COMPLETION_SETTINGS_READY 时，非幂等宏只能替换 1 次且带每行 role
+    let count = 0;
+    const handle = th.registerMacroLike(/NON_IDEMPOTENT_TOKEN/g, ctx => `NON_IDEMPOTENT_TOKEN_${++count}_${ctx.role}`);
+    try {
+        const messages = [
+            { role: 'system', content: 'sys: NON_IDEMPOTENT_TOKEN' },
+            { role: 'user', content: 'usr: NON_IDEMPOTENT_TOKEN' },
+            { role: 'assistant', content: 'ast: NON_IDEMPOTENT_TOKEN' },
+        ];
+        await f.context.eventSource.emit(event_types.GENERATE_AFTER_DATA, { prompt: messages }, false);
+        await f.context.eventSource.emit(event_types.CHAT_COMPLETION_SETTINGS_READY, { messages });
+        assert.deepEqual(messages.map(m => m.content), [
+            'sys: NON_IDEMPOTENT_TOKEN_1_system',
+            'usr: NON_IDEMPOTENT_TOKEN_2_user',
+            'ast: NON_IDEMPOTENT_TOKEN_3_assistant',
+        ]);
+    } finally {
+        handle.unregister();
+    }
+
+    // Audit 6: formatAsTavernRegexedString 调用中宏回调必须拿到真实 role/source/message_id 而非被 ejs-host.substituteParams 提前用 source:'other' 吞掉
+    const roleHandle = th.registerMacroLike(/CTX_ROLE_CHECK/g, ctx => `${ctx.source}:${ctx.role}`);
+    try {
+        const formatted = th.formatAsTavernRegexedString('CTX_ROLE_CHECK', 'ai_output', 'display', { depth: 0 });
+        assert.equal(formatted, 'display:assistant');
+    } finally {
+        roleHandle.unregister();
+    }
+});
+
+test('Audit 7, 9, 10: RawCharacter.getCardData 完整角色对象与缺省值、getChatHistoryBrief 倒序、预设分类精确列表', async () => {
+    const f = createFixture();
+    await f.init();
+    const th = globalThis.TavernHelper;
+
+    // Audit 7: getCardData() 返回完整 v1CharData（含顶层 avatar 与 data），缺省字段返回安全默认值
+    const rawCurrent = th.RawCharacter.find({ name: 'current' });
+    assert.equal(rawCurrent.getCardData().avatar, 'helper-test.png');
+    assert.equal(rawCurrent.getCardData().data.name, '测试角色');
+    assert.equal(th.getCharData('current').avatar, 'helper-test.png');
+
+    f.context.characters.push({ name: '空字段角色', avatar: '', data: {} });
+    const rawMinimal = th.RawCharacter.find({ name: '空字段角色' });
+    assert.equal(rawMinimal.getAvatarId(), '');
+    assert.deepEqual(rawMinimal.getRegexScripts(), []);
+    assert.equal(rawMinimal.getCharacterBook(), null);
+    assert.equal(rawMinimal.getWorldName(), '');
+    f.context.characters.pop();
+
+    // Audit 9: getChatHistoryBrief 按 file_name 倒序排序并保留原始字段
+    const origRequest = f.client.request.bind(f.client);
+    f.client.request = async (url, body) => {
+        if (url === '/api/characters/chats') {
+            return {
+                a: { file_name: '2026-11-03@01h00m.jsonl', file_size: '1 KB', chat_items: 2, mes: '旧消息', last_mes: '2026-11-03T01:00:00Z', extra_tag: 'old' },
+                b: { file_name: '2026-11-04@09h30m.jsonl', file_size: '2 KB', chat_items: 5, mes: '新消息', last_mes: '2026-11-04T09:30:00Z', extra_tag: 'new' },
+            };
+        }
+        return origRequest(url, body);
+    };
+    try {
+        const briefs = await th.getChatHistoryBrief('current');
+        assert.deepEqual(briefs.map(b => b.file_name), [
+            '2026-11-04@09h30m.jsonl',
+            '2026-11-03@01h00m.jsonl',
+        ]);
+        assert.equal(briefs[0].extra_tag, 'new');
+        assert.equal(briefs[0].avatar_url, 'helper-test.png');
+        assert.equal(briefs[0].ch_name, '测试角色');
+    } finally {
+        f.client.request = origRequest;
+    }
+
+    // Audit 10: isPresetSystemPrompt / isPresetPlaceholderPrompt 仅识别锁定上游精确列表
+    for (const id of ['main', 'nsfw', 'jailbreak', 'enhanceDefinitions']) {
+        assert.equal(th.isPresetSystemPrompt({ id }), true, `${id} 应为 system prompt`);
+        assert.equal(th.isPresetNormalPrompt({ id }), false);
+    }
+    for (const id of ['worldInfoBefore', 'personaDescription', 'charDescription', 'charPersonality', 'scenario', 'worldInfoAfter', 'dialogueExamples', 'chatHistory']) {
+        assert.equal(th.isPresetPlaceholderPrompt({ id }), true, `${id} 应为 placeholder prompt`);
+        assert.equal(th.isPresetNormalPrompt({ id }), false);
+    }
+    for (const snakeId of ['enhance_definitions', 'world_info_before', 'persona_description', 'char_description', 'char_personality', 'world_info_after', 'dialogue_examples', 'chat_history', 'authors_note']) {
+        assert.equal(th.isPresetSystemPrompt({ id: snakeId }), false, `${snakeId} 不应被误判为 system prompt`);
+        assert.equal(th.isPresetPlaceholderPrompt({ id: snakeId }), false, `${snakeId} 不应被误判为 placeholder prompt`);
+        assert.equal(th.isPresetNormalPrompt({ id: snakeId }), true, `${snakeId} 应归为 normal prompt`);
+    }
+});
+
+test('Audit 8: updateLorebookEntriesWith 单次读取基线与字段级 CAS（异字段并发保留远端修改，同字段并发冲突报 409）', async () => {
+    const f = createFixture();
+    await f.init();
+    const th = globalThis.TavernHelper;
+
+    // 1. 异字段并发：updater 修改 comment 期间远端修改了 content，提交应成功且保留远端 content
+    await th.updateLorebookEntriesWith('测试世界书', async entries => {
+        // 模拟在初次读取之后、写回之前，另一处并发更新了同一条目的 content
+        f.worldStore['测试世界书'].entries[0].content = '远端并发新内容';
+        entries[0].comment = '本地更新备注';
+        return entries;
+    });
+    assert.equal(f.worldStore['测试世界书'].entries[0].comment, '本地更新备注');
+    assert.equal(f.worldStore['测试世界书'].entries[0].content, '远端并发新内容', '不得用 updater 内部的旧快照覆盖未修改的远端字段');
+
+    // 2. 同字段并发：updater 修改 comment 期间远端也修改了 comment，提交必须因 CAS 基线不匹配抛 409 且不覆盖远端值
+    await assert.rejects(
+        () =>
+            th.updateLorebookEntriesWith('测试世界书', async entries => {
+                f.worldStore['测试世界书'].entries[0].comment = '远端抢先修改备注';
+                entries[0].comment = '本地冲突备注';
+                return entries;
+            }),
+        err => err?.status === 409,
+    );
+    assert.equal(f.worldStore['测试世界书'].entries[0].comment, '远端抢先修改备注');
+});
+
+test('Audit 11, 12, 13: builtin.duringGenerating 真实生成态、builtin.renderMarkdown 复用配置化 converter、Slash /let 与 /var 局部作用域', async () => {
+    const f = createFixture();
+    await f.init();
+    const th = globalThis.TavernHelper;
+
+    // Audit 11: builtin.duringGenerating() 在空闲与非生成动作时为 false，真实生成与 Helper 生成中为 true，结束后恢复 false
+    assert.equal(th.builtin.duringGenerating(), false);
+    let duringMutation = null;
+    const onMutSent = () => { duringMutation = th.builtin.duringGenerating(); };
+    f.context.eventSource.on(event_types.MESSAGE_SENT, onMutSent);
+    try {
+        await th.createChatMessages([{ role: 'user', message: '非生成动作消息' }]);
+        assert.equal(duringMutation, false, '消息修改期间 builtin.duringGenerating() 必须为 false');
+    } finally {
+        f.context.eventSource.removeListener(event_types.MESSAGE_SENT, onMutSent);
+    }
+
+    const gate = f.pauseNextGenerate();
+    const sendPromise = f.session.send('测试生成态');
+    await gate.entered;
+    let duringGenWhileRunning;
+    try {
+        duringGenWhileRunning = th.builtin.duringGenerating();
+    } finally {
+        gate.release();
+        await sendPromise;
+    }
+    assert.equal(duringGenWhileRunning, true, '真实生成进行中 builtin.duringGenerating() 必须为 true');
+    assert.equal(th.builtin.duringGenerating(), false, '生成结束后 builtin.duringGenerating() 必须恢复 false');
+
+    let duringHelperGen = false;
+    const origGenerateHelper = f.engine.generateHelper;
+    f.engine.generateHelper = async (...args) => {
+        duringHelperGen = th.builtin.duringGenerating();
+        return origGenerateHelper(...args);
+    };
+    try {
+        await f.context.generateHelper('generate', { user_input: 'helper生成测试' });
+        assert.equal(duringHelperGen, true, 'Helper 生成进行中 builtin.duringGenerating() 必须为 true');
+        assert.equal(th.builtin.duringGenerating(), false, 'Helper 生成结束后 builtin.duringGenerating() 必须恢复 false');
+    } finally {
+        f.engine.generateHelper = origGenerateHelper;
+    }
+
+    // Audit 12: builtin.renderMarkdown 复用 cards/format.js 的配置化 converter（支持表格、删除线、单换行等）
+    const mdHtml = th.builtin.renderMarkdown('| A | B |\n| - | - |\n| 1 | 2 |\n\n~~删除线~~\n第一行\n第二行');
+    assert.ok(mdHtml.includes('<table>'), 'renderMarkdown 应支持表格');
+    assert.ok(mdHtml.includes('<del>删除线</del>'), 'renderMarkdown 应支持删除线');
+    assert.ok(mdHtml.includes('第一行<br>\n第二行'), 'renderMarkdown 应支持单换行转 <br>');
+
+    // Audit 13: /let 与 /var 使用每次执行局部的 SlashCommandScope，不污染持久化 chat_metadata.variables
+    const scopedOut = await th.triggerSlash('/let x 10 | /var x 25 | /var x');
+    assert.equal(scopedOut, '25');
+    assert.equal(f.context.chatMetadata.variables.x, undefined, '/let 与 /var 不得写入持久化 chat_metadata.variables');
+
+    const namedScopedOut = await th.triggerSlash('/let key=arr [10,20] | /var index=1 arr 99 | /var index=1 arr');
+    assert.equal(namedScopedOut, '99');
+    assert.equal(f.context.chatMetadata.variables.arr, undefined);
+
+    // 跨次执行不泄漏上次局部作用域，读取未声明局部变量抛错，重复 /let 同名变量抛错
+    await assert.rejects(() => th.triggerSlash('/var x'), /Variable "x" not found/);
+    await assert.rejects(() => th.triggerSlash('/let dup 1 | /let dup 2'), /Variable "dup" already exists/);
 });

@@ -1,4 +1,4 @@
-// PolyForm-Noncommercial-1.0.0. JS-Slash-Runner 437412b20c8c33bcd4dbbe1ffaeae5abebfd2fb6 / src/function/tavern_regex.ts
+// PolyForm-Noncommercial-1.0.0. JS-Slash-Runner 0af42106 / src/function/tavern_regex.ts
 import { characters, chat, extension_settings, oai_settings, this_chid } from '../engine/ports.js';
 import { getRegexedString, regex_placement, substituteParams, getCardHost, RawCharacter } from './ejs-host.js';
 import { replaceMacroLike } from './helper-util.js';

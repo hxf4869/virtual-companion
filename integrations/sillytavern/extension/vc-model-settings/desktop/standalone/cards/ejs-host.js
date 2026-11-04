@@ -4,11 +4,10 @@ import { createRegexRuntime } from '../engine/regex.js';
 import { createTokenizer } from '../engine/tokenizers.js';
 import { getChatCompletionModel as modelOf } from '../engine/st/scripts/openai.js';
 import { getCharaFilename } from '../engine/st/scripts/utils.js';
-import { substituteParams as substituteParamsEngine, substituteParamsExtended as substituteParamsExtendedEngine, setExtensionPrompt } from '../engine/st/script.js';
+import { substituteParams, substituteParamsExtended, setExtensionPrompt } from '../engine/st/script.js';
 import { getContext, characters, this_chid, groups, selected_group, power_user, oai_settings } from '../engine/ports.js';
 import { configureFormatting, messageFormatting, MessageFormatter } from './format.js';
 import { accountStorage, configureAccountStorage } from './account-storage.js';
-import { replaceMacroLike } from './helper-util.js';
 import {
     ARGUMENT_TYPE,
     SlashCommand,
@@ -20,6 +19,8 @@ import {
 } from './helper-slash.js';
 export * from '../engine/ports.js';
 export {
+    substituteParams,
+    substituteParamsExtended,
     setExtensionPrompt,
     getCharaFilename,
     messageFormatting,
@@ -32,15 +33,6 @@ export {
     executeSlashCommands,
     executeSlashCommandsWithOptions,
 };
-
-export function substituteParams(content, ...args) {
-    const out = substituteParamsEngine(content, ...args);
-    return typeof out === 'string' ? replaceMacroLike(out, { source: 'other' }) : out;
-}
-export function substituteParamsExtended(content, ...args) {
-    const out = substituteParamsExtendedEngine(content, ...args);
-    return typeof out === 'string' ? replaceMacroLike(out, { source: 'other' }) : out;
-}
 
 let owner;
 export let user_avatar, world_info, selected_world_info, world_names;
@@ -114,11 +106,11 @@ export class RawCharacter {
         Object.assign(this, character);
         this.character = character;
     }
-    getCardData() { return this.character.data; }
-    getAvatarId() { return this.character.avatar; }
-    getRegexScripts() { return this.character.data?.extensions?.regex_scripts; }
-    getCharacterBook() { return this.character.data?.character_book; }
-    getWorldName() { return this.character.data?.extensions?.world; }
+    getCardData() { return this.character; }
+    getAvatarId() { return this.character.avatar || ''; }
+    getRegexScripts() { return this.character.data?.extensions?.regex_scripts || []; }
+    getCharacterBook() { return this.character.data?.character_book || null; }
+    getWorldName() { return this.character.data?.extensions?.world || ''; }
     static find({ name = 'current' } = {}) {
         if (name === 'current') {
             const current = characters[this_chid];

@@ -8,8 +8,9 @@ import { MessageFormatter } from './message-formatter.js';
 import { markdownExclusionExt } from './showdown-exclusion.js';
 import { markdownUnderscoreExt } from './showdown-underscore.js';
 export { MessageFormatter } from './message-formatter.js';
-let active;
+let active, activeConverter;
 export const messageFormatting=(...args)=>active(...args);
+export const renderMarkdown = text => activeConverter.makeHtml(String(text ?? ''));
 export function configureFormatting({ getRegexedString, regex_placement, accountStorage, toastr, t }) {
 const COMMENT_NAME_DEFAULT='Note', systemUserName='SillyTavern System'; let converter, mesForShowdownParse;
 function reloadMarkdownProcessor() {
@@ -28,6 +29,7 @@ function reloadMarkdownProcessor() {
     // Inject the dinkus extension after creating the converter
     // Maybe move this into power_user init?
     converter.addExtension(markdownExclusionExt(), 'exclusion');
+    activeConverter = converter;
 
     return converter;
 }

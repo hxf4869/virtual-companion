@@ -375,7 +375,7 @@ export function createDesktopSession({ client, context, engine, prepareSourceIde
         lastOperation = active.promise;
         return active.promise;
     }
-    function mutate(index, expected, change, refresh = [index]) {
+    function mutate(index, expected, change, refresh = [index], afterRefresh) {
         const target = current;
         if (!target?.ready || target.blocked || target.signal?.aborted || job || target.messages[index] !== expected) return Promise.resolve(false);
         const active = { kind: 'mutation', target, controller: new AbortController(), promise: null };
@@ -386,6 +386,7 @@ export function createDesktopSession({ client, context, engine, prepareSourceIde
                 await change(target, index, expected);
                 target.metadata.tainted = true; publish(target);
                 if (refresh.length || refresh === 'all') await engine.cards?.surface.refresh(refresh === 'all' ? target.messages.map((_, id) => id) : refresh);
+                if (afterRefresh) { await afterRefresh(target, index, expected); publish(target); }
                 await save(target, { settled: guard.isSettled() }); return true;
             } catch (error) {
                 if (!target.blocked) target.notice = '没有完成，请重试。';
@@ -615,9 +616,14 @@ export function createDesktopSession({ client, context, engine, prepareSourceIde
     };
     context.stopHelperGenerationById = id => { const controller=helperRuns.get(id);if(!controller)return false;controller.abort();void context.eventSource.emit(context.eventTypes.GENERATION_STOPPED,id);return true; };
     context.stopAllHelperGeneration = () => {for(const id of helperRuns.keys())context.stopHelperGenerationById(id);};
-    context.mutateChatMessages = (expectedMetadata, change, { refresh = 'all' } = {}) => {
+    Object.defineProperty(context, 'isGenerating', {
+        get: () => Boolean(helperRuns.size > 0 || (job && !['opening', 'mutation', 'configuration'].includes(job.kind))),
+        configurable: true,
+        enumerable: true,
+    });
+    context.mutateChatMessages = (expectedMetadata, change, { refresh = 'all', afterRefresh } = {}) => {
         if (!current || current.metadata !== expectedMetadata || engine.cards?.isRendering?.()) return Promise.resolve(false);
-        return mutate(0, current.messages[0], target => change(target.messages), refresh);
+        return mutate(0, current.messages[0], target => change(target.messages), refresh, afterRefresh ? target => afterRefresh(target.messages) : undefined);
     };
     context.generate = type => type === 'regenerate' ? api.regenerate() : type === 'continue' ? api.continue() : type === 'swipe' ? api.swipe(context.chat.length - 1, 1) : api.retry();
     return api;

@@ -1,4 +1,4 @@
-// PolyForm-Noncommercial-1.0.0. JS-Slash-Runner 437412b20c8c33bcd4dbbe1ffaeae5abebfd2fb6 / src/function/inject.ts
+// PolyForm-Noncommercial-1.0.0. JS-Slash-Runner 0af42106 / src/function/inject.ts
 import { eventSource, extension_prompts } from '../engine/ports.js';
 import { setExtensionPrompt } from '../engine/st/script.js';
 import { uuidv4 } from '../engine/st/scripts/utils.js';
@@ -35,7 +35,9 @@ export function injectPrompts(prompts, { once = false } = {}) {
         eventSource?.once?.(tavern_events.GENERATION_STOPPED, uninject);
     }
 
-    const win = this?.window ?? globalThis.window;
+    const win = (this && this !== globalThis.TavernHelper ? (this.window ?? this) : null) ?? globalThis.window;
+    const jq = win?.jQuery ?? globalThis.jQuery ?? globalThis.$;
+    jq?.(win)?.on?.('pagehide', uninject);
     win?.addEventListener?.('pagehide', uninject, { once: true });
 
     return {

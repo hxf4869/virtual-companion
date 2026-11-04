@@ -321,19 +321,25 @@ export async function getWorldbook(worldbook_name) {
 }
 
 // 原Helper的文档操作，保存/选择端口替换原生世界书编辑器和DOM点击。
-async function commitWorldbookRaw(name, converted, raw) {
+async function commitWorldbookRaw(name, converted, raw, before = raw) {
     const { client, context } = getCardHost();
     const next = { ...raw, entries: Object.fromEntries(converted.map(entry => [entry.uid, { ...raw?.entries?.[entry.uid], ...entry }])) };
-    const changes = raw === undefined ? [{path:[],before:{exists:false},after:{exists:true,value:next}}] : documentChanges(raw, raw, next);
-    await client.post('/api/worldinfo/edit', {name,vc_changes:changes});
+    const changes = raw === undefined ? [{path:[],before:{exists:false},after:{exists:true,value:next}}] : documentChanges(raw, before, next);
+    const response = await client.post('/api/worldinfo/edit', {name,vc_changes:changes});
+    if (response && response.ok === false) {
+        const body = await response.clone?.().json?.().catch(() => null);
+        const error = new Error(response.status === 409 ? '配置已在另一处更新，你的修改尚未保存。' : '配置没有保存，请重试。');
+        error.status = response.status; error.code = body?.code; error.details = body?.details ?? body;
+        throw error;
+    }
     if (!world_names.includes(name)) world_names.push(name);
     client.documents.captureWorldbook(name,next);
     await context.eventSource.emit(context.eventTypes.WORLDINFO_UPDATED,name,next);
     return next;
 }
-async function writeWorldbook(name, entries, raw) {
+async function writeWorldbook(name, entries, raw, before = raw) {
     const converted = handleWorldbookEntriesCollision(entries).map(fromWorldbookEntry);
-    return commitWorldbookRaw(name, converted, raw);
+    return commitWorldbookRaw(name, converted, raw, before);
 }
 export async function createWorldbook(name, entries = []) {
     if (world_names.includes(name)) return false;
@@ -352,8 +358,10 @@ export async function updateWorldbookWith(name, updater, _options) {
     if (!world_names.includes(name)) throw new Error(`未能找到世界书 '${name}'`);
     const raw = await loadWorldInfo(name);
     const current = klona(_(raw.entries).values().sortBy('displayIndex').map(toWorldbookEntry).value());
+    const beforeConverted = handleWorldbookEntriesCollision(klona(current)).map(fromWorldbookEntry);
+    const before = { ...raw, entries: Object.fromEntries(beforeConverted.map(entry => [entry.uid, { ...raw?.entries?.[entry.uid], ...entry }])) };
     const next = await updater(current);
-    const saved = await writeWorldbook(name,next,raw);
+    const saved = await writeWorldbook(name,next,raw,before);
     return klona(_(saved.entries).values().sortBy('displayIndex').map(toWorldbookEntry).value());
 }
 export async function createWorldbookEntries(name, entries, options) {
@@ -563,8 +571,17 @@ export async function replaceLorebookEntries(lorebook, entries) {
 }
 
 export async function updateLorebookEntriesWith(lorebook, updater) {
-    await replaceLorebookEntries(lorebook, await updater(await getLorebookEntries(lorebook)));
-    return getLorebookEntries(lorebook);
+    if (!world_names.includes(lorebook)) {
+        throw Error(`未能找到世界书 '${lorebook}'`);
+    }
+    const raw = await loadWorldInfo(lorebook);
+    const current = klona(_(raw.entries).values().map(toLorebookEntry).value());
+    const beforeConverted = handleLorebookEntriesCollision(klona(current)).map(fromPartialLorebookEntry);
+    const before = { ...raw, entries: Object.fromEntries(beforeConverted.map(entry => [entry.uid, { ...raw?.entries?.[entry.uid], ...entry }])) };
+    const next = await updater(current);
+    const converted = handleLorebookEntriesCollision(next).map(fromPartialLorebookEntry);
+    const saved = await commitWorldbookRaw(lorebook, converted, raw, before);
+    return klona(_(saved.entries).values().map(toLorebookEntry).value());
 }
 
 export async function setLorebookEntries(lorebook, entries) {

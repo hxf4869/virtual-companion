@@ -1,4 +1,4 @@
-// PolyForm-Noncommercial-1.0.0. JS-Slash-Runner 437412b20c8c33bcd4dbbe1ffaeae5abebfd2fb6 / src/function/persona.ts
+// PolyForm-Noncommercial-1.0.0. JS-Slash-Runner 0af42106 / src/function/persona.ts
 import { power_user } from '../engine/ports.js';
 import { getCardHost, user_avatar } from './ejs-host.js';
 import { klona } from './klona.js';

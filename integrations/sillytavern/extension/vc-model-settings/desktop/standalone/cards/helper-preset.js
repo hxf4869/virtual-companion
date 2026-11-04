@@ -13,19 +13,18 @@ export const default_preset = {
     prompts: [], prompts_unused: [], extensions: {},
 };
 export function isPresetSystemPrompt(prompt) {
-    return ['main', 'nsfw', 'jailbreak', 'enhanceDefinitions', 'enhance_definitions'].includes(prompt?.id);
+    return ['main', 'nsfw', 'jailbreak', 'enhanceDefinitions'].includes(prompt?.id);
 }
 export function isPresetPlaceholderPrompt(prompt) {
     return [
-        'worldInfoBefore', 'world_info_before',
-        'personaDescription', 'persona_description',
-        'charDescription', 'char_description',
-        'charPersonality', 'char_personality',
+        'worldInfoBefore',
+        'personaDescription',
+        'charDescription',
+        'charPersonality',
         'scenario',
-        'worldInfoAfter', 'world_info_after',
-        'dialogueExamples', 'dialogue_examples',
-        'chatHistory', 'chat_history',
-        'authors_note',
+        'worldInfoAfter',
+        'dialogueExamples',
+        'chatHistory',
     ].includes(prompt?.id);
 }
 export function isPresetNormalPrompt(prompt) {

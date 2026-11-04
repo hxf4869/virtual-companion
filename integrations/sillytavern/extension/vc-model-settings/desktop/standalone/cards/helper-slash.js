@@ -1,4 +1,4 @@
-// PolyForm-Noncommercial-1.0.0. JS-Slash-Runner 437412b20c8c33bcd4dbbe1ffaeae5abebfd2fb6 / src/function/slash.ts
+// PolyForm-Noncommercial-1.0.0. JS-Slash-Runner 0af42106 / src/function/slash.ts
 // 结合现有 engine/st/scripts/variables.js 与 engine/st/script.js 端口实现轻量 Slash 执行器与命令注册表。
 import {
     getLocalVariable,
@@ -22,9 +22,114 @@ import {
     extension_prompt_types,
     extension_prompt_roles,
 } from '../engine/st/script.js';
+import { convertValueType } from '../engine/st/scripts/utils.js';
 import { chat, extension_prompts } from '../engine/ports.js';
 import { replaceMacroLike } from './helper-util.js';
 import { createChatMessages, deleteChatMessages, setChatMessages } from './helper-message.js';
+
+export class SlashCommandScopeVariableExistsError extends Error {
+    constructor(key) {
+        super(`Variable "${key}" already exists`);
+    }
+}
+
+export class SlashCommandScopeVariableNotFoundError extends Error {
+    constructor(key) {
+        super(`Variable "${key}" not found`);
+    }
+}
+
+export class SlashCommandScope {
+    parent;
+    variables = {};
+    macros = {};
+
+    constructor(parent = null) {
+        this.parent = parent;
+    }
+
+    existsVariableInScope(key) {
+        return Object.hasOwn(this.variables, key);
+    }
+
+    existsVariable(key) {
+        return this.existsVariableInScope(key) || (this.parent?.existsVariable(key) ?? false);
+    }
+
+    letVariable(key, value = '', type = null) {
+        if (this.existsVariableInScope(key)) {
+            throw new SlashCommandScopeVariableExistsError(key);
+        } else {
+            this.variables[key] = convertValueType(value, type);
+            return this.variables[key];
+        }
+    }
+
+    setVariable(key, value, index = null, type = null) {
+        if (this.existsVariableInScope(key)) {
+            if (index !== null && index !== undefined) {
+                let v = this.variables[key];
+                try {
+                    v = JSON.parse(v);
+                    const numIndex = Number(index);
+                    if (Number.isNaN(numIndex)) {
+                        if (v[index] === undefined) {
+                            v[index] = '';
+                        }
+                        v[index] = convertValueType(value, type);
+                    } else {
+                        if (v[numIndex] === undefined) {
+                            v[numIndex] = '';
+                        }
+                        v[numIndex] = convertValueType(value, type);
+                    }
+                    this.variables[key] = JSON.stringify(v);
+                    return v[index];
+                } catch {
+                    this.variables[key] = convertValueType(value, type);
+                    return this.variables[key];
+                }
+            } else {
+                this.variables[key] = convertValueType(value, type);
+                return this.variables[key];
+            }
+        } else if (this.parent?.existsVariable(key)) {
+            return this.parent.setVariable(key, value, index, type);
+        } else {
+            throw new SlashCommandScopeVariableNotFoundError(key);
+        }
+    }
+
+    getVariable(key, index = null) {
+        if (this.existsVariableInScope(key)) {
+            if (index !== null && index !== undefined) {
+                let v = this.variables[key];
+                try {
+                    v = JSON.parse(v);
+                    const numIndex = Number(index);
+                    if (Number.isNaN(numIndex)) {
+                        v = v[index];
+                    } else {
+                        v = v[numIndex];
+                    }
+                    if (typeof v == 'object') {
+                        return JSON.stringify(v);
+                    }
+                    return v;
+                } catch {
+                    return v;
+                }
+            } else {
+                const value = this.variables[key];
+                return (value || value === 0) ? value.toString() : '';
+            }
+        } else if (this.parent?.existsVariable(key)) {
+            return this.parent.getVariable(key, index);
+        } else {
+            throw new SlashCommandScopeVariableNotFoundError(key);
+        }
+    }
+}
 
 export const ARGUMENT_TYPE = {
     STRING: 'string',
@@ -205,21 +310,60 @@ function registerBuiltinCommands() {
         callback: (args, value) => String(deleteGlobalVariable(args.key ?? args.name ?? value) ?? ''),
     });
     registerCommand({
-        name: 'var',
-        aliases: ['let'],
+        name: 'let',
+        splitUnnamedArguments: true,
         callback: (args, value) => {
-            const key = args.key;
-            if (key) {
-                return String(setLocalVariable(key, value, args) ?? '');
+            if (!Array.isArray(value)) value = [value];
+            let key;
+            if (args.key !== undefined) {
+                key = args.key;
+                if (!args._hasUnnamedArgument) {
+                    value = [];
+                }
+            } else {
+                key = value.shift();
             }
-            const text = String(value ?? '').trim();
-            const spaceIdx = text.indexOf(' ');
-            if (spaceIdx === -1) {
-                return String(getLocalVariable(text, args) ?? '');
+            const val = value.join(' ');
+            if (!key) {
+                throw new Error('Must provide a variable name via named or unnamed argument.');
             }
-            const varName = text.slice(0, spaceIdx).trim();
-            const varVal = text.slice(spaceIdx + 1);
-            return String(setLocalVariable(varName, varVal, args) ?? '');
+            const v = args._scope.letVariable(key, val, args.type);
+            if (typeof v == 'object') {
+                return JSON.stringify(v);
+            }
+            return v ?? '';
+        },
+    });
+    registerCommand({
+        name: 'var',
+        splitUnnamedArguments: true,
+        callback: (args, value) => {
+            if (!Array.isArray(value)) value = [value];
+            let v;
+            if (args.key !== undefined) {
+                const key = args.key;
+                if (args._hasUnnamedArgument) {
+                    v = value.join(' ');
+                    v = args._scope.setVariable(key, v, args.index, args.type ?? args.as);
+                } else {
+                    v = args._scope.getVariable(key, args.index);
+                }
+            } else if (!args._hasUnnamedArgument) {
+                throw new Error('Must provide a variable name via named or unnamed argument.');
+            } else if (value.length > 1) {
+                const key = value.shift();
+                v = value.join(' ');
+                v = args._scope.setVariable(key, v, args.index, args.type ?? args.as);
+            } else if (value.length == 1) {
+                const key = value[0];
+                v = args._scope.getVariable(key, args.index);
+            } else {
+                throw new Error('Must provide a variable name via named or unnamed argument.');
+            }
+            if (typeof v == 'object') {
+                return JSON.stringify(v);
+            }
+            return v ?? '';
         },
     });
     registerCommand({
@@ -480,9 +624,17 @@ function parseStage(rawStage) {
     return { name, namedArgs, unnamedValue: rest };
 }
 
-function expandStepMacros(text, pipe) {
+function expandStepMacros(text, pipe, scope) {
     if (typeof text !== 'string' || !text) return '';
     let out = text.replace(/\{\{pipe\}\}/gi, String(pipe ?? ''));
+    if (scope) {
+        out = out.replace(/\{\{var::([^:}]+)(?:::([^}]+))?\}\}/gi, (match, name, index) => {
+            if (scope.existsVariable(name)) {
+                return String(scope.getVariable(name, index ?? null) ?? '');
+            }
+            return match;
+        });
+    }
     out = replaceMacroLike(out, { source: 'other' });
     out = substituteParams(out);
     return out;
@@ -493,6 +645,7 @@ export async function executeSlashCommandsWithOptions(text, options = {}) {
     if (!raw) {
         return { pipe: '', isError: false, isAborted: false, errorMessage: '' };
     }
+    const scope = options?.scope ?? new SlashCommandScope();
     const stages = splitPipeline(raw);
     let pipe = '';
     for (const stage of stages) {
@@ -508,13 +661,30 @@ export async function executeSlashCommandsWithOptions(text, options = {}) {
             }
             return { pipe: '', isError: true, isAborted: false, errorMessage };
         }
-        const resolvedArgs = {};
+        const resolvedArgs = {
+            _scope: scope,
+            _hasUnnamedArgument: unnamedValue !== '',
+        };
         for (const [k, v] of Object.entries(namedArgs)) {
-            resolvedArgs[k] = expandStepMacros(String(v), pipe);
+            resolvedArgs[k] = expandStepMacros(String(v), pipe, scope);
         }
-        const expandedUnnamed = unnamedValue !== '' ? expandStepMacros(unnamedValue, pipe) : pipe;
+        const expandedUnnamed = unnamedValue !== '' ? expandStepMacros(unnamedValue, pipe, scope) : pipe;
+        const callbackValue = cmd.splitUnnamedArguments
+            ? (unnamedValue === ''
+                ? []
+                : resolvedArgs.key !== undefined
+                  ? [expandedUnnamed]
+                  : (() => {
+                        const trimmedUnnamed = String(expandedUnnamed ?? '').trim();
+                        if (!trimmedUnnamed) return [];
+                        const spaceIdx = trimmedUnnamed.indexOf(' ');
+                        return spaceIdx === -1
+                            ? [trimmedUnnamed]
+                            : [trimmedUnnamed.slice(0, spaceIdx).trim(), trimmedUnnamed.slice(spaceIdx + 1)];
+                    })())
+            : expandedUnnamed;
         try {
-            const result = await cmd.callback(resolvedArgs, expandedUnnamed);
+            const result = await cmd.callback(resolvedArgs, callbackValue);
             pipe = result === undefined || result === null ? '' : typeof result === 'string' ? result : JSON.stringify(result);
             if (name === 'return') break;
         } catch (err) {
