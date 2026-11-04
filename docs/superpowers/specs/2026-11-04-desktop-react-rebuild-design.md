@@ -167,6 +167,9 @@ Claude 拍板），实施中如发现某库无法满足，换同类成熟库须�
 - **卡片脚本依赖的宿主 DOM 契约保留**（属于 G5 行为不变）：`#chat`、`#chat > .mes[mesid]`、`.mes_text`、
   `#send_textarea`、`#send_but`、楼层 iframe id `TH-message--<mesid>--<n>`、脚本 iframe id `TH-script--*`、
   `html[data-vc-app]`/`[data-vc-runtime]`。新组件按此契约渲染这些节点；其余类名与结构自由。
+- **Helper 接口回退补齐**：摸底确认独立桌面 `TavernHelper` 比上游少 106 个顶层 API（原生 ST 下可用）。按"引擎行为不变"，
+  补齐 MVU / EJS / 常见复杂卡实际调用的部分（计划 Task 15 列出清单）；无已知卡片消费者的接口（音频、扩展管理、文件、
+  原始导入等）不补，调用时明确抛 `VC_HELPER_UNSUPPORTED:<name>`，记入 backlog。
 - **已知与上游一致的问题**（作者注释拼接对象、`CHAT_COMPLETION_PROMPT_READY` 未 await、`swipes_info` 拼写、
   楼层 iframe 无 sandbox）：与上游 Tavern Helper 等价，**本次不改**，在计划中记为已知项。
 

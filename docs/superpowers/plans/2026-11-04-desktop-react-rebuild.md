@@ -50,7 +50,8 @@ T1 ─► T2 ─► T3 ─┬─► T4 ─► T5 ─┐
                 ├─► T8 ───────┼─► T11 ─► T12 ─► T13
                 ├─► T9 ───────┤
                 └─► T10 ──────┘
-T14（引擎删减）在 T5 之后任意时刻，与 T6–T10 并行
+T14（引擎删减）→ T15（Helper 接口补齐）在 T5 之后串行（同一写入 owner：standalone/engine、cards），与 T6–T10 并行
+T5 的 B2 只补 setLorebookSettings 一个函数；T15 批 2 视其已存在，跳过
 ```
 
 ## Global Constraints
@@ -390,7 +391,7 @@ export function useChatSnapshot(bridge: SessionBridge): ChatSnapshot;
 
 ### Task 13: 收尾、全量验证与 backlog 回填
 
-**Files:** Modify `docs/planning/2026-10-31-handoff-backlog.md`（新增 K 节：DR2-1 … DR2-14，与本计划任务一一对应，并在末尾追加"合并与部署前置：与 `mb-mobile` 联合发布；`Dockerfile.st` 增加 `mobile-dist` 构建步骤"条目）、`TODO.md`「陪伴体验后续」按 ID 回填、`integrations/sillytavern/desktop-ui/README.md`（新架构说明，删去 DR-4 等过时段落）、`integrations/sillytavern/README.md:297` 段落。
+**Files:** Modify `docs/planning/2026-10-31-handoff-backlog.md`（新增 K 节：DR2-1 … DR2-15，与本计划任务一一对应，并在末尾追加：①"合并与部署前置：与 `mb-mobile` 联合发布；`Dockerfile.st` 增加 `mobile-dist` 构建步骤"；②"Helper 11 个手写模块改为构建时编译上游 TS（DR2-14 未做，待评估）"；③"未补齐的 Helper 接口清单（DR2-15 不做部分，无已知卡片消费者）"）、`TODO.md`「陪伴体验后续」按 ID 回填、`integrations/sillytavern/desktop-ui/README.md`（新架构说明，删去 DR-4 等过时段落）、`integrations/sillytavern/README.md:297` 段落。
 
 - [ ] **Step 1: 确认旧代码已清零** —— `ls integrations/sillytavern/extension/vc-model-settings/desktop/*.js` 只剩 `tavern-defaults.js`、`tavern-fields.js`、`tavern-controller.js`（及 `/native/` 仍 import 的文件，逐个注明消费者）；`grep -rn "!important" integrations/sillytavern/desktop-ui/src --include=*.css` 只剩允许的规则。
 - [ ] **Step 2: 全量** —— `bash scripts/check.sh` 通过；T11 的受管场景整组在同一提交上通过。
@@ -399,11 +400,32 @@ export function useChatSnapshot(bridge: SessionBridge): ChatSnapshot;
 
 ### Task 14: 引擎与复杂卡删减（与 T6–T10 并行）
 
-**Files:** Modify `extension/vc-model-settings/desktop/standalone/engine/**`、`desktop/standalone/cards/**`、`integrations/sillytavern/patches/*.json`（如需对受管运行副本打补丁以直接复用上游模块）、`scripts/lib/managed.mjs`（如需 import map）。具体文件清单以 R3 摸底（`/tmp/vc-plan-recon/out3.md`，Claude 在派发本任务时附上结论）为准。
+**Files:** Modify `extension/vc-model-settings/desktop/standalone/engine/**`、`desktop/standalone/cards/**`、`integrations/sillytavern/patches/helper-selfhost-runtime-assets.json`、`desktop-ui/vite.config.mjs`（alias）、`scripts/build-desktop.mjs`。
 
 **Interfaces:** 对外接口不变：`createChatEngine`、`initializeCards`、`readGenerationResponse` 签名与返回值不变。
 
-- 原则：只删"与上游完全相同或只改 import 路径"的拷贝，改为从受管运行副本按原路径加载；"去 DOM 依赖 / 逻辑改动"的文件保留，文件头注明差异原因。AGPL 声明与 `ST-LICENSE` 保留。不修设计第 6 节列出的四个"与上游一致"问题。
+依据 2026-11-04 摸底（`engine/st/**` 28 个文件：只改 import 路径 14、去 DOM 12、逻辑改动 2；字节级相同 0）：
+
+- **批 A（0 补丁，9 个）**：`cards/` 下 5 个 iframe 内置脚本（`adjust_iframe_height.js`、`adjust_viewport.js` 等，与上游 `JS-Slash-Runner/src/iframe/*.js` 字节一致）改为由 `helper-selfhost-runtime-assets.json` 从上游复制到受管运行副本并按该路径加载；`engine/events.js` → `/lib/eventemitter.js`、`engine/st/constants.js` → `/scripts/constants.js`、`engine/st/events.js` → `/scripts/events.js`、`cards/showdown-underscore.js` → `/scripts/showdown-underscore.js`。
+- **批 B（alias 重绑，18 个）**：`engine/st/scripts/macros/**`（`macro-system.js`、7 个 `definitions/*.js`、7 个 `engine/*.js`）与 `cards/{message-formatter,showdown-exclusion,account-storage}.js`：Vite alias 把上游对 `/script.js`、`/scripts/power-user.js`、`/scripts/group-chats.js`、`/scripts/textgen-settings.js`、`/scripts/RossAscends-mods.js`、`/scripts/extensions.js` 的 import 重定向到 `engine/ports.js`，`MacroDiagnostics.js` 保留本地 39 行桩；保留 `#chat .mes[mesid]` 与 `SillyTavern.getContext().variables`。
+- **批 C（保留，约 30 个）**：去 DOM / 逻辑改动的文件保留拷贝，文件头注明差异原因。Helper 的 11 个手写模块"改为构建时编译上游 `src/function/*.ts`"**本次不做**（需 alias 掉 Pinia store，风险高于收益），记入 backlog 末尾供以后评估。
+- 不修设计第 6 节列出的四个"与上游一致"问题；AGPL 声明与 `ST-LICENSE` 保留。
+
 - [ ] **Step 1: 冻结基线** —— 运行受管 `--filter nf-prompts,nf-regex,nf-chat,nf-cards` 与离线单测，记录通过。
-- [ ] **Step 2: 按文件逐批删减**，每批后重跑 Step 1 的命令，全部通过才进入下一批。
-- [ ] **Step 3: 提交** —— `git commit -m "refactor(DR2-14): 引擎与复杂卡改为复用锁定上游模块"`
+- [ ] **Step 2: 批 A** → 重跑 Step 1 全通过 → **Step 3: 批 B** → 重跑全通过。
+- [ ] **Step 4: 提交** —— `git commit -m "refactor(DR2-14): 引擎与复杂卡复用锁定上游模块"`
+
+### Task 15: Tavern Helper 接口补齐（与 T14 串行，同一写入 owner）
+
+原生 ST 下复杂卡可用的 Helper 接口，独立桌面缺 106 个顶层 API、1 个 `_bind`（`_registerMacroLike`）、15 个 `builtin.*`。这是相对原生宿主的回退，按"引擎行为不变"补回；**按卡片实际使用频率分批**，每个函数行为对照上游 `JS-Slash-Runner/src/function/<模块>.ts` 同名实现。
+
+**Files:** Modify `desktop/standalone/cards/{index.js,helper-worldbook.js,helper-message.js,helper-preset.js,helper-script.js,helper-util.js,helper-host.js,ejs-host.js}`、`engine/helper-types.js`；Create `cards/helper-character.js`、`cards/helper-persona.js`、`cards/helper-slash.js`、`cards/helper-inject.js`、`cards/helper-regex.js`；Test `integrations/sillytavern/tests/desktop-helper-api.test.mjs`。
+
+- **批 1 · 漏挂（已实现未导出）**：`getAllEnabledScriptButtons`、`errorCatched`、`isPresetSystemPrompt`、`isPresetNormalPrompt`、`RawCharacter`、`builtin_prompt_default_order`（=`placeholder_prompt_default_order`）、`getFrontendVersion`（=`getTavernHelperVersion` 别名）；同时停止把 `variables`/`globals` 的 10 个 `_` 前缀内部函数泄漏到 `publicApi` 顶层。
+- **批 2 · MVU / EJS / 仓库验收必需**：`setLorebookSettings`（读写 `world_info_settings`，B2）、`triggerSlash`、`triggerSlashWithResult`（经 EJS 已有的 `executeSlashCommandsWithOptions` 端口执行）、`_bind._registerMacroLike` 与 `registerMacroLike`/`unregisterMacroLike`。
+- **批 3 · 常见复杂卡高频**：世界书旧名包装 7 个（`setLorebookEntries`、`createLorebookEntries`、`createLorebookEntry`、`deleteLorebookEntries`、`deleteLorebookEntry`、`replaceLorebookEntries`、`updateLorebookEntriesWith`，包装现有 `*WorldbookEntries`）、`createLorebook`/`deleteLorebook`；消息增删 `createChatMessages`、`deleteChatMessages`、`rotateChatMessages`（经 `SessionBridge` 的 mutation 路径与 F2 保存）；`injectPrompts`/`uninjectPrompts`（复用 `helper-computation.js` 的注入逻辑）；只读 `getCharData`、`getCharAvatarPath`、`getCurrentCharacterName`、`getCurrentPersonaName`、`getPersonaAvatarPath`、`getChatHistoryBrief`、`getChatHistoryDetail`；`formatAsTavernRegexedString`、`formatAsDisplayedMessage`、`retrieveDisplayedMessage`、`refreshOneMessage`；`getTavernRegexes`、`isCharacterTavernRegexesEnabled`；`builtin.{uuidv4,copyText,renderMarkdown,parseRegexFromString,duringGenerating}`。
+- **不做（记入 backlog 末尾，标注"无已知卡片消费者"）**：`audio.*`（13）、`extension.*`（9）、`file.*`（3）、`import_raw.*`（5）、`updateTavernHelper`、`updateFrontendVersion`、角色 / 人设 / 预设的创建与删除类写接口、其余 `builtin.*`（`promptManager`、`reloadEditor*`、`renderPromptManager*` 等依赖原生面板）。调用未实现函数时抛 `Error('VC_HELPER_UNSUPPORTED:<name>')`，并在控制台给出函数名，不静默。
+
+- [ ] **Step 1: 写失败测试** —— `desktop-helper-api.test.mjs`：`exports all batch 1–3 names on TavernHelper and iframe window`（逐名断言 `typeof === 'function'` 或对象）；`setLorebookSettings round-trips world_info_settings`；`triggerSlash '/setvar key=a 1' updates chat variable`；`createChatMessages appends and persists via F2 save once`；`unsupported helper throws VC_HELPER_UNSUPPORTED with name`；`internal _ helpers are not on public TavernHelper`。
+- [ ] **Step 2: 运行确认失败** → **Step 3: 按批实现**（每批后跑本测试与 `nf-cards`）→ **Step 4: 验证** 离线单测 `# fail 0`、受管 `--filter nf-cards,dr2-mvu-new`。
+- [ ] **Step 5: 提交** —— `git commit -m "feat(DR2-15): 补齐复杂卡常用 Tavern Helper 接口"`
