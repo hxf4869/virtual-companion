@@ -41,6 +41,11 @@
     background-color: var(--vc-desk-base);
   }
 
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in srgb, var(--vc-ink) 18%, transparent) transparent;
+  }
+
   a {
     color: var(--vc-accent-text);
     text-decoration: none;
@@ -49,6 +54,7 @@
   :focus-visible {
     outline: 2px solid var(--vc-accent);
     outline-offset: 2px;
+    box-shadow: var(--vc-shadow-focus);
   }
 
   [hidden] {
@@ -57,14 +63,12 @@
 
   @media (prefers-reduced-motion: reduce) {
     :root {
-      --vc-dur-fast: var(--vc-dur-reduced);
-      --vc-dur: var(--vc-dur-reduced);
-      --vc-dur-slow: var(--vc-dur-reduced);
       --vc-dur-press: var(--vc-dur-reduced);
-      --vc-dur-hover: var(--vc-dur-reduced);
-      --vc-dur-popover: var(--vc-dur-reduced);
-      --vc-dur-sheet: var(--vc-dur-reduced);
-      --vc-dur-panel: var(--vc-dur-reduced);
+      --vc-dur-quick: var(--vc-dur-reduced);
+      --vc-dur-standard: var(--vc-dur-reduced);
+      --vc-dur-emphasized: var(--vc-dur-reduced);
+      --vc-dur-fade: var(--vc-dur-reduced);
+      --vc-dur-shared: var(--vc-dur-reduced);
     }
 
     *,

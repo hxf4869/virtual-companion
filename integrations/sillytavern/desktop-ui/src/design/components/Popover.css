@@ -5,17 +5,16 @@
 
   .vc-popover {
     padding: var(--vc-space-md);
-    border: 1px solid var(--vc-glass-stroke-rest);
-    border-top-color: var(--vc-glass-stroke-top);
+    border: 1px solid var(--vc-rim);
     border-radius: var(--vc-radius-lg);
     background-color: var(--vc-glass-3);
     backdrop-filter: blur(var(--vc-blur-3)) saturate(180%);
     -webkit-backdrop-filter: blur(var(--vc-blur-3)) saturate(180%);
-    box-shadow: var(--vc-shadow-float), var(--vc-glass-inner-glow);
+    box-shadow: var(--vc-shadow-rim-overlay);
     color: var(--vc-ink);
     transition:
-      opacity var(--vc-dur-popover) var(--vc-ease),
-      transform var(--vc-dur-popover) var(--vc-ease-spring);
+      opacity var(--vc-dur-fade) var(--vc-ease-out),
+      transform var(--vc-dur-quick) var(--vc-spring);
   }
 
   .vc-popover[data-starting-style],

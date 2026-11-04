@@ -15,7 +15,7 @@
     height: 32px;
     padding: 2px;
     border-radius: var(--vc-radius-control);
-    background-color: var(--vc-seg-bg);
+    background-color: var(--vc-segment-fill);
   }
 
   .vc-tabs__tab {
@@ -27,15 +27,15 @@
     height: 28px;
     padding: 0 var(--vc-space-sm);
     border: 0;
-    border-radius: 8px;
+    border-radius: var(--vc-radius-tile);
     background: transparent;
     color: var(--vc-ink-2);
     font-family: var(--vc-font);
-    font-size: var(--vc-fs-sm);
+    font-size: var(--vc-fs-footnote);
     font-weight: 500;
     line-height: 1;
     cursor: pointer;
-    transition: color var(--vc-dur-fast) var(--vc-ease);
+    transition: color var(--vc-dur-fade) var(--vc-ease-out);
   }
 
   .vc-tabs__tab[data-active] {

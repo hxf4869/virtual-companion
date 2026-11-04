@@ -3,8 +3,8 @@
     position: fixed;
     inset: 0;
     z-index: var(--vc-z-scrim);
-    background-color: var(--vc-scrim);
-    transition: opacity var(--vc-dur-popover) var(--vc-ease);
+    background-color: var(--vc-scrim-desk);
+    transition: opacity var(--vc-dur-fade) var(--vc-ease-out);
   }
 
   .vc-alert-dialog__backdrop[data-starting-style],
@@ -20,18 +20,17 @@
     width: 360px;
     max-width: calc(100vw - 32px);
     padding: var(--vc-space-lg);
-    border: 1px solid var(--vc-glass-stroke-rest);
-    border-top-color: var(--vc-glass-stroke-top);
+    border: 1px solid var(--vc-rim);
     border-radius: var(--vc-radius-dialog);
     background-color: var(--vc-glass-3);
     backdrop-filter: blur(var(--vc-blur-3)) saturate(180%);
     -webkit-backdrop-filter: blur(var(--vc-blur-3)) saturate(180%);
-    box-shadow: var(--vc-shadow-float), var(--vc-glass-inner-glow);
+    box-shadow: var(--vc-shadow-rim-overlay);
     color: var(--vc-ink);
     transform: translate(-50%, -50%);
     transition:
-      opacity var(--vc-dur-popover) var(--vc-ease),
-      transform var(--vc-dur-popover) var(--vc-ease-spring);
+      opacity var(--vc-dur-fade) var(--vc-ease-out),
+      transform var(--vc-dur-quick) var(--vc-spring);
   }
 
   .vc-alert-dialog[data-starting-style],
@@ -54,35 +53,35 @@
     width: 40px;
     height: 40px;
     border-radius: var(--vc-radius-pill);
-    background-color: var(--vc-warning-soft);
+    background-color: rgb(from var(--vc-warning) r g b / .12);
     color: var(--vc-warning);
   }
 
   .vc-alert-dialog__icon--danger {
-    background-color: var(--vc-danger-soft);
+    background-color: rgb(from var(--vc-danger) r g b / .10);
     color: var(--vc-danger);
   }
 
   .vc-alert-dialog__text {
     display: flex;
     flex-direction: column;
-    gap: var(--vc-space-2xs);
+    gap: var(--vc-space-xs);
     min-width: 0;
   }
 
   .vc-alert-dialog__title {
     margin: 0;
     font-family: var(--vc-font);
-    font-size: var(--vc-fs-md);
+    font-size: var(--vc-fs-headline);
     font-weight: 600;
-    line-height: var(--vc-lh-tight);
+    line-height: var(--vc-lh-headline);
     color: var(--vc-ink);
   }
 
   .vc-alert-dialog__description {
     margin: 0;
-    font-size: var(--vc-fs-sm);
-    line-height: var(--vc-lh-ui);
+    font-size: var(--vc-fs-body);
+    line-height: var(--vc-lh-body);
     color: var(--vc-ink-2);
   }
 
@@ -90,7 +89,7 @@
     display: flex;
     align-items: center;
     justify-content: flex-end;
-    gap: var(--vc-space-xs);
+    gap: var(--vc-space-sm);
     margin-top: var(--vc-space-lg);
   }
 }

@@ -22,7 +22,7 @@
     width: 100%;
     height: 4px;
     border-radius: var(--vc-radius-pill);
-    background-color: var(--vc-fill-hover);
+    background-color: var(--vc-fill-2);
   }
 
   .vc-slider__indicator {
@@ -35,7 +35,7 @@
     width: 24px;
     height: 24px;
     border-radius: var(--vc-radius-pill);
-    background-color: #ffffff;
+    background-color: var(--vc-on-accent);
     box-shadow: var(--vc-shadow-segment);
     cursor: grab;
   }
@@ -43,10 +43,11 @@
   .vc-slider__thumb:focus-visible {
     outline: 2px solid var(--vc-accent);
     outline-offset: 2px;
+    box-shadow: var(--vc-shadow-focus);
   }
 
   .vc-slider[data-disabled] {
-    opacity: 0.48;
+    opacity: 0.4;
     pointer-events: none;
   }
 }

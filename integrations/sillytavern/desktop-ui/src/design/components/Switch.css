@@ -20,8 +20,8 @@
     height: 31px;
     padding: 2px;
     border-radius: var(--vc-radius-pill);
-    background-color: var(--vc-fill-press);
-    transition: background-color var(--vc-dur-fast) var(--vc-ease);
+    background-color: var(--vc-fill-2);
+    transition: background-color var(--vc-dur-fade) var(--vc-ease-out);
   }
 
   .vc-switch[data-checked] .vc-switch__track {
@@ -33,10 +33,10 @@
     width: 27px;
     height: 27px;
     border-radius: var(--vc-radius-pill);
-    background-color: #ffffff;
+    background-color: var(--vc-on-accent);
     box-shadow: var(--vc-shadow-segment);
     transform: translateX(0);
-    transition: transform var(--vc-dur-fast) var(--vc-ease-spring);
+    transition: transform var(--vc-dur-quick) var(--vc-spring);
   }
 
   .vc-switch[data-checked] .vc-switch__thumb {
@@ -44,7 +44,7 @@
   }
 
   .vc-switch[data-disabled] {
-    opacity: 0.48;
+    opacity: 0.4;
     cursor: not-allowed;
   }
 }

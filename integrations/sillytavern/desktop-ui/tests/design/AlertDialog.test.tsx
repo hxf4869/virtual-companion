@@ -107,6 +107,7 @@ describe('AlertDialog & Dialog (DR2-3)', () => {
     expect(dialog.className).toContain('vc-dialog');
     expect(dialog.className).toContain('custom-dialog');
     expect(dialog.getAttribute('data-width')).toBe('560');
+    expect(dialog.style.width).toBe('');
     expect(screen.getByText('新建供应商')).not.toBeNull();
     expect(screen.getByText('表单内容')).not.toBeNull();
     expect(screen.getByRole('button', { name: '保存' })).not.toBeNull();

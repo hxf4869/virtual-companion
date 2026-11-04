@@ -16,14 +16,14 @@
     width: 18px;
     height: 18px;
     padding: 0;
-    border: 1px solid var(--vc-line-strong);
-    border-radius: 5px;
+    border: 0.5px solid var(--vc-raised-edge);
+    border-radius: var(--vc-radius-check);
     background-color: var(--vc-raised);
-    color: var(--vc-accent-ink);
+    color: var(--vc-on-accent);
     cursor: pointer;
     transition:
-      background-color var(--vc-dur-fast) var(--vc-ease),
-      border-color var(--vc-dur-fast) var(--vc-ease);
+      background-color var(--vc-dur-fade) var(--vc-ease-out),
+      border-color var(--vc-dur-fade) var(--vc-ease-out);
   }
 
   .vc-checkbox__box[data-checked],
@@ -41,12 +41,12 @@
 
   .vc-checkbox__label {
     font-size: var(--vc-fs-body);
-    line-height: var(--vc-lh-ui);
+    line-height: var(--vc-lh-body);
     color: var(--vc-ink);
   }
 
   .vc-checkbox__box[data-disabled] {
-    opacity: 0.48;
+    opacity: 0.4;
     cursor: not-allowed;
   }
 }

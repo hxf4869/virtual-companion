@@ -4,6 +4,7 @@
     align-items: center;
     justify-content: center;
     gap: var(--vc-space-xs);
+    min-height: 40px;
     height: 40px;
     min-width: 88px;
     max-width: 176px;
@@ -19,12 +20,11 @@
     cursor: pointer;
     user-select: none;
     transition:
-      background var(--vc-dur-hover) var(--vc-ease),
-      box-shadow var(--vc-dur-hover) var(--vc-ease),
-      border-color var(--vc-dur-hover) var(--vc-ease),
-      color var(--vc-dur-hover) var(--vc-ease),
-      transform var(--vc-dur-press) var(--vc-ease),
-      opacity var(--vc-dur-hover) var(--vc-ease);
+      background var(--vc-dur-quick) var(--vc-ease-out),
+      box-shadow var(--vc-dur-quick) var(--vc-ease-out),
+      color var(--vc-dur-quick) var(--vc-ease-out),
+      transform var(--vc-dur-press) var(--vc-spring),
+      opacity var(--vc-dur-quick) var(--vc-ease-out);
   }
 
   .vc-btn--sm {
@@ -35,16 +35,12 @@
 
   .vc-btn--filled {
     background: var(--vc-button-fill);
-    color: var(--vc-accent-ink);
+    color: var(--vc-on-accent);
     box-shadow: var(--vc-shadow-button);
   }
 
   .vc-btn--filled:hover:not(:disabled) {
     box-shadow: var(--vc-shadow-button-hover);
-  }
-
-  .vc-btn--filled:active:not(:disabled) {
-    transform: scale(0.985);
   }
 
   .vc-btn--gray {
@@ -54,31 +50,17 @@
   }
 
   .vc-btn--gray:hover:not(:disabled) {
-    background: var(--vc-raised-hover);
+    background: var(--vc-hover-fill);
   }
 
   .vc-btn--danger {
     background: var(--vc-button-danger-fill);
-    color: var(--vc-accent-ink);
-    box-shadow: var(--vc-shadow-button-danger);
-  }
-
-  .vc-btn--danger:hover:not(:disabled) {
-    opacity: 0.94;
-  }
-
-  .vc-btn--danger:active:not(:disabled) {
-    transform: scale(0.985);
+    color: var(--vc-on-accent);
   }
 
   .vc-btn--danger-soft {
-    background: var(--vc-danger-soft);
-    border: 0.5px solid transparent;
+    background: rgb(from var(--vc-danger) r g b / .10);
     color: var(--vc-danger);
-  }
-
-  .vc-btn--danger-soft:hover:not(:disabled) {
-    border-color: var(--vc-danger);
   }
 
   .vc-btn--text {
@@ -90,12 +72,17 @@
   }
 
   .vc-btn--text:hover:not(:disabled) {
-    background: var(--vc-fill);
+    background: var(--vc-hover-fill);
     color: var(--vc-ink);
   }
 
+  .vc-btn:active:not(:disabled) {
+    transform: scale(0.96);
+  }
+
   .vc-btn:disabled {
-    opacity: 0.56;
+    opacity: 0.4;
+    box-shadow: none;
     cursor: not-allowed;
   }
 }

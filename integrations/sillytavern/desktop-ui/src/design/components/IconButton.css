@@ -4,8 +4,9 @@
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
-    width: 36px;
-    height: 36px;
+    width: 40px;
+    height: 40px;
+    min-height: 40px;
     padding: 0;
     border: 0.5px solid var(--vc-raised-edge);
     border-radius: var(--vc-radius-pill);
@@ -13,27 +14,26 @@
     color: var(--vc-ink);
     cursor: pointer;
     transition:
-      background-color var(--vc-dur-hover) var(--vc-ease),
-      color var(--vc-dur-hover) var(--vc-ease),
-      transform var(--vc-dur-press) var(--vc-ease);
+      background-color var(--vc-dur-quick) var(--vc-ease-out),
+      color var(--vc-dur-quick) var(--vc-ease-out),
+      transform var(--vc-dur-press) var(--vc-spring);
   }
 
   .vc-icon-button:hover:not(:disabled) {
-    background-color: var(--vc-raised-hover);
+    background-color: var(--vc-hover-fill);
   }
 
   .vc-icon-button:active:not(:disabled) {
-    transform: scale(0.95);
+    transform: scale(0.96);
   }
 
   .vc-icon-button--active {
-    background-color: var(--vc-accent-soft);
-    border-color: var(--vc-accent-line);
+    background-color: var(--vc-select-fill);
     color: var(--vc-accent-text);
   }
 
   .vc-icon-button:disabled {
-    opacity: 0.48;
+    opacity: 0.4;
     cursor: not-allowed;
   }
 }

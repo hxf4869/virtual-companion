@@ -99,7 +99,7 @@ describe('design tokens & CSS layers (DR2-3)', () => {
     expect(Number(darkComputed.getPropertyValue('--vc-aurora-alpha').trim())).toBeCloseTo(0.2, 5);
   });
 
-  it('defines approved light/dark tokens, layout dimensions, and z-index scale from DESIGN.md & aurora.css', () => {
+  it('defines approved light/dark tokens, layout dimensions, and z-index scale from vc-ui.css, aurora.css & DESIGN.md', () => {
     const tokensCss = readFileSync(TOKENS_CSS_PATH, 'utf8');
     expect(tokensCss).not.toContain('--vcms-');
     expect(tokensCss).not.toContain('--vc-poster-pad');
@@ -108,7 +108,18 @@ describe('design tokens & CSS layers (DR2-3)', () => {
     expect(tokensCss).not.toContain('--vc-r-');
     expect(tokensCss).not.toContain('--vc-z-dialog');
     expect(tokensCss).not.toContain('--vc-z-popover');
+    // No invented font-size / radius / glass-stroke / bubble-bg tokens
+    expect(tokensCss).not.toContain('--vc-fs-md');
+    expect(tokensCss).not.toContain('--vc-fs-lg');
+    expect(tokensCss).not.toContain('--vc-fs-xl');
+    expect(tokensCss).not.toContain('--vc-radius-panel');
+    expect(tokensCss).not.toContain('--vc-radius-window');
+    expect(tokensCss).not.toContain('--vc-glass-stroke-rest');
+    expect(tokensCss).not.toContain('--vc-glass-inner-glow');
+    expect(tokensCss).not.toContain('--vc-bubble-user-bg');
+    expect(tokensCss).not.toContain('#3A95FF');
     expect(tokensCss).toContain('--vc-fs-body: calc(15px * var(--fontScale, 1));');
+    expect(tokensCss).toContain('linear(0, .006, .025 2.8%');
 
     const lightStyle = getComputedStyle(document.documentElement);
     expect(normCss(lightStyle.getPropertyValue('--vc-desk-base'))).toBe('#f4f1f6');
@@ -118,17 +129,65 @@ describe('design tokens & CSS layers (DR2-3)', () => {
     expect(normCss(lightStyle.getPropertyValue('--vc-glass-2'))).toBe('rgba(255,255,255,.46)');
     expect(normCss(lightStyle.getPropertyValue('--vc-glass-3'))).toBe('rgba(252,252,254,.82)');
     expect(normCss(lightStyle.getPropertyValue('--vc-raised'))).toBe('rgba(255,255,255,.72)');
+    expect(normCss(lightStyle.getPropertyValue('--vc-rim'))).toBe('rgba(255,255,255,.55)');
+    expect(normCss(lightStyle.getPropertyValue('--vc-rim-outer'))).toBe('rgba(255,255,255,.25)');
+    expect(normCss(lightStyle.getPropertyValue('--vc-hi'))).toBe('rgba(255,255,255,.75)');
+    expect(normCss(lightStyle.getPropertyValue('--vc-raised-edge'))).toBe('rgba(0,0,0,.05)');
+    expect(normCss(lightStyle.getPropertyValue('--vc-select-fill'))).toBe('rgba(0,113,227,.12)');
+    expect(normCss(lightStyle.getPropertyValue('--vc-hover-fill'))).toBe('rgba(255,255,255,.45)');
+    expect(normCss(lightStyle.getPropertyValue('--vc-scrim-desk'))).toBe('rgba(30,20,40,.18)');
+    expect(normCss(lightStyle.getPropertyValue('--vc-shadow-panel'))).toBe(
+      '0001pxrgba(255,255,255,.25),020px50pxrgba(80,60,100,.10)',
+    );
+    expect(normCss(lightStyle.getPropertyValue('--vc-shadow-overlay'))).toBe(
+      '0001pxrgba(255,255,255,.25),030px80pxrgba(60,40,90,.18)',
+    );
+    expect(normCss(lightStyle.getPropertyValue('--vc-shadow-button'))).toBe('06px16pxrgba(0,113,227,.28)');
+    expect(normCss(lightStyle.getPropertyValue('--vc-shadow-button-hover'))).toBe(
+      '0004pxrgba(0,113,227,.15),08px24pxrgba(0,113,227,.30)',
+    );
     expect(lightStyle.getPropertyValue('--vc-blur-1').trim()).toBe('30px');
     expect(lightStyle.getPropertyValue('--vc-blur-2').trim()).toBe('40px');
     expect(lightStyle.getPropertyValue('--vc-blur-3').trim()).toBe('40px');
     expect(normCss(lightStyle.getPropertyValue('--vc-accent'))).toBe('#0071e3');
     expect(normCss(lightStyle.getPropertyValue('--vc-ink-2'))).toBe('#55555a');
+    expect(normCss(lightStyle.getPropertyValue('--vc-ink-3'))).toBe('#aeaeb2');
     expect(normCss(lightStyle.getPropertyValue('--vc-placeholder'))).toBe('#68686c');
     expect(normCss(lightStyle.getPropertyValue('--vc-danger'))).toBe('#d70015');
     expect(normCss(lightStyle.getPropertyValue('--vc-warning'))).toBe('#b25000');
     expect(normCss(lightStyle.getPropertyValue('--vc-success'))).toBe('#248a3d');
+
+    // Canonical typography scale with fontScale & line heights from vc-ui.css
+    expect(lightStyle.getPropertyValue('--vc-fs-large-title').trim()).toBe('calc(32px * 1)');
+    expect(lightStyle.getPropertyValue('--vc-fs-title-1').trim()).toBe('calc(28px * 1)');
+    expect(lightStyle.getPropertyValue('--vc-fs-title-2').trim()).toBe('calc(22px * 1)');
+    expect(lightStyle.getPropertyValue('--vc-fs-headline').trim()).toBe('calc(17px * 1)');
     expect(lightStyle.getPropertyValue('--vc-fs-body').trim()).toBe('calc(15px * 1)');
-    expect(lightStyle.getPropertyValue('--vc-lh-tight').trim()).toBe('1.22');
+    expect(lightStyle.getPropertyValue('--vc-fs-reading').trim()).toBe('calc(17px * 1)');
+    expect(lightStyle.getPropertyValue('--vc-fs-bubble').trim()).toBe('calc(17px * 1)');
+    expect(lightStyle.getPropertyValue('--vc-fs-subhead').trim()).toBe('calc(15px * 1)');
+    expect(lightStyle.getPropertyValue('--vc-fs-footnote').trim()).toBe('calc(13px * 1)');
+    expect(lightStyle.getPropertyValue('--vc-fs-caption').trim()).toBe('calc(12px * 1)');
+    expect(lightStyle.getPropertyValue('--vc-lh-title-1').trim()).toBe('1.2');
+    expect(lightStyle.getPropertyValue('--vc-lh-body').trim()).toBe('1.47');
+    expect(lightStyle.getPropertyValue('--vc-lh-reading').trim()).toBe('1.7');
+    expect(lightStyle.getPropertyValue('--vc-lh-bubble').trim()).toBe('1.55');
+
+    // Canonical radius & motion tokens from vc-ui.css + aurora.css
+    expect(lightStyle.getPropertyValue('--vc-radius-xs').trim()).toBe('8px');
+    expect(lightStyle.getPropertyValue('--vc-radius-sm').trim()).toBe('12px');
+    expect(lightStyle.getPropertyValue('--vc-radius-md').trim()).toBe('16px');
+    expect(lightStyle.getPropertyValue('--vc-radius-lg').trim()).toBe('20px');
+    expect(lightStyle.getPropertyValue('--vc-radius-xl').trim()).toBe('24px');
+    expect(lightStyle.getPropertyValue('--vc-radius-control').trim()).toBe('10px');
+    expect(lightStyle.getPropertyValue('--vc-radius-dialog').trim()).toBe('20px');
+    expect(lightStyle.getPropertyValue('--vc-radius-card-inset').trim()).toBe('14px');
+    expect(tokensCss).toContain('--vc-spring: cubic-bezier(.32,.72,0,1);');
+    expect(lightStyle.getPropertyValue('--vc-spring').trim()).toContain('linear(0, .006, .025 2.8%');
+    expect(lightStyle.getPropertyValue('--vc-dur-press').trim()).toBe('180ms');
+    expect(lightStyle.getPropertyValue('--vc-dur-quick').trim()).toBe('260ms');
+    expect(lightStyle.getPropertyValue('--vc-dur-standard').trim()).toBe('420ms');
+    expect(lightStyle.getPropertyValue('--vc-dur-emphasized').trim()).toBe('320ms');
 
     // Layout & Z-index tokens
     expect(lightStyle.getPropertyValue('--vc-sidebar').trim()).toBe('200px');
@@ -165,8 +224,19 @@ describe('design tokens & CSS layers (DR2-3)', () => {
     expect(normCss(darkStyle.getPropertyValue('--vc-glass-2'))).toBe('rgba(36,36,44,.44)');
     expect(normCss(darkStyle.getPropertyValue('--vc-glass-3'))).toBe('rgba(38,38,44,.82)');
     expect(normCss(darkStyle.getPropertyValue('--vc-raised'))).toBe('rgba(255,255,255,.08)');
-    expect(normCss(darkStyle.getPropertyValue('--vc-accent'))).toBe('#0a84ff');
+    expect(normCss(darkStyle.getPropertyValue('--vc-rim'))).toBe('rgba(255,255,255,.10)');
+    expect(normCss(darkStyle.getPropertyValue('--vc-rim-outer'))).toBe('rgba(255,255,255,.06)');
+    expect(normCss(darkStyle.getPropertyValue('--vc-hi'))).toBe('rgba(255,255,255,.10)');
+    expect(normCss(darkStyle.getPropertyValue('--vc-raised-edge'))).toBe('rgba(255,255,255,.08)');
+    expect(normCss(darkStyle.getPropertyValue('--vc-shadow-panel'))).toBe(
+      '0001pxrgba(255,255,255,.06),020px50pxrgba(0,0,0,.45)',
+    );
+    expect(normCss(darkStyle.getPropertyValue('--vc-shadow-overlay'))).toBe(
+      '0001pxrgba(255,255,255,.06),030px80pxrgba(0,0,0,.60)',
+    );
+    expect(normCss(darkStyle.getPropertyValue('--vc-accent'))).toBe('#0071e3');
     expect(normCss(darkStyle.getPropertyValue('--vc-ink-2'))).toBe('#b2b2b7');
+    expect(normCss(darkStyle.getPropertyValue('--vc-ink-3'))).toBe('#636366');
     expect(normCss(darkStyle.getPropertyValue('--vc-placeholder'))).toBe('#98989d');
     expect(normCss(darkStyle.getPropertyValue('--vc-danger'))).toBe('#ff6961');
     expect(normCss(darkStyle.getPropertyValue('--vc-warning'))).toBe('#ffb340');
@@ -183,16 +253,29 @@ describe('design tokens & CSS layers (DR2-3)', () => {
     expect(baseCss).toContain('var(--vc-dur-reduced)');
   });
 
-  it('no !important outside allowed rules and no outline:none overriding focus rings in component CSS', () => {
+  it('no !important outside allowed rules, no outline:none overriding focus rings, and no undefined --vc-* references in component CSS', () => {
     const cssFiles = collectCssFiles(SRC_DIR);
     expect(cssFiles.length).toBeGreaterThan(0);
 
+    const tokensCss = readFileSync(TOKENS_CSS_PATH, 'utf8');
+    const definedVars = new Set<string>(['--vc-dialog-max-w', '--vc-toast-position', '--vc-toast-top', '--vc-toast-left', '--vc-tint']);
+    for (const m of tokensCss.matchAll(/(--vc-[a-zA-Z0-9_-]+)\s*:/g)) {
+      if (m[1]) definedVars.add(m[1]);
+    }
+
     const violations: string[] = [];
     const outlineViolations: string[] = [];
+    const undefinedVarRefs: string[] = [];
     for (const file of cssFiles) {
       const content = readFileSync(file, 'utf8');
       if (/outline\s*:\s*(none|0)/.test(content)) {
         outlineViolations.push(file);
+      }
+      for (const m of content.matchAll(/var\(\s*(--vc-[a-zA-Z0-9_-]+)/g)) {
+        const varName = m[1];
+        if (varName && !definedVars.has(varName)) {
+          undefinedVarRefs.push(`${file}: ${varName}`);
+        }
       }
       const lines = content.split('\n');
       lines.forEach((line, idx) => {
@@ -211,6 +294,7 @@ describe('design tokens & CSS layers (DR2-3)', () => {
     }
     expect(violations).toEqual([]);
     expect(outlineViolations).toEqual([]);
+    expect(undefinedVarRefs).toEqual([]);
   });
 
   it('exports distinct pure theme functions without polymorphic branching and preserves ui/desktop default resolveTheme()', () => {

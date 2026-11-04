@@ -37,7 +37,6 @@ export function Dialog({
         <BaseDialog.Popup
           data-width={width}
           className={mergedClassName}
-          style={{ width: `min(${width}px, calc(100vw - 64px))` }}
         >
           <div className="vc-dialog__header">
             <div className="vc-dialog__titles">

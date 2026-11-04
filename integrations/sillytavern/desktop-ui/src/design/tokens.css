@@ -2,73 +2,105 @@
 html[data-vc-theme="light"] {
   color-scheme: light;
 
-  /* ── Typography (DESIGN.md §3 & vc-ui.css) ── */
-  --vc-font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display",
-    "PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC", system-ui, sans-serif;
-  --vc-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-  --vc-fs-xs: 11px;
-  --vc-fs-caption: 12px;
-  --vc-fs-sm: 13px;
+  /* ── Base tokens migrated from extension/vc-model-settings/vc-ui.css ── */
+  --vc-canvas: #f5f5f7;
+  --vc-surface: #ffffff;
+  --vc-group: #ffffff;
+  --vc-raise: #f5f5f7;
+  --vc-fill: #ededf0;
+  --vc-fill-2: #e3e3e8;
+  --vc-ink: #1d1d1f;
+  --vc-ink-2: #55555a;
+  --vc-ink-3: #aeaeb2;
+  --vc-placeholder: #68686c;
+  --vc-separator: rgba(60, 60, 67, 0.16);
+  --vc-accent: #0071e3;
+  --vc-accent-text: #0066cc;
+  --vc-on-accent: #ffffff;
+  --vc-danger: #d70015;
+  --vc-danger-fill: #d70015;
+  --vc-warning: #b25000;
+  --vc-success: #248a3d;
+  --vc-bubble-user: #ededf0;
+  --vc-bubble-char: #f3f3f6;
+  --vc-sheet: #f5f5f7;
+  --vc-sheet-group: #ffffff;
+  --vc-thumb: #ffffff;
+  --vc-scrim: rgba(0, 0, 0, 0.22);
+  --vc-glass: rgba(250, 250, 252, 0.62);
+  --vc-glass-strong: rgba(250, 250, 252, 0.86);
+  --vc-glass-hi: rgba(255, 255, 255, 0.9);
+  --vc-glass-edge: rgba(0, 0, 0, 0.06);
+  --vc-glass-shadow: rgba(0, 0, 0, 0.1);
+  --vc-tint-alpha: 0.16;
+  --vc-tile-blue: #0a84ff;
+  --vc-tile-indigo: #5e5ce6;
+  --vc-tile-purple: #bf5af2;
+  --vc-tile-teal: #30b0c7;
+  --vc-tile-orange: #ff9f0a;
+  --vc-tile-green: #34c759;
+  --vc-tile-cyan: #64d2ff;
+  --vc-tile-pink: #ff375f;
+  --vc-tile-red: #ff3b30;
+  --vc-tile-gray: #8e8e93;
+  --vc-font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Hiragino Sans GB", "Noto Sans SC", "Microsoft YaHei", system-ui, sans-serif;
+  --vc-fs-large-title: calc(32px * var(--fontScale, 1));
+  --vc-fs-title-1: calc(28px * var(--fontScale, 1));
+  --vc-fs-title-2: calc(22px * var(--fontScale, 1));
+  --vc-fs-headline: calc(17px * var(--fontScale, 1));
   --vc-fs-body: calc(15px * var(--fontScale, 1));
-  --vc-fs-md: 17px;
-  --vc-fs-lg: 20px;
-  --vc-fs-xl: 22px;
-  --vc-fs-2xl: 28px;
-  --vc-fs-3xl: 34px;
-  --vc-lh-tight: 1.22;
-  --vc-lh-ui: 1.38;
-  --vc-lh-body: 1.65;
-
-  /* ── Spacing & Radius (DESIGN.md §4 & aurora.css) ── */
-  --vc-space-2xs: 4px;
+  --vc-fs-reading: calc(17px * var(--fontScale, 1));
+  --vc-fs-bubble: calc(17px * var(--fontScale, 1));
+  --vc-fs-subhead: calc(15px * var(--fontScale, 1));
+  --vc-fs-footnote: calc(13px * var(--fontScale, 1));
+  --vc-fs-caption: calc(12px * var(--fontScale, 1));
+  --vc-fs-tab: calc(10.5px * var(--fontScale, 1));
+  --vc-fs-input: max(17px, calc(17px * var(--fontScale, 1)));
+  --vc-lh-large-title: 1.2;
+  --vc-lh-title: 1.2;
+  --vc-lh-title-1: 1.2;
+  --vc-lh-title-2: 1.27;
+  --vc-lh-headline: 1.4;
+  --vc-lh-body: 1.47;
+  --vc-lh-reading: 1.7;
+  --vc-lh-bubble: 1.55;
+  --vc-lh-subhead: 1.45;
+  --vc-lh-footnote: 1.4;
+  --vc-lh-caption: 1.35;
+  --vc-lh-tab: 1.2;
+  --vc-space-xxs: 4px;
   --vc-space-xs: 8px;
   --vc-space-sm: 12px;
   --vc-space-md: 16px;
   --vc-space-lg: 20px;
   --vc-space-xl: 24px;
-  --vc-space-2xl: 32px;
-  --vc-space-3xl: 48px;
-
-  --vc-radius-xs: 6px;
-  --vc-radius-sm: 10px;
-  --vc-radius-md: 14px;
-  --vc-radius-lg: 18px;
+  --vc-space-xxl: 32px;
+  --vc-touch: 40px;
+  --vc-radius-xs: 8px;
+  --vc-radius-sm: 12px;
+  --vc-radius-md: 16px;
+  --vc-radius-lg: 20px;
   --vc-radius-xl: 24px;
-  --vc-radius-2xl: 32px;
-  --vc-radius-pill: 999px;
-  --vc-radius-window: 22px;
-  --vc-radius-panel: 22px;
-  --vc-radius-card: 18px;
-  --vc-radius-card-inset: 14px;
-  --vc-radius-control: 10px;
-  --vc-radius-dialog: 20px;
-  --vc-radius-bubble: 20px;
-  --vc-radius-bubble-tail: 6px;
-
-  /* ── Layout & Hit Targets (DESIGN.md §4/§16.1 & desktop/base.css) ── */
-  --vc-sidebar: 200px;
-  --vc-rail-w: 200px;
-  --vc-rail-icon-w: 72px;
-  --vc-conv-w: 320px;
-  --vc-char-panel-w: 340px;
+  --vc-radius-sheet: 28px;
+  --vc-radius-pill: 9999px;
   --vc-read: 720px;
   --vc-list: 960px;
-  --vc-settings-max: 760px;
-  --vc-panel-gap: 12px;
-  --vc-window-pad: 24px;
-  --vc-window-pad-compact: 16px;
-  --vc-window-pad-narrow: 12px;
-  --vc-native-page-left: calc(var(--vc-sidebar) + var(--vc-space-xl) + var(--vc-space-sm));
-  --vc-hit: 44px;
-  --vc-hit-desktop: 32px;
-
-  /* ── Z-Index Scale (DESIGN.md §4 & desktop/base.css) ── */
+  --vc-page-pad: 16px;
+  --vc-spring: cubic-bezier(.32,.72,0,1);
+  --vc-ease-in-out: cubic-bezier(.7,0,.2,1);
+  --vc-ease-out: cubic-bezier(.2,.8,.2,1);
+  --vc-dur-press: 180ms;
+  --vc-dur-quick: 260ms;
+  --vc-dur-standard: 420ms;
+  --vc-dur-emphasized: 320ms;
+  --vc-dur-stream: 500ms;
+  --vc-dur-swipe: 160ms;
   --vc-z-backdrop: 0;
   --vc-z-content: 1;
   --vc-z-shell: 20;
   --vc-z-scrim: 30;
-  --vc-z-fly: 30;
   --vc-z-menu: 32;
+  --vc-z-fly: 30;
   --vc-z-rail: 35;
   --vc-z-page: 40;
   --vc-z-sheet: 40;
@@ -77,326 +109,329 @@ html[data-vc-theme="light"] {
   --vc-z-alert: 60;
   --vc-z-toast: 70;
   --vc-z-lift: 80;
+  --vc-nav-p: 0;
+  --vc-keyboard: 0px;
+  --vc-vh: 100dvh;
 
-  /* ── Motion (DESIGN.md §9 & aurora.css) ── */
-  --vc-ease: cubic-bezier(0.22, 1, 0.36, 1);
-  --vc-ease-spring: cubic-bezier(0.32, 0.72, 0, 1);
-  --vc-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
-  --vc-ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
-  --vc-dur-fast: 140ms;
-  --vc-dur: 220ms;
-  --vc-dur-slow: 360ms;
-  --vc-dur-press: 100ms;
-  --vc-dur-hover: 150ms;
-  --vc-dur-popover: 180ms;
-  --vc-dur-sheet: 240ms;
-  --vc-dur-panel: 260ms;
-  --vc-dur-reduced: 150ms;
-
-  /* ── Blur Lengths (DESIGN.md §16.2 & aurora.css) ── */
+  /* ── Desktop & Aurora tokens migrated from desktop/themes/aurora.css & desktop/base.css ── */
+  --vc-search-mark: rgb(255 224 102 / .9);
+  --vc-search-mark-current: rgb(255 196 0);
+  --vc-search-mark-ink: #1d1d1f;
+  --vc-desk-base: #f4f1f6;
+  --vc-aurora-alpha: .90;
+  --vc-grain-alpha: .03;
+  --vc-glass-1: rgba(255,255,255,.30);
+  --vc-glass-2: rgba(255,255,255,.46);
+  --vc-raised: rgba(255,255,255,.72);
+  --vc-glass-3: rgba(252,252,254,.82);
   --vc-blur-1: 30px;
   --vc-blur-2: 40px;
   --vc-blur-3: 40px;
-  --vc-glass-blur: blur(28px) saturate(180%);
-
-  /* ── Light Palette & Aurora Glass (DESIGN.md §2/§16.2 & aurora.css) ── */
-  --vc-desk-base: #F4F1F6;
-  --vc-aurora-a: 112, 168, 255;
-  --vc-aurora-b: 242, 152, 200;
-  --vc-aurora-c: 162, 132, 246;
-  --vc-aurora-alpha: .90;
-  --vc-aurora-reduced-alpha: .20;
-  --vc-grain-alpha: .03;
-  --vc-ambient-hue-deg: 0;
-  --vc-ambient-alpha-mul: 1;
-
-  --vc-bg: #f5f5f7;
-  --vc-bg-elev: #ffffff;
-  --vc-bg-grouped: #f2f2f7;
-  --vc-surface: #ffffff;
-  --vc-surface-2: #f5f5f7;
-  --vc-surface-3: #e8e8ed;
-
-  --vc-glass: rgba(255, 255, 255, 0.78);
-  --vc-glass-1: rgba(255,255,255,.30);
-  --vc-glass-2: rgba(255,255,255,.46);
-  --vc-glass-3: rgba(252,252,254,.82);
-  --vc-glass-opaque: #FBFAFC;
-  --vc-glass-border: rgba(255,255,255,.62);
-  --vc-glass-stroke-top: rgba(255,255,255,.78);
-  --vc-glass-stroke-rest: rgba(255,255,255,.38);
-  --vc-glass-inner-glow: inset 0 1px 0 rgba(255,255,255,.72), inset 0 0 0 .5px rgba(255,255,255,.42);
-
-  --vc-raised: rgba(255,255,255,.72);
-  --vc-raised-hover: rgba(255,255,255,.88);
-  --vc-raised-edge: rgba(15,15,25,.08);
-
-  --vc-ink: #1d1d1f;
-  --vc-ink-2: #55555a;
-  --vc-ink-3: #59595e;
-  --vc-ink-4: #8e8e93;
-  --vc-placeholder: #68686c;
-
-  --vc-line: rgba(60, 60, 67, 0.13);
-  --vc-line-strong: rgba(60, 60, 67, 0.24);
-  --vc-hairline: rgba(15,15,25,.07);
-  --vc-fill: rgba(118,118,128,.11);
-  --vc-fill-hover: rgba(118,118,128,.17);
-  --vc-fill-press: rgba(118,118,128,.23);
-
-  --vc-accent: #0071e3;
-  --vc-accent-press: #0062c4;
-  --vc-accent-soft: rgba(0, 113, 227, 0.12);
-  --vc-accent-line: rgba(0, 113, 227, 0.32);
-  --vc-accent-ink: #ffffff;
-  --vc-accent-text: #0066cc;
-  --vc-accent-glow: rgba(0,113,227,.28);
-
-  --vc-button-fill: linear-gradient(180deg, #2F8BFF, #0071E3);
-  --vc-button-danger-fill: linear-gradient(180deg, #FF4D5E, #D70015);
-
-  --vc-danger: #d70015;
-  --vc-danger-soft: rgba(215, 0, 21, 0.10);
-  --vc-warning: #b25000;
-  --vc-warning-soft: rgba(178, 80, 0, 0.12);
-  --vc-success: #248a3d;
-  --vc-success-soft: rgba(36, 138, 61, 0.12);
-
-  --vc-bubble-user-bg: linear-gradient(155deg, #2B86FF 0%, #0068DA 100%);
-  --vc-bubble-user-ink: #ffffff;
-  --vc-bubble-user-shadow: 0 8px 22px -6px rgba(0,104,218,.38), inset 0 1px 0 rgba(255,255,255,.32);
-  --vc-bubble-ai-bg: rgba(255,255,255,.78);
-  --vc-bubble-ai-ink: #1d1d1f;
-  --vc-bubble-ai-border: rgba(255,255,255,.86);
-  --vc-bubble-ai-shadow: 0 4px 16px rgba(15,15,30,.06), inset 0 1px 0 rgba(255,255,255,.90);
-
-  --vc-scrim: rgba(15, 15, 20, 0.36);
-  --vc-seg-bg: rgba(118, 118, 128, 0.12);
+  --vc-rim: rgba(255,255,255,.55);
+  --vc-rim-outer: rgba(255,255,255,.25);
+  --vc-hi: rgba(255,255,255,.75);
+  --vc-raised-edge: rgba(0,0,0,.05);
+  --vc-shadow-panel: 0 0 0 1px var(--vc-rim-outer), 0 20px 50px rgba(80,60,100,.10);
+  --vc-shadow-overlay: 0 0 0 1px var(--vc-rim-outer), 0 30px 80px rgba(60,40,90,.18);
+  --vc-select-fill: rgba(0,113,227,.12);
+  --vc-hover-fill: rgba(255,255,255,.45);
+  --vc-scrim-desk: rgba(30,20,40,.18);
+  --vc-motion-arrive: 220ms;
+  --vc-motion-height: 250ms;
+  --vc-motion-fade: 180ms;
+  --vc-motion-chip: 250ms;
+  --vc-motion-flash: 2s;
+  --vc-motion-dots: 1.6s;
+  --vc-ease-arrive: cubic-bezier(.22,1,.36,1);
+  --vc-arrive-rise: 8px;
+  --vc-latest-size: 36px;
+  --vc-quick-width: 560px;
+  --vc-bub-r: 18px;
+  --vc-bub-pad-y: 10px;
+  --vc-hairline: inset 0 0 0 .5px var(--vc-raised-edge);
+  --vc-unread-line: color-mix(in srgb, var(--vc-accent) 55%, transparent);
+  --vc-flash-fill: color-mix(in srgb, var(--vc-accent) 18%, transparent);
+  --vc-mask-opaque: #000;
+  --vc-mask-faded: rgba(0,0,0,.35);
+  --vc-emoji-size-1: 56px;
+  --vc-emoji-size-2: 48px;
+  --vc-emoji-size-3: 40px;
+  --vc-emoji-panel-w: 340px;
+  --vc-emoji-cell: 36px;
+  --vc-emoji-zoom: 64px;
+  --vc-react-size: 18px;
+  --vc-fx-1: #ff6b6b;
+  --vc-fx-2: #ffd166;
+  --vc-fx-3: #4dd599;
+  --vc-fx-4: #5fa8ff;
+  --vc-fx-5: #c084fc;
+  --vc-fx-star: #ffd166;
+  --vc-pat-dur: 360ms;
+  --vc-fx-dur: 1100ms;
+  --vc-fx-stagger: 12ms;
+  --vc-suggest-dur: 320ms;
+  --vc-suggest-stagger: 60ms;
+  --vc-suggest-rise: 8px;
+  --vc-card-w: 340px;
+  --vc-card-avatar: 72px;
+  --vc-bar-h: 6px;
+  --vc-meter-fill: rgb(var(--vc-tint));
+  --vc-face-fade: 500ms;
+  --vc-milestone-w: 280px;
+  --vc-sub-gap: 2px;
+  --vc-notify-w: 360px;
+  --vc-notify-avatar: 40px;
+  --vc-notify-in: 250ms;
+  --vc-notify-out: 220ms;
+  --vc-notify-rise: 12px;
+  --vc-unread-h: 18px;
+  --vc-dot: 8px;
+  --vc-lightbox-scrim: rgb(0 0 0 / .6);
+  --vc-lightbox-blur: 16px;
+  --vc-dur-shared: 250ms;
+  --vc-dur-ambient: 60s;
+  --vc-ambient-hue-shift: 0deg;
+  --vc-ambient-bright: 1;
+  --vc-clear: transparent;
+  --vc-timeline-line: rgba(60,60,67,.22);
+  --vc-timeline-dot: rgba(60,60,67,.38);
+  --vc-timeline-dot-fill: rgba(255,255,255,.92);
+  --vc-seg-track: rgba(120,120,128,.14);
   --vc-seg-thumb: #ffffff;
+  --vc-shadow-chip: 0 1px 3px rgba(0,0,0,.14), 0 0 0 .5px rgba(0,0,0,.04);
+  --vc-shadow-card: 0 8px 24px rgba(80,60,100,.08);
+  --vc-paper: #f8f2e6;
+  --vc-paper-ink: #2f2a24;
+  --vc-paper-ink-2: #7b7266;
+  --vc-paper-line: rgba(120,100,70,.18);
+  --vc-paper-edge: rgba(120,100,70,.14);
+  --vc-paper-chip: rgba(255,255,255,.7);
+  --vc-shadow-paper: 0 1px 0 rgba(255,255,255,.7) inset, 0 18px 44px rgba(80,60,40,.14);
+  --vc-font-serif: "Songti SC", "Noto Serif CJK SC", "Noto Serif SC", Georgia, serif;
+  --vc-font-hand: "LXGW WenKai", var(--vc-font);
+  --vc-dur-fade: 180ms;
+  --vc-diary-lh: 36px;
+  --vc-button-fill: linear-gradient(180deg,#2f8bff,#0071e3);
+  --vc-button-danger-fill: linear-gradient(180deg,#ff4d5e,#d70015);
+  --vc-control-fill: rgba(255,255,255,.72);
+  --vc-segment-fill: rgba(118,118,128,.12);
+  --vc-pointer-glow: rgba(255,255,255,.10);
+  --vc-glass-opaque: #fbfafc;
+  --vc-aurora-reduced-alpha: .20;
+  --vc-radius-control: 10px;
+  --vc-radius-dialog: 20px;
+  --vc-radius-tile: 8px;
+  --vc-radius-check: 5px;
+  --vc-radius-card-inset: 14px;
+  --vc-radius-particle: 2px;
+  --vc-dur-aurora-change: 900ms;
+  --vc-dur-aurora-drift-1: 40s;
+  --vc-dur-aurora-drift-2: 52s;
+  --vc-dur-aurora-drift-3: 64s;
+  --vc-dur-shimmer: 1.6s;
+  --vc-dur-reduced: 150ms;
+  --vc-ease-reduced: ease;
+  --vc-content-rise: 8px;
+  --vc-content-blur: 6px;
+  --vc-ease-aurora: ease-in-out;
+  --vc-bub-join: 6px;
+  --vc-shadow-segment: 0 2px 6px rgba(0,0,0,.12);
+  --vc-shadow-rim-panel: inset 0 1px 0 var(--vc-hi), var(--vc-shadow-panel);
+  --vc-shadow-rim: inset 0 1px 0 var(--vc-hi);
+  --vc-shadow-card-ring: inset 0 0 0 1px var(--vc-rim), var(--vc-shadow-panel);
+  --vc-shadow-inset-edge: inset 0 0 0 .5px var(--vc-raised-edge);
+  --vc-shadow-search-match: inset 0 0 0 2px var(--vc-accent);
+  --vc-shadow-divider: 0 .5px 0 var(--vc-separator);
+  --vc-shadow-divider-top: 0 -.5px 0 var(--vc-raised-edge);
+  --vc-shadow-rim-overlay: inset 0 1px 0 var(--vc-hi), var(--vc-shadow-overlay);
+  --vc-shadow-avatar-glow: 0 0 0 3px color-mix(in srgb, rgb(var(--vc-tint)) 45%, transparent), 0 0 32px 6px color-mix(in srgb, rgb(var(--vc-tint)) 45%, transparent);
+  --vc-shadow-button: 0 6px 16px rgba(0,113,227,.28);
+  --vc-shadow-button-hover: 0 0 0 4px rgba(0,113,227,.15), 0 8px 24px rgba(0,113,227,.30);
+  --vc-shadow-focus: 0 0 0 4px rgb(from var(--vc-accent) r g b / .25);
+  --vc-shadow-avatar-ring: 0 0 0 1px var(--vc-rim);
+  --vc-ambient-hue-morning: -8deg;
+  --vc-ambient-bright-morning: 1.06;
+  --vc-ambient-hue-noon: 0deg;
+  --vc-ambient-bright-noon: 1.03;
+  --vc-ambient-hue-evening: 10deg;
+  --vc-ambient-bright-evening: .98;
+  --vc-ambient-hue-night: -14deg;
+  --vc-ambient-bright-night: .9;
 
-  --vc-shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.04);
-  --vc-shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
-  --vc-shadow-md: 0 10px 30px rgba(0, 0, 0, 0.10), 0 2px 6px rgba(0, 0, 0, 0.05);
-  --vc-shadow-lg: 0 24px 60px rgba(0, 0, 0, 0.18), 0 4px 12px rgba(0, 0, 0, 0.08);
-  --vc-shadow-panel: 0 20px 50px -12px rgba(24,20,40,.12), 0 2px 6px rgba(24,20,40,.04);
-  --vc-shadow-card: 0 8px 24px -6px rgba(24,20,40,.08), 0 1px 2px rgba(24,20,40,.04);
-  --vc-shadow-card-hover: 0 16px 36px -8px rgba(24,20,40,.14), 0 2px 6px rgba(24,20,40,.06);
-  --vc-shadow-float: 0 24px 64px -8px rgba(18,16,32,.22), 0 4px 14px rgba(18,16,32,.08);
-  --vc-shadow-button: 0 6px 16px -4px rgba(0,113,227,.42), inset 0 1px 0 rgba(255,255,255,.36);
-  --vc-shadow-button-hover: 0 10px 22px -4px rgba(0,113,227,.52), inset 0 1px 0 rgba(255,255,255,.45);
-  --vc-shadow-button-danger: 0 6px 16px -4px rgba(215,0,21,.42), inset 0 1px 0 rgba(255,255,255,.32);
-  --vc-shadow-segment: 0 2px 6px rgba(0,0,0,.08), 0 .5px 1px rgba(0,0,0,.06);
+  /* ── Desktop layout dimensions from desktop/base.css & DESIGN.md §4/§7/§16.1 ── */
+  --vc-sidebar: 200px;
+  --vc-rail-w: 200px;
+  --vc-rail-icon-w: 72px;
+  --vc-conv-w: 320px;
+  --vc-char-panel-w: 340px;
+  --vc-settings-max: 760px;
+  --vc-panel-gap: 12px;
+  --vc-window-pad: 24px;
+  --vc-window-pad-compact: 16px;
+  --vc-window-pad-narrow: 12px;
+  --vc-dialog-viewport-margin: 64px;
+  --vc-native-page-left: calc(var(--vc-sidebar) + var(--vc-space-xl) + var(--vc-space-sm));
 }
 
-/* ── Dark Palette (DESIGN.md §2/§16.2 & aurora.css) ── */
+/* ── Dark tokens migrated from vc-ui.css & desktop/themes/aurora.css ── */
 html[data-vc-theme="dark"] {
   color-scheme: dark;
-  --vc-desk-base: #07070A;
-  --vc-aurora-a: 42, 108, 232;
-  --vc-aurora-b: 180, 62, 148;
-  --vc-aurora-c: 98, 64, 210;
+  --vc-canvas: #000000;
+  --vc-surface: #000000;
+  --vc-group: #1c1c1e;
+  --vc-raise: #1c1c1e;
+  --vc-fill: #2c2c2e;
+  --vc-fill-2: #3a3a3c;
+  --vc-avatar-blend: lighten;
+  --vc-ink: #f5f5f7;
+  --vc-ink-2: #b2b2b7;
+  --vc-ink-3: #636366;
+  --vc-placeholder: #98989d;
+  --vc-separator: rgba(84, 84, 88, 0.55);
+  --vc-accent: #0071e3;
+  --vc-accent-text: #2997ff;
+  --vc-on-accent: #ffffff;
+  --vc-danger: #ff6961;
+  --vc-danger-fill: #d70015;
+  --vc-warning: #ffb340;
+  --vc-success: #30d158;
+  --vc-bubble-user: #2c2c2e;
+  --vc-bubble-char: #1c1c1e;
+  --vc-sheet: #1c1c1e;
+  --vc-sheet-group: #2c2c2e;
+  --vc-thumb: #636366;
+  --vc-scrim: rgba(0, 0, 0, 0.5);
+  --vc-glass: rgba(36, 36, 38, 0.58);
+  --vc-glass-strong: rgba(36, 36, 38, 0.84);
+  --vc-glass-hi: rgba(255, 255, 255, 0.14);
+  --vc-glass-edge: rgba(255, 255, 255, 0.07);
+  --vc-glass-shadow: rgba(0, 0, 0, 0.5);
+  --vc-tint-alpha: 0.34;
+  --vc-desk-base: #07070a;
   --vc-aurora-alpha: .85;
   --vc-aurora-reduced-alpha: .20;
   --vc-grain-alpha: .04;
-
-  --vc-bg: #000000;
-  --vc-bg-elev: #1c1c1e;
-  --vc-bg-grouped: #000000;
-  --vc-surface: #1c1c1e;
-  --vc-surface-2: #2c2c2e;
-  --vc-surface-3: #3a3a3c;
-
-  --vc-glass: rgba(28, 28, 30, 0.78);
   --vc-glass-1: rgba(64,64,76,.36);
   --vc-glass-2: rgba(36,36,44,.44);
-  --vc-glass-3: rgba(38,38,44,.82);
-  --vc-glass-opaque: #1C1C20;
-  --vc-glass-border: rgba(255,255,255,.14);
-  --vc-glass-stroke-top: rgba(255,255,255,.22);
-  --vc-glass-stroke-rest: rgba(255,255,255,.08);
-  --vc-glass-inner-glow: inset 0 1px 0 rgba(255,255,255,.16), inset 0 0 0 .5px rgba(255,255,255,.08);
-
   --vc-raised: rgba(255,255,255,.08);
-  --vc-raised-hover: rgba(255,255,255,.13);
-  --vc-raised-edge: rgba(255,255,255,.10);
-
-  --vc-ink: #f5f5f7;
-  --vc-ink-2: #b2b2b7;
-  --vc-ink-3: #aeaeb2;
-  --vc-ink-4: #636366;
-  --vc-placeholder: #98989d;
-
-  --vc-line: rgba(255, 255, 255, 0.12);
-  --vc-line-strong: rgba(255, 255, 255, 0.22);
-  --vc-hairline: rgba(255,255,255,.08);
-  --vc-fill: rgba(255,255,255,.08);
-  --vc-fill-hover: rgba(255,255,255,.13);
-  --vc-fill-press: rgba(255,255,255,.18);
-
-  --vc-accent: #0a84ff;
-  --vc-accent-press: #409cff;
-  --vc-accent-soft: rgba(10, 132, 255, 0.18);
-  --vc-accent-line: rgba(10, 132, 255, 0.42);
-  --vc-accent-ink: #ffffff;
-  --vc-accent-text: #409cff;
-  --vc-accent-glow: rgba(10,132,255,.36);
-
-  --vc-button-fill: linear-gradient(180deg, #3A95FF, #0A84FF);
-  --vc-button-danger-fill: linear-gradient(180deg, #FF6961, #D70015);
-
-  --vc-danger: #ff6961;
-  --vc-danger-soft: rgba(255, 105, 97, 0.18);
-  --vc-warning: #ffb340;
-  --vc-warning-soft: rgba(255, 179, 64, 0.18);
-  --vc-success: #30d158;
-  --vc-success-soft: rgba(48, 209, 88, 0.18);
-
-  --vc-bubble-user-bg: linear-gradient(155deg, #2D8CFF 0%, #0066D6 100%);
-  --vc-bubble-user-ink: #ffffff;
-  --vc-bubble-user-shadow: 0 8px 24px -6px rgba(10,132,255,.42), inset 0 1px 0 rgba(255,255,255,.28);
-  --vc-bubble-ai-bg: rgba(44,44,52,.78);
-  --vc-bubble-ai-ink: #f5f5f7;
-  --vc-bubble-ai-border: rgba(255,255,255,.14);
-  --vc-bubble-ai-shadow: 0 6px 20px rgba(0,0,0,.38), inset 0 1px 0 rgba(255,255,255,.12);
-
-  --vc-scrim: rgba(0, 0, 0, 0.56);
-  --vc-seg-bg: rgba(118, 118, 128, 0.24);
-  --vc-seg-thumb: #636366;
-
-  --vc-shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.35);
-  --vc-shadow-sm: 0 2px 10px rgba(0, 0, 0, 0.45);
-  --vc-shadow-md: 0 12px 34px rgba(0, 0, 0, 0.55);
-  --vc-shadow-lg: 0 26px 64px rgba(0, 0, 0, 0.68);
-  --vc-shadow-panel: 0 24px 60px -12px rgba(0,0,0,.62), 0 2px 8px rgba(0,0,0,.40);
-  --vc-shadow-card: 0 10px 28px -6px rgba(0,0,0,.48), 0 1px 2px rgba(0,0,0,.32);
-  --vc-shadow-card-hover: 0 18px 40px -8px rgba(0,0,0,.62), 0 2px 8px rgba(0,0,0,.42);
-  --vc-shadow-float: 0 28px 70px -8px rgba(0,0,0,.72), 0 6px 18px rgba(0,0,0,.48);
-  --vc-shadow-button: 0 8px 20px -4px rgba(10,132,255,.48), inset 0 1px 0 rgba(255,255,255,.32);
-  --vc-shadow-button-hover: 0 12px 26px -4px rgba(10,132,255,.60), inset 0 1px 0 rgba(255,255,255,.42);
-  --vc-shadow-button-danger: 0 8px 20px -4px rgba(255,105,97,.44), inset 0 1px 0 rgba(255,255,255,.28);
-  --vc-shadow-segment: 0 2px 8px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.16);
+  --vc-glass-3: rgba(38,38,44,.82);
+  --vc-rim: rgba(255,255,255,.10);
+  --vc-rim-outer: rgba(255,255,255,.06);
+  --vc-hi: rgba(255,255,255,.10);
+  --vc-raised-edge: rgba(255,255,255,.08);
+  --vc-shadow-panel: 0 0 0 1px var(--vc-rim-outer), 0 20px 50px rgba(0,0,0,.45);
+  --vc-shadow-overlay: 0 0 0 1px var(--vc-rim-outer), 0 30px 80px rgba(0,0,0,.60);
+  --vc-select-fill: rgba(41,151,255,.20);
+  --vc-hover-fill: rgba(255,255,255,.06);
+  --vc-scrim-desk: rgba(0,0,0,.50);
+  --vc-timeline-line: rgba(255,255,255,.16);
+  --vc-timeline-dot: rgba(255,255,255,.40);
+  --vc-timeline-dot-fill: rgba(40,40,46,.92);
+  --vc-seg-track: rgba(255,255,255,.08);
+  --vc-seg-thumb: rgba(255,255,255,.18);
+  --vc-shadow-chip: 0 1px 3px rgba(0,0,0,.4), 0 0 0 .5px rgba(255,255,255,.06);
+  --vc-shadow-card: 0 8px 24px rgba(0,0,0,.35);
+  --vc-paper: #2b2722;
+  --vc-paper-ink: #ece4d6;
+  --vc-paper-ink-2: #a39a8a;
+  --vc-paper-line: rgba(255,240,210,.10);
+  --vc-paper-edge: rgba(255,240,210,.10);
+  --vc-paper-chip: rgba(255,255,255,.08);
+  --vc-shadow-paper: 0 1px 0 rgba(255,255,255,.06) inset, 0 18px 44px rgba(0,0,0,.5);
+  --vc-pointer-glow: rgba(255,255,255,.06);
+  --vc-glass-opaque: #1c1c20;
+  --vc-control-fill: var(--vc-raised);
 }
 
 @media (prefers-color-scheme: dark) {
   html:not([data-vc-theme="light"]) {
     color-scheme: dark;
-    --vc-desk-base: #07070A;
-    --vc-aurora-a: 42, 108, 232;
-    --vc-aurora-b: 180, 62, 148;
-    --vc-aurora-c: 98, 64, 210;
+    --vc-canvas: #000000;
+    --vc-surface: #000000;
+    --vc-group: #1c1c1e;
+    --vc-raise: #1c1c1e;
+    --vc-fill: #2c2c2e;
+    --vc-fill-2: #3a3a3c;
+    --vc-avatar-blend: lighten;
+    --vc-ink: #f5f5f7;
+    --vc-ink-2: #b2b2b7;
+    --vc-ink-3: #636366;
+    --vc-placeholder: #98989d;
+    --vc-separator: rgba(84, 84, 88, 0.55);
+    --vc-accent: #0071e3;
+    --vc-accent-text: #2997ff;
+    --vc-on-accent: #ffffff;
+    --vc-danger: #ff6961;
+    --vc-danger-fill: #d70015;
+    --vc-warning: #ffb340;
+    --vc-success: #30d158;
+    --vc-bubble-user: #2c2c2e;
+    --vc-bubble-char: #1c1c1e;
+    --vc-sheet: #1c1c1e;
+    --vc-sheet-group: #2c2c2e;
+    --vc-thumb: #636366;
+    --vc-scrim: rgba(0, 0, 0, 0.5);
+    --vc-glass: rgba(36, 36, 38, 0.58);
+    --vc-glass-strong: rgba(36, 36, 38, 0.84);
+    --vc-glass-hi: rgba(255, 255, 255, 0.14);
+    --vc-glass-edge: rgba(255, 255, 255, 0.07);
+    --vc-glass-shadow: rgba(0, 0, 0, 0.5);
+    --vc-tint-alpha: 0.34;
+    --vc-desk-base: #07070a;
     --vc-aurora-alpha: .85;
     --vc-aurora-reduced-alpha: .20;
     --vc-grain-alpha: .04;
-
-    --vc-bg: #000000;
-    --vc-bg-elev: #1c1c1e;
-    --vc-bg-grouped: #000000;
-    --vc-surface: #1c1c1e;
-    --vc-surface-2: #2c2c2e;
-    --vc-surface-3: #3a3a3c;
-
-    --vc-glass: rgba(28, 28, 30, 0.78);
     --vc-glass-1: rgba(64,64,76,.36);
     --vc-glass-2: rgba(36,36,44,.44);
-    --vc-glass-3: rgba(38,38,44,.82);
-    --vc-glass-opaque: #1C1C20;
-    --vc-glass-border: rgba(255,255,255,.14);
-    --vc-glass-stroke-top: rgba(255,255,255,.22);
-    --vc-glass-stroke-rest: rgba(255,255,255,.08);
-    --vc-glass-inner-glow: inset 0 1px 0 rgba(255,255,255,.16), inset 0 0 0 .5px rgba(255,255,255,.08);
-
     --vc-raised: rgba(255,255,255,.08);
-    --vc-raised-hover: rgba(255,255,255,.13);
-    --vc-raised-edge: rgba(255,255,255,.10);
-
-    --vc-ink: #f5f5f7;
-    --vc-ink-2: #b2b2b7;
-    --vc-ink-3: #aeaeb2;
-    --vc-ink-4: #636366;
-    --vc-placeholder: #98989d;
-
-    --vc-line: rgba(255, 255, 255, 0.12);
-    --vc-line-strong: rgba(255, 255, 255, 0.22);
-    --vc-hairline: rgba(255,255,255,.08);
-    --vc-fill: rgba(255,255,255,.08);
-    --vc-fill-hover: rgba(255,255,255,.13);
-    --vc-fill-press: rgba(255,255,255,.18);
-
-    --vc-accent: #0a84ff;
-    --vc-accent-press: #409cff;
-    --vc-accent-soft: rgba(10, 132, 255, 0.18);
-    --vc-accent-line: rgba(10, 132, 255, 0.42);
-    --vc-accent-ink: #ffffff;
-    --vc-accent-text: #409cff;
-    --vc-accent-glow: rgba(10,132,255,.36);
-
-    --vc-button-fill: linear-gradient(180deg, #3A95FF, #0A84FF);
-    --vc-button-danger-fill: linear-gradient(180deg, #FF6961, #D70015);
-
-    --vc-danger: #ff6961;
-    --vc-danger-soft: rgba(255, 105, 97, 0.18);
-    --vc-warning: #ffb340;
-    --vc-warning-soft: rgba(255, 179, 64, 0.18);
-    --vc-success: #30d158;
-    --vc-success-soft: rgba(48, 209, 88, 0.18);
-
-    --vc-bubble-user-bg: linear-gradient(155deg, #2D8CFF 0%, #0066D6 100%);
-    --vc-bubble-user-ink: #ffffff;
-    --vc-bubble-user-shadow: 0 8px 24px -6px rgba(10,132,255,.42), inset 0 1px 0 rgba(255,255,255,.28);
-    --vc-bubble-ai-bg: rgba(44,44,52,.78);
-    --vc-bubble-ai-ink: #f5f5f7;
-    --vc-bubble-ai-border: rgba(255,255,255,.14);
-    --vc-bubble-ai-shadow: 0 6px 20px rgba(0,0,0,.38), inset 0 1px 0 rgba(255,255,255,.12);
-
-    --vc-scrim: rgba(0, 0, 0, 0.56);
-    --vc-seg-bg: rgba(118, 118, 128, 0.24);
-    --vc-seg-thumb: #636366;
-
-    --vc-shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.35);
-    --vc-shadow-sm: 0 2px 10px rgba(0, 0, 0, 0.45);
-    --vc-shadow-md: 0 12px 34px rgba(0, 0, 0, 0.55);
-    --vc-shadow-lg: 0 26px 64px rgba(0, 0, 0, 0.68);
-    --vc-shadow-panel: 0 24px 60px -12px rgba(0,0,0,.62), 0 2px 8px rgba(0,0,0,.40);
-    --vc-shadow-card: 0 10px 28px -6px rgba(0,0,0,.48), 0 1px 2px rgba(0,0,0,.32);
-    --vc-shadow-card-hover: 0 18px 40px -8px rgba(0,0,0,.62), 0 2px 8px rgba(0,0,0,.42);
-    --vc-shadow-float: 0 28px 70px -8px rgba(0,0,0,.72), 0 6px 18px rgba(0,0,0,.48);
-    --vc-shadow-button: 0 8px 20px -4px rgba(10,132,255,.48), inset 0 1px 0 rgba(255,255,255,.32);
-    --vc-shadow-button-hover: 0 12px 26px -4px rgba(10,132,255,.60), inset 0 1px 0 rgba(255,255,255,.42);
-    --vc-shadow-button-danger: 0 8px 20px -4px rgba(255,105,97,.44), inset 0 1px 0 rgba(255,255,255,.28);
-    --vc-shadow-segment: 0 2px 8px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.16);
+    --vc-glass-3: rgba(38,38,44,.82);
+    --vc-rim: rgba(255,255,255,.10);
+    --vc-rim-outer: rgba(255,255,255,.06);
+    --vc-hi: rgba(255,255,255,.10);
+    --vc-raised-edge: rgba(255,255,255,.08);
+    --vc-shadow-panel: 0 0 0 1px var(--vc-rim-outer), 0 20px 50px rgba(0,0,0,.45);
+    --vc-shadow-overlay: 0 0 0 1px var(--vc-rim-outer), 0 30px 80px rgba(0,0,0,.60);
+    --vc-select-fill: rgba(41,151,255,.20);
+    --vc-hover-fill: rgba(255,255,255,.06);
+    --vc-scrim-desk: rgba(0,0,0,.50);
+    --vc-timeline-line: rgba(255,255,255,.16);
+    --vc-timeline-dot: rgba(255,255,255,.40);
+    --vc-timeline-dot-fill: rgba(40,40,46,.92);
+    --vc-seg-track: rgba(255,255,255,.08);
+    --vc-seg-thumb: rgba(255,255,255,.18);
+    --vc-shadow-chip: 0 1px 3px rgba(0,0,0,.4), 0 0 0 .5px rgba(255,255,255,.06);
+    --vc-shadow-card: 0 8px 24px rgba(0,0,0,.35);
+    --vc-paper: #2b2722;
+    --vc-paper-ink: #ece4d6;
+    --vc-paper-ink-2: #a39a8a;
+    --vc-paper-line: rgba(255,240,210,.10);
+    --vc-paper-edge: rgba(255,240,210,.10);
+    --vc-paper-chip: rgba(255,255,255,.08);
+    --vc-shadow-paper: 0 1px 0 rgba(255,255,255,.06) inset, 0 18px 44px rgba(0,0,0,.5);
+    --vc-pointer-glow: rgba(255,255,255,.06);
+    --vc-glass-opaque: #1c1c20;
+    --vc-control-fill: var(--vc-raised);
   }
 }
 
-/* ── UX-34 Time-of-Day Ambient Shifts (aurora.css) ── */
-html[data-vc-period="morning"] {
-  --vc-ambient-hue-deg: 8;
-  --vc-ambient-alpha-mul: 1.04;
-}
-html[data-vc-period="noon"] {
-  --vc-ambient-hue-deg: 0;
-  --vc-ambient-alpha-mul: 1;
-}
-html[data-vc-period="evening"] {
-  --vc-ambient-hue-deg: -10;
-  --vc-ambient-alpha-mul: 1.06;
-}
-html[data-vc-period="night"] {
-  --vc-ambient-hue-deg: -6;
-  --vc-ambient-alpha-mul: 0.90;
+/* 与公共 motion token 相同，支持 linear() 的浏览器使用选定弹簧曲线（vc-ui.css & aurora.css）。 */
+@supports (transition-timing-function: linear(0, 1)) or (animation-timing-function: linear(0, 1)) {
+  :root,
+  html[data-vc-theme="light"],
+  html[data-vc-theme="dark"] {
+    --vc-spring: linear(0, .006, .025 2.8%, .101 6.1%, .539 18.9%, .721 25.3%, .849 31.5%, .937 38.1%, .968 41.8%, .991 45.7%, 1.006 50.1%, 1.015 55%, 1.017 63.9%, 1.001 85.9%, 1);
+  }
 }
 
-/* ── Reduced Transparency (DESIGN.md §16.2 & aurora.css) ── */
+/* ── Reduced Transparency (desktop/base.css & DESIGN.md §16.2) ── */
 @media (prefers-reduced-transparency: reduce) {
   html[data-vc-theme="dark"],
   html[data-vc-theme="light"],
   html:not([data-vc-theme="light"]),
   :root {
-    --vc-glass: var(--vc-glass-opaque);
     --vc-glass-1: var(--vc-glass-opaque);
     --vc-glass-2: var(--vc-glass-opaque);
     --vc-glass-3: var(--vc-glass-opaque);
-    --vc-raised: var(--vc-glass-opaque);
-    --vc-bubble-ai-bg: var(--vc-glass-opaque);
     --vc-aurora-alpha: var(--vc-aurora-reduced-alpha);
   }
 }

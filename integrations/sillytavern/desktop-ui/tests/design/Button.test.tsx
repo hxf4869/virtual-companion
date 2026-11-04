@@ -71,6 +71,9 @@ describe('Button & basic display primitives (DR2-3)', () => {
     expect(buttonCss).toContain('padding: 0 20px');
     expect(buttonCss).toContain('var(--vc-button-fill)');
     expect(buttonCss).toContain('var(--vc-button-danger-fill)');
+    expect(buttonCss).toContain('scale(0.96)');
+    expect(buttonCss).toContain('opacity: 0.4');
+    expect(buttonCss).toContain('box-shadow: none');
   });
 
   it('supports variants, sizes, and className pass-through on Button and IconButton', () => {

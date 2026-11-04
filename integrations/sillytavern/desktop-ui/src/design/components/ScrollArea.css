@@ -19,12 +19,12 @@
     padding: 2px 1px;
     touch-action: none;
     user-select: none;
-    transition: opacity var(--vc-dur-fast) var(--vc-ease);
+    transition: opacity var(--vc-dur-fade) var(--vc-ease-out);
   }
 
   .vc-scroll-area__thumb {
     flex: 1;
     border-radius: var(--vc-radius-pill);
-    background-color: var(--vc-line-strong);
+    background-color: var(--vc-separator);
   }
 }

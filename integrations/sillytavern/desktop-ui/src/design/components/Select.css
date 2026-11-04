@@ -7,27 +7,29 @@
     min-width: 160px;
     max-width: 240px;
     height: 36px;
-    padding: 0 var(--vc-space-sm);
+    min-height: 36px;
+    padding: 0 12px;
     border: 0.5px solid var(--vc-raised-edge);
     border-radius: var(--vc-radius-control);
-    background-color: var(--vc-raised);
+    background-color: var(--vc-control-fill);
     color: var(--vc-ink);
     font-family: var(--vc-font);
     font-size: var(--vc-fs-body);
     line-height: 1;
     cursor: pointer;
     transition:
-      border-color var(--vc-dur-hover) var(--vc-ease),
-      background-color var(--vc-dur-hover) var(--vc-ease);
+      border-color var(--vc-dur-fade) var(--vc-ease-out),
+      background-color var(--vc-dur-fade) var(--vc-ease-out);
   }
 
   .vc-select:hover:not([data-disabled]) {
-    background-color: var(--vc-raised-hover);
+    background-color: var(--vc-hover-fill);
   }
 
   .vc-select:focus-visible {
     outline: 2px solid var(--vc-accent);
     outline-offset: 2px;
+    box-shadow: var(--vc-shadow-focus);
   }
 
   .vc-select__value {
@@ -48,14 +50,13 @@
 
   .vc-select__popup {
     min-width: 180px;
-    padding: var(--vc-space-2xs);
-    border: 1px solid var(--vc-glass-stroke-rest);
-    border-top-color: var(--vc-glass-stroke-top);
+    padding: var(--vc-space-xxs);
+    border: 1px solid var(--vc-rim);
     border-radius: var(--vc-radius-card-inset);
     background-color: var(--vc-glass-3);
     backdrop-filter: blur(var(--vc-blur-3)) saturate(180%);
     -webkit-backdrop-filter: blur(var(--vc-blur-3)) saturate(180%);
-    box-shadow: var(--vc-shadow-float), var(--vc-glass-inner-glow);
+    box-shadow: var(--vc-shadow-rim-overlay);
     color: var(--vc-ink);
   }
 
@@ -73,7 +74,7 @@
     gap: var(--vc-space-xs);
     height: 36px;
     padding: 0 var(--vc-space-sm);
-    border-radius: 9px;
+    border-radius: var(--vc-radius-tile);
     font-size: var(--vc-fs-body);
     color: var(--vc-ink);
     cursor: pointer;
@@ -81,7 +82,7 @@
   }
 
   .vc-select__item[data-highlighted] {
-    background-color: var(--vc-accent-soft);
+    background-color: var(--vc-select-fill);
   }
 
   .vc-select__item:focus-visible {

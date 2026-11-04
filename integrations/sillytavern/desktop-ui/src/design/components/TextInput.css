@@ -4,20 +4,22 @@
     width: 100%;
     max-width: 360px;
     height: 36px;
-    padding: 0 var(--vc-space-sm);
+    min-height: 36px;
+    padding: 0 12px;
     border: 0.5px solid var(--vc-raised-edge);
     border-radius: var(--vc-radius-control);
-    background-color: var(--vc-raised);
+    background-color: var(--vc-control-fill);
     color: var(--vc-ink);
     font-family: var(--vc-font);
     font-size: var(--vc-fs-body);
-    line-height: var(--vc-lh-ui);
+    line-height: var(--vc-lh-body);
     transition:
-      border-color var(--vc-dur-hover) var(--vc-ease),
-      background-color var(--vc-dur-hover) var(--vc-ease);
+      border-color var(--vc-dur-fade) var(--vc-ease-out),
+      background-color var(--vc-dur-fade) var(--vc-ease-out);
   }
 
   .vc-text-input--number {
+    width: 160px;
     max-width: 160px;
     font-variant-numeric: tabular-nums;
   }
@@ -30,8 +32,7 @@
   .vc-text-input:focus-visible {
     outline: 2px solid var(--vc-accent);
     outline-offset: 2px;
-    border-color: var(--vc-accent);
-    background-color: var(--vc-raised-hover);
+    box-shadow: var(--vc-shadow-focus);
   }
 
   .vc-text-input[data-invalid],
@@ -40,7 +41,7 @@
   }
 
   .vc-text-input:disabled {
-    opacity: 0.56;
+    opacity: 0.4;
     cursor: not-allowed;
   }
 }
