@@ -1,11 +1,23 @@
 // UI-P01：只给原生聊天增加导航、身份摘要和状态条，不接管生成、消息 DOM 或卡内 iframe。
-import { storyRequest } from './api.js';
 import { BUDGET_COPY } from './model-logic.js';
 import { requestOpenMemory } from './memory-controller.js';
+import {
+    CHAT_EMPTY_COPY,
+    CHAT_OFFLINE_COPY,
+    CHAT_PICK_COPY,
+    pendingInboxWrites,
+    unreadInboxEvents,
+    loadInboxEvents,
+} from './inbox-logic.js';
 
-export const CHAT_EMPTY_COPY = '这段会话还没有消息。';
-export const CHAT_OFFLINE_COPY = '聊天通道已断开';
-export const CHAT_PICK_COPY = '选择一位角色';
+export {
+    CHAT_EMPTY_COPY,
+    CHAT_OFFLINE_COPY,
+    CHAT_PICK_COPY,
+    pendingInboxWrites,
+    unreadInboxEvents,
+    loadInboxEvents,
+} from './inbox-logic.js';
 
 // 新外观目的地事件。detail.destination：
 // chat | characters | memory | inbox | story | models | account。
@@ -23,26 +35,6 @@ export function requestShellDestination(destination, opener, target = globalThis
     return event;
 }
 
-export function pendingInboxWrites(rows, scope = {}) {
-    if (!Array.isArray(rows)) return [];
-    const conversationId = scope?.conversationId;
-    const relationshipId = scope?.relationshipId;
-    return rows.filter((row) => {
-        if (!row || row.intent !== 'BODY' || row.stDelivered !== false || row.linkStatus !== 'present') return false;
-        if (conversationId != null && conversationId !== '' && String(row.conversationId) !== String(conversationId)) return false;
-        if (relationshipId != null && relationshipId !== '' && String(row.relationshipId) !== String(relationshipId)) return false;
-        return true;
-    });
-}
-
-// 原生写入确认与应用已读是两个独立状态；通知、侧栏与会话计数使用后者。
-export function unreadInboxEvents(rows, scope = {}) {
-    if (!Array.isArray(rows)) return [];
-    return rows.filter(row => row?.intent === 'BODY' && row.read !== true && row.linkStatus === 'present'
-        && (scope.conversationId == null || scope.conversationId === '' || String(row.conversationId) === String(scope.conversationId))
-        && (scope.relationshipId == null || scope.relationshipId === '' || String(row.relationshipId) === String(scope.relationshipId)));
-}
-
 export function renderInboxStrip(count) {
     const total = Number(count);
     if (!Number.isInteger(total) || total <= 0) return '';
@@ -50,6 +42,7 @@ export function renderInboxStrip(count) {
 }
 
 export function renderChatEmpty({ characterName = '', messageCount = 0 } = {}) {
+    if (Number.isInteger(messageCount) && messageCount > 0) return '';
     if (Number(messageCount) > 0) return '';
     return `<p id="vc-chat-empty">${characterName ? CHAT_EMPTY_COPY : CHAT_PICK_COPY}</p>`;
 }
@@ -61,11 +54,6 @@ export function renderChannelBanner({ online = true } = {}) {
 
 export function renderChatNotices({ characterName = '', messageCount = 0, online = true, inboxCount = 0 } = {}) {
     return `${renderChatEmpty({ characterName, messageCount })}${renderChannelBanner({ online })}${renderInboxStrip(inboxCount)}`;
-}
-
-export async function loadInboxEvents() {
-    const data = await storyRequest('GET', '/api/v1/inbox');
-    return Array.isArray(data) ? data : [];
 }
 
 function ensureChatStyles() {

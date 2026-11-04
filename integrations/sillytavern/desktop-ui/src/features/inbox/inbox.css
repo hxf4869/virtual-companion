@@ -1,0 +1,181 @@
+@layer features {
+  .vc-inbox-route {
+    container-type: inline-size;
+    display: flex;
+    flex-direction: column;
+    gap: var(--vc-space-lg);
+    padding: var(--vc-space-xl);
+    max-width: 1120px;
+    margin: 0 auto;
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  .vc-inbox-route__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--vc-space-md);
+    flex-wrap: wrap;
+  }
+
+  .vc-inbox-route__title-group {
+    display: flex;
+    align-items: center;
+    gap: var(--vc-space-sm);
+  }
+
+  .vc-inbox-route__title {
+    margin: 0;
+    font-size: var(--vc-fs-title-2);
+    font-weight: 600;
+    color: var(--vc-ink);
+  }
+
+  .vc-inbox-route__notify-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--vc-space-xs);
+    font-size: var(--vc-fs-footnote);
+    color: var(--vc-ink-2);
+  }
+
+  .vc-inbox-route__grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 320px;
+    gap: var(--vc-space-lg);
+    align-items: start;
+  }
+
+  @container (max-width: 840px) {
+    .vc-inbox-route__grid {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+
+  .vc-inbox-route__main,
+  .vc-inbox-route__aside {
+    display: flex;
+    flex-direction: column;
+    gap: var(--vc-space-md);
+  }
+
+  .vc-inbox-card {
+    background: var(--vc-raised);
+    border: 1px solid var(--vc-separator);
+    border-radius: var(--vc-radius-lg);
+    padding: var(--vc-space-md);
+    display: flex;
+    flex-direction: column;
+    gap: var(--vc-space-sm);
+  }
+
+  .vc-inbox-card__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--vc-space-sm);
+    flex-wrap: wrap;
+  }
+
+  .vc-inbox-card__title {
+    margin: 0;
+    font-size: var(--vc-fs-body);
+    font-weight: 600;
+  }
+
+  .vc-inbox-card__error,
+  .vc-policy-form__error {
+    padding: var(--vc-space-xs) var(--vc-space-sm);
+    border-radius: var(--vc-radius-md);
+    background: color-mix(in srgb, var(--vc-danger) 10%, transparent);
+    color: var(--vc-danger);
+    font-size: var(--vc-fs-footnote);
+  }
+
+  .vc-policy-conflict {
+    border: 1px solid var(--vc-warning);
+    background: color-mix(in srgb, var(--vc-warning) 8%, transparent);
+    border-radius: var(--vc-radius-md);
+    padding: var(--vc-space-sm);
+    display: flex;
+    flex-direction: column;
+    gap: var(--vc-space-sm);
+  }
+
+  .vc-policy-conflict__compare {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--vc-space-sm);
+    font-size: var(--vc-fs-footnote);
+  }
+
+  .vc-policy-conflict__pane {
+    padding: var(--vc-space-xs);
+    border-radius: var(--vc-radius-sm);
+    background: var(--vc-surface);
+    display: flex;
+    flex-direction: column;
+    gap: var(--vc-space-xxs);
+  }
+
+  .vc-policy-conflict__actions,
+  .vc-policy-form__actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--vc-space-xs);
+  }
+
+  .vc-policy-form__fields {
+    display: flex;
+    flex-direction: column;
+    gap: var(--vc-space-sm);
+  }
+
+  .vc-policy-form__quiet-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: var(--vc-space-sm);
+  }
+
+  .vc-follow-ups__list,
+  .vc-inbox-list__items,
+  .vc-deliveries__list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--vc-space-xs);
+  }
+
+  .vc-follow-ups__item,
+  .vc-inbox-list__item,
+  .vc-deliveries__item,
+  .vc-channel-sheet__row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--vc-space-sm);
+    padding: var(--vc-space-sm);
+    border-radius: var(--vc-radius-md);
+    border: 1px solid var(--vc-separator);
+  }
+
+  .vc-inbox-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: var(--vc-radius-pill);
+    font-size: var(--vc-fs-caption);
+    background: var(--vc-fill);
+  }
+
+  .vc-inbox-unread-dot {
+    width: var(--vc-dot);
+    height: var(--vc-dot);
+    border-radius: 50%;
+    background: var(--vc-accent);
+    display: inline-block;
+  }
+}

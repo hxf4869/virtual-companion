@@ -1,58 +1,33 @@
 // UX-30 通知与未读（桌面）：复用收件箱数据，其他会话 / 页面收到新的主动消息时弹站内横幅，
 // 标签页隐藏时发系统通知（仅权限已授予），标签页标题加 `(N) ` 前缀。手机不变。
-import { unreadInboxEvents } from '../chat-shell.js';
+import {
+    COPY,
+    BANNER_MS,
+    POLL_MS,
+    NOTIFY_KEY,
+    unreadInboxEvents,
+    previewOf,
+    newArrivals,
+    titleWithCount,
+    systemNotifyEnabled,
+    writeSystemNotifyEnabled,
+    notifySupported,
+    requestNotifyPermission,
+} from '../inbox-logic.js';
 
-export const COPY = Object.freeze({
-    now: '现在',
-    voice: (seconds) => `[语音] ${seconds}″`,
-});
-export const BANNER_MS = 5000;
-export const POLL_MS = 30000;
-const TITLE_PREFIX = /^\(\d+\+?\) /;
-const PREVIEW_MAX = 60;
-
-// ---- 纯逻辑（单测直接覆盖） ----
-
-export function previewOf(row) {
-    const ms = row?.voice?.durationMs;
-    if (Number.isFinite(ms) && ms > 0) return COPY.voice(Math.max(1, Math.round(ms / 1000)));
-    const text = String(row?.body ?? '').replace(/<[^<>]*>/g, '').replace(/\s+/g, ' ').trim();
-    return [...text].slice(0, PREVIEW_MAX).join('');
-}
-
-// 未读主动消息里 eventId 没见过的；seen 会被更新。
-export function newArrivals(rows, seen) {
-    const fresh = [];
-    for (const row of unreadInboxEvents(rows)) {
-        if (!row.eventId || seen.has(row.eventId)) continue;
-        seen.add(row.eventId);
-        fresh.push(row);
-    }
-    return fresh;
-}
-
-export function titleWithCount(title, count) {
-    const base = String(title ?? '').replace(TITLE_PREFIX, '');
-    return count > 0 ? `(${count > 99 ? '99+' : count}) ${base}` : base;
-}
-
-export const NOTIFY_KEY = 'vc-desktop-notify';
-
-// 设置里的「桌面通知」开关：本机偏好，默认开（仍需浏览器授权）。
-export function systemNotifyEnabled(storage = globalThis.localStorage) {
-    try { return !['off', '0', 'false'].includes(String(storage?.getItem(NOTIFY_KEY) ?? '').toLowerCase()); } catch { return true; }
-}
-
-export function notifySupported() {
-    return typeof Notification === 'function';
-}
-
-// 权限入口（设置里调用）：只有「未决定」才弹询问，已授予 / 已拒绝直接返回当前状态。
-export async function requestNotifyPermission() {
-    if (!notifySupported()) return 'denied';
-    if (Notification.permission !== 'default') return Notification.permission;
-    try { return await Notification.requestPermission(); } catch { return Notification.permission; }
-}
+export {
+    COPY,
+    BANNER_MS,
+    POLL_MS,
+    NOTIFY_KEY,
+    previewOf,
+    newArrivals,
+    titleWithCount,
+    systemNotifyEnabled,
+    writeSystemNotifyEnabled,
+    notifySupported,
+    requestNotifyPermission,
+} from '../inbox-logic.js';
 
 // ---- 挂载 ----
 

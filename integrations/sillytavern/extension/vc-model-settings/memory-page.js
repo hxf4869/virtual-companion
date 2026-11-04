@@ -13,20 +13,78 @@ import { showToast } from './ui/toast.js';
 import { createDiaryPage, DIARY_FONTS, ensureHandwriting, readDiaryFont, monthDays, monthLabel, diaryDayTitle, writeDiaryFont } from './diary-page.js';
 import { createFavoritesPage, GLYPHS, monthDay, reminderWhen } from './favorites-page.js';
 
-import { FORGET_NOTICE, MEMORY_EMPTY_DIALOG, MEMORY_EMPTY_TAB, OPEN_MEMORY_EVENT, OPEN_MESSAGE_EVENT, bindOpenMemory, requestOpenMemory, createMemoryPage, idOf, canEdit } from './memory-controller.js';
-export { FORGET_NOTICE, MEMORY_EMPTY_DIALOG, MEMORY_EMPTY_TAB, OPEN_MEMORY_EVENT, OPEN_MESSAGE_EVENT, bindOpenMemory, requestOpenMemory, createMemoryPage } from './memory-controller.js';
+import {
+    FORGET_NOTICE,
+    MEMORY_EMPTY_DIALOG,
+    MEMORY_EMPTY_TAB,
+    OPEN_MEMORY_EVENT,
+    OPEN_MESSAGE_EVENT,
+    bindOpenMemory,
+    requestOpenMemory,
+    createMemoryPage,
+    idOf,
+    canEdit,
+    lifecycleLabels,
+    sourceLabels,
+    typeLabels,
+    stamp,
+    MEMORY_SEGMENTS,
+    STATUS_OPTIONS,
+    relationshipLabel,
+    modeLabel,
+    dayLabel,
+    toneForLifecycle,
+    toneForSource,
+    dateFilterLabel,
+    MEMORY_SECTIONS,
+    SECTION_STATUS,
+    INCOGNITO_LABEL,
+    dayKeyOf,
+    dayGroupLabel,
+    clockOf,
+    memoryMoment,
+    groupTimeline,
+    excerptOf,
+    parseSourceRef,
+    pickSource,
+    memoryViewProps,
+    forgettingNow,
+} from './memory-logic.js';
+export {
+    FORGET_NOTICE,
+    MEMORY_EMPTY_DIALOG,
+    MEMORY_EMPTY_TAB,
+    OPEN_MEMORY_EVENT,
+    OPEN_MESSAGE_EVENT,
+    bindOpenMemory,
+    requestOpenMemory,
+    createMemoryPage,
+    lifecycleLabels,
+    sourceLabels,
+    typeLabels,
+    stamp,
+    MEMORY_SEGMENTS,
+    STATUS_OPTIONS,
+    relationshipLabel,
+    modeLabel,
+    dayLabel,
+    toneForLifecycle,
+    toneForSource,
+    dateFilterLabel,
+    MEMORY_SECTIONS,
+    SECTION_STATUS,
+    INCOGNITO_LABEL,
+    dayKeyOf,
+    dayGroupLabel,
+    clockOf,
+    memoryMoment,
+    groupTimeline,
+    excerptOf,
+    parseSourceRef,
+    pickSource,
+    memoryViewProps,
+} from './memory-logic.js';
 
-const lifecycleLabels = { ACTIVE: '生效中', SUPERSEDED: '已被替代', FORGETTING: '清理中', FORGOTTEN: '已遗忘' };
-const sourceLabels = { VALID: '来源已核验', PENDING_VERIFICATION: '来源待核验', INVALID: '来源已失效' };
-const typeLabels = { FACT: '事实', PREFERENCE: '偏好', EVENT: '经历', GOAL: '目标', COMMITMENT: '承诺', SUMMARY: '摘要' };
-
-function stamp(value, zone) {
-    if (!value) return '未记录';
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return '时间未知';
-    try { return new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium', timeStyle: 'short', timeZone: zone || undefined }).format(date); }
-    catch { return new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium', timeStyle: 'short' }).format(date); }
-}
 export function mountMemoryPage({ getRelationshipId = () => '' } = {}) {
     const root = document.createElement('div'); root.className = 'vcms-root vc-memory-root';
     const dialog = document.createElement('dialog'); dialog.className = 'vc-memory-dialog'; dialog.setAttribute('aria-label', '记忆');
@@ -88,13 +146,6 @@ export function mountMemoryPage({ getRelationshipId = () => '' } = {}) {
 }
 
 // F4a：vc-ui 开启时把记忆渲染进外壳容器。关闭时不渲染，仍走上面的对话框。
-const MEMORY_SEGMENTS = [
-    ['', '全部'],
-    ['PENDING_VERIFICATION', '待核验'],
-    ['INVALID', '已失效'],
-];
-const STATUS_OPTIONS = [['', '全部状态'], ...Object.entries(lifecycleLabels), ['PENDING_VERIFICATION', '来源待核验'], ['INVALID', '来源已失效']];
-
 function vcUiEnabled() {
     const body = globalThis.document?.body;
     if (!body?.classList) return false;
@@ -120,138 +171,6 @@ function ensureMemoryStyles() {
         link.setAttribute('data-vc-memory-css', '');
         head.append(link);
     }
-}
-
-function relationshipLabel(rel, relationships) {
-    const name = rel?.companionName || '未命名角色';
-    const same = (relationships || []).filter((item) => (item.companionName || '未命名角色') === name);
-    if (same.length < 2) return name;
-    const index = same.findIndex((item) => String(item.relationshipId) === String(rel.relationshipId));
-    if (index < 0) return name;
-    return `${name} ${index + 1}`;
-}
-
-function modeLabel(mode) {
-    if (mode === 'STORY') return '剧情';
-    if (mode === 'DAILY') return '日常';
-    return '模式未知';
-}
-
-function dayLabel(value) {
-    if (!value) return '日期未知';
-    const date = new Date(`${value}T00:00:00`);
-    if (Number.isNaN(date.getTime())) return '日期未知';
-    try { return new Intl.DateTimeFormat('zh-CN', { year: 'numeric', month: 'long', day: 'numeric' }).format(date); }
-    catch { return String(value); }
-}
-
-function toneForLifecycle(lifecycle) {
-    if (lifecycle === 'ACTIVE') return 'ok';
-    if (lifecycle === 'SUPERSEDED') return 'warn';
-    if (lifecycle === 'FORGETTING' || lifecycle === 'FORGOTTEN') return 'danger';
-    return 'neutral';
-}
-
-function toneForSource(status) {
-    if (status === 'VALID') return 'ok';
-    if (status === 'PENDING_VERIFICATION') return 'warn';
-    if (status === 'INVALID') return 'danger';
-    return 'neutral';
-}
-
-function dateFilterLabel(draft) {
-    const from = draft?.eventDateFrom || '';
-    const to = draft?.eventDateTo || '';
-    if (from && to) return `${from} – ${to}`;
-    if (from || to) return [from, to].filter(Boolean).join(' – ');
-    return '全部';
-}
-
-// ---- UX-31 桌面时间线（左栏分区 + 按日分组的卡片）。手机与上面的 renderMemoryTab 保持原样。 ----
-export const MEMORY_SECTIONS = Object.freeze([
-    ['timeline', '时间线', 'clock', ''],
-    ['pinned', '已钉住', 'pin', 'ACTIVE'],
-    ['pending', '待核验', 'circle-check', 'PENDING_VERIFICATION'],
-    ['invalid', '已失效', 'ban', 'INVALID'],
-]);
-export const SECTION_STATUS = Object.freeze(Object.fromEntries(MEMORY_SECTIONS.map(([key, , , status]) => [key, status])));
-export const INCOGNITO_LABEL = '新对话不记';
-const pad2 = (n) => String(n).padStart(2, '0');
-const localKey = (date) => `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
-
-export function dayKeyOf(value) {
-    if (!value) return '';
-    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
-    const date = new Date(value);
-    return Number.isNaN(date.getTime()) ? '' : localKey(date);
-}
-
-/** 今天 / 昨天 / M月D日（跨年带年份）。 */
-export function dayGroupLabel(key, now = new Date()) {
-    if (!key) return '日期未知';
-    if (key === localKey(now)) return '今天';
-    if (key === localKey(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1))) return '昨天';
-    const [year, month, day] = key.split('-').map(Number);
-    return year === now.getFullYear() ? `${month}月${day}日` : `${year}年${month}月${day}日`;
-}
-
-export function clockOf(value) {
-    if (!value || /^\d{4}-\d{2}-\d{2}$/.test(value)) return '';
-    const date = new Date(value);
-    return Number.isNaN(date.getTime()) ? '' : `${pad2(date.getHours())}:${pad2(date.getMinutes())}`;
-}
-
-export const memoryMoment = (item) => item?.time?.recordedAt || item?.createdAt || item?.time?.eventDate || '';
-
-/** 按本地日期分组，保持接口返回的顺序（新的在前）。 */
-export function groupTimeline(items, now = new Date()) {
-    const groups = [];
-    for (const item of items) {
-        const key = dayKeyOf(memoryMoment(item));
-        let group = groups.find((entry) => entry.key === key);
-        if (!group) { group = { key, label: dayGroupLabel(key, now), items: [] }; groups.push(group); }
-        group.items.push(item);
-    }
-    return groups;
-}
-
-export function excerptOf(text, max = 36) {
-    const chars = [...String(text ?? '').replace(/\s+/g, ' ').trim()];
-    return chars.length > max ? `${chars.slice(0, max).join('')}…` : chars.join('');
-}
-
-/** st:<chatIdentity>:<messageId>:… */
-export function parseSourceRef(ref) {
-    const match = /^st:([^:]+):([^:]+):/.exec(String(ref ?? ''));
-    if (!match) return null;
-    return { chatIdentity: match[1], messageId: match[2], mesId: /^\d+$/.test(match[2]) ? Number(match[2]) : null };
-}
-
-/** 卡片上的「来自 今天 15:42：「……」」；没有可展示的摘录时返回 null。 */
-export function pickSource(evidence, now = new Date()) {
-    const row = (evidence || []).find((item) => item?.status === 'VALID' && String(item.excerpt ?? '').trim())
-        || (evidence || []).find((item) => String(item?.excerpt ?? '').trim());
-    if (!row) return null;
-    const key = dayKeyOf(row.sourceTimestamp);
-    const when = key ? `${dayGroupLabel(key, now)} ${clockOf(row.sourceTimestamp)}`.trim() : '';
-    const ref = parseSourceRef(row.sourceRef);
-    return { line: `来自${when ? ` ${when}` : ''}：「${excerptOf(row.excerpt)}」`, chatIdentity: ref?.chatIdentity || '', messageId: String(row.messageId || ref?.messageId || ''), mesId: ref?.mesId ?? (/^\d+$/.test(String(row.messageId)) ? Number(row.messageId) : null) };
-}
-
-export function memoryViewProps(state, ui = {}, events = {}) {
-    const sprite = iconSpriteUrl(), action = events.action;
-    return {
-        state, ui, sprite, glyphs: GLYPHS, desktop: false, forgetNotice: FORGET_NOTICE, emptyDialog: MEMORY_EMPTY_DIALOG,
-        labels: { lifecycle: lifecycleLabels, source: sourceLabels, type: typeLabels }, sections: MEMORY_SECTIONS, segments: MEMORY_SEGMENTS, statusOptions: STATUS_OPTIONS,
-        format: { stamp, relationship: relationshipLabel, mode: modeLabel, day: dayLabel, dates: dateFilterLabel, lifeTone: toneForLifecycle, sourceTone: toneForSource, group: groupTimeline, clock: clockOf, moment: memoryMoment },
-        diary: ui.diary ? { state: ui.diary, font: ui.font, sprite, action, days: monthDays, monthLabel, title: diaryDayTitle } : undefined,
-        favorites: ui.favorites ? { state: ui.favorites, names: Object.fromEntries((state.relationships || []).map(item => [String(item.relationshipId), item.companionName || ''])), now: ui.now || new Date(), sprite, action, segment: events.favoriteSegment, monthDay, when: reminderWhen } : undefined,
-        ...events,
-    };
-}
-
-function forgettingNow(previous, lifecycle) {
-    return previous && !['FORGETTING', 'FORGOTTEN'].includes(previous) && ['FORGETTING', 'FORGOTTEN'].includes(lifecycle);
 }
 
 export function mountMemoryTab(container, { getRelationshipId = () => '', onOpenMessage } = {}) {
