@@ -1632,6 +1632,8 @@ N-00～N-08（对应评审发现 F-01～F-08）为在途修复，逐项状态与
 
 - [x] DR2-14（2026-11-04）：引擎与复杂卡上游复用，提交 `4500c648`、`56e0a9d7`（Gemini 原提交 `96792a4b`、`ba4b2449` 经本地 cherry-pick 合入）。实际删除并复用 4 个字节一致的经典 iframe 脚本；其余因原生 HTTP ESM、Node、显式会话端口、隐私日志或本地差异继续保留，文件头逐项说明。审查发现的 showdown 文件系统路径不适用原生诊断加载，已恢复本地算法与正确相对导入。Codex 独立复验类型、双构建、Vitest 52/52、离线 1086/1086（0 fail/skip）、提示词/聊天/复杂卡受管 4/4（含 catalog-admin）、原生桥完整 48 导出全部 PASS。无任务内遗留；Helper 11 个手写模块改为编译上游 TS 及四个与上游一致的问题仍按设计留待后续评估，接口补齐继续 DR2-15。
 
+- [x] DR2-15（2026-11-04）：补齐复杂卡常用 Helper 批 1–3 接口，提交 `0fc100ad`、`b26b0a23`、`2785ac5e`（Gemini 原提交 `6ffbf86d`、`92206f34`、`54a076f1` 经本地 cherry-pick 合入）。消息增删旋转复用唯一 Session mutation/F2 owner；修正 iframe 注入与宏注销、真实 rendered 异步回调、宏上下文与单次处理、世界书条件提交后权威快照、锁定 Slash Scope 与公开销毁。Codex 独立复验类型、双构建、Vitest 82/82、离线 1096/1096（0 fail/skip）、提示词/聊天/复杂卡受管 4/4、原生桥完整 48 导出全部 PASS；另以真实浏览器验证空 MVU 会话 3097ms 可用且持久化开场白、MVU 式一次监听的异步 rendered 写回仅保存 1 次且 F2 revision +1、原生/桌面 EJS 全输出与宏调用上下文等价。既有测试未删弱。遗留：正式 `dr2-mvu-new` 待 DR2-11 注册；无已知消费者的未补接口按设计显式报错，清单待 DR2-13 回填，视觉终审待 Claude。
+
 ### NF 电脑端前端替换（2026-11-03）
 
 唯一计划：`docs/planning/2026-11-02-desktop-frontend-refactor-plan.md` §11；Backlog J。一个隔离 worktree/写入 owner，按序持续推进。
