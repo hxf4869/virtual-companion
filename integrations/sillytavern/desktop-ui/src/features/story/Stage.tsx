@@ -644,21 +644,41 @@ export function Stage({
 
   const handleMapCompanion = useCallback(
     async (actorId: string, relationshipId: string) => {
+      if (busy) return;
       const relId = decimalOf(relationshipId);
       if (!CASTABLE.includes(actorId) || !relId) return;
-      await mapStoryParticipantWithClient(client, {
-        runId: String(runId),
-        actorId,
-        relationshipId: relId,
-      });
-      setMapped((prev) => ({ ...prev, [actorId]: relId }));
+      const ticket = epochRef.current;
+      setBusy(true);
+      setReason('');
+      try {
+        await mapStoryParticipantWithClient(client, {
+          runId: String(runId),
+          actorId,
+          relationshipId: relId,
+        });
+        if (!aliveRef.current || epochRef.current !== ticket) return;
+        setMapped((prev) => ({ ...prev, [actorId]: relId }));
+      } catch (err: any) {
+        if (!aliveRef.current || epochRef.current !== ticket) return;
+        if (err?.status === 409 && err?.code === 'ACCOUNT_CONTEXT_CHANGED') {
+          setReason(SESSION_CHANGED);
+        } else if (err?.status === 409) {
+          setReason(ACTION_CONFLICT);
+        } else {
+          setReason(ACTION_FAILED);
+        }
+      } finally {
+        if (aliveRef.current && epochRef.current === ticket) {
+          setBusy(false);
+        }
+      }
     },
-    [client, runId],
+    [busy, client, runId],
   );
 
   const handleSaveEpilogue = useCallback(
     async (summaryText: string) => {
-      if (!ended) return;
+      if (busy || !ended) return;
       const mappedActor =
         CASTABLE.find((id) => mapped[id]) ||
         view.participants.find((p) => p.relationshipId && CASTABLE.includes(p.actorId))?.actorId;
@@ -679,17 +699,17 @@ export function Stage({
       });
       setEpilogueNote(SAVE_HINT);
     },
-    [ended, mapped, view.participants, client, runId],
+    [busy, ended, mapped, view.participants, client, runId],
   );
 
   const handleDiscardEpilogue = useCallback(async () => {
-    if (!ended) return;
+    if (busy || !ended) return;
     await decideStoryEpilogueWithClient(client, {
       runId: String(runId),
       decision: 'discard',
     });
     setEpilogueNote(DISCARD_HINT);
-  }, [ended, client, runId]);
+  }, [busy, ended, client, runId]);
 
   const handleRewound = useCallback(
     (res: RewindResult) => {

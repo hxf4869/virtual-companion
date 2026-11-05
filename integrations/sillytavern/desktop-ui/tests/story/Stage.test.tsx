@@ -436,4 +436,187 @@ describe('Stage & ClueWall', () => {
     expect(reducedCard?.getAttribute('data-motion')).toBe('reduced');
     expect(reducedCard?.classList.contains('is-flipping')).toBe(false);
   });
+
+  it('blocks duplicate companion mapping and epilogue save while participant binding is pending, preserves summary draft on failure, and saves with resolved relationshipId', async () => {
+    let resolveBind101: ((val: any) => void) | null = null;
+    let resolveBind102: ((val: any) => void) | null = null;
+    let rejectBindFail: ((err: any) => void) | null = null;
+    let resolveLateRetiredBind: ((val: any) => void) | null = null;
+    let bindMode: 'fail-first' | 'delay-101' | 'delay-102' | 'delay-retired' = 'fail-first';
+
+    const env = createStoryTestEnv({
+      hasExistingStoryConversation: true,
+      initialRun: { runId: '11', branchId: '13', worldVersion: 7, stage: 'resolved' },
+    });
+
+    const baseStoryRequest = env.storyRequest.getMockImplementation()!;
+    env.storyRequest.mockImplementation(async (method: string, path: string, payload?: any) => {
+      if (method === 'POST' && path.includes('/participants/')) {
+        if (bindMode === 'fail-first') {
+          return new Promise((_, reject) => {
+            rejectBindFail = reject;
+          });
+        }
+        if (bindMode === 'delay-101') {
+          return new Promise((resolve) => {
+            resolveBind101 = () => resolve(baseStoryRequest(method, path, payload));
+          });
+        }
+        if (bindMode === 'delay-102') {
+          return new Promise((resolve) => {
+            resolveBind102 = () => resolve(baseStoryRequest(method, path, payload));
+          });
+        }
+        if (bindMode === 'delay-retired') {
+          return new Promise((resolve) => {
+            resolveLateRetiredBind = () => resolve(baseStoryRequest(method, path, payload));
+          });
+        }
+      }
+      return baseStoryRequest(method, path, payload);
+    });
+
+    const initialView = createStoryTestView({
+      runId: '11',
+      branchId: '13',
+      worldVersion: 7,
+      stage: 'resolved',
+    });
+
+    const { container, unmount } = render(
+      <AppProviders client={env.client} queryClient={env.queryClient} sessionBridge={env.bridge}>
+        <Stage
+          runId="11"
+          branchId="13"
+          worldVersion={7}
+          stage="resolved"
+          initialView={initialView}
+          conversationId="77"
+          chatIdentity="f2-story-1"
+        />
+      </AppProviders>,
+    );
+
+    const summaryInput = container.querySelector<HTMLTextAreaElement>('[data-field="summary"]')!;
+    const saveBtn = container.querySelector<HTMLButtonElement>('[data-action="save-epilogue"]')!;
+    fireEvent.change(summaryInput, { target: { value: '合成共同游玩摘要' } });
+
+    fireEvent.click(container.querySelector('[data-action="show-companions"]')!);
+    await waitFor(() => {
+      expect(
+        container.querySelector('[data-action="map-companion"][data-actor="lin"][data-relationship="101"]'),
+      ).toBeTruthy();
+    });
+
+    const map101Btn = container.querySelector<HTMLButtonElement>(
+      '[data-action="map-companion"][data-actor="lin"][data-relationship="101"]',
+    )!;
+    const map102Btn = container.querySelector<HTMLButtonElement>(
+      '[data-action="map-companion"][data-actor="lin"][data-relationship="102"]',
+    )!;
+
+    // 1. Failing bind: while pending, blocks duplicate map and epilogue save; on failure restores availability and preserves draft
+    fireEvent.click(map101Btn);
+    await waitFor(() => {
+      expect(rejectBindFail).toBeTypeOf('function');
+    });
+    expect(map101Btn.disabled).toBe(true);
+    expect(saveBtn.disabled).toBe(true);
+
+    fireEvent.click(map101Btn);
+    fireEvent.click(saveBtn);
+    expect(
+      env.storyRequest.mock.calls.filter(
+        ([m, p]) => m === 'POST' && String(p).includes('/participants/'),
+      ).length,
+    ).toBe(1);
+    expect(
+      env.storyRequests.filter((r) => r.method === 'POST' && r.path.endsWith('/epilogue')).length,
+    ).toBe(0);
+    expect(container.textContent).not.toContain('请先让一位陪伴入局，再保存共同游玩摘要。');
+
+    await act(async () => {
+      rejectBindFail?.(new Error('network error'));
+    });
+
+    await waitFor(() => {
+      expect(map101Btn.disabled).toBe(false);
+      expect(saveBtn.disabled).toBe(false);
+    });
+    expect(container.querySelector('[role="alert"]')?.textContent).toBe('这步行动没有完成，请重试。');
+    expect(summaryInput.value).toBe('合成共同游玩摘要');
+
+    // 2. Delayed bind to 101: while pending, save-epilogue cannot fire or show NEED_CAST; after resolve, maps 101
+    bindMode = 'delay-101';
+    fireEvent.click(map101Btn);
+    await waitFor(() => {
+      expect(resolveBind101).toBeTypeOf('function');
+    });
+    expect(map101Btn.disabled).toBe(true);
+    expect(saveBtn.disabled).toBe(true);
+
+    fireEvent.click(saveBtn);
+    expect(
+      env.storyRequests.filter((r) => r.method === 'POST' && r.path.endsWith('/epilogue')).length,
+    ).toBe(0);
+    expect(container.textContent).not.toContain('请先让一位陪伴入局，再保存共同游玩摘要。');
+
+    await act(async () => {
+      resolveBind101?.(undefined);
+    });
+
+    await waitFor(() => {
+      expect(saveBtn.disabled).toBe(false);
+      expect(container.textContent).toContain('已以林岚入局');
+    });
+
+    // 3. Re-binding to 102: while 102 is pending, save-epilogue must not fire with stale relationshipId 101; after resolve, saves with 102
+    bindMode = 'delay-102';
+    fireEvent.click(map102Btn);
+    await waitFor(() => {
+      expect(resolveBind102).toBeTypeOf('function');
+    });
+    expect(saveBtn.disabled).toBe(true);
+
+    fireEvent.click(saveBtn);
+    expect(
+      env.storyRequests.filter((r) => r.method === 'POST' && r.path.endsWith('/epilogue')).length,
+    ).toBe(0);
+
+    await act(async () => {
+      resolveBind102?.(undefined);
+    });
+
+    await waitFor(() => {
+      expect(saveBtn.disabled).toBe(false);
+    });
+
+    fireEvent.click(saveBtn);
+    await waitFor(() => {
+      expect(container.textContent).toContain(
+        '已保存共同游玩摘要，请到记忆页确认后才会写入日常记忆。',
+      );
+    });
+
+    const epilogueCalls = env.storyRequests.filter(
+      (r) => r.method === 'POST' && r.path === '/api/v1/story/runs/11/epilogue',
+    );
+    expect(epilogueCalls).toHaveLength(1);
+    expect(epilogueCalls[0].payload).toEqual({
+      decision: 'save',
+      relationshipId: '102',
+      summary: '合成共同游玩摘要',
+    });
+
+    // 4. Late response after stage retirement (unmount) does not touch retired stage
+    bindMode = 'delay-retired';
+    fireEvent.click(map101Btn);
+    await waitFor(() => {
+      expect(resolveLateRetiredBind).toBeTypeOf('function');
+    });
+    unmount();
+    await act(async () => {
+      resolveLateRetiredBind?.(undefined);
+    });
+  });
 });
