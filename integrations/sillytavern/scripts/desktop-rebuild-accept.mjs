@@ -1569,58 +1569,6 @@ export async function sceneDr2Layout(ctx) {
         await page.keyboard.press('Escape');
         await emojiPopup.waitFor({ state: 'hidden' });
 
-        // 真实流式回复停止图标按钮与分段回复 .mes_text 隐藏 / .vc-seg 气泡合同
-        let releaseSegStream;
-        const segStreamGate = new Promise(resolve => {
-            releaseSegStream = resolve;
-        });
-        await ctx.fixtureHttp.setOverride('vc03m-chat', async (_req, res) => {
-            res.writeHead(200, {
-                'Content-Type': 'text/event-stream; charset=utf-8',
-                'Cache-Control': 'no-cache, no-transform',
-                Connection: 'keep-alive',
-            });
-            res.write(
-                `data: ${JSON.stringify({
-                    id: 'chatcmpl-dr2-r5-seg',
-                    object: 'chat.completion.chunk',
-                    choices: [{ index: 0, delta: { role: 'assistant', content: 'DR2 流式分片一，先停在这里。' }, finish_reason: null }],
-                })}\n\n`,
-            );
-            await segStreamGate;
-            res.write(
-                `data: ${JSON.stringify({
-                    id: 'chatcmpl-dr2-r5-seg',
-                    object: 'chat.completion.chunk',
-                    choices: [{ index: 0, delta: { content: '第二句自然气泡回复，验证真实分段渲染。' }, finish_reason: 'stop' }],
-                })}\n\n`,
-            );
-            res.write('data: [DONE]\n\n');
-            res.end();
-        });
-        try {
-            await page.locator('#send_textarea').fill('DR2 触发真实流式与分段回复');
-            await page.waitForFunction(() => !document.querySelector('#send_but')?.disabled);
-            await page.locator('#send_but').click();
-            await page.locator('#mes_stop').waitFor({ state: 'visible' });
-            await settlePage(page);
-            await assertIconButtonConsumer(page, '#mes_stop', 'chat-streaming@1440 停止图标按钮');
-            releaseSegStream();
-            await page.waitForFunction(
-                () =>
-                    document.body.dataset.generating !== 'true' &&
-                    !document.querySelector('#mes_stop') &&
-                    document.querySelectorAll('#chat :is(.mes.vc-segmented, .vc-desktop-message-content.vc-segmented)').length > 0,
-                null,
-                { timeout: 15000 },
-            );
-            await settlePage(page);
-            await assertSegmentedReply(page, 'chat-segmented@1440');
-        } finally {
-            releaseSegStream();
-            await ctx.fixtureHttp.setOverride('vc03m-chat', null);
-        }
-
         // 检查键盘 Tab 后 :focus-visible 元素具有真实可见 outline
         await page.keyboard.press('Tab');
         const focusInfo = await page.evaluate(() => {
@@ -1913,6 +1861,61 @@ export async function sceneDr2Layout(ctx) {
                 longBookName,
                 longEntryComment,
             });
+        }
+
+        // 使用独立 other fixture 验证真实 SSE 流式停止图标按钮与分段回复 .mes_text 隐藏 / .vc-seg 气泡合同
+        await page.setViewportSize({ width: 1440, height: 900 });
+        await openDesktopFixture(page, ctx.w05.stBase, other);
+        await page.waitForFunction(
+            () =>
+                document.documentElement.dataset.vcRuntime === 'prepared' &&
+                document.querySelectorAll('#chat > .mes').length > 0 &&
+                Boolean(document.querySelector('#send_textarea') && !document.querySelector('#send_textarea').disabled),
+        );
+        await settlePage(page);
+        const segMarker = `DR2_R5_SEG_${Date.now()}_`;
+        await ctx.fixtureHttp.setOverride('vc03m-chat', {
+            text: `${segMarker}这是第一段自然合成回复内容。\n\n这是第二段自然气泡回复，用于验证真实分段渲染。`,
+            tool: null,
+            reasoning: null,
+            chunks: 12,
+            delay: { firstMs: 80, perChunkMs: 150 },
+        });
+        try {
+            await page.locator('#send_textarea').fill('DR2 触发真实流式与分段回复');
+            await page.waitForFunction(
+                () => Boolean(document.querySelector('#send_but') && !document.querySelector('#send_but').disabled),
+            );
+            await page.locator('#send_but').click();
+            await page.locator('#mes_stop').waitFor({ state: 'visible' });
+            await assertIconButtonConsumer(page, '#mes_stop', 'chat-streaming@1440 停止图标按钮');
+            await page.waitForFunction(
+                marker => {
+                    if (document.body.dataset.generating === 'true' || document.querySelector('#mes_stop')) {
+                        return false;
+                    }
+                    const nodes = [
+                        ...document.querySelectorAll(
+                            '#chat :is(.mes.vc-segmented, .vc-desktop-message-content.vc-segmented)',
+                        ),
+                    ];
+                    return nodes.some(
+                        node =>
+                            (node.textContent || '').includes(marker) &&
+                            node.querySelectorAll('.vc-segs .vc-seg').length >= 2 &&
+                            !node.querySelector('.vc-typing'),
+                    );
+                },
+                segMarker,
+                { timeout: 15000 },
+            );
+            await settlePage(page);
+            const segCap = (await ctx.fixtureHttp.captures({ protocol: 'chat' })).at(-1);
+            assert.equal(segCap?.stream, true, 'chat-segmented@1440 必须捕获真实 SSE 流式请求');
+            assert.equal(segCap?.auth?.matched, true, 'chat-segmented@1440 必须通过受管认证');
+            await assertSegmentedReply(page, 'chat-segmented@1440', segMarker);
+        } finally {
+            await ctx.fixtureHttp.setOverride('vc03m-chat', null);
         }
 
         assert.deepEqual(errors, []);

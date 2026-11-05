@@ -326,9 +326,12 @@ export async function assertVoiceSwitches(page, label) {
 /**
  * 5. 真实分段回复 .mes_text 视觉隐藏、.vc-seg 分段气泡可见且不重复显示。
  */
-export async function assertSegmentedReply(page, label) {
-    const info = await page.evaluate(() =>
-        [...document.querySelectorAll('#chat :is(.mes.vc-segmented, .vc-desktop-message-content.vc-segmented)')].map(node => {
+export async function assertSegmentedReply(page, label, marker = '') {
+    const info = await page.evaluate(expectedMarker => {
+        const nodes = [
+            ...document.querySelectorAll('#chat :is(.mes.vc-segmented, .vc-desktop-message-content.vc-segmented)'),
+        ].filter(node => !expectedMarker || (node.textContent || '').includes(expectedMarker));
+        return nodes.map(node => {
             const mes = node.closest('.mes') || node;
             const mesText = node.querySelector('.mes_text') || mes.querySelector('.mes_text');
             const segsBox = node.querySelector('.vc-segs') || mes.querySelector('.vc-segs');
@@ -364,8 +367,8 @@ export async function assertSegmentedReply(page, label) {
                     };
                 }),
             };
-        }),
-    );
+        });
+    }, marker);
 
     assert.ok(info.length >= 1, `${label} 必须存在真实 runtime 生成的 .vc-segmented 消息`);
     for (const item of info) {
