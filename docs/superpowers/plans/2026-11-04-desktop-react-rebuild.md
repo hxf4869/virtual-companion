@@ -120,6 +120,24 @@ T14（引擎删减）→ T15（Helper 接口补齐）在 T5 之后串行（同�
 T5 的 B2 只补 setLorebookSettings 一个函数；T15 批 2 视其已存在，跳过
 ```
 
+### 0.4 T12 终审退回修复（2026-11-05）
+
+Claude 对 `bb0d6347` 的终审为 FAIL，原报告见 `.review-queue/DR2/CLAUDE-AUDIT.md`。Owner 授权继续由 Codex 调度、Gemini 4 Argon High 通过 agy 并行修复；本轮属于 DR2-12，不进入 DR2-13，不修改已批准的视觉方向。
+
+| 子任务 | 唯一写入范围（均在 `desktop-ui`，另注明除外） | 对应问题 |
+| --- | --- | --- |
+| DR2-12-R1 | `src/design/**`（保留 token 数值）、`src/shell/**`、`src/app/router.tsx`、扩展 `ui/icons/lucide.svg`、新 `tests/dr2-review-r1*` | 公共按钮/图标、无会话头像、屏幕阅读器隐藏、弹层根因复核；F1/F2/F3/F17/F22 |
+| DR2-12-R2 | `src/features/chat/**`、新 `tests/dr2-review-r2*` | 聊天标题/空面板、分段重复、状态条/日期、卡片提示与动作；F1/F4/F5/F6/F7/F9/F10 |
+| DR2-12-R3 | `src/features/{characters,memory,inbox,story}/**`、新 `tests/dr2-review-r3*` | 玻璃材质、详情右列、日记/静默时段窄窗、剧情按钮；F11/F12/F14/F15/F16 |
+| DR2-12-R4 | `src/features/{settings,tavern}/**`、新 `tests/dr2-review-r4*` | 桌面语音表单/开关、外观对齐、统一设置导航/导入；F18/F19/F20/F21/F23 |
+
+- 四组各用 `dr2/r<N>-*` 分支与独立 worktree，只有一个写入者；新回归文件分别加自己的前缀。受管脚本由后续独立验证任务单独写入，不与以上范围交叉。
+- 每组由 Gemini 先补失败回归再修复，执行类型、双构建、Vitest 与 diff 检查；Codex 在该 worktree 独立复验并按 0.2 审查。任务分支只在本地提交；合入后由 Codex 按当前跟踪分支推送。
+- `VoiceForm.tsx` 和 `SettingsOverview` 仍有原生桥直接消费者；不得为修桌面而改坏原生消费者。桌面语音可使用独立呈现组件，复用现有值/回调契约，原生表单与导出保留。
+- F17 的静态类名统计不是逐类新增 CSS 的清单，只修真实消费者的可见缺陷；F22 必须区分产品叠层故障与采集进入动画时点，未经定位不整体改不透明、不更改 token alpha。
+- 合入后增强已有受管场景，补实际图标几何、控件皮肤/尺寸、语义隐藏、详情右列与交互保护等断言；不削弱现有业务断言。最终跑受影响整组、离线单测及原生桥兼容检查，重采正式截图矩阵。
+- 保留原终审截图与报告，新截图另存有界的复审目录并随分支交接，不覆盖旧基线。更新 NOTES/TODO，但 DR2-12 仍等待 Claude 复审，不能由 Codex 标视觉 PASS。
+
 ## Global Constraints
 
 - Node `>=22.13`；Go 不在本计划范围（若需后端，按设计第 7 节交 Codex `gpt-6.1-sol` max，契约先行）。
