@@ -20,9 +20,8 @@
 - **调度与决策者**：Codex CLI（`gpt-6.1-sol`，max 推理）。职责：按并行图派任务给 Gemini、审 diff、跑任务验证命令、合入
   `desktop-react-rebuild`、处理 Gemini 卡住或越界的情况、需要后端改动时自己按设计第 7 节契约先行完成。
 - **前端执行者**：Gemini 4 Argon High（`agy`），每任务一个 worktree，提示词模板见下方 0.1。
-- **视觉验收**：Codex 只做 `dr2-layout` 几何断言与截图产出；**外观终审留给 Claude**（Owner 规定视觉验收不交给
-  codex/grok 类执行者）。T12 由 Codex 产出截图矩阵与 `NOTES.md` 后暂停，等 Claude 终审。
-- **Claude 回来后做**：整体审计（`desktop-react-rebuild` 对 `codex/desktop-independent-frontend` 全量 diff）+ T12 视觉终审。
+- **视觉验收**：Codex 只做 `dr2-layout` 几何断言与截图产出；T12 交接后暂停，等 Owner 指定的独立审核者给出视觉结论。
+  首轮由 Claude 审核，本轮复审安排见 0.4。整体审计对比 `desktop-react-rebuild` 和 `codex/desktop-independent-frontend`，与 T12 结论分开记录。
 - **交接时状态**：设计与计划已提交；**T1 已由 Claude 审核并合入（`0948800b`），下一步派 T2**。T1 期间
   T1 分支创建后 desktop-react-rebuild 又提交了文档，无法快进，改用 cherry-pick 合入；任务进行中主分支有新提交时同样用 cherry-pick 或先 rebase 任务分支。
 - **参考材料**（已忽略不提交，仅本机）：`.review-queue/DR2/handoff/`
@@ -142,7 +141,7 @@ Claude 对 `bb0d6347` 的终审为 FAIL，原报告见 `.review-queue/DR2/CLAUDE
 - `VoiceForm.tsx` 和 `SettingsOverview` 仍有原生桥直接消费者；不得为修桌面而改坏原生消费者。桌面语音可使用独立呈现组件，复用现有值/回调契约，原生表单与导出保留。
 - F17 的静态类名统计不是逐类新增 CSS 的清单，只修真实消费者的可见缺陷；F22 必须区分产品叠层故障与采集进入动画时点，未经定位不整体改不透明、不更改 token alpha。
 - 合入后增强已有受管场景，补实际图标几何、控件皮肤/尺寸、语义隐藏、详情右列与交互保护等断言；不削弱现有业务断言。最终跑受影响整组、离线单测及原生桥兼容检查，重采正式截图矩阵。
-- 保留原终审截图与报告，新截图另存有界的复审目录并随分支交接，不覆盖旧基线。更新 NOTES/TODO，但 DR2-12 仍等待 Claude 复审，不能由 Codex 标视觉 PASS。
+- 保留原终审截图与报告，新截图另存 `.review-queue/DR2/review-2/` 并随分支交接。Owner 改派 ChatGPT Pro 网页版或独立 Astra 会话复审；从 `.review-queue/DR2/NOTES.md` 打开固定提交、对照图与审核要求。DR2-12 仍待独立视觉结论，Codex 不标视觉 PASS。
 
 ## Global Constraints
 
@@ -471,14 +470,14 @@ export function useChatSnapshot(bridge: SessionBridge): ChatSnapshot;
 - [ ] **Step 2: 运行** —— `--filter dr2-layout,dr2-mvu-new,dr2-settings,dr2-pages,nf-startup,nf-desktop,nf-chat,nf-operations,nf-prompts,nf-cards,nf-media,nf-tavern,nf-business,nf-settings,f2-browser,f2-native,mb-engine` 全部通过；失败按根因修到通过（修复代码属于对应页面任务的文件，在本任务内修改并在提交信息列出）。
 - [ ] **Step 3: 提交** —— `git commit -m "test(DR2-11): 电脑端重建受管场景与回归对齐"`
 
-### Task 12: 视觉自查（Codex 产出截图，Claude 终审）
+### Task 12: 视觉自查（Codex 产出截图，独立终审）
 
-> 交接后：Codex 完成截图矩阵、`dr2-layout` 通过与自查 `NOTES.md` 后**暂停**，不自行宣布视觉通过；等 Claude 终审再进入 T13。
+> 交接后：Codex 完成截图矩阵、`dr2-layout` 通过与自查 `NOTES.md` 后**暂停**；等 Owner 指定的独立复审者判定通过再进入 T13。
 
-**Files:** Create `.review-queue/DR2/`（已忽略，不提交）下截图与 `NOTES.md`。
+**Files:** `.review-queue/DR2/` 下的截图与 `NOTES.md`。Owner 已授权把正式矩阵和交接说明提交到本分支，供 GitHub 网页复审。
 
 - 截图矩阵：`390×844`、`1024×768`、`1440×900`、`1920×1080` × 浅 / 深 × {聊天（空 / 有会话 / 流式 / 复杂卡）、角色（网格 / 详情 / 新建向导）、记忆（时间线 / 详情 / 日记）、陪伴、剧情（列表 / 舞台）、设置（模型 / 语音 / 外观）、酒馆（回复配置 / 世界书）、弹层（菜单 / 确认 / 冲突）}。用 `desktop-rebuild-accept.mjs --capture`（T11 中加入的截图开关）在受管环境产出。
-- Sonnet（visual-inspector 子代理）按 DESIGN.md 与设计第 10.2 节"明显问题定义"逐张初审，列问题；Claude 终审。每个问题回到对应页面任务的文件修复，复跑受影响截图与 `dr2-layout`。
+- 按 DESIGN.md 与设计第 10.2 节“明显问题定义”逐张审图，记录证据与未覆盖状态。每个确认的问题回到对应页面任务修复，复跑受影响截图与 `dr2-layout`。
 - 交付给 Owner 的精选：每个一级页面浅 / 深各 1 张（1440），附发现与处理说明。
 
 - [ ] **Step 1: 产出截图** → **Step 2: 初审 + 终审** → **Step 3: 修复并复跑** → **Step 4: 写 NOTES.md**（改了什么、发现了什么、如何处理）。
