@@ -1638,6 +1638,8 @@ N-00～N-08（对应评审发现 F-01～F-08）为在途修复，逐项状态与
 
 - [ ] DR2-12（2026-11-05，Claude 终审 FAIL，修复中）：基于代码 `200ec5c6` 在全新 worktree 实跑正式矩阵 169/169、精选 12 张；文件名与实际尺寸全部匹配，`catalog-admin` + `dr2-layout` 2/2 PASS（含 108 组几何与往返/焦点/浮层）。169 张原图与说明现按 Owner 要求纳入 Git，位于 `.review-queue/DR2/`，说明见 `NOTES.md`（精选链接直接引用原图）；聊天标题/工具按钮灰底及窄窗标题拥挤的截图疑点已列出，待 Claude 对照基线判断。原采集未改应用代码；Claude 已给出 FAIL，完整报告见 `.review-queue/DR2/CLAUDE-AUDIT.md`。Owner 授权 Gemini 四路并行修复 DR2-12-R1–R4，范围与复验要求见实施计划 0.4；修复后重采交回 Claude，DR2-13 尚未开始。
 
+  - DR2-12-R3：业务页修复已合入 `7c1f66fe`、`fdad2ca1`。恢复角色/剧情玻璃，角色详情宽档右列、窄档覆盖层，修日记与静默表单窄窗、剧情按钮；类型、双构建、Vitest 124/124（新增 6）、diff 独立复验 PASS。新增窄档玻璃已核对标准 blur 声明保留；待合并候选的受管几何及 Claude 视觉复审。
+
 ### NF 电脑端前端替换（2026-11-03）
 
 唯一计划：`docs/planning/2026-11-02-desktop-frontend-refactor-plan.md` §11；Backlog J。一个隔离 worktree/写入 owner，按序持续推进。
