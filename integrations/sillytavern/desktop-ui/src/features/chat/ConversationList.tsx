@@ -1,5 +1,5 @@
 import { Avatar } from '../../design/components/Avatar';
-import { Icon } from '../../design/components/Icon';
+import { IconButton } from '../../design/components/IconButton';
 import { type ConversationRow } from '../../data/queries/chat';
 import { useChatSnapshot, useSessionBridge } from '../../runtime/session-bridge';
 import { useShellLayout } from '../../shell/AppShell';
@@ -26,16 +26,16 @@ export function ConversationList({
         <>
             <header className="vc-convo-head">
                 <h2 className="vc-convo-title">会话</h2>
-                <button
-                    type="button"
+                <IconButton
+                    icon="search"
+                    size={36}
+                    iconSize={18}
                     className="vc-icon-btn"
                     data-quick-switch-trigger=""
                     aria-label="搜索会话 (⌘K)"
                     title="搜索会话 (⌘K)"
                     onClick={openQuickSwitch}
-                >
-                    <Icon name="search" size={18} />
-                </button>
+                />
             </header>
             <div className="vc-convo-items">
                 {rows.map(item => {

@@ -12,7 +12,7 @@ import {
 } from '../../../../extension/vc-model-settings/chat-logic.js';
 import { listStickerPicks } from '../../../../extension/vc-model-settings/stickers-logic.js';
 import { PortalNestedScope, usePortalContainer } from '../../design/portal-host';
-import { Icon } from '../../design/components/Icon';
+import { IconButton } from '../../design/components/IconButton';
 import { Tabs } from '../../design/components/Tabs';
 import '../../design/components/Popover.css';
 import { useChatSnapshot, useSessionBridge } from '../../runtime/session-bridge';
@@ -242,15 +242,15 @@ export function EmojiPicker({
     }, [isOpen, effectiveTab, pickerHost]);
 
     const defaultTrigger = (
-        <button
-            type="button"
+        <IconButton
+            icon="smile"
+            size={36}
+            iconSize={20}
             id="vc-emoji-btn"
             className="vc-icon-btn"
             aria-label="表情"
             aria-haspopup="dialog"
-        >
-            <Icon name="smile" size={20} />
-        </button>
+        />
     );
 
     return (

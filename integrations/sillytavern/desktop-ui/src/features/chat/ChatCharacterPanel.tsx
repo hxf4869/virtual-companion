@@ -16,7 +16,7 @@ import { AlertDialog } from '../../design/components/AlertDialog';
 import { Avatar } from '../../design/components/Avatar';
 import { Button } from '../../design/components/Button';
 import { Dialog } from '../../design/components/Dialog';
-import { Icon } from '../../design/components/Icon';
+import { IconButton } from '../../design/components/IconButton';
 import { toast } from '../../design/components/Toast';
 import { useChatSnapshot } from '../../runtime/session-bridge';
 import { useShellLayout } from '../../shell/AppShell';
@@ -161,14 +161,14 @@ export function ChatCharacterPanel() {
 
     return (
         <div className="vc-desk-character" id="vc-desktop-character-panel">
-            <button
-                type="button"
+            <IconButton
+                icon="close"
+                size={36}
+                iconSize={18}
                 className="vc-icon-btn vc-desk-character-close"
                 aria-label="关闭角色面板"
                 onClick={() => setCharacterPanelOpen(false)}
-            >
-                <Icon name="close" size={18} />
-            </button>
+            />
 
             <div className="vc-desk-character-identity">
                 {characterName ? (
@@ -186,8 +186,10 @@ export function ChatCharacterPanel() {
             {characterName ? (
                 <div className="vc-desk-character-actions">
                     <div>
-                        <button
-                            type="button"
+                        <IconButton
+                            icon="volume-2"
+                            size={40}
+                            iconSize={20}
                             className="vc-icon-btn vc-circle"
                             aria-label="声音"
                             onClick={() => {
@@ -196,35 +198,33 @@ export function ChatCharacterPanel() {
                                     params: { category: 'voice' },
                                 });
                             }}
-                        >
-                            <Icon name="volume-2" size={20} />
-                        </button>
+                        />
                         <span>声音</span>
                     </div>
                     <div>
-                        <button
-                            type="button"
+                        <IconButton
+                            icon="brain"
+                            size={40}
+                            iconSize={20}
                             className="vc-icon-btn vc-circle"
                             aria-label="记忆"
                             onClick={() => {
                                 void navigate({ to: '/memory' });
                             }}
-                        >
-                            <Icon name="brain" size={20} />
-                        </button>
+                        />
                         <span>记忆</span>
                     </div>
                     <div>
-                        <button
-                            type="button"
+                        <IconButton
+                            icon="settings"
+                            size={40}
+                            iconSize={20}
                             className="vc-icon-btn vc-circle"
                             aria-label="设置"
                             onClick={() => {
                                 void navigate({ to: '/characters' });
                             }}
-                        >
-                            <Icon name="settings" size={20} />
-                        </button>
+                        />
                         <span>设置</span>
                     </div>
                 </div>

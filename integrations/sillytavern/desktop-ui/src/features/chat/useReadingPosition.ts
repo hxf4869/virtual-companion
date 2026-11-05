@@ -198,14 +198,26 @@ export function useReadingPosition({
             : null;
     }, [chatRef, firstVisibleRow]);
 
+    const hideDateChip = useCallback(() => {
+        if (chipTimerRef.current !== undefined) {
+            clearTimeout(chipTimerRef.current);
+            chipTimerRef.current = undefined;
+        }
+        setDateChipVisible(false);
+    }, []);
+
     const refreshLatestState = useCallback(() => {
-        const show = latestVisible(getGap());
+        const gap = getGap();
+        if (gap <= ATTACH_PX) {
+            hideDateChip();
+        }
+        const show = latestVisible(gap);
         const count = show ? unreadInfo(lastReadRef.current, getRows()).count : 0;
         const text = badgeText(count);
         setLatestShown(show);
         setLatestAriaLabel(latestLabel(count));
         setUnreadBadgeText(text);
-    }, [getGap, getRows]);
+    }, [getGap, getRows, hideDateChip]);
 
     const applyDivider = useCallback(() => {
         const divId = dividerIdRef.current;
@@ -296,6 +308,7 @@ export function useReadingPosition({
             openTokenRef.current = null;
             lastInputRef.current = -1e9;
             releaseHold();
+            hideDateChip();
             stateRef.current = 'follow';
             attachedRef.current = true;
             if (chatStorageIdRef.current) {
@@ -315,18 +328,19 @@ export function useReadingPosition({
                 },
             });
         },
-        [chatRef, getGap, getMaxTop, glide, refreshLatestState, releaseHold],
+        [chatRef, getGap, getMaxTop, glide, hideDateChip, refreshLatestState, releaseHold],
     );
 
     const notifySent = useCallback(() => {
         openTokenRef.current = null;
         lastInputRef.current = -1e9;
         releaseHold();
+        hideDateChip();
         stateRef.current = 'follow';
         attachedRef.current = true;
         explicitRef.current = true;
         scheduleFollowScroll();
-    }, [releaseHold, scheduleFollowScroll]);
+    }, [hideDateChip, releaseHold, scheduleFollowScroll]);
 
     const jumpToMessage = useCallback(
         (mesid: number, { highlight = true }: { highlight?: boolean } = {}): boolean => {
@@ -381,6 +395,7 @@ export function useReadingPosition({
         if (!chat) return undefined;
 
         if (posTimerRef.current !== undefined) clearTimeout(posTimerRef.current);
+        hideDateChip();
         dividerIdRef.current = null;
         stateRef.current = 'follow';
         attachedRef.current = true;
@@ -622,7 +637,10 @@ export function useReadingPosition({
         };
 
         const showDateChip = () => {
-            if (getGap() <= ATTACH_PX) return;
+            if (getGap() <= ATTACH_PX) {
+                hideDateChip();
+                return;
+            }
             const first = firstVisibleRow();
             const ms = first
                 ? parseSendDate(messagesRef.current[first.id]?.send_date)

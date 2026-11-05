@@ -716,8 +716,8 @@
         width: min(352px, calc(100vw - 24px));
         border-radius: var(--vc-radius-lg);
         background-color: var(--vc-glass-3);
-        backdrop-filter: blur(var(--vc-blur-3)) saturate(180%);
         -webkit-backdrop-filter: blur(var(--vc-blur-3)) saturate(180%);
+        backdrop-filter: blur(var(--vc-blur-3)) saturate(180%);
         border: 1px solid var(--vc-rim);
         box-shadow: var(--vc-shadow-rim-overlay);
         overflow: hidden;
@@ -951,4 +951,702 @@
         margin: auto;
         border: 1px solid var(--vc-rim);
     }
+}
+
+@layer features {
+    /* F1: Chat header title button skin, flex shrinking, and narrow gap */
+    .vc-chat-header__lead {
+        flex: 1 1 auto;
+        min-width: 0;
+        overflow: hidden;
+    }
+
+    .vc-chat-header__title-btn {
+        appearance: none;
+        -webkit-appearance: none;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        min-width: 0;
+        max-width: 100%;
+        flex: 0 1 auto;
+        height: 36px;
+        padding: 0 8px;
+        margin: 0;
+        border: 0;
+        border-radius: var(--vc-radius-sm);
+        background: transparent;
+        color: var(--vc-ink);
+        font-family: var(--vc-font);
+        font-size: var(--vc-fs-headline);
+        font-weight: 600;
+        line-height: var(--vc-lh-headline);
+        cursor: pointer;
+        overflow: hidden;
+        box-sizing: border-box;
+    }
+
+    .vc-chat-header__title-btn:hover {
+        background-color: var(--vc-hover-fill);
+    }
+
+    .vc-chat-header__title-btn:focus-visible {
+        box-shadow: var(--vc-shadow-focus);
+    }
+
+    .vc-chat-header__title {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .vc-chat-header__actions {
+        flex: 0 0 auto;
+        flex-shrink: 0;
+    }
+
+    html[data-chrome="narrow"] .vc-chat-header,
+    #vc-shell[data-chrome="narrow"] .vc-chat-header {
+        gap: var(--vc-space-xs);
+        padding: 0 var(--vc-space-sm);
+    }
+
+    /* F5: Segmented reply bubbles (.vc-segmented, :has(> .vc-segs), .vc-segs, .vc-seg) */
+    #chat :is(.mes.vc-segmented, .vc-desktop-message-content.vc-segmented, .vc-desktop-message-content:has(> .vc-segs)) .mes_text {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        margin: 0;
+        padding: 0;
+        border: 0;
+        overflow: hidden;
+        clip: rect(0 0 0 0);
+        clip-path: inset(50%);
+        white-space: nowrap;
+    }
+
+    #chat :is(.mes.vc-segmented, .vc-desktop-message-content.vc-segmented, .vc-desktop-message-content:has(> .vc-segs)) .vc-segs {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: var(--vc-space-xxs);
+        width: 100%;
+    }
+
+    html[data-vc-variant-bubble="spread"] #chat :is(.mes.vc-segmented, .vc-desktop-message-content.vc-segmented, .vc-desktop-message-content:has(> .vc-segs)) .vc-segs {
+        gap: 10px;
+    }
+
+    #chat :is(.mes.vc-segmented, .vc-desktop-message-content.vc-segmented, .vc-desktop-message-content:has(> .vc-segs)) .vc-seg {
+        --bub-st: var(--vc-bub-join);
+        --bub-sb: var(--vc-bub-join);
+        margin: 0;
+        width: fit-content;
+        max-width: 100%;
+        padding: 10px 14px;
+        border-radius: var(--bub-st) var(--vc-bub-r) var(--vc-bub-r) var(--bub-sb);
+        background-color: var(--vc-bubble-char);
+        border: 0.5px solid var(--vc-raised-edge);
+        color: var(--vc-ink);
+        font-size: var(--vc-fs-body);
+        line-height: var(--vc-lh-body);
+        word-break: break-word;
+        overflow-wrap: anywhere;
+        box-sizing: border-box;
+    }
+
+    #chat :is(.mes.vc-segmented, .vc-desktop-message-content.vc-segmented, .vc-desktop-message-content:has(> .vc-segs)) .vc-seg:first-child {
+        --bub-st: var(--vc-bub-r);
+    }
+
+    #chat :is(.mes.vc-segmented, .vc-desktop-message-content.vc-segmented, .vc-desktop-message-content:has(> .vc-segs)) .vc-seg:last-child {
+        --bub-sb: var(--vc-bub-r);
+    }
+
+    #chat :is(.mes.vc-segmented, .vc-desktop-message-content.vc-segmented, .vc-desktop-message-content:has(> .vc-segs)) .vc-seg.vc-seg-action {
+        padding: var(--vc-space-xxs) 0;
+        background: none;
+        border: 0;
+        box-shadow: none;
+        border-radius: 0;
+        color: var(--vc-ink-2);
+        font-style: italic;
+        font-size: var(--vc-fs-footnote);
+    }
+
+    #chat :is(.mes.vc-segmented, .vc-desktop-message-content.vc-segmented, .vc-desktop-message-content:has(> .vc-segs)) .vc-typing {
+        margin: 0;
+        color: var(--vc-ink-2);
+        font-size: var(--vc-fs-footnote);
+        line-height: var(--vc-lh-footnote);
+    }
+
+    #chat .vc-reply-expand {
+        align-self: flex-start;
+        min-height: 36px;
+        padding: 4px 10px;
+        border: 0;
+        border-radius: var(--vc-radius-pill);
+        background: transparent;
+        color: var(--vc-accent-text);
+        font-size: var(--vc-fs-footnote);
+        font-weight: 500;
+        cursor: pointer;
+    }
+
+    /* F7: Floating date chip at stage top and latest button at bottom-right */
+    .vc-chat-floating {
+        display: contents;
+    }
+
+    #vc-date-chip {
+        position: absolute;
+        top: var(--vc-space-sm);
+        bottom: auto;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 6;
+        pointer-events: none;
+        box-shadow: var(--vc-shadow-chip);
+    }
+
+    #vc-latest {
+        position: absolute;
+        right: var(--vc-space-lg);
+        bottom: var(--vc-space-md);
+        z-index: 6;
+    }
+
+    /* F6: Generation & Notice Pill Capsule (#vc-chat-gen) */
+    #vc-chat-gen {
+        justify-content: center;
+        gap: var(--vc-space-xs);
+        width: fit-content;
+        max-width: min(var(--vc-read), calc(100% - 2 * var(--vc-space-md)));
+        min-height: 32px;
+        margin: var(--vc-space-xs) auto;
+        padding: 6px 14px;
+        border: 0.5px solid var(--vc-raised-edge);
+        border-radius: var(--vc-radius-pill);
+        background-color: var(--vc-raised);
+        box-shadow: var(--vc-shadow-chip);
+        line-height: var(--vc-lh-footnote);
+        box-sizing: border-box;
+    }
+
+    .vc-typing-dots {
+        display: inline-flex;
+        align-items: center;
+        gap: 3px;
+        margin-right: 6px;
+        vertical-align: middle;
+    }
+
+    .vc-typing-dots > i {
+        display: inline-block;
+        width: 5px;
+        height: 5px;
+        border-radius: var(--vc-radius-pill);
+        background-color: var(--vc-ink-2);
+        animation: vc-dot-breathe var(--vc-motion-dots) var(--vc-ease-in-out) infinite;
+    }
+
+    .vc-typing-dots > i:nth-child(2) {
+        animation-delay: 0.2s;
+    }
+
+    .vc-typing-dots > i:nth-child(3) {
+        animation-delay: 0.4s;
+    }
+
+    @keyframes vc-dot-breathe {
+        0%, 80%, 100% {
+            opacity: 0.35;
+            transform: scale(0.85);
+        }
+        40% {
+            opacity: 1;
+            transform: scale(1);
+        }
+    }
+
+    /* F10: Card actions host (.vc-desktop-card-actions & .vc-card-actions) aligned with reading column */
+    .vc-desktop-card-actions {
+        width: 100%;
+        margin: 0 auto var(--vc-space-xs);
+        padding: 0 var(--vc-space-xl);
+        box-sizing: border-box;
+        flex-shrink: 0;
+    }
+
+    html[data-chrome="compact"] .vc-desktop-card-actions,
+    html[data-chrome="narrow"] .vc-desktop-card-actions {
+        padding: 0 var(--vc-space-md);
+    }
+
+    .vc-desktop-card-actions:empty,
+    .vc-desktop-card-actions:not(:has(.vc-card-actions:not([hidden]))) {
+        display: none;
+        margin: 0;
+        padding: 0;
+    }
+
+    .vc-card-actions {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: var(--vc-space-xs);
+        max-width: min(var(--vc-read), 100%);
+        width: 100%;
+        margin: 0 auto;
+    }
+
+    .vc-card-actions[hidden] {
+        display: none;
+    }
+
+    .vc-card-actions .vc-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        min-height: 32px;
+        padding: 4px 12px;
+        border-radius: var(--vc-radius-pill);
+        border: 0.5px solid var(--vc-raised-edge);
+        background-color: var(--vc-control-fill);
+        color: var(--vc-ink-2);
+        font-family: var(--vc-font);
+        font-size: var(--vc-fs-footnote);
+        font-weight: 500;
+        cursor: pointer;
+    }
+
+    .vc-card-actions .vc-btn:hover:not(:disabled) {
+        background-color: var(--vc-hover-fill);
+        color: var(--vc-ink);
+    }
+
+    /* F1 / F17: Search bar real classes (ChatSearch.tsx) */
+    .vc-chat-search[hidden] {
+        display: none;
+    }
+
+    .vc-chat-search-field {
+        display: flex;
+        flex: 1 1 auto;
+        align-items: center;
+        gap: var(--vc-space-xs);
+        min-width: 0;
+        height: 36px;
+        padding: 0 var(--vc-space-md);
+        border-radius: var(--vc-radius-pill);
+        background-color: var(--vc-fill);
+        box-shadow: var(--vc-shadow-inset-edge);
+        color: var(--vc-ink-2);
+        box-sizing: border-box;
+    }
+
+    .vc-chat-search-field:focus-within {
+        box-shadow: var(--vc-shadow-search-match);
+    }
+
+    .vc-chat-search-icon {
+        display: inline-grid;
+        place-items: center;
+        flex: none;
+        color: var(--vc-ink-3);
+    }
+
+    .vc-chat-search-field input[type="text"] {
+        flex: 1 1 auto;
+        min-width: 0;
+        height: 100%;
+        padding: 0;
+        border: 0;
+        background: transparent;
+        color: var(--vc-ink);
+        font-family: var(--vc-font);
+        font-size: var(--vc-fs-body);
+    }
+
+    .vc-chat-search-count {
+        flex: none;
+        font-size: var(--vc-fs-footnote);
+        color: var(--vc-ink-2);
+        font-variant-numeric: tabular-nums;
+    }
+
+    .vc-chat-search-done {
+        flex: none;
+    }
+
+    ::highlight(vc-search) {
+        background-color: var(--vc-search-mark);
+        color: var(--vc-search-mark-ink);
+    }
+
+    ::highlight(vc-search-current) {
+        background-color: var(--vc-search-mark-current);
+        color: var(--vc-search-mark-ink);
+    }
+
+    #chat > .mes[data-vc-search-current] > .mes_block,
+    #chat > .mes[data-vc-flash] > .mes_block {
+        outline: 2px solid var(--vc-accent);
+        outline-offset: 4px;
+        border-radius: var(--vc-radius-md);
+    }
+
+    /* F1 / F17: Status Card Popover real classes (ChatStatusCard.tsx) */
+    #vc-status-card.vc-status-card {
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        gap: var(--vc-space-md);
+        width: var(--vc-card-w);
+        max-width: calc(100vw - 2 * var(--vc-space-md));
+        padding: var(--vc-space-lg);
+        border-radius: var(--vc-radius-lg);
+        border: 1px solid var(--vc-rim);
+        background-color: var(--vc-glass-3);
+        -webkit-backdrop-filter: blur(var(--vc-blur-3)) saturate(180%);
+        backdrop-filter: blur(var(--vc-blur-3)) saturate(180%);
+        box-shadow: var(--vc-shadow-overlay);
+        color: var(--vc-ink);
+        box-sizing: border-box;
+    }
+
+    #vc-status-card p {
+        margin: 0;
+    }
+
+    .vc-sc-head {
+        display: flex;
+        align-items: center;
+        gap: var(--vc-space-md);
+    }
+
+    .vc-sc-head b {
+        display: block;
+        font-size: var(--vc-fs-title-2);
+        line-height: var(--vc-lh-title-2);
+    }
+
+    .vc-sc-head small {
+        display: block;
+        color: var(--vc-ink-2);
+        font-size: var(--vc-fs-subhead);
+    }
+
+    .vc-sc-title {
+        font-size: var(--vc-fs-headline);
+        font-weight: 600;
+        line-height: var(--vc-lh-headline);
+    }
+
+    .vc-sc-sub {
+        margin-top: var(--vc-sub-gap);
+        color: var(--vc-ink-2);
+        font-size: var(--vc-fs-subhead);
+    }
+
+    .vc-sc-label {
+        color: var(--vc-ink-2);
+        font-size: var(--vc-fs-footnote);
+    }
+
+    .vc-sc-text {
+        margin-top: var(--vc-sub-gap);
+        font-size: var(--vc-fs-body);
+    }
+
+    .vc-sc-doing,
+    .vc-sc-bars,
+    .vc-sc-days {
+        padding-top: var(--vc-space-md);
+        border-top: 0.5px solid var(--vc-separator);
+    }
+
+    .vc-sc-bars {
+        display: flex;
+        flex-direction: column;
+        gap: var(--vc-space-sm);
+    }
+
+    .vc-sc-bar {
+        display: grid;
+        grid-template-columns: auto 1fr;
+        align-items: center;
+        gap: var(--vc-space-md);
+        color: var(--vc-ink-2);
+        font-size: var(--vc-fs-subhead);
+    }
+
+    .vc-sc-bar > i {
+        display: block;
+        height: var(--vc-bar-h);
+        border-radius: var(--vc-radius-pill);
+        background-color: var(--vc-fill);
+        overflow: hidden;
+    }
+
+    .vc-sc-bar > i > b {
+        display: block;
+        width: calc(var(--v) * 1%);
+        height: 100%;
+        border-radius: inherit;
+        background: var(--vc-meter-fill);
+    }
+
+    .vc-sc-next {
+        margin-top: var(--vc-space-xs);
+        color: var(--vc-ink-2);
+        font-size: var(--vc-fs-subhead);
+    }
+
+    .vc-sc-actions {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: var(--vc-space-sm);
+    }
+
+    .vc-sc-action {
+        width: 100%;
+        justify-content: center;
+    }
+
+    /* F4 & F1: Character Panel real classes (ChatCharacterPanel.tsx) */
+    .vc-desk-character-close {
+        align-self: flex-end;
+        width: 36px;
+        height: 36px;
+        min-width: 36px;
+        min-height: 36px;
+        flex: 0 0 36px;
+    }
+
+    .vc-desk-character-identity {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+        gap: 6px;
+    }
+
+    .vc-desk-character-identity h1 {
+        margin: 0;
+        font-size: var(--vc-fs-headline);
+        font-weight: 600;
+        color: var(--vc-ink);
+    }
+
+    .vc-desk-character-identity p {
+        margin: 0;
+        font-size: var(--vc-fs-footnote);
+        color: var(--vc-ink-2);
+    }
+
+    .vc-desk-character-mood {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        margin: 0;
+        font-size: var(--vc-fs-footnote);
+        color: var(--vc-ink-2);
+    }
+
+    .vc-desk-character-mood::before {
+        content: "";
+        width: 7px;
+        height: 7px;
+        border-radius: var(--vc-radius-pill);
+        background-color: var(--vc-success);
+    }
+
+    .vc-desk-character-actions {
+        display: flex;
+        justify-content: center;
+        gap: var(--vc-space-lg);
+    }
+
+    .vc-desk-character-actions > div {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 4px;
+        font-size: var(--vc-fs-caption);
+        color: var(--vc-ink-2);
+    }
+
+    .vc-desk-character-section {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        padding-top: var(--vc-space-sm);
+        border-top: 0.5px solid var(--vc-separator);
+    }
+
+    .vc-desk-character-section h2 {
+        margin: 0;
+        font-size: var(--vc-fs-footnote);
+        font-weight: 600;
+        color: var(--vc-ink-2);
+    }
+
+    .vc-desk-recalled {
+        padding: 8px 10px;
+        border-radius: var(--vc-radius-sm);
+        background-color: var(--vc-control-fill);
+        border: 0.5px solid var(--vc-raised-edge);
+        font-size: var(--vc-fs-footnote);
+        color: var(--vc-ink);
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+    }
+
+    .vc-desk-recalled p {
+        margin: 0;
+        overflow-wrap: anywhere;
+    }
+
+    .vc-desk-memory-editor {
+        display: grid;
+        gap: var(--vc-space-sm);
+    }
+
+    .vc-desk-editor-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: var(--vc-space-xs);
+    }
+
+    .vc-desk-error {
+        margin: 0;
+        font-size: var(--vc-fs-footnote);
+        color: var(--vc-danger);
+    }
+}
+
+/* F9: Single un-layered vendor adapter for toastr (#toast-container).
+ * Reason for being outside @layer: cards/index.js dynamically appends un-layered
+ * /css/toastr.min.css to document.head; in CSS Cascade Layers, un-layered vendor
+ * rules override any @layer rule regardless of specificity. Scoping to
+ * html[data-vc-app] #toast-container out-specifies /css/toastr.min.css without
+ * modifying cards/runtime. Positioned below .vc-chat-header per 3131d92b:chat-view.css
+ * so narrow viewports never cover the header title or bottom composer input. */
+html[data-vc-app] #toast-container,
+html[data-vc-app] #toast-container.toast-top-right,
+html[data-vc-app] #toast-container.toast-top-center,
+html[data-vc-app] #toast-container.toast-top-left,
+html[data-vc-app] #toast-container.toast-bottom-right,
+html[data-vc-app] #toast-container.toast-bottom-center,
+html[data-vc-app] #toast-container.toast-bottom-left {
+    position: fixed;
+    z-index: var(--vc-z-toast);
+    top: calc(48px + var(--vc-space-sm));
+    left: 50%;
+    right: auto;
+    bottom: auto;
+    width: fit-content;
+    max-width: min(calc(var(--vc-read) - 32px), calc(100vw - 32px));
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    background: transparent;
+    transform: translateX(-50%);
+    pointer-events: none;
+}
+
+html[data-vc-app] #toast-container > .toast,
+html[data-vc-app] #toast-container > div {
+    --toast-icon: var(--vc-success);
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: fit-content;
+    max-width: min(420px, calc(100vw - 32px));
+    min-height: 44px;
+    margin: 0;
+    padding: 8px 16px;
+    border: 0;
+    border-radius: var(--vc-radius-pill);
+    background-color: var(--vc-glass);
+    background-size: 0 0;
+    background-position: 0 0;
+    color: var(--vc-ink);
+    opacity: 1;
+    overflow: hidden;
+    pointer-events: auto;
+    box-shadow: inset 0 0.5px 0 var(--vc-glass-hi), inset 0 0 0 0.5px var(--vc-glass-edge), 0 8px 28px var(--vc-glass-shadow);
+    text-shadow: none;
+    font-family: var(--vc-font);
+    font-size: var(--vc-fs-subhead);
+    font-weight: 600;
+    -webkit-backdrop-filter: blur(var(--vc-blur-3)) saturate(180%);
+    backdrop-filter: blur(var(--vc-blur-3)) saturate(180%);
+}
+
+html[data-vc-app] #toast-container > .toast::before {
+    content: "";
+    width: 8px;
+    height: 8px;
+    flex: none;
+    border-radius: var(--vc-radius-pill);
+    background-color: var(--toast-icon);
+}
+
+html[data-vc-app] #toast-container > .toast.toast-success {
+    --toast-icon: var(--vc-success);
+}
+
+html[data-vc-app] #toast-container > .toast.toast-info {
+    --toast-icon: var(--vc-accent-text);
+}
+
+html[data-vc-app] #toast-container > .toast.toast-warning {
+    --toast-icon: var(--vc-warning);
+}
+
+html[data-vc-app] #toast-container > .toast.toast-error {
+    --toast-icon: var(--vc-danger);
+}
+
+html[data-vc-app] #toast-container > .toast .toast-title,
+html[data-vc-app] #toast-container > .toast .toast-message {
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    color: var(--vc-ink);
+    font-size: var(--vc-fs-subhead);
+    font-weight: 600;
+    line-height: 1.25;
+    text-shadow: none;
+    text-overflow: ellipsis;
+}
+
+html[data-vc-app] #toast-container > .toast .toast-title:empty,
+html[data-vc-app] #toast-container > .toast .toast-message:empty {
+    display: none;
+}
+
+html[data-vc-app] #toast-container > .toast .toast-close-button {
+    position: static;
+    float: none;
+    order: 1;
+    margin: 0 0 0 auto;
+    color: var(--vc-ink-2);
+    text-shadow: none;
+    opacity: 1;
+}
+
+html[data-vc-app] #toast-container > .toast .toast-progress {
+    display: none;
 }

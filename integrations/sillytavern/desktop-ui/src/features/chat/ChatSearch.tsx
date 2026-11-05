@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { spanOf, textMatches } from '../../../../extension/vc-model-settings/chat-logic.js';
 import { Icon } from '../../design/components/Icon';
+import { IconButton } from '../../design/components/IconButton';
 import { useReducedMotion } from '../../shell/useReducedMotion';
 
 export interface ChatSearchProps {
@@ -323,24 +324,24 @@ export function ChatSearch({
                     {countLabel}
                 </span>
             </label>
-            <button
-                type="button"
+            <IconButton
+                icon="arrow-up"
+                size={36}
+                iconSize={18}
                 className="vc-icon-btn"
                 aria-label="上一条"
                 disabled={matchTotal < 2}
                 onClick={() => handleStep(-1)}
-            >
-                <Icon name="arrow-up" size={18} />
-            </button>
-            <button
-                type="button"
+            />
+            <IconButton
+                icon="arrow-down"
+                size={36}
+                iconSize={18}
                 className="vc-icon-btn"
                 aria-label="下一条"
                 disabled={matchTotal < 2}
                 onClick={() => handleStep(1)}
-            >
-                <Icon name="arrow-down" size={18} />
-            </button>
+            />
             <button
                 type="button"
                 className="vc-btn vc-btn-gray vc-chat-search-done"

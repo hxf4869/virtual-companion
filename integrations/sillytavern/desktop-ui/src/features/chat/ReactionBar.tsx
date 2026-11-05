@@ -16,6 +16,7 @@ export function ReactionBar({ selected, onSelectEmoji, onOpenMore }: ReactionBar
                     <Toolbar.Button
                         key={item.emoji}
                         type="button"
+                        className="vc-react-btn"
                         data-emoji={item.emoji}
                         aria-label={item.label}
                         aria-pressed={selected.includes(item.emoji)}
@@ -26,7 +27,7 @@ export function ReactionBar({ selected, onSelectEmoji, onOpenMore }: ReactionBar
                 ))}
                 <Toolbar.Button
                     type="button"
-                    className="vc-react-more"
+                    className="vc-react-btn vc-react-more"
                     data-more=""
                     aria-label="更多"
                     onClick={onOpenMore}
