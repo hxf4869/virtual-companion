@@ -130,8 +130,14 @@ Claude 对 `bb0d6347` 的终审为 FAIL，原报告见 `.review-queue/DR2/CLAUDE
 | DR2-12-R2 | `src/features/chat/**`、新 `tests/dr2-review-r2*` | 聊天标题/空面板、分段重复、状态条/日期、卡片提示与动作；F1/F4/F5/F6/F7/F9/F10 |
 | DR2-12-R3 | `src/features/{characters,memory,inbox,story}/**`、新 `tests/dr2-review-r3*` | 玻璃材质、详情右列、日记/静默时段窄窗、剧情按钮；F11/F12/F14/F15/F16 |
 | DR2-12-R4 | `src/features/{settings,tavern}/**`、新 `tests/dr2-review-r4*` | 桌面语音表单/开关、外观对齐、统一设置导航/导入；F18/F19/F20/F21/F23 |
+| DR2-12-R5 | `scripts/desktop-rebuild-accept.mjs`、`scripts/lib/dr2-review-assertions.mjs`（相对 ST 集成目录） | 追加真实浏览器回归，保留原布局和场景断言 |
+| DR2-12-R6 | `src/features/tavern/TavernEditor.tsx`、`tests/dr2-review-r4.test.tsx` | 恢复原生桥旧编辑器样式入口，保留桌面导入 |
+| DR2-12-R7 | `src/features/story/Stage.tsx`、`tests/story/Stage.test.tsx` | 入局请求未结算前保护结局操作 |
+| DR2-12-R8 | `src/features/chat/chat.css` 的 Toastr 适配、扩展 `desktop/standalone/cards/index.js` 的提示宿主配置 | F9 的高度、断行与主面板定位 |
+| DR2-12-R9 | `scripts/desktop-settings-accept.mjs`（相对 ST 集成目录） | 用途绑定保存结算后再走原离开设置检查 |
+| DR2-12-R10 | `src/shell/AppShell.css` 的提示宿主 | 提示层级高于外壳，受管命中验证 |
 
-- 四组各用 `dr2/r<N>-*` 分支与独立 worktree，只有一个写入者；新回归文件分别加自己的前缀。受管脚本由后续独立验证任务单独写入，不与以上范围交叉。
+- 每组使用 `dr2/r<N>-*` 分支与独立 worktree，只有一个写入者；初轮 R1–R4 并行，随后 R5/R6 整合验证，R7/R8 和 R8/R9 分别并行。受管脚本按表单独写入。
 - 每组由 Gemini 先补失败回归再修复，执行类型、双构建、Vitest 与 diff 检查；Codex 在该 worktree 独立复验并按 0.2 审查。任务分支只在本地提交；合入后由 Codex 按当前跟踪分支推送。
 - `VoiceForm.tsx` 和 `SettingsOverview` 仍有原生桥直接消费者；不得为修桌面而改坏原生消费者。桌面语音可使用独立呈现组件，复用现有值/回调契约，原生表单与导出保留。
 - F17 的静态类名统计不是逐类新增 CSS 的清单，只修真实消费者的可见缺陷；F22 必须区分产品叠层故障与采集进入动画时点，未经定位不整体改不透明、不更改 token alpha。

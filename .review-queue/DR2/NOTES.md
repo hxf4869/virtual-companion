@@ -1,54 +1,28 @@
-# DR2 T12 截图交接：待 Claude 视觉终审
+# DR2 T12：修复后待 Claude 复审
 
-本批工程资料已经就绪，视觉终审状态为待 Claude。DR2-13 尚未开始。
+本轮代码候选为 `82c64427`。首轮终审在 `bb0d6347` 判定 FAIL，保留[首轮审计报告](./CLAUDE-AUDIT.md)及同目录的 169 张原图；首轮交接可用 `git show bb0d6347:.review-queue/DR2/NOTES.md` 查看。请以 [review-2/](./review-2/) 中的 169 张新图复审，视觉结论待 Claude，DR2-13 尚未开始。
 
-基于代码提交 `200ec5c6`，任务进度基线 `e2a467cf`。T12 使用独立 `dr2/t12` worktree、新受管数据库与合成账号生成，没有修改应用代码。
+对照依据：有明确数值的以 DESIGN.md 为准，其余及深色模式以 `codex/desktop-independent-frontend@3131d92b` 为准。handoff R2 的 tokens 初稿不作为数值依据。
 
-历史采集命令为 `node /tmp/vc-dr2-managed-stack.mjs "$PWD" dr2-layout --capture`，独立端口 ST 8712、fixture 8713、Go 8115、MemoryCore 8714。执行记录在 `/tmp/vc-dr2-t12-root-matrix.log`；本轮结果目录时间标记为 `accept-2026-11-04T21-53-47-714Z`。
+| 优先复审 | 新图 |
+| --- | --- |
+| F1/F2/F5/F16/F17：按钮、发送和停止图标、分段气泡及应隐藏的文本 | [390px 流式](./review-2/03-chat-streaming-390x844-dark.png)、[1920px 流式](./review-2/03-chat-streaming-1920x1080-dark.png)、[剧情舞台](./review-2/13-story-stage-1440x900-light.png) |
+| F3/F4/F6/F7：空会话壳层、流式状态条和贴底日期 | [空会话](./review-2/01-chat-empty-1440x900-light.png)、[流式](./review-2/03-chat-streaming-390x844-light.png)、[聊天](./review-2/02-chat-active-1440x900-dark.png) |
+| F9/F10：复杂卡提示留在对话区内，卡片操作与输入区有间距 | [390px 长提示实测](./review-2/F9-toast-390x844-light.png)、[390px 复杂卡](./review-2/04-chat-card-390x844-light.png)、[1440px 深色](./review-2/04-chat-card-1440x900-dark.png) |
+| F11/F12：玻璃材质、宽档详情右列与窄档覆盖层 | [390px](./review-2/06-characters-detail-390x844-light.png)、[1440px](./review-2/06-characters-detail-1440x900-light.png)、[1920px](./review-2/06-characters-detail-1920x1080-dark.png) |
+| F14/F15：日记工具行、陪伴静默时段在窄窗可读 | [日记](./review-2/10-memory-diary-390x844-light.png)、[陪伴](./review-2/11-inbox-390x844-light.png) |
+| F18–F21/F23：语音开关、设置导航与酒馆导入 | [390px 语音](./review-2/15-settings-voice-390x844-light.png)、[外观](./review-2/16-settings-appearance-1440x900-dark.png)、[酒馆](./review-2/17-tavern-reply-1440x900-light.png) |
+| F22：向导、菜单、离开确认与冲突弹层的模糊及可读性 | [向导](./review-2/07-characters-wizard-1440x900-light.png)、[菜单](./review-2/19-overlay-menu-1440x900-dark.png)、[确认](./review-2/20-overlay-confirm-1440x900-light.png)、[冲突](./review-2/21-overlay-conflict-1440x900-light.png) |
 
-本目录 169 张原图与本说明已纳入 Git，供独立环境审计；下方精选链接直接指向主矩阵，不重复提交 `selected/` 副本。历史 `/tmp/` 辅助脚本与日志不随 Git 交接。需要重现时，使用仓库入口 `node integrations/sillytavern/scripts/desktop-rebuild-accept.mjs --capture`，先按仓库说明准备锁定上游、依赖、浏览器与隔离受管环境。
+工程验证均在 `82c64427` 上完成：
 
-工程验证：
+- `bash scripts/check.sh` **9/9 PASS**（50s，含 Go、离线集成和双构建）；Vitest **141/141 PASS**（37 文件）。
+- 受管整组 **18/18 PASS**，包括 `dr2-layout`、`dr2-pages`、`dr2-settings`、`dr2-mvu-new`、`nf-*`、`f2-browser`、`f2-native` 和 `mb-engine`。`dr2-pages` 用本机 11438 的 `qwen3-embedding:0.6b`；手机引擎使用隔离构建的 `mb-mobile@ff2af0c0` H5 产物。
+- 同提交、独立受管栈运行 `catalog-admin` + `dr2-layout --capture`，**2/2 PASS**（布局及采集 352682ms）。保留 108 组原几何检查和业务断言，新增真实控件皮肤、图标形状、屏幕阅读器隐藏、右列详情、语音开关、弹层滤镜与实际 SSE 分段等检查。
+- 原生桥的 48 个实际导出完整一致，无新增 CSS 产物。原生酒馆编辑器回到原消费者的样式入口；本轮无 Go/OpenAPI/catalog 变更。
 
-- `catalog-admin`、`dr2-layout` **2/2 PASS**；布局与采集整场 375555ms。
-- 六个一级页面 × 九个窗口尺寸 × 普通/长内容，共 **108 组**几何检查；菜单与表情浮层九尺寸、焦点轮廓、1179→1180→1179 的两次切换、草稿与历史滚动保持均通过。
-- 主矩阵 **168 张**，额外真实深色减弱动态与减弱透明度组合 **1 张**，共 **169/169**；文件名集合、PNG 格式与每张实际尺寸已逐一核对。
-- 390×844、1024×768、1920×1080 各 42 张；1440×900 共 43 张，含额外组合。
-- 主矩阵使用真实 `prefers-reduced-motion: no-preference`；额外组合通过 CDP 设置两项媒体偏好为 reduce，并实际验证两个 matchMedia 均生效。每图均验证实际 DOM 与持久外观设置为目标明/暗主题。
+生产构建和提示叠层已在真实浏览器复核：F22 的标准模糊原被后置 WebKit 声明吞掉，调整声明顺序后向导和消息菜单生效；F9 的固定定位曾被压缩器移到规则末尾覆盖宿主定位，分开规则后，390 与 1440 两档的长提示均高 48px、距标题栏 11px、正文最多两行。提示宿主使用 DESIGN 的提示层级 70，高于外壳层 20；在两个宽度的提示中心实际命中提示元素。设置用途绑定回归保留 PUT 成功及原业务断言，额外等待保存状态结算；剧情入局回执延迟 500ms 时，保存等回执后才触发。
 
-| 编号 | 实际状态 | 主矩阵数量 |
-|---|---|---:|
-| 01–04 | 聊天：空、有会话、真实 SSE、真实复杂卡 iframe/MVU | 32 |
-| 05–07 | 角色：网格、详情、新建向导 | 24 |
-| 08–10 | 记忆：时间线、详情、日记 | 24 |
-| 11 | 主动陪伴收件箱与策略 | 8 |
-| 12–13 | 剧情：列表、实际开局后的舞台 | 16 |
-| 14–16 | 设置：模型、语音、外观 | 24 |
-| 17–18 | 酒馆：回复配置、世界书 | 16 |
-| 19–21 | 弹层：菜单、未保存确认、真实 F2 409 冲突 | 24 |
+截图包含 21 个真实页面或交互状态 × 4 档窗口 × 2 主题，以及 [1440px 减弱动态与透明度组合](./review-2/22-chat-1440x900-dark-reduced-motion-transparency.png) 1 张。窗口为 390×844、1024×768、1440×900、1920×1080，逐一核对文件名与 PNG 实际尺寸。流式、复杂卡 iframe/MVU、未保存离开和 F2 409 均由真实操作触发；只使用合成账号和数据。另有一张 F9 实测图，使用实际 Toastr 端口发出合成长提示，方便核对常规矩阵采图时已淡出的通知。
 
-状态与数据说明：390px 空聊天按当前桌面布局显示会话选择列表。日记和收件箱采用合成账号的真实空态。流式逐图真实发送与停止；复杂卡核对可见 HTML iframe 及实际 MVU 状态；确认弹层通过编辑与路由离开触发；F2 弹层通过另一消费者实际保存、旧基线保存得到 409，再由“查看最新”恢复。记忆、剧情和世界书均走已有公开接口或真实 UI。截图中全部为合成数据。
-
-精选 12 张（每个一级页面明/暗各一张，1440×900）：
-
-| 页面 | 浅色 | 深色 |
-|---|---|---|
-| 聊天 | [浅色](./02-chat-active-1440x900-light.png) | [深色](./02-chat-active-1440x900-dark.png) |
-| 角色 | [浅色](./05-characters-grid-1440x900-light.png) | [深色](./05-characters-grid-1440x900-dark.png) |
-| 记忆 | [浅色](./08-memory-timeline-1440x900-light.png) | [深色](./08-memory-timeline-1440x900-dark.png) |
-| 陪伴 | [浅色](./11-inbox-1440x900-light.png) | [深色](./11-inbox-1440x900-dark.png) |
-| 剧情 | [浅色](./12-story-list-1440x900-light.png) | [深色](./12-story-list-1440x900-dark.png) |
-| 设置 | [浅色](./14-settings-model-1440x900-light.png) | [深色](./14-settings-model-1440x900-dark.png) |
-
-待 Claude 核对的可见疑点：
-
-- [390px 复杂卡深色图](./04-chat-card-390x844-dark.png) 的聊天标题与工具按钮可见灰色矩形底，标题区域也较拥挤。
-- [1440px 减弱组合图](./22-chat-1440x900-dark-reduced-motion-transparency.png) 中标题与右上工具按钮同样可见灰色矩形底。请对照已批准基线判断这些控件皮肤与窄窗标题是否需要修正。
-
-以上为截图观察，尚未给出视觉通过结论。本轮工程检查覆盖几何、状态与采集完整性；视觉终审由 Claude 完成。对照依据是 DESIGN.md 的明确数值，未规定部分及深色模式以 `codex/desktop-independent-frontend@3131d92b` 为准；handoff R2 的错误 tokens 初稿不作为数值依据。
-
-本次收口中已处理的工程问题包括：设置容器与模型样式作用域接线、390px 模型输入由 62px 恢复至 244px、阅读恢复等待、真实记忆提取种子、设置独立保存与失败重试重放、既有展示偏好投影。旧 DR 混用原生消费者的脚本和原业务断言保留；新的复选框使用 DESIGN 的 18px 尺寸与至少 44px 标签命中区，原文本/数字输入 36px 断言保留。
-
-T11 稳定候选已由 Codex 独立验证：类型与双构建 PASS、组件 118/118、离线 1097/1097（0 fail/skip）、完整受管 18/18、原生桥完整 48 运行时导出一致。手机引擎以 `mb-mobile@ff2af0c0` 隔离构建的 H5 产物验证，手机源码未合入。
-
-当前停在 Claude 视觉终审门槛。终审通过后再进入 DR2-13 的收尾与全量检查；联合手机分支发布及 Dockerfile.st 的 mobile-dist 构建步骤仍由 Owner 决定。Owner 后续明确授权提交并推送当前分支与本批截图，供 Claude 在独立环境审计；未合并 main、未部署、未开 PR。
+在新 worktree 中按仓库说明准备锁定上游、依赖、Chromium 和隔离受管端口后，可用 `node integrations/sillytavern/scripts/desktop-rebuild-accept.mjs --capture` 重采。命令会写该 worktree 的 `.review-queue/DR2/`，请在临时 worktree 运行，以保留首轮图与本轮交接资料。
