@@ -493,13 +493,13 @@ export function useChatSnapshot(bridge: SessionBridge): ChatSnapshot;
 
 ### Task 14: 锁定源码统一与复杂卡边界收敛（2026-11-05 Owner 批准重开）
 
-**状态：进行中。** 旧轮次仅完成 A 批 4/9、B 批 0/18；`4500c648` 与 `56e0a9d7` 的验证不代表本次完成。Owner 已批准实施 Helper 上游编译及以下修复，撤销“11 个模块整体延后”和“与上游一致故不修”的旧豁免。T15 后直接目标按当前源码核对：14 个 Helper API 文件、1 个宿主文件、1 个类型文件；不以文件数量代替行为验收。
+**状态：已完成（2026-11-06，实现提交 `41ae25f2`）。** 本轮按 R0–R6 完成实现、审计与必要验证。旧轮次仅完成 A 批 4/9、B 批 0/18；`4500c648` 与 `56e0a9d7` 的验证不代表本次完成。Owner 已批准实施 Helper 上游编译及以下修复，撤销“11 个模块整体延后”和“与上游一致故不修”的旧豁免。T15 后直接目标按当前源码核对：14 个 Helper API 文件、1 个宿主文件、1 个类型文件；不以文件数量代替行为验收。
 
 **调度与集成：** 本会话主代理 GPT-6 Astra / Max，唯一集成工作树 `/Users/hxf/projects/virtual-companion-desktop-rebuild`、分支 `desktop-react-rebuild`。前端和浏览器引擎实施使用 `/Users/hxf/.local/bin/agy --model gemini-4-argon-high`；非前端构建契约、测试与调查按明确 ownership 委派。各实施 worktree 只产生未提交 diff，由主代理审计、集成、小步提交并立即推送当前跟踪分支。此处覆盖第 0 节旧的任务自行提交约定；不改变 Fast 设置。
 
 **边界：** 对外 `createChatEngine`、`initializeCards`、`readGenerationResponse` 保持契约。Session/F2/CAS 是消息和变量唯一写入 owner；保持“结构操作 → 刷新 → RENDERED 异步回写 → 单次 F2 提交”。受信复杂卡、EJS、MVU 继续可用；普通模型/导入消息不得因 HTML/EJS 文本自动取得执行权限。不得引入完整/隐藏原生宿主、空 stub 或第二条持久化链。
 
-**Files（相对 `integrations/sillytavern/`）：** `extension/vc-model-settings/desktop/standalone/{engine,cards}/**`、直接受影响的 `session.js` / React `runtime` 与聊天窗口供值；`scripts/build-desktop.mjs` 及其必要生成模块、`desktop-ui/vite.config.mjs`、`patches/{helper-selfhost-runtime-assets,ejs-desktop-runtime}.json`、锁定输入准备入口、`.github/workflows/ci.yml`（仓库根）、现有相关离线与受管测试、README / notices。仅修改已批准六类问题的直接消费者；新增文件须对应本节明确验收。
+**Files（相对 `integrations/sillytavern/`）：** `extension/vc-model-settings/desktop/standalone/{engine,cards}/**`、直接受影响的 `session.js` / React `runtime` 与聊天窗口供值；`scripts/build-desktop.mjs` 及其必要生成模块、`desktop-ui/vite.config.mjs`、`patches/{helper-selfhost-runtime-assets,ejs-desktop-runtime,mvu-desktop-runtime}.json`、锁定输入准备入口、`.github/workflows/ci.yml`（仓库根）、现有相关离线与受管测试、README / notices。仅修改已批准六类问题的直接消费者；新增文件须对应本节明确验收。
 
 | 批次 | 实施内容与唯一责任范围 | 验收 / 依赖 |
 | --- | --- | --- |
@@ -511,12 +511,12 @@ export function useChatSnapshot(bridge: SessionBridge): ChatSnapshot;
 | R5 Slash | agy：锁定 ST parser/closure/scope，Session 命令副作用；中止、parser 选项、闭包、send at/return | 依赖统一生成与稳定端口；不支持的命令/选项明确失败 |
 | R6 生产验收 | 测试 owner：实际发运注册表/formatter 和独立 realm 对照，修复源码图替身与必需资源失败被忽略问题；主代理关键 diff 审计、整合 | 相关差分、F2/CAS/身份/脱敏、原生路径、受管整组和最终必要检查 |
 
-- [ ] R0：核对实际锁定 ST / Helper 提交，新增针对真实缺陷的失败回归；先记录最小基线，避免全库重新调查。
-- [ ] R1–R3：明确实例和写入端口；修复安全、数据及生命周期问题；打通唯一生成链。共享文件严格串行，交接后才转 owner。
-- [ ] R4：按纯逻辑 → 宿主端口迁移 ST / Helper，删除替代实现；缺失 API 依据 EJS/MVU/实际卡片消费者实现或显式拒绝。
-- [ ] R5：替换简化 Slash 解析器并覆盖真实命令选项、闭包和取消语义。
-- [ ] R6：稳定候选运行 `bash scripts/check.sh`、桌面 Vitest / 类型 / 双构建及受影响原生检查；相关受管筛选使用 `nf-prompts,nf-chat,nf-cards,dr2-mvu-new`（`nf-regex` 是 fixture ID，不是场景）。验证实际发运产物，必需卡片资源失败使场景失败。
-- [ ] 回填本计划、Backlog 和 TODO 的实际结果，按 OP-11 定向回收本次无用资源；若改变正常 UI，再按 DESIGN.md 做 390/1440 明暗截图，不扩大为视觉重设计。
+- [x] R0：已核对实际锁定 ST / Helper 提交；原候选类型/双构建与 43 项相关离线测试通过。2026-11-05 受管 `nf-cards` 新增普通内容攻击场景实测 FAIL：未授权历史生成 2 个 iframe（预期 0）；已正常清理本轮进程/容器。此为待修复的生产入口失败基线，不代表 R1 完成。
+- [x] R1–R3：显式角色/预设授权、附件同源与重定向约束、诊断脱敏、稳定 iframe 与 EJS 实例生命周期、异步提示词和 swipe 数据已修复；真实 React 窗口与扩展开关供值已接入。锁定源码离线生成供 bundle/HTTP ESM/Node 共用，精确解析边界、CI 准备与 notices 已完成。共享文件按唯一 owner 串行整合。
+- [x] R4：ST/Helper 类型、常量、纯转换、formatter、宏与宿主端口已接入锁定模块，替代算法已删除；公开 API、预设、结构变量与实际 EJS/MVU 消费者已回归，缺失能力仍明确拒绝。
+- [x] R5：复用锁定 ST parser/closure/scope，覆盖真实选项、闭包、send at/return、中止与 Session 提交；未知命令/选项在副作用前明确失败。
+- [x] R6：`41ae25f2` 对应稳定候选通过 `bash scripts/check.sh` 9/9（离线 1175/1175，0 fail/skip）、类型/双构建、Vitest 148/148、原生桥 48/48；真实受管 `nf-prompts,nf-chat,nf-cards,dr2-mvu-new` 连同 `catalog-admin` 共 5/5 PASS。提示词四组与聊天九组、实际发运 formatter 与原生独立 realm 差分、必需资源、F2/CAS/身份/清理均通过。MVU 首轮、重处理、重演与后台渲染的实测失败已修复；两独立按钮各一次 F2 请求、revision +1，EJS worker/sandbox、六作用域、候选与窗口完整链通过。
+- [x] 本计划、Backlog 和 TODO 已按实际结果回填；本轮 11 个临时工作树及分支、合成运行目录、进程与容器已定向回收，当前构建所需锁定缓存保留。本轮未改变正常 UI 外观，不追加视觉重设计；未合并 main、开 PR 或部署。
 
 **停止条件：** 上述真实错误修复、统一锁定源码和消费者、替代算法删除、实例/写入归属明确、必要差分与集成验证通过且文档回填后结束 T14。仅实质产品选择或授权缺口暂停依赖部分；不因上游闭包复杂或实现成本大整体延后。不得合并 main、开 PR、部署或推进 `mb-mobile` 联合发布。
 
