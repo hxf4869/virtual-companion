@@ -58,12 +58,12 @@ function ToastList({ className }: ToastRegionProps) {
             >
               <BaseToast.Content className="vc-toast__content">
                 <span className="vc-toast__icon" aria-hidden="true">
-                  <Icon name={kind === 'error' ? 'alert' : 'check'} size={20} />
+                  <Icon name={kind === 'error' ? 'circle-alert' : 'check'} size={20} />
                 </span>
                 <BaseToast.Title className="vc-toast__title">{item.title}</BaseToast.Title>
                 {kind === 'error' ? (
                   <BaseToast.Close aria-hidden={false} aria-label="关闭提示" className="vc-toast__close">
-                    <Icon name="close" size={16} />
+                    <Icon name="x" size={16} />
                   </BaseToast.Close>
                 ) : null}
               </BaseToast.Content>

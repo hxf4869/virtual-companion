@@ -1,11 +1,15 @@
 @layer components {
-  .vc-icon-button {
+  .vc-icon-button,
+  .vc-icon-btn,
+  .vc-circle {
+    appearance: none;
     display: inline-flex;
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
     width: 40px;
     height: 40px;
+    min-width: 40px;
     min-height: 40px;
     padding: 0;
     border: 0.5px solid var(--vc-raised-edge);
@@ -19,21 +23,38 @@
       transform var(--vc-dur-press) var(--vc-spring);
   }
 
-  .vc-icon-button:hover:not(:disabled) {
+  .vc-icon-button:hover:not(:disabled),
+  .vc-icon-btn:hover:not(:disabled),
+  .vc-circle:hover:not(:disabled) {
     background-color: var(--vc-hover-fill);
   }
 
-  .vc-icon-button:active:not(:disabled) {
+  .vc-icon-button:active:not(:disabled),
+  .vc-icon-btn:active:not(:disabled),
+  .vc-circle:active:not(:disabled) {
     transform: scale(0.96);
   }
 
-  .vc-icon-button--active {
+  .vc-icon-button--active,
+  .vc-icon-button[aria-pressed="true"],
+  .vc-icon-btn[aria-pressed="true"],
+  .vc-circle[aria-pressed="true"] {
     background-color: var(--vc-select-fill);
     color: var(--vc-accent-text);
   }
 
-  .vc-icon-button:disabled {
+  .vc-icon-button:disabled,
+  .vc-icon-btn:disabled,
+  .vc-circle:disabled {
     opacity: 0.4;
     cursor: not-allowed;
+  }
+
+  .vc-icon-button:focus-visible,
+  .vc-icon-btn:focus-visible,
+  .vc-circle:focus-visible {
+    outline: 2px solid var(--vc-accent);
+    outline-offset: 2px;
+    box-shadow: var(--vc-shadow-focus);
   }
 }

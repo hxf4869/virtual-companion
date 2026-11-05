@@ -13,7 +13,7 @@ import {
     type RouterHistory,
 } from '@tanstack/react-router';
 import { useConversationsQuery } from '../data/queries/chat';
-import { Icon } from '../design/components/Icon';
+import { IconButton } from '../design/components/IconButton';
 import { ChatCharacterPanel } from '../features/chat/ChatCharacterPanel';
 import {
     ChatComposerSlot,
@@ -144,9 +144,11 @@ function resolveShellStateFromPath(pathname: string): {
 
 function DesktopChatHeader({
     title,
+    hasActiveConversation,
     onOpenMemory,
 }: {
     title: string;
+    hasActiveConversation: boolean;
     onOpenMemory: () => void;
 }) {
     const {
@@ -168,17 +170,16 @@ function DesktopChatHeader({
     return (
         <>
             <div className="vc-chat-header__lead">
-                <button
-                    type="button"
+                <IconButton
+                    icon="panel-left"
+                    iconSize={18}
                     className="vc-icon-btn"
                     data-list-toggle=""
                     data-chat-back=""
                     aria-label="返回会话列表"
                     title="会话列表"
                     onClick={handleReopenList}
-                >
-                    <Icon name="panel-left" size={18} />
-                </button>
+                />
                 <ChatStatusCard
                     onOpenMemory={onOpenMemory}
                     trigger={
@@ -189,26 +190,27 @@ function DesktopChatHeader({
                 />
             </div>
             <div className="vc-chat-header__actions">
-                <button
-                    type="button"
+                <IconButton
+                    icon="search"
+                    iconSize={18}
                     className="vc-icon-btn vc-desk-search-toggle"
                     aria-label="搜索聊天内容"
                     title="搜索聊天内容 (⌘F)"
                     onClick={() => chatUi?.toggleSearch()}
-                >
-                    <Icon name="search" size={18} />
-                </button>
-                <button
-                    type="button"
+                />
+                <IconButton
+                    icon="user-round"
+                    iconSize={18}
+                    active={characterPanelOpen}
                     className="vc-icon-btn"
                     data-panel-toggle=""
+                    hidden={!hasActiveConversation}
+                    disabled={!hasActiveConversation}
                     aria-label={characterPanelOpen ? '收起角色档案' : '展开角色档案'}
                     aria-expanded={characterPanelOpen}
                     title="角色档案"
                     onClick={toggleCharacterPanel}
-                >
-                    <Icon name="user-round" size={18} />
-                </button>
+                />
             </div>
         </>
     );
@@ -302,6 +304,7 @@ export function createDesktopRouter(
                     chatHeaderSlot={
                         <DesktopChatHeader
                             title={resolvedTitle}
+                            hasActiveConversation={Boolean(effectiveConversationKey)}
                             onOpenMemory={handleOpenMemory}
                         />
                     }

@@ -10,7 +10,7 @@ import React, {
 } from 'react';
 import { PortalHostProvider } from '../design/portal-host';
 import { Avatar } from '../design/components/Avatar';
-import { Icon } from '../design/components/Icon';
+import { IconButton } from '../design/components/IconButton';
 import { Aurora } from './Aurora';
 import { OverlayHost } from './OverlayHost';
 import { QuickSwitch, type QuickSwitchItem } from './QuickSwitch';
@@ -137,6 +137,8 @@ export function AppShell({
   }, [activeCharacterId, activeConversationKey, syncFromStorage]);
 
   const isChatMode = destination === 'chat' && !settingsActive;
+  const hasActiveConversation = Boolean(activeConversationKey);
+  const effectivePanelOpen = hasActiveConversation && panelOpen;
 
   // Conversation list visibility across the 4 chrome tiers:
   // - wide (>=1600): always visible in chat mode
@@ -146,7 +148,7 @@ export function AppShell({
     ? chrome === 'wide'
       ? true
       : chrome === 'regular'
-        ? !panelOpen
+        ? !effectivePanelOpen
         : compactListOpen
     : false;
 
@@ -154,15 +156,16 @@ export function AppShell({
   const mainHidden = isChatMode && chrome === 'narrow' && listVisible;
 
   const toggleCharacterPanel = useCallback(() => {
+    if (!hasActiveConversation) return;
     setPanelOpen((prev) => !prev);
-  }, []);
+  }, [hasActiveConversation]);
 
   const handleReopenList = useCallback(() => {
     setCompactListOpen(true);
-    if (chrome === 'regular' && panelOpen) {
+    if (chrome === 'regular' && effectivePanelOpen) {
       setPanelOpen(false);
     }
-  }, [chrome, panelOpen]);
+  }, [chrome, effectivePanelOpen]);
 
   const overlayHostRef = useRef<HTMLDivElement | null>(null);
   const toastHostRef = useRef<HTMLDivElement | null>(null);
@@ -193,32 +196,32 @@ export function AppShell({
       return () => ro.disconnect();
     }
     return undefined;
-  }, [chrome, listVisible, mainHidden, panelOpen, effectiveSidebarCollapsed, destination, settingsActive]);
+  }, [chrome, listVisible, mainHidden, effectivePanelOpen, effectiveSidebarCollapsed, destination, settingsActive]);
 
   const layoutMode = useMemo(() => {
     if (!isChatMode) return 'single-main';
     if (!isCompactOrNarrow) {
-      if (listVisible && panelOpen) return 'four-col';
-      if (!listVisible && panelOpen) return 'main-panel';
+      if (listVisible && effectivePanelOpen) return 'four-col';
+      if (!listVisible && effectivePanelOpen) return 'main-panel';
       return 'list-main';
     }
     if (chrome === 'narrow') {
       return listVisible ? 'list-only' : 'main-only';
     }
     return listVisible ? 'list-main' : 'main-only';
-  }, [isChatMode, isCompactOrNarrow, chrome, listVisible, panelOpen]);
+  }, [isChatMode, isCompactOrNarrow, chrome, listVisible, effectivePanelOpen]);
 
   const layoutContextValue = useMemo<ShellLayoutContextValue>(
     () => ({
       chrome,
-      characterPanelOpen: panelOpen,
+      characterPanelOpen: effectivePanelOpen,
       setCharacterPanelOpen: setPanelOpen,
       toggleCharacterPanel,
       conversationListOpen: listVisible,
       setConversationListOpen: setCompactListOpen,
       openQuickSwitch: () => setQuickSwitchOpen(true),
     }),
-    [chrome, panelOpen, toggleCharacterPanel, listVisible],
+    [chrome, effectivePanelOpen, toggleCharacterPanel, listVisible],
   );
 
   const activeConversation = useMemo(
@@ -226,8 +229,10 @@ export function AppShell({
     [conversations, activeConversationKey],
   );
 
+  const resolvedCharacterName =
+    activeCharacterName || activeConversation?.title || '';
   const resolvedTitle =
-    activeCharacterName || activeConversation?.title || '选择一个会话开始聊天';
+    resolvedCharacterName || '选择一个会话开始聊天';
   const resolvedAvatar =
     activeCharacterAvatar || activeConversation?.avatar || '';
 
@@ -245,7 +250,7 @@ export function AppShell({
           data-settings={settingsActive ? 'open' : 'closed'}
           data-sidebar={effectiveSidebarCollapsed ? 'collapsed' : 'expanded'}
           data-layout={layoutMode}
-          data-panel-open={panelOpen ? 'true' : 'false'}
+          data-panel-open={effectivePanelOpen ? 'true' : 'false'}
           data-list-open={listVisible ? 'true' : 'false'}
         >
           <Sidebar
@@ -255,7 +260,7 @@ export function AppShell({
             collapsed={effectiveSidebarCollapsed}
             inboxBadge={inboxBadge}
             chatDot={chatDot}
-            characterName={resolvedTitle}
+            characterName={resolvedCharacterName}
             characterAvatarUrl={resolvedAvatar}
             onSelectDestination={onSelectDestination}
             onOpenSettings={onOpenSettings}
@@ -273,16 +278,15 @@ export function AppShell({
                 <>
                   <header className="vc-convo-head">
                     <h2 className="vc-convo-title">会话</h2>
-                    <button
-                      type="button"
+                    <IconButton
+                      icon="search"
+                      iconSize={18}
                       className="vc-icon-btn"
                       data-quick-switch-trigger=""
                       aria-label="搜索会话 (⌘K)"
                       title="搜索会话 (⌘K)"
                       onClick={() => setQuickSwitchOpen(true)}
-                    >
-                      <Icon name="search" size={18} />
-                    </button>
+                    />
                   </header>
                   <div className="vc-convo-items">
                     {conversations.map((item) => {
@@ -334,31 +338,32 @@ export function AppShell({
                   {chatHeaderSlot ?? (
                     <>
                       <div className="vc-chat-header__lead">
-                        <button
-                          type="button"
+                        <IconButton
+                          icon="panel-left"
+                          iconSize={18}
                           className="vc-icon-btn"
                           data-list-toggle=""
                           data-chat-back=""
                           aria-label="返回会话列表"
                           title="会话列表"
                           onClick={handleReopenList}
-                        >
-                          <Icon name="panel-left" size={18} />
-                        </button>
+                        />
                         <h1 className="vc-chat-header__title">{resolvedTitle}</h1>
                       </div>
                       <div className="vc-chat-header__actions">
-                        <button
-                          type="button"
+                        <IconButton
+                          icon="user-round"
+                          iconSize={18}
+                          active={effectivePanelOpen}
                           className="vc-icon-btn"
                           data-panel-toggle=""
-                          aria-label={panelOpen ? '收起角色档案' : '展开角色档案'}
-                          aria-expanded={panelOpen}
+                          hidden={!hasActiveConversation}
+                          disabled={!hasActiveConversation}
+                          aria-label={effectivePanelOpen ? '收起角色档案' : '展开角色档案'}
+                          aria-expanded={effectivePanelOpen}
                           title="角色档案"
                           onClick={toggleCharacterPanel}
-                        >
-                          <Icon name="user-round" size={18} />
-                        </button>
+                        />
                       </div>
                     </>
                   )}
@@ -373,7 +378,7 @@ export function AppShell({
                       className="vc-char-panel vc-char-panel--floating"
                       data-char-panel=""
                       aria-label="角色小档案"
-                      hidden={!panelOpen}
+                      hidden={!effectivePanelOpen}
                     >
                       {characterPanel}
                     </aside>
@@ -398,7 +403,7 @@ export function AppShell({
               className="vc-char-panel vc-panel"
               data-char-panel=""
               aria-label="角色小档案"
-              hidden={!panelOpen}
+              hidden={!effectivePanelOpen}
             >
               {characterPanel}
             </aside>

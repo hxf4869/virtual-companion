@@ -53,7 +53,7 @@ export function AlertDialog({
                   .join(' ')}
                 aria-hidden="true"
               >
-                <Icon name="alert" size={20} />
+                <Icon name="circle-alert" size={20} />
               </div>
               <div className="vc-alert-dialog__text">
                 <BaseAlertDialog.Title className="vc-alert-dialog__title">

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef } from 'react';
 import { Avatar } from '../design/components/Avatar';
 import { Icon } from '../design/components/Icon';
+import { IconButton } from '../design/components/IconButton';
 import type { ChromeTier } from './useChrome';
 
 export type ShellDestination = 'chat' | 'characters' | 'memory' | 'inbox' | 'story';
@@ -129,16 +130,15 @@ export function Sidebar({
           </span>
         ) : null}
         {!isCompactOrNarrow ? (
-          <button
-            type="button"
+          <IconButton
+            icon="panel-left"
+            iconSize={18}
             className="vc-icon-btn vc-side-collapse"
             data-collapse=""
             aria-label="收起或展开侧栏"
             title={effectiveCollapsed ? '展开侧栏 (⌘\\)' : '收起侧栏 (⌘\\)'}
             onClick={() => onToggleCollapse?.()}
-          >
-            <Icon name="panel-left" size={18} />
-          </button>
+          />
         ) : null}
       </div>
 

@@ -52,7 +52,7 @@ export function Dialog({
               </div>
               {showCloseButton ? (
                 <BaseDialog.Close
-                  render={<IconButton icon="close" size={32} iconSize={16} aria-label="关闭弹窗" />}
+                  render={<IconButton icon="x" size={32} iconSize={16} aria-label="关闭弹窗" />}
                 />
               ) : null}
             </div>
