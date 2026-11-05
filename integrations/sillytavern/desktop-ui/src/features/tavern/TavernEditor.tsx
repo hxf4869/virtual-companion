@@ -1,6 +1,5 @@
 import { useRef } from 'react';
 import { Button } from '@base-ui/react/button';
-import { Button as DesignButton } from '../../design/components/Button';
 import { Switch } from '../../components/Switch';
 import { Icon } from '../../components/Icon';
 import { IconButton } from '../../components/IconButton';
@@ -26,9 +25,9 @@ export interface TavernEditorProps {
 
 function Action({ action, p }: { action: TavernAction; p: TavernEditorProps }) {
     const input = useRef<HTMLInputElement>(null);
-    return <><DesignButton variant="gray" data-tavern-action={action.id}
+    return <><Button type="button" className="vc-btn vc-btn-gray" data-tavern-action={action.id}
         disabled={p.busy || action.disabled} onClick={() => action.accept ? input.current?.click() : p.onAction(action.id)}>
-        {action.icon && <Icon sprite={p.sprite} name={action.icon} size={16} />}{action.label}</DesignButton>
+        {action.icon && <Icon sprite={p.sprite} name={action.icon} size={16} />}{action.label}</Button>
         {action.accept && <input ref={input} type="file" accept={action.accept} hidden data-tavern-upload={action.id}
             onChange={event => { const file = event.currentTarget.files?.[0]; if (file) p.onAction(action.id, file); event.currentTarget.value = ''; }} />}</>;
 }

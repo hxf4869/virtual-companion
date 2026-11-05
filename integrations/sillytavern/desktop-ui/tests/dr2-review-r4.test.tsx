@@ -386,7 +386,7 @@ describe('DR2-12-R4: 设置/酒馆终审问题回归 (F18, F19, F20, F21, F23)',
     expect(embeddedRender.container.querySelector('.vc-settings-categories')).toBeNull();
   });
 
-  it('F21: TavernEditor 与酒馆页面导入按钮均复用 design/Button variant="gray"，不含无意义 vc-btn-gray 类且保留文件选择事件', () => {
+  it('F21: 原生桥 TavernEditor 保持 legacy vc-btn-gray 皮肤语义，桌面酒馆页面导入按钮复用 design/Button variant="gray"，且均保留文件选择事件', () => {
     const onEditorAction = vi.fn();
     const editorRender = render(
       <TavernEditor
@@ -417,8 +417,8 @@ describe('DR2-12-R4: 设置/酒馆终审问题回归 (F18, F19, F20, F21, F23)',
     expect(editorImportBtn).toBeTruthy();
     expect(editorImportBtn!.tagName).toBe('BUTTON');
     expect(editorImportBtn!.classList.contains('vc-btn')).toBe(true);
-    expect(editorImportBtn!.classList.contains('vc-btn--gray')).toBe(true);
-    expect(editorImportBtn!.classList.contains('vc-btn-gray')).toBe(false);
+    expect(editorImportBtn!.classList.contains('vc-btn-gray')).toBe(true);
+    expect(editorImportBtn!.classList.contains('vc-btn--gray')).toBe(false);
 
     const editorFileInput = editorRender.container.querySelector<HTMLInputElement>(
       '[data-tavern-upload="preset-import"]',
