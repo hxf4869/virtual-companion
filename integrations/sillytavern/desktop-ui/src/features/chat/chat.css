@@ -1545,18 +1545,21 @@ html[data-vc-app] #toast-container.toast-bottom-right,
 html[data-vc-app] #toast-container.toast-bottom-center,
 html[data-vc-app] #toast-container.toast-bottom-left {
     position: fixed;
+    position: var(--vc-toast-position, fixed);
     z-index: var(--vc-z-toast);
     top: calc(48px + var(--vc-space-sm));
+    top: var(--vc-toast-top, calc(64px + var(--vc-space-sm)));
     left: 50%;
+    left: var(--vc-toast-left, 50%);
     right: auto;
     bottom: auto;
-    width: fit-content;
-    max-width: min(calc(var(--vc-read) - 32px), calc(100vw - 32px));
+    width: min(calc(var(--vc-read) - 32px), calc(100% - 32px));
+    max-width: calc(var(--vc-read) - 32px);
     margin: 0;
     padding: 0;
     display: flex;
     flex-direction: column;
-    align-items: center;
+    align-items: stretch;
     gap: 8px;
     background: transparent;
     transform: translateX(-50%);
@@ -1569,12 +1572,16 @@ html[data-vc-app] #toast-container > div {
     position: relative;
     display: flex;
     align-items: center;
+    justify-content: space-between;
     gap: 8px;
-    width: fit-content;
-    max-width: min(420px, calc(100vw - 32px));
+    width: 100%;
+    max-width: 100%;
+    height: 48px;
     min-height: 44px;
+    max-height: 48px;
+    box-sizing: border-box;
     margin: 0;
-    padding: 8px 16px;
+    padding: 0 8px 0 16px;
     border: 0;
     border-radius: var(--vc-radius-pill);
     background-color: var(--vc-glass);
@@ -1584,6 +1591,7 @@ html[data-vc-app] #toast-container > div {
     opacity: 1;
     overflow: hidden;
     pointer-events: auto;
+    white-space: normal;
     box-shadow: inset 0 0.5px 0 var(--vc-glass-hi), inset 0 0 0 0.5px var(--vc-glass-edge), 0 8px 28px var(--vc-glass-shadow);
     text-shadow: none;
     font-family: var(--vc-font);
@@ -1627,9 +1635,30 @@ html[data-vc-app] #toast-container > .toast .toast-message {
     color: var(--vc-ink);
     font-size: var(--vc-fs-subhead);
     font-weight: 600;
-    line-height: 1.25;
+    line-height: 1.2;
     text-shadow: none;
+    white-space: nowrap;
     text-overflow: ellipsis;
+}
+
+html[data-vc-app] #toast-container > .toast .toast-title {
+    flex: 0 1 auto;
+    max-width: 45%;
+}
+
+html[data-vc-app] #toast-container > .toast .toast-title:only-child {
+    max-width: 100%;
+}
+
+html[data-vc-app] #toast-container > .toast .toast-message {
+    display: -webkit-box;
+    flex: 1;
+    min-width: 0;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    white-space: normal;
+    line-height: var(--vc-lh-footnote);
 }
 
 html[data-vc-app] #toast-container > .toast .toast-title:empty,

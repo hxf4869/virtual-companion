@@ -50,6 +50,12 @@ export async function initializeCards(options) {
             ]);
         })(),
     ]);
+    if (globalThis.toastr && document.querySelector?.('[data-vc-toast-host]')) {
+        const toastOptions = (globalThis.toastr.options ||= {});
+        if (!toastOptions.target || toastOptions.target === 'body') {
+            toastOptions.target = '[data-vc-toast-host]';
+        }
+    }
     Object.assign(globalThis, { _: lodash, YAML: yaml, showdown, klona });
     const nodes = new Map(), byNode = new WeakMap(), pending = new Set(), frameUrls = new Map();
     let ejs, serial = 0, activeMetadata, renderQueue = Promise.resolve();
