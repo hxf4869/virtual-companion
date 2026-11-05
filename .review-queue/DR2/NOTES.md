@@ -1,4 +1,4 @@
-# DR2 T12：视觉复审与 GitHub 历史证据
+# DR2 视觉复审与交付验证
 
 ## 2026-11-05：二轮复审修复与最终视觉结论
 
@@ -21,6 +21,28 @@
 采图可用 `VC_DR2_REVIEW_DIR` 指定新目录，固定文件原位覆盖，不扫删其他 PNG；`VC_DR2_REVIEW_STATE=04-chat-card` 可只重采该组，重新加载已准备的夹具且不覆盖第 169 张。首轮及 `review-2/` 图均保留。
 
 本轮未做真实屏幕阅读器朗读和全分支代码终审。完整 18 项受管门禁归入 T13。T12 合成栈、容器和嵌入服务本机转发已回收。
+
+### 1440 × 900 明暗精选（本地）
+
+这 12 张来自本地 `review-3/` 矩阵。
+
+| 页面 | 浅色 | 深色 |
+| --- | --- | --- |
+| 聊天 | [正常会话](review-3/02-chat-active-1440x900-light.png) | [正常会话](review-3/02-chat-active-1440x900-dark.png) |
+| 角色 | [详情](review-3/06-characters-detail-1440x900-light.png) | [详情](review-3/06-characters-detail-1440x900-dark.png) |
+| 记忆 | [时间线](review-3/08-memory-timeline-1440x900-light.png) | [时间线](review-3/08-memory-timeline-1440x900-dark.png) |
+| 陪伴 | [收件箱](review-3/11-inbox-1440x900-light.png) | [收件箱](review-3/11-inbox-1440x900-dark.png) |
+| 剧情 | [舞台](review-3/13-story-stage-1440x900-light.png) | [舞台](review-3/13-story-stage-1440x900-dark.png) |
+| 设置 | [模型](review-3/14-settings-model-1440x900-light.png) | [模型](review-3/14-settings-model-1440x900-dark.png) |
+
+## T13 同提交验收（2026-11-05）
+
+候选 `6df90f1d` 包含 T12 R11 `e828e908`，并移除了无调用方的旧酒馆设置与编辑器入口。扩展顶层保留 15 个有消费者的模块，桌面 CSS 的五处 `!important` 属于 `[hidden]` 与减弱动态覆盖。[桌面开发说明](../../integrations/sillytavern/desktop-ui/README.md)
+
+- `bash scripts/check.sh` 9/9 PASS（45s），含类型、双构建、Go 单测与离线集成 1097/1097（0 fail、0 skip）。Vitest 37 个文件、141/141 PASS。原生桥 48 个运行时导出逐名匹配 `3131d92b`。
+- T11 受管整组 18/18 PASS（319s），含自动补齐的 `catalog-admin`、含正则等价断言的 `nf-prompts`、四个 `dr2-*`、F2 和 `mb-engine`。`mb-engine` 使用与 `mb-mobile@ff2af0c0` 产物逐文件一致的本机 H5，`dr2-pages` 使用现有本机嵌入模型。
+- 首轮标准检查的权限掩码改回本机默认 `022` 后通过。受管运行根切回集成目录下的 `dev-managed/` 后，MemoryCore 能解析本地依赖，整组通过。两次恢复均在 `6df90f1d` 上执行。
+- 本次临时 worktree、受管运行目录、浏览器产物、容器、卷和嵌入端口转发已回收。T12 各轮截图继续保留。
 
 ## 候选 `82c64427` 的历史网页复审入口
 

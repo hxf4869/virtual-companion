@@ -12,9 +12,9 @@
 | `src/features/` | 聊天、角色、记忆、陪伴、剧情及产品与酒馆设置 |
 | `src/data/` | TanStack Query、API 接线、读写缓存与失效 |
 | `src/runtime/` | SessionBridge 提供会话订阅与命令。`desktop/standalone/session.js` 持有消息、流式状态与 F2 保存 |
-| `src/bridge/` | 原生 ST 的库模式挂载入口，提供旧原生控制器所需的 48 个运行时导出 |
+| `src/bridge/` | 原生 ST 的库模式挂载入口，为原生控制器与样板保留既有 48 个运行时导出 |
 
-React 负责桌面页面和消息 DOM。`desktop/standalone/cards/` 负责 Helper / EJS / MVU iframe 与脚本生命周期，React 提供独立挂载节点。桌面应用对扩展纯逻辑和运行模块的导入由 [递归白名单测试](../tests/desktop-import-boundary.test.mjs) 约束。布局、色彩和交互遵循 [DESIGN.md](../../../DESIGN.md)；范围与分工见 [DR2 计划](../../../docs/superpowers/plans/2026-11-04-desktop-react-rebuild.md)。
+React 负责桌面页面和消息 DOM。`desktop/standalone/cards/` 负责 Helper / EJS / MVU iframe 与脚本生命周期，React 提供独立挂载节点。扩展纯逻辑和运行模块的导入由递归白名单测试约束。布局、色彩与交互沿用项目设计规范。[导入边界测试](../tests/desktop-import-boundary.test.mjs) · [DESIGN.md](../../../DESIGN.md) · [DR2 计划](../../../docs/superpowers/plans/2026-11-04-desktop-react-rebuild.md)
 
 ## 扩展目录保留项
 
@@ -39,7 +39,7 @@ React 负责桌面页面和消息 DOM。`desktop/standalone/cards/` 负责 Helpe
 
 ## 构建与验证
 
-从仓库根目录运行。首次准备按 [ST 集成说明](../README.md#首次准备) 安装 Node 22.13+ 依赖并装配锁定上游。
+从仓库根目录运行。首次准备需 Node 22.13+、本机 npm 依赖与锁定上游。[ST 集成说明](../README.md#首次准备)
 
 ```bash
 npm --prefix integrations/sillytavern run check:desktop
@@ -50,7 +50,7 @@ bash scripts/check.sh
 
 构建覆盖两份忽略的产物及其许可清单。桌面应用写到 `server-plugin/virtual-companion/desktop/app/`，原生桥写到 `extension/vc-model-settings/desktop/build/index.js`。受管装配会重建两者。直接跑离线 Node 单测前先构建。
 
-在 [隔离受管环境](../README.md#受管端到端验收scriptsaccept-managedmjs) 上运行 T11 整组。`catalog-admin` 由场景依赖自动补齐，总计 18 项。`nf-prompts` 包含正则参与实际生成的断言。`dr2-pages` 需要本机 `127.0.0.1:11438` 上的 `qwen3-embedding:0.6b`，`mb-engine` 需要同分支验收约定的手机 H5 产物。
+运行 T11 整组时使用目标 worktree 的 `integrations/sillytavern/dev-managed/`，为栈分配独立端口和容器名。生成的 MemoryCore 模块从集成目录解析本地 npm 依赖。`catalog-admin` 由场景依赖自动补齐，总计 18 项。`nf-prompts` 包含正则参与实际生成的断言。`dr2-pages` 需要本机 `127.0.0.1:11438` 上的 `qwen3-embedding:0.6b`，`mb-engine` 需要同分支验收约定的手机 H5 产物。[受管验收说明](../README.md#受管端到端验收scriptsaccept-managedmjs)
 
 ```bash
 node integrations/sillytavern/scripts/accept-managed.mjs --filter \
