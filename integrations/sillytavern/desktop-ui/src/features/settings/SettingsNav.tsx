@@ -71,6 +71,7 @@ export function SettingsNav({
             type="button"
             className={`vc-settings-category${active ? ' is-active' : ''}`}
             data-category={item.key}
+            data-vc-light=""
             aria-current={active ? 'page' : undefined}
             onClick={() => onSelectCategory(item.key)}
           >
@@ -94,6 +95,7 @@ export function SettingsNav({
                 type="button"
                 className={`vc-settings-category${active ? ' is-active' : ''}`}
                 data-category={row.panel}
+                data-vc-light=""
                 aria-current={active ? 'page' : undefined}
                 onClick={() => {
                   if (onSelectTavern) {

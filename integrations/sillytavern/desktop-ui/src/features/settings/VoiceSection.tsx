@@ -17,7 +17,8 @@ import { AlertDialog } from '../../design/components/AlertDialog';
 import { Button } from '../../design/components/Button';
 import { toast } from '../../design/components/Toast';
 import { useLeaveGuard } from '../../shell/useLeaveGuard';
-import { VoiceForm, voiceFormValues, type VoiceValues } from './VoiceForm';
+import { DesktopVoiceForm } from './DesktopVoiceForm';
+import { voiceFormValues, type VoiceValues } from './VoiceForm';
 
 function ActiveRouterLeaveGuard({ dirty, busy }: { dirty: boolean; busy?: boolean }) {
   return <>{useLeaveGuard(dirty, { busy })}</>;
@@ -261,7 +262,6 @@ export function VoiceSection({ relationshipId }: VoiceSectionProps = {}) {
     <section className="vc-settings-section" data-vc-voice-section="">
       {router ? <ActiveRouterLeaveGuard dirty={isDirty} busy={working} /> : null}
       <header className="vc-settings-header">
-        <h1 className="vc-settings-title">语音</h1>
         <div className="vc-settings-actions">
           {isDirty && (
             <Button
@@ -276,6 +276,7 @@ export function VoiceSection({ relationshipId }: VoiceSectionProps = {}) {
           <Button
             type="button"
             variant="filled"
+            className="vc-btn-fill"
             data-voice-save=""
             disabled={working || loading || !loaded || !isDirty}
             onClick={() => void handleSave()}
@@ -296,7 +297,7 @@ export function VoiceSection({ relationshipId }: VoiceSectionProps = {}) {
       >
         {loaded &&
           (relationshipId ? (
-            <VoiceForm
+            <DesktopVoiceForm
               mode="relationship"
               values={values}
               engines={enginesData}
@@ -306,7 +307,7 @@ export function VoiceSection({ relationshipId }: VoiceSectionProps = {}) {
               onPreview={(eng) => void handlePreview(eng)}
             />
           ) : (
-            <VoiceForm
+            <DesktopVoiceForm
               mode="global"
               values={values}
               engines={enginesData}

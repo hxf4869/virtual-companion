@@ -17,7 +17,8 @@
     box-shadow: var(--vc-shadow-rim-panel);
   }
 
-  .vc-settings-categories h1 {
+  .vc-settings-categories h1,
+  .vc-settings-categories .vc-settings-categories-title {
     display: flex;
     align-items: center;
     height: 64px;
@@ -26,13 +27,16 @@
     font-weight: 700;
   }
 
-  .vc-settings-categories h2 {
+  .vc-settings-categories h2:not(.vc-settings-categories-title),
+  .vc-settings-categories .vc-settings-categories-section {
     margin: 16px 12px 8px;
     font-size: var(--vc-fs-headline);
     font-weight: 600;
+    color: var(--vc-ink);
   }
 
-  .vc-settings-categories > button {
+  .vc-settings-categories > button,
+  .vc-settings-categories > .vc-settings-category {
     display: flex;
     align-items: center;
     gap: var(--vc-space-sm);
@@ -48,7 +52,8 @@
     cursor: pointer;
   }
 
-  .vc-settings-categories > button[aria-current="page"] {
+  .vc-settings-categories > button[aria-current="page"],
+  .vc-settings-categories > .vc-settings-category.is-active {
     color: var(--vc-accent-text);
     background: var(--vc-select-fill);
   }
@@ -184,10 +189,72 @@
     background: var(--vc-raised);
   }
 
+  .vc-settings-detail-body > .vc-settings-section[data-vc-voice-section] {
+    padding: 0;
+    border: 0;
+    background: transparent;
+    display: flex;
+    flex-direction: column;
+    gap: var(--vc-space-sm);
+  }
+
+  .vc-settings-section[data-vc-voice-section] > .vc-settings-header {
+    height: auto;
+    min-height: 36px;
+    width: 100%;
+    padding: 0;
+    justify-content: flex-end;
+  }
+
+  .vc-settings-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--vc-space-xs);
+    margin-left: auto;
+  }
+
   .vc-settings-section > h2 {
     margin: 16px 0 8px;
     font-size: var(--vc-fs-headline);
     font-weight: 600;
+  }
+
+  .vc-voice-settings .vc-group,
+  .vc-voice-settings .vc-desk-group {
+    padding: 4px 16px 12px;
+    border: 0.5px solid var(--vc-raised-edge);
+    border-radius: var(--vc-radius-md);
+    background: var(--vc-raised);
+  }
+
+  .vc-voice-settings .vc-cell {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--vc-space-xs);
+    min-height: 44px;
+    padding: 6px 0;
+    width: 100%;
+    border: 0;
+    background: transparent;
+    color: var(--vc-ink);
+    font: inherit;
+    text-align: left;
+  }
+
+  .vc-voice-settings .vc-cell + .vc-cell {
+    border-top: 0.5px solid var(--vc-separator);
+  }
+
+  .vc-voice-settings .vc-grow {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .vc-voice-settings .vc-value {
+    color: var(--vc-ink-2);
+    font-size: var(--vc-fs-body);
+    line-height: var(--vc-lh-body);
   }
 
   .vc-settings-detail-body :is(input:not([type="checkbox"], [type="radio"], [type="range"]), select, textarea) {
@@ -207,13 +274,141 @@
     padding-block: 8px;
   }
 
-  .vc-desk-field {
+  .vc-desk-field,
+  .vc-field.vc-desk-field > .vc-field__row {
     display: grid;
     grid-template-columns: 200px minmax(0, 1fr);
     align-items: center;
+    justify-items: start;
     gap: 16px;
     min-height: 44px;
     padding: 4px 0;
+  }
+
+  .vc-field.vc-desk-field {
+    display: block;
+    width: 100%;
+    padding: 0;
+  }
+
+  .vc-desk-field > :first-child,
+  .vc-field.vc-desk-field .vc-field__label {
+    white-space: nowrap;
+  }
+
+  .vc-settings-shell .vc-segment {
+    width: fit-content;
+    max-width: 100%;
+    justify-self: start;
+  }
+
+  .vc-settings-shell .vc-switch {
+    justify-self: start;
+    min-width: 51px;
+    min-height: 31px;
+    flex-shrink: 0;
+  }
+
+  .vc-settings-shell .vc-switch__track {
+    width: 51px;
+    height: 31px;
+    flex-shrink: 0;
+  }
+
+  .vc-settings-shell .vc-switch:disabled,
+  .vc-settings-shell .vc-switch[data-disabled] {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+
+  .vc-voice-settings {
+    display: flex;
+    flex-direction: column;
+    gap: var(--vc-space-sm);
+  }
+
+  .vc-voice-engine-control,
+  .vc-voice-speed-control {
+    display: flex;
+    align-items: center;
+    gap: var(--vc-space-sm);
+    min-height: 36px;
+  }
+
+  .vc-voice-settings input[type="number"] {
+    width: 160px;
+  }
+
+  .vc-voice-select-wrap,
+  .vc-voice-settings .vc-voice-native-select {
+    width: min(100%, 240px);
+    min-width: 160px;
+  }
+
+  .vc-voice-select-wrap .vc-select {
+    width: 100%;
+  }
+
+  .vc-field.vc-desk-field.vc-voice-setting-text > .vc-field__row {
+    align-items: start;
+  }
+
+  .vc-field.vc-desk-field.vc-voice-setting-text .vc-field__label-col {
+    padding-top: 8px;
+  }
+
+  .vc-field.vc-desk-field.vc-voice-setting-text .vc-field__control-col {
+    width: 100%;
+  }
+
+  .vc-voice-settings textarea {
+    display: block;
+    width: 100%;
+    max-width: 100%;
+    height: auto;
+    min-height: 80px;
+    padding: 8px 12px;
+  }
+
+  .vc-voice-settings .vc-voice-details {
+    padding: 0;
+    overflow: hidden;
+  }
+
+  .vc-voice-settings .vc-voice-summary {
+    list-style: none;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    min-height: 44px;
+    padding: 10px 16px;
+    box-sizing: border-box;
+    color: var(--vc-ink);
+    font: inherit;
+    font-size: var(--vc-fs-headline);
+    font-weight: 600;
+    text-align: left;
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .vc-voice-settings .vc-voice-summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .vc-voice-settings .vc-voice-chevron {
+    color: var(--vc-ink-3);
+    transition: transform var(--vc-dur-quick) var(--vc-ease-out);
+  }
+
+  .vc-voice-settings .vc-voice-details[open] .vc-voice-chevron {
+    transform: rotate(180deg);
+  }
+
+  .vc-voice-settings .vc-voice-details-body {
+    padding: 4px 16px 12px;
+    border-top: 0.5px solid var(--vc-separator);
   }
 
   .vc-desk-field select,
@@ -605,9 +800,15 @@
     .vc-settings-detail-head { padding-inline: 16px; }
     .vc-settings-detail-body { padding-inline: 0; }
 
-    .vc-desk-field {
+    .vc-desk-field,
+    .vc-field.vc-desk-field > .vc-field__row {
       grid-template-columns: minmax(0, 1fr);
       gap: 6px;
+    }
+
+    .vc-voice-settings input[type="number"],
+    .vc-voice-select-wrap {
+      width: 100%;
     }
   }
 }

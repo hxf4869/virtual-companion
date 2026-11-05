@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useId, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import Editor, { loader } from '@monaco-editor/react';
 import {
   CODE_EDITOR_STORAGE_KEY,
@@ -471,11 +471,28 @@ export function TavernActionButton({
   busy: boolean;
   onAction: (id: string, value?: unknown) => void;
 }) {
-  if (action.accept) {
-    return (
-      <label className="vc-btn vc-btn-gray" data-tavern-action={action.id}>
+  const inputRef = useRef<HTMLInputElement>(null);
+  const variant = action.id.includes('delete') ? 'danger' : 'gray';
+
+  return (
+    <>
+      <Button
+        variant={variant}
+        disabled={busy || action.disabled}
+        data-tavern-action={action.id}
+        onClick={() => {
+          if (action.accept) {
+            inputRef.current?.click();
+          } else {
+            onAction(action.id);
+          }
+        }}
+      >
         {action.label}
+      </Button>
+      {action.accept ? (
         <input
+          ref={inputRef}
           type="file"
           hidden
           accept={action.accept}
@@ -487,19 +504,8 @@ export function TavernActionButton({
             if (file) onAction(action.id, file);
           }}
         />
-      </label>
-    );
-  }
-  return (
-    <button
-      type="button"
-      className={`vc-btn ${action.id.includes('delete') ? 'vc-btn-danger' : 'vc-btn-gray'}`}
-      disabled={busy || action.disabled}
-      data-tavern-action={action.id}
-      onClick={() => onAction(action.id)}
-    >
-      {action.label}
-    </button>
+      ) : null}
+    </>
   );
 }
 

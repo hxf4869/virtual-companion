@@ -9,6 +9,10 @@ import {
   useTavernController,
 } from '../../data/queries/tavern';
 import { useLeaveGuard } from '../../shell/useLeaveGuard';
+import {
+  PRODUCT_SETTINGS_CATEGORIES,
+  SettingsNav,
+} from '../settings/SettingsNav';
 import { ApiConnection } from './ApiConnection';
 import { Backgrounds } from './Backgrounds';
 import { CharacterCard } from './CharacterCard';
@@ -23,17 +27,6 @@ import './tavern.css';
 const Formatting = lazy(() =>
   import('./Formatting').then((mod) => ({ default: mod.Formatting })),
 );
-
-const PRODUCT_CATEGORIES: ReadonlyArray<readonly [string, string, string, string]> = [
-  ['account', '账户', 'user-round', 'gray'],
-  ['model', '模型', 'cpu', 'blue'],
-  ['voice', '语音', 'mic', 'orange'],
-  ['notifications', '通知', 'bell', 'pink'],
-  ['appearance', '外观', 'monitor', 'purple'],
-  ['companion', '陪伴风格', 'heart', 'pink'],
-  ['stickers', '表情包', 'image', 'orange'],
-  ['data', '账户与数据', 'shield', 'green'],
-];
 
 function ActiveLeaveGuard({ dirty }: { dirty: boolean }) {
   const modal = useLeaveGuard(dirty);
@@ -120,10 +113,10 @@ export function TavernRoute({
   );
 
   const categoryMenuItems: MenuItemDef[] = [
-    ...PRODUCT_CATEGORIES.map(([key, label]) => ({
-      id: `cat-${key}`,
-      label,
-      onSelect: () => void handleSelectProductCategory(key),
+    ...PRODUCT_SETTINGS_CATEGORIES.map((item) => ({
+      id: `cat-${item.key}`,
+      label: item.label,
+      onSelect: () => void handleSelectProductCategory(item.key),
     })),
     ...TAVERN_SECTIONS.map((item, idx) => ({
       id: `tavern-${item.panel}`,
@@ -221,40 +214,11 @@ export function TavernRoute({
 
   return (
     <section className="vc-settings-shell" data-category={controller.sectionKey}>
-      <nav className="vc-settings-categories vc-desk-panel" aria-label="设置分类">
-        <h1>设置</h1>
-        {PRODUCT_CATEGORIES.map(([key, title, glyph, tile]) => (
-          <button
-            key={key}
-            type="button"
-            data-category={key}
-            data-vc-light=""
-            aria-current="false"
-            onClick={() => void handleSelectProductCategory(key)}
-          >
-            <span className={`vc-tile vc-tile-${tile}`}>
-              <Icon name={glyph} size={18} />
-            </span>
-            <span>{title}</span>
-          </button>
-        ))}
-        <h2>酒馆</h2>
-        {TAVERN_SECTIONS.map((item) => (
-          <button
-            key={item.panel}
-            type="button"
-            data-category={item.panel}
-            data-vc-light=""
-            aria-current={controller.sectionKey === item.panel ? 'page' : 'false'}
-            onClick={() => void handleSelectTavern(item.panel)}
-          >
-            <span className={`vc-tile vc-tile-${item.tile}`}>
-              <Icon name={item.icon} size={18} />
-            </span>
-            <span>{item.label}</span>
-          </button>
-        ))}
-      </nav>
+      <SettingsNav
+        current={controller.sectionKey}
+        onSelectCategory={(key) => void handleSelectProductCategory(key)}
+        onSelectTavern={(panel) => void handleSelectTavern(panel)}
+      />
       {contentPane}
       {controller.modals}
       {leaveGuardModal}
