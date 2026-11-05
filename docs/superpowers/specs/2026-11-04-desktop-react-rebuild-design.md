@@ -1,5 +1,7 @@
 # 电脑端前端重建设计（DR2）
 
+> **2026-11-05 DR2-14 重开修订：** Owner 已批准计划 Task 14 R0–R6。下文关于“与上游一致的四个问题本次不改”、Helper 整体延期和仅删适配的旧约定不再适用于 T14。以统一锁定源码、安全执行/请求边界、Session/F2/CAS 唯一写入和真实行为验收为准；不扩大至 UI 重设计或联合发布。
+
 日期：2026-11-04 · 分支：`desktop-react-rebuild`（基于 `codex/desktop-independent-frontend@3131d92b`）
 Backlog：`docs/planning/2026-10-31-handoff-backlog.md` K 节（DR2-0 … DR2-12）· 计划：`docs/superpowers/plans/2026-11-04-desktop-react-rebuild.md`
 

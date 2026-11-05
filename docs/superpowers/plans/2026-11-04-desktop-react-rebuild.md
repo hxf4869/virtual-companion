@@ -484,29 +484,41 @@ export function useChatSnapshot(bridge: SessionBridge): ChatSnapshot;
 
 ### Task 13: 收尾、全量验证与 backlog 回填
 
-**Files:** Modify `docs/planning/2026-10-31-handoff-backlog.md`（新增 K 节：DR2-1 … DR2-15，与本计划任务一一对应，并在末尾追加：①"合并与部署前置：与 `mb-mobile` 联合发布；`Dockerfile.st` 增加 `mobile-dist` 构建步骤"；②"Helper 11 个手写模块改为构建时编译上游 TS（DR2-14 未做，待评估）"；③"未补齐的 Helper 接口清单（DR2-15 不做部分，无已知卡片消费者）"；④"MB 完成后清理 `/native/` 中 uni-app 不再显示的旧手机外壳（标签栏、会话列表、手机页面栈等），清理前核对 uni-app 的 ST 视图不会露出"）、`TODO.md`「陪伴体验后续」按 ID 回填、`integrations/sillytavern/desktop-ui/README.md`（新架构说明，删去 DR-4 等过时段落）、`integrations/sillytavern/README.md:297` 段落。
+**Files:** Modify `docs/planning/2026-10-31-handoff-backlog.md`（新增 K 节：DR2-1 … DR2-15，与本计划任务一一对应，并在末尾追加：①"合并与部署前置：与 `mb-mobile` 联合发布；`Dockerfile.st` 增加 `mobile-dist` 构建步骤"；②"Helper 上游统一构建与安全/数据收敛（DR2-14 已获批重开，见 Task 14）"；③"未补齐的 Helper 接口清单（DR2-15 不做部分，无已知卡片消费者）"；④"MB 完成后清理 `/native/` 中 uni-app 不再显示的旧手机外壳（标签栏、会话列表、手机页面栈等），清理前核对 uni-app 的 ST 视图不会露出"）、`TODO.md`「陪伴体验后续」按 ID 回填、`integrations/sillytavern/desktop-ui/README.md`（新架构说明，删去 DR-4 等过时段落）、`integrations/sillytavern/README.md:297` 段落。
 
 - [ ] **Step 1: 确认旧代码已清零** —— `ls integrations/sillytavern/extension/vc-model-settings/desktop/*.js` 只剩 `tavern-defaults.js`、`tavern-fields.js`、`tavern-controller.js`（及 `/native/` 仍 import 的文件，逐个注明消费者）；`grep -rn "!important" integrations/sillytavern/desktop-ui/src --include=*.css` 只剩允许的规则。
 - [ ] **Step 2: 全量** —— `bash scripts/check.sh` 通过；T11 的受管场景整组在同一提交上通过。
 - [ ] **Step 3: 回收** —— 删除各任务 worktree、`dev-managed/`、`vc-w03-dr2-*` 容器（`docker ps -a --filter label=com.vc.w03=managed`）。
 - [ ] **Step 4: 提交** —— `git commit -m "docs(DR2-13): 电脑端重建收尾与清单回填"`
 
-### Task 14: 引擎与复杂卡删减（与 T6–T10 并行）
+### Task 14: 锁定源码统一与复杂卡边界收敛（2026-11-05 Owner 批准重开）
 
-**Files:** Modify `extension/vc-model-settings/desktop/standalone/engine/**`、`desktop/standalone/cards/**`、`integrations/sillytavern/patches/helper-selfhost-runtime-assets.json`、`desktop-ui/vite.config.mjs`（alias）、`scripts/build-desktop.mjs`。
+**状态：进行中。** 旧轮次仅完成 A 批 4/9、B 批 0/18；`4500c648` 与 `56e0a9d7` 的验证不代表本次完成。Owner 已批准实施 Helper 上游编译及以下修复，撤销“11 个模块整体延后”和“与上游一致故不修”的旧豁免。T15 后直接目标按当前源码核对：14 个 Helper API 文件、1 个宿主文件、1 个类型文件；不以文件数量代替行为验收。
 
-**Interfaces:** 对外接口不变：`createChatEngine`、`initializeCards`、`readGenerationResponse` 签名与返回值不变。
+**调度与集成：** 本会话主代理 GPT-6 Astra / Max，唯一集成工作树 `/Users/hxf/projects/virtual-companion-desktop-rebuild`、分支 `desktop-react-rebuild`。前端和浏览器引擎实施使用 `/Users/hxf/.local/bin/agy --model gemini-4-argon-high`；非前端构建契约、测试与调查按明确 ownership 委派。各实施 worktree 只产生未提交 diff，由主代理审计、集成、小步提交并立即推送当前跟踪分支。此处覆盖第 0 节旧的任务自行提交约定；不改变 Fast 设置。
 
-依据 2026-11-04 摸底（`engine/st/**` 28 个文件：只改 import 路径 14、去 DOM 12、逻辑改动 2；字节级相同 0）：
+**边界：** 对外 `createChatEngine`、`initializeCards`、`readGenerationResponse` 保持契约。Session/F2/CAS 是消息和变量唯一写入 owner；保持“结构操作 → 刷新 → RENDERED 异步回写 → 单次 F2 提交”。受信复杂卡、EJS、MVU 继续可用；普通模型/导入消息不得因 HTML/EJS 文本自动取得执行权限。不得引入完整/隐藏原生宿主、空 stub 或第二条持久化链。
 
-- **批 A（0 补丁，9 个）**：`cards/` 下 5 个 iframe 内置脚本（`adjust_iframe_height.js`、`adjust_viewport.js` 等，与上游 `JS-Slash-Runner/src/iframe/*.js` 字节一致）改为由 `helper-selfhost-runtime-assets.json` 从上游复制到受管运行副本并按该路径加载；`engine/events.js` → `/lib/eventemitter.js`、`engine/st/constants.js` → `/scripts/constants.js`、`engine/st/events.js` → `/scripts/events.js`、`cards/showdown-underscore.js` → `/scripts/showdown-underscore.js`。
-- **批 B（alias 重绑，18 个）**：`engine/st/scripts/macros/**`（`macro-system.js`、7 个 `definitions/*.js`、7 个 `engine/*.js`）与 `cards/{message-formatter,showdown-exclusion,account-storage}.js`：Vite alias 把上游对 `/script.js`、`/scripts/power-user.js`、`/scripts/group-chats.js`、`/scripts/textgen-settings.js`、`/scripts/RossAscends-mods.js`、`/scripts/extensions.js` 的 import 重定向到 `engine/ports.js`，`MacroDiagnostics.js` 保留本地 39 行桩；保留 `#chat .mes[mesid]` 与 `SillyTavern.getContext().variables`。
-- **批 C（保留，约 30 个）**：去 DOM / 逻辑改动的文件保留拷贝，文件头注明差异原因。Helper 的 11 个手写模块"改为构建时编译上游 `src/function/*.ts`"**本次不做**（需 alias 掉 Pinia store，风险高于收益），记入 backlog 末尾供以后评估。
-- 不修设计第 6 节列出的四个"与上游一致"问题；AGPL 声明与 `ST-LICENSE` 保留。
+**Files（相对 `integrations/sillytavern/`）：** `extension/vc-model-settings/desktop/standalone/{engine,cards}/**`、直接受影响的 `session.js` / React `runtime` 与聊天窗口供值；`scripts/build-desktop.mjs` 及其必要生成模块、`desktop-ui/vite.config.mjs`、`patches/{helper-selfhost-runtime-assets,ejs-desktop-runtime}.json`、锁定输入准备入口、`.github/workflows/ci.yml`（仓库根）、现有相关离线与受管测试、README / notices。仅修改已批准六类问题的直接消费者；新增文件须对应本节明确验收。
 
-- [ ] **Step 1: 冻结基线** —— 运行受管 `--filter nf-prompts,nf-regex,nf-chat,nf-cards` 与离线单测，记录通过。
-- [ ] **Step 2: 批 A** → 重跑 Step 1 全通过 → **Step 3: 批 B** → 重跑全通过。
-- [ ] **Step 4: 提交** —— `git commit -m "refactor(DR2-14): 引擎与复杂卡复用锁定上游模块"`
+| 批次 | 实施内容与唯一责任范围 | 验收 / 依赖 |
+| --- | --- | --- |
+| R0 基线 | 冻结现有生产入口、合成数据和失败回归，核对锁文件与真实消费者；主代理更新本计划、Backlog、TODO | 旧调查的构建/单测/攻击验证仍为 NOT_RUN，必须实际运行并记录 |
+| R1 边界与实例 | agy：普通内容与显式受信卡能力；附件规范化来源和跨源跳转；诊断脱敏；稳定 iframe 实例的事件/宏/注入/按钮清理与 account-storage 归属 | 合成攻击、合法下载、实例换序/销毁/重建、迟到回调；保留 B6 |
+| R2 数据与异步 | agy：作者注释、await 提示词钩子、异步注入过滤、swipe 投影；真实 React 80 条窗口和启用扩展供值 | 同输入提示词、候选记录保留、F2 保存重载、真实窗口；与 R1 按文件拆分 |
+| R3 唯一构建链 | 构建 owner：锁定源码离线生成统一模块；生产 bundle、HTTP ESM、Node 共用；精确 importer/specifier 和实际图校验、CI 准备、真实许可证 | 不接受目录放行、跳过裸 specifier、解析路径分叉；与 R1/R2 独立并行 |
+| R4 上游替换 | agy：先类型/常量/纯转换/formatter/宏核心，再 Helper 端口；预设 defaults/in_use、JSON/YAML 与 $ 子键、API 表与实际消费者 | 依赖 R1–R3；同输入对比返回/事件/保存/清理，每批切调用者并删除被替代算法 |
+| R5 Slash | agy：锁定 ST parser/closure/scope，Session 命令副作用；中止、parser 选项、闭包、send at/return | 依赖统一生成与稳定端口；不支持的命令/选项明确失败 |
+| R6 生产验收 | 测试 owner：实际发运注册表/formatter 和独立 realm 对照，修复源码图替身与必需资源失败被忽略问题；主代理关键 diff 审计、整合 | 相关差分、F2/CAS/身份/脱敏、原生路径、受管整组和最终必要检查 |
+
+- [ ] R0：核对实际锁定 ST / Helper 提交，新增针对真实缺陷的失败回归；先记录最小基线，避免全库重新调查。
+- [ ] R1–R3：明确实例和写入端口；修复安全、数据及生命周期问题；打通唯一生成链。共享文件严格串行，交接后才转 owner。
+- [ ] R4：按纯逻辑 → 宿主端口迁移 ST / Helper，删除替代实现；缺失 API 依据 EJS/MVU/实际卡片消费者实现或显式拒绝。
+- [ ] R5：替换简化 Slash 解析器并覆盖真实命令选项、闭包和取消语义。
+- [ ] R6：稳定候选运行 `bash scripts/check.sh`、桌面 Vitest / 类型 / 双构建及受影响原生检查；相关受管筛选使用 `nf-prompts,nf-chat,nf-cards,dr2-mvu-new`（`nf-regex` 是 fixture ID，不是场景）。验证实际发运产物，必需卡片资源失败使场景失败。
+- [ ] 回填本计划、Backlog 和 TODO 的实际结果，按 OP-11 定向回收本次无用资源；若改变正常 UI，再按 DESIGN.md 做 390/1440 明暗截图，不扩大为视觉重设计。
+
+**停止条件：** 上述真实错误修复、统一锁定源码和消费者、替代算法删除、实例/写入归属明确、必要差分与集成验证通过且文档回填后结束 T14。仅实质产品选择或授权缺口暂停依赖部分；不因上游闭包复杂或实现成本大整体延后。不得合并 main、开 PR、部署或推进 `mb-mobile` 联合发布。
 
 ### Task 15: Tavern Helper 接口补齐（与 T14 串行，同一写入 owner）
 

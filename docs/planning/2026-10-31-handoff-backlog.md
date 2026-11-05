@@ -450,13 +450,13 @@ Owner 选择 React，要求保留现有正常 UI、优先复用成熟开源组�
 | DR2-11 | P1 | 受管场景、页面接线与原生 B10 | 18 项整组，覆盖宽窄窗口、生成、复杂卡、手机及 F2 |
 | DR2-12 | P1 | 四档窗口明暗矩阵与独立视觉复审 | 169 张矩阵、问题修复及当前候选的独立视觉结论 |
 | DR2-13 | P1 | 旧代码收尾、同提交全量验证与清单回填 | 标准检查、Vitest、T11 整组、README 和本次临时资源回收 |
-| DR2-14 | P1 | 引擎与复杂卡复用锁定上游 | 提示词与生成等价、复杂卡回归、记录仍需本地保留的模块 |
+| DR2-14 | P1 | **已批准重开 / 进行中**：锁定源码统一、内容与请求边界、数据/实例归属、Helper 与 Slash 收敛 | 统一 bundle/HTTP ESM/Node、删除替代算法、真实生产差分与 F2/CAS/隔离/清理；详见计划 Task 14 的 R0–R6 |
 | DR2-15 | P1 | 常用 Tavern Helper 接口批 1–3 | MVU/EJS、世界书、消息写入、宏与显式不支持接口 |
 
-### 待 Owner 评估
+### 后续独立事项（不阻塞已获批的 DR2-14）
 
 - 合并与部署前需和 `mb-mobile` 一起验收和发布，在 [Dockerfile.st](../../ops/deploy/v2/Dockerfile.st) 增加 `mobile-dist` 构建，确认 `/m/` 可访问并连接 `/native/`。
-- 评估将 11 个手写 Helper 模块改为构建时编译锁定上游 TS（DR2-14）。需要先评估 Pinia 等原生宿主依赖的替换成本及卡片行为等价性。
+- DR2-14 的 Helper 编译与六类补充修复已于 2026-11-05 获 Owner 批准并重开，不再属于待评估项；当前范围、分批、验证与停止条件以计划 Task 14 为准。未引入新的发布授权。
 - DR2-15 留下的 Helper 接口目前没有已知卡片消费者。调用时抛出 `VC_HELPER_UNSUPPORTED:<name>`。下表对应当前源码中的显式不支持项。[桌面 Helper 运行入口](../../integrations/sillytavern/extension/vc-model-settings/desktop/standalone/cards/index.js)
 - MB 完成后评估清理 `/native/` 中 uni-app 已接管的旧手机外壳，例如标签栏、会话列表与手机页面栈。先确认 uni-app 切进 ST 视图时旧外壳不会露出，返回及原生卡片路径仍可用。
 
