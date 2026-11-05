@@ -53,11 +53,18 @@
     }
   }
 
+  @container (max-width: 520px) {
+    .vc-inbox-route {
+      padding: var(--vc-space-md);
+    }
+  }
+
   .vc-inbox-route__main,
   .vc-inbox-route__aside {
     display: flex;
     flex-direction: column;
     gap: var(--vc-space-md);
+    min-width: 0;
   }
 
   .vc-inbox-card {
@@ -68,6 +75,12 @@
     display: flex;
     flex-direction: column;
     gap: var(--vc-space-sm);
+    min-width: 0;
+  }
+
+  .vc-policy-form {
+    container-type: inline-size;
+    container-name: vc-policy;
   }
 
   .vc-inbox-card__header {
@@ -132,10 +145,61 @@
     gap: var(--vc-space-sm);
   }
 
+  .vc-policy-form__modes {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--vc-space-xs);
+  }
+
   .vc-policy-form__quiet-grid {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: var(--vc-space-sm);
+  }
+
+  .vc-policy-form__quiet-grid .vc-field__row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .vc-policy-form__quiet-grid .vc-field__label {
+    white-space: nowrap;
+  }
+
+  .vc-policy-form__quiet-grid .vc-field__control-col,
+  .vc-policy-form__quiet-grid .vc-text-input {
+    width: 100%;
+    max-width: none;
+  }
+
+  @container vc-policy (max-width: 560px) {
+    .vc-policy-form__quiet-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .vc-policy-form__quiet-grid > :last-child {
+      grid-column: 1 / -1;
+    }
+  }
+
+  @container vc-policy (max-width: 420px) {
+    .vc-policy-form__quiet-grid {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+
+  .vc-inbox-route .vc-segment {
+    max-width: 100%;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .vc-inbox-route .vc-segment::-webkit-scrollbar {
+    display: none;
+  }
+
+  .vc-inbox-route .vc-segment__item {
+    flex-shrink: 0;
+    white-space: nowrap;
   }
 
   .vc-follow-ups__list,

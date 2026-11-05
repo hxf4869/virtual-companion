@@ -9,8 +9,43 @@
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    background: var(--vc-canvas);
+    background: transparent;
     color: var(--vc-ink);
+  }
+
+  .vc-story-tab [hidden],
+  .vc-story-tab .vc-acts .vc-btn[hidden] {
+    display: none;
+  }
+
+  .vc-story-tab .vc-circle {
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    border: 0.5px solid var(--vc-raised-edge);
+    border-radius: var(--vc-radius-pill);
+    display: inline-grid;
+    place-items: center;
+    color: var(--vc-ink);
+    background: var(--vc-raised);
+    cursor: pointer;
+    transition:
+      background var(--vc-dur-quick) var(--vc-ease-out),
+      transform var(--vc-dur-press) var(--vc-spring),
+      opacity var(--vc-dur-quick) var(--vc-ease-out);
+  }
+
+  .vc-story-tab .vc-circle:hover:not(:disabled) {
+    background: var(--vc-hover-fill);
+  }
+
+  .vc-story-tab .vc-circle:active:not(:disabled) {
+    transform: scale(0.94);
+  }
+
+  .vc-story-tab .vc-circle:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
   }
 
   .vc-story-body,
@@ -53,6 +88,7 @@
     overflow-y: auto;
     overflow-x: hidden;
     padding: 24px;
+    background: transparent;
   }
 
   .vc-story {
@@ -155,12 +191,28 @@
   }
 
   .vc-npcs.is-focus .vc-npc:not(.is-on) {
-    opacity: 0.64;
+    filter: saturate(0.3) brightness(0.85);
+    opacity: 0.6;
+    transform: scale(0.92);
+  }
+
+  .vc-npcs.is-focus .vc-npc.is-on {
+    filter: none;
+    opacity: 1;
+    transform: scale(1.08);
+    color: var(--vc-ink);
+    font-weight: 600;
   }
 
   .vc-npc.is-on {
     border-color: var(--vc-accent);
     background: var(--vc-fill);
+  }
+
+  .vc-npc.is-on .vc-npc-avatar {
+    box-shadow:
+      0 0 0 2px var(--vc-surface),
+      0 0 0 4px var(--vc-accent);
   }
 
   .vc-npc-avatar {
@@ -288,7 +340,160 @@
     min-width: 0;
     border: none;
     background: transparent;
+    color: var(--vc-ink);
+    font: inherit;
     resize: none;
+  }
+
+  .vc-story-tab .vc-send {
+    display: grid;
+    place-items: center;
+    width: 36px;
+    height: 36px;
+    flex: none;
+    padding: 0;
+    border: 0;
+    border-radius: var(--vc-radius-pill);
+    background: var(--vc-accent);
+    color: var(--vc-on-accent);
+    cursor: pointer;
+  }
+
+  .vc-story-tab .vc-send:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+  }
+
+  .vc-story-tab .vc-note {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: var(--vc-space-sm);
+    min-height: 44px;
+    margin: 0;
+    padding: var(--vc-space-xs) var(--vc-space-md);
+    border-radius: var(--vc-radius-md);
+    border: 0.5px solid var(--vc-raised-edge);
+    background: var(--vc-raised);
+    color: var(--vc-ink);
+    box-sizing: border-box;
+  }
+
+  .vc-story-tab .vc-note p {
+    margin: 0;
+  }
+
+  .vc-story-tab .vc-note .vc-btn {
+    flex: none;
+  }
+
+  .vc-story-tab .vc-story-notes {
+    display: flex;
+    flex-direction: column;
+    gap: var(--vc-space-xs);
+  }
+
+  .vc-story-tab .vc-story-notes:empty {
+    display: none;
+  }
+
+  .vc-story-tab .vc-story-generating {
+    display: flex;
+    align-items: center;
+    gap: var(--vc-space-xs);
+    color: var(--vc-ink-2);
+  }
+
+  .vc-story-tab .vc-thinking {
+    display: inline-flex;
+    gap: var(--vc-space-xxs);
+  }
+
+  .vc-story-tab .vc-thinking i {
+    width: 6px;
+    height: 6px;
+    border-radius: var(--vc-radius-pill);
+    background: var(--vc-accent);
+    animation: vc-story-dot var(--vc-dur-standard) var(--vc-ease-in-out) infinite alternate;
+  }
+
+  .vc-story-tab .vc-thinking i:nth-child(2) {
+    animation-delay: 120ms;
+  }
+
+  .vc-story-tab .vc-thinking i:nth-child(3) {
+    animation-delay: 240ms;
+  }
+
+  @keyframes vc-story-dot {
+    from {
+      opacity: 0.35;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  .vc-story-tab .vc-group:not(.vc-story-wizard) {
+    border-radius: var(--vc-radius-md);
+    border: 1px solid var(--vc-separator);
+    background: var(--vc-group);
+    overflow: hidden;
+  }
+
+  .vc-story-tab .vc-cell {
+    position: relative;
+    width: 100%;
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 16px;
+    border: 0;
+    background: transparent;
+    color: var(--vc-ink);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    transition: background var(--vc-dur-press) ease;
+  }
+
+  .vc-story-tab .vc-cell:hover:not(:disabled) {
+    background: var(--vc-hover-fill);
+  }
+
+  .vc-story-tab .vc-cell.is-selected,
+  .vc-story-tab .vc-cell[aria-pressed="true"] {
+    background: var(--vc-select-fill);
+    color: var(--vc-accent-text);
+    font-weight: 600;
+  }
+
+  .vc-story-tab .vc-cell:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  .vc-story-tab .vc-cell + .vc-cell::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    right: 0;
+    left: 16px;
+    height: 0.5px;
+    background: var(--vc-separator);
+  }
+
+  .vc-story-tab .vc-meta {
+    color: var(--vc-ink-2);
+    font-size: var(--vc-fs-footnote);
+    line-height: var(--vc-lh-footnote);
+  }
+
+  .vc-story-tab .vc-dim,
+  .vc-story-tab .vc-story-setting {
+    color: var(--vc-ink-2);
   }
 
   /* 五步开局向导 */

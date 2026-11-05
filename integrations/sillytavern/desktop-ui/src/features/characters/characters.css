@@ -7,15 +7,34 @@
         grid-template-columns: minmax(0, 1fr);
         width: 100%;
         height: 100%;
+        min-width: 0;
         min-height: 0;
         overflow: hidden;
-        background: var(--vc-canvas);
+        background: transparent;
         color: var(--vc-ink);
     }
 
-    @container vc-characters (min-width: 920px) {
+    .vc-characters-route.has-detail {
+        grid-template-columns: minmax(0, 1fr) auto;
+    }
+
+    @container vc-main (min-width: 920px) {
         .vc-characters-route.has-detail {
             grid-template-columns: minmax(0, 1fr) 400px;
+        }
+    }
+
+    @container vc-main (max-width: 919px) {
+        .vc-characters-route.has-detail {
+            grid-template-columns: minmax(0, 1fr);
+        }
+    }
+
+    @container vc-characters (min-width: 920px) {
+        .vc-characters-route.has-detail > .vc-character-detail {
+            position: relative;
+            width: 400px;
+            flex: 0 0 400px;
         }
     }
 
@@ -98,7 +117,7 @@
     /* Character Card Grid (DESIGN.md: repeat(auto-fill, minmax(220px, 1fr)), radius 20px, avatar 72px) */
     .vc-character-grid {
         display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+        grid-template-columns: repeat(auto-fill, minmax(min(220px, 100%), 1fr));
         gap: 16px;
         align-content: start;
     }
@@ -221,6 +240,11 @@
             right: 0;
             bottom: 0;
             z-index: 20;
+            width: 400px;
+            max-width: 100%;
+            background: var(--vc-glass-3);
+            backdrop-filter: blur(var(--vc-blur-3)) saturate(180%);
+            -webkit-backdrop-filter: blur(var(--vc-blur-3)) saturate(180%);
             box-shadow: var(--vc-shadow-overlay);
         }
     }

@@ -41,7 +41,10 @@ export function ActionBar({
     visible:
       actionGroup(step) === 'place' ||
       (Boolean(selectedActorId) && step.target === selectedActorId),
-    className: step.action === 'accuse' ? 'vc-btn vc-btn-danger' : 'vc-btn vc-btn-gray',
+    className:
+      step.action === 'accuse'
+        ? 'vc-btn vc-btn--danger vc-btn-danger'
+        : 'vc-btn vc-btn--gray vc-btn-gray',
   }));
 
   const handleSubmitSay = () => {

@@ -6,6 +6,7 @@ import {
   stageWord,
 } from '../../../../extension/vc-model-settings/story-logic.js';
 import type { StoryActorView, StoryRunRecord } from '../../data/queries/story';
+import { Button } from '../../design/components/Button';
 import { Icon } from '../../design/components/Icon';
 import { StartWizard, type StartWizardSuccess } from './StartWizard';
 
@@ -42,16 +43,17 @@ export function StoryList({
   const coverList = coverPeople({ view: activeView });
 
   const startButton = (
-    <button
+    <Button
       type="button"
-      className="vc-btn vc-btn-fill"
+      variant="filled"
+      className="vc-btn-fill"
       data-action={playing ? 'enter' : 'start'}
       disabled={busy}
       onClick={onStartOrEnter}
     >
       <Icon name="play" size={18} />
       {playing ? '继续' : '开局'}
-    </button>
+    </Button>
   );
 
   return (
@@ -75,9 +77,8 @@ export function StoryList({
           {configNote ? (
             <div className="vc-story-config vc-note vc-glass" data-config="missing" role="status">
               <p>{configNote}</p>
-              <button
-                type="button"
-                className="vcms-btn"
+              <Button
+                variant="gray"
                 data-action="configure"
                 onClick={() => {
                   if (onConfigure) onConfigure();
@@ -85,7 +86,7 @@ export function StoryList({
                 }}
               >
                 打开模型设置
-              </button>
+              </Button>
             </div>
           ) : null}
 

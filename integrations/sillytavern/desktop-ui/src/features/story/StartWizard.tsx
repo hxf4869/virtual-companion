@@ -292,7 +292,7 @@ export function StartWizard({ onStarted, onConfigure, onError }: StartWizardProp
                     <button
                       key={actorId}
                       type="button"
-                      className={`vc-btn vc-btn-gray${active ? ' is-selected' : ''}`}
+                      className={`vc-btn vc-btn--gray vc-btn-gray${active ? ' is-selected' : ''}`}
                       data-cast-actor={actorId}
                       aria-pressed={active}
                       disabled={busy}

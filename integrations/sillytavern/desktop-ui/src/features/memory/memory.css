@@ -65,6 +65,12 @@
     }
   }
 
+  @container (max-width: 520px) {
+    .vc-memory-route {
+      padding: var(--vc-space-md);
+    }
+  }
+
   .vc-memory-filters,
   .vc-memory-detail-pane,
   .vc-memory-diary,
@@ -225,6 +231,7 @@
 
   .vc-memory-diary__toolbar {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     justify-content: space-between;
     gap: var(--vc-space-sm);
@@ -232,8 +239,16 @@
 
   .vc-memory-diary__month-nav {
     display: inline-flex;
+    flex-wrap: nowrap;
     align-items: center;
     gap: var(--vc-space-xs);
+    min-width: 0;
+  }
+
+  .vc-memory-diary__month-label {
+    white-space: nowrap;
+    flex-shrink: 0;
+    font-variant-numeric: tabular-nums;
   }
 
   .vc-memory-diary__days {

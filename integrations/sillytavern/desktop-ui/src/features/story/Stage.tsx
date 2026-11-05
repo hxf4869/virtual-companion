@@ -772,14 +772,13 @@ export function Stage({
             {configNote ? (
               <div className="vc-story-config vc-note vc-glass" data-config="missing" role="status">
                 <p>{configNote}</p>
-                <button
-                  type="button"
-                  className="vcms-btn"
+                <Button
+                  variant="gray"
                   data-action="configure"
                   onClick={onConfigure}
                 >
                   打开模型设置
-                </button>
+                </Button>
               </div>
             ) : null}
 
@@ -932,7 +931,7 @@ export function Stage({
                 </Button>
                 <button
                   type="button"
-                  className="vc-btn vc-btn-danger vc-alert__btn--danger"
+                  className="vc-btn vc-btn--danger vc-btn-danger vc-alert__btn--danger"
                   data-vc-ok=""
                   data-action="confirm-accuse"
                   onClick={handleConfirmAccuse}
