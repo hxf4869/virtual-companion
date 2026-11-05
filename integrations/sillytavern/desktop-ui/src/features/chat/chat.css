@@ -1545,12 +1545,9 @@ html[data-vc-app] #toast-container.toast-bottom-right,
 html[data-vc-app] #toast-container.toast-bottom-center,
 html[data-vc-app] #toast-container.toast-bottom-left {
     position: fixed;
-    position: var(--vc-toast-position, fixed);
     z-index: var(--vc-z-toast);
     top: calc(48px + var(--vc-space-sm));
-    top: var(--vc-toast-top, calc(64px + var(--vc-space-sm)));
     left: 50%;
-    left: var(--vc-toast-left, 50%);
     right: auto;
     bottom: auto;
     width: min(calc(var(--vc-read) - 32px), calc(100% - 32px));
@@ -1564,6 +1561,11 @@ html[data-vc-app] #toast-container.toast-bottom-left {
     background: transparent;
     transform: translateX(-50%);
     pointer-events: none;
+}
+
+html[data-vc-app] [data-vc-toast-host] > #toast-container {
+    position: absolute;
+    top: var(--vc-toast-top);
 }
 
 html[data-vc-app] #toast-container > .toast,
