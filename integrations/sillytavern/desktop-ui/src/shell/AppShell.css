@@ -118,6 +118,7 @@
 
   .vc-overlay-host__toast {
     position: fixed;
+    z-index: var(--vc-z-toast);
     top: var(--vc-window-pad);
     bottom: var(--vc-window-pad);
     left: var(--vc-window-pad);
