@@ -430,3 +430,44 @@ Owner 选择 React，要求保留现有正常 UI、优先复用成熟开源组�
 | NF-09 | P1 | 实测性能优化 | 同条件 UI/历史/可发送改善、分离模型耗时 |
 | NF-10 | P1 | 手机宿主地址适配、根入口切换与旧代码清理 | 真实手机消费者先通过，无递归嵌入，桌面无完整宿主 |
 | NF-11 | P1 | 整体验收与可运行候选 | 完整业务/复杂卡/恢复/多端冲突/窗口/主题/构建 |
+
+## K. 电脑端前端重建（DR2）
+
+桌面 `/` 和 `/desktop/` 使用单一 React 应用，手机 `/native/` 继续提供原生宿主。以任务编号对齐设计、计划与验收，实际进度记在 TODO「陪伴体验后续」。[DR2 设计](../superpowers/specs/2026-11-04-desktop-react-rebuild-design.md) · [DR2 计划](../superpowers/plans/2026-11-04-desktop-react-rebuild.md) · [进度](../../TODO.md)
+
+| ID | P | 内容 | 验收要点 |
+| --- | --- | --- | --- |
+| DR2-1 | P1 | 应用模式构建与原生桥分离 | 同源桌面入口、双构建、原生桥 48 个运行时导出 |
+| DR2-2 | P1 | 数据层、导入白名单、F2 与模型投影纯逻辑拆分 | 递归导入边界、F2/CAS、投影与原生调用兼容 |
+| DR2-3 | P1 | 设计 token、分层 CSS 与 Base UI 控件 | 实际 token、键盘焦点、减弱动态与透明度 |
+| DR2-4 | P1 | 壳层、断点与路由 | 四档布局、返回与离开保护、浮层定位 |
+| DR2-5 | P1 | 聊天页与会话桥 | B1–B6、B12/B13，覆盖发送、保存冲突、卡片及媒体回归 |
+| DR2-6 | P1 | 角色页 | B9/B15，覆盖导入、创建向导、实例与人设编辑 |
+| DR2-7 | P1 | 记忆与陪伴页 | 来源定位、记忆纠正与删除、策略与收件箱 |
+| DR2-8 | P1 | 剧情页 | 开局、行动、证物、回档与迟到响应 |
+| DR2-9 | P1 | 产品设置 | B7/B11，覆盖模型、语音、外观、通知、账户与数据、重验和草稿 |
+| DR2-10 | P1 | 酒馆九类设置 | B8/B14，覆盖预设另存、世界书引用清理、409 与编辑器 |
+| DR2-11 | P1 | 受管场景、页面接线与原生 B10 | 18 项整组，覆盖宽窄窗口、生成、复杂卡、手机及 F2 |
+| DR2-12 | P1 | 四档窗口明暗矩阵与独立视觉复审 | 169 张矩阵、问题修复及当前候选的独立视觉结论 |
+| DR2-13 | P1 | 旧代码收尾、同提交全量验证与清单回填 | 标准检查、Vitest、T11 整组、README 和本次临时资源回收 |
+| DR2-14 | P1 | 引擎与复杂卡复用锁定上游 | 提示词与生成等价、复杂卡回归、记录仍需本地保留的模块 |
+| DR2-15 | P1 | 常用 Tavern Helper 接口批 1–3 | MVU/EJS、世界书、消息写入、宏与显式不支持接口 |
+
+### 待 Owner 评估
+
+- 合并与部署前需和 `mb-mobile` 一起验收和发布，在 [Dockerfile.st](../../ops/deploy/v2/Dockerfile.st) 增加 `mobile-dist` 构建，确认 `/m/` 可访问并连接 `/native/`。
+- 评估将 11 个手写 Helper 模块改为构建时编译锁定上游 TS（DR2-14）。需要先评估 Pinia 等原生宿主依赖的替换成本及卡片行为等价性。
+- DR2-15 留下的 Helper 接口目前没有已知卡片消费者。调用时抛出 `VC_HELPER_UNSUPPORTED:<name>`。下表对应当前源码中的显式不支持项。[桌面 Helper 运行入口](../../integrations/sillytavern/extension/vc-model-settings/desktop/standalone/cards/index.js)
+- MB 完成后评估清理 `/native/` 中 uni-app 已接管的旧手机外壳，例如标签栏、会话列表与手机页面栈。先确认 uni-app 切进 ST 视图时旧外壳不会露出，返回及原生卡片路径仍可用。
+
+| Helper 分组 | 暂未支持的接口 |
+| --- | --- |
+| 音频 | `audioEnable`、`audioImport`、`audioMode`、`audioPlay`、`audioSelect`、`playAudio`、`pauseAudio`、`getAudioList`、`replaceAudioList`、`appendAudioList`、`getAudioSettings`、`setAudioSettings`、`getCurrentAudio`、`playSound` |
+| 扩展管理 | `isAdmin`、`getTavernHelperExtensionId`、`getExtensionType`、`getExtensionInstallationInfo`、`getExtensionStatus`、`isInstalledExtension`、`installExtension`、`uninstallExtension`、`reinstallExtension`、`updateExtension` |
+| 文件与原始导入 | `getTavernFile`、`uploadTavernFile`、`deleteTavernFile`、`importRawCharacter`、`importRawPreset`、`importRawChat`、`importRawWorldbook`、`importRawTavernRegex` |
+| 版本与宿主探测 | `updateTavernHelper`、`updateFrontendVersion`、`isFrontend` |
+| 角色写入 | `createCharacter`、`deleteCharacter`、`replaceCharacter`、`updateCharacterWith`、`createOrReplaceCharacter`、`setCurrentCharacter` |
+| 人设写入 | `createPersona`、`deletePersona`、`replacePersona`、`updatePersonaWith`、`createOrReplacePersona`、`setCurrentPersona` |
+| 预设写入 | `loadPreset`、`createPreset`、`deletePreset`、`createOrReplacePreset`、`renamePreset`、`replacePreset`、`updatePresetWith`、`setPreset` |
+| 正则写入 | `replaceTavernRegexes`、`updateTavernRegexesWith` |
+| `builtin.*` | `addOneMessage`、`getImageTokenCost`、`getVideoTokenCost`、`promptManager`、`reloadAndRenderChatWithoutEvents`、`reloadChatWithoutEvents`、`reloadEditor`、`reloadEditorDebounced`、`renderPromptManager`、`renderPromptManagerDebounced` |

@@ -1,75 +1,60 @@
-# 桌面自有界面
+# 桌面 React 应用
 
-React + TypeScript + Vite。NF 桌面沿用本工程，逐批接管启动、消息、输入与设置；仍有消费者的原生宿主路径保留。
+受管宿主在同源 `/` 和 `/desktop/` 提供同一个 React 19 + TypeScript + Vite 应用。SillyTavern 插件负责鉴权和提供静态资源，TanStack Router 使用 hash 路由。手机 H5 从 `/m/` 启动，经 `/native/` 使用完整的原生 ST 宿主。桌面与手机共用 Go/ST 服务和 F2 聊天存储。
 
-- 首次使用运行 `npm ci --prefix integrations/sillytavern --include=dev`。
-- `npm --prefix integrations/sillytavern run check:desktop`：类型检查。
-- `npm --prefix integrations/sillytavern run build:desktop`：构建同源 ES 模块到扩展 `desktop/build/`，同时写入实际打包依赖的许可；覆盖一份输出，不入库。
-- `npm --prefix integrations/sillytavern test`：先构建再运行离线单测；直接运行 Node 单测前也须完成一次构建。
-- 受管装配自动构建；在纯静态 UX-11 样板上调试前先构建。
-- 通用交互先查 Base UI/shadcn/ui 官方组件和维护中的 GitHub 开源实现，现有库可满足时不自写键盘、焦点或弹层状态机。
-- 沿用现有 `.vc-*` 类、语义 token 和素材。第一批 `Switch`/`Segment` 使用 Base UI，皮肤不重新定义；没有消费者的组件不引入。
-- 业务设置通过页面 props 的动作调用原模块；组件只保留本次编辑/展示状态，不复制持久化状态或生成链。
-- 现有壳在移除容器前调用挂载入口返回的卸载函数；同一子树只有一个渲染 owner。
-- 有意视觉调整先出图并取得 Owner 确认；内部迁移用同数据、同视口前后对照。
+## 代码边界
 
-公共壳层使用 Base UI Button / Avatar；侧栏采用 shadcn SidebarMenuButton / SidebarMenuBadge 的独立槽位组合，许可保留在 `THIRD_PARTY_LICENSES.txt`，构建时一并自托管。图标沿用原 Lucide sprite。
-
-`mountSidebarView` 只渲染 `.vc-sidebar-content` 内部；选中镜片留在边界外，原控制器通过 props 同步选中、收展、未读与头像。设置分类、标题与保存动作由 `SettingsFrame` 管理，原控制器通过 props 更新；页面与宿主内容使用没有 React children 的独立槽位。禁止在这些 React 子树里用原生 DOM 更新角标或头像。
-
-`dr-shell` 受管场景覆盖窗口断点、图标/头像中心、角标、模型页分类按钮和键盘导航。`--compare-reference` 严格比较正常 1440/390、侧栏悬停和宽屏模型页的全部像素；参照由固定旧 Git 代码生成，修复的 864 状态保留前后截图并校验几何关系。截图覆盖写入一套 `.review-queue/DR-4A/`。
-
-计划见[后台重构计划](../../../docs/planning/2026-11-02-desktop-frontend-refactor-plan.md)，DR-1–DR-7及公共壳层已接入，DR-8汇总集成结果。
-
-模型页由单一 `ModelPage` root 管理，业务控制器继续复用原API和model-logic。语音字段由共享 `VoiceForm` 管理；账户/数据/通知入口为 `SettingsOverview`，账户内容为 `AccountContents`，密码只从原生非受控表单读取并在结束时重置。分类切换、侧栏离开和销毁均先卸载相关root；禁止原生控制器写入其内部节点。
-
-DR-4候选：`SettingsFrame`与`ShellFrame`管理自有导航、标题和公共容器；外部角色面板、搜索工具及ST正文各有无React children的明确槽位。搜索状态通过回调返回props，不能直接改写React拥有的节点。`AccountDialog`、`ConsentGate`、通用`AlertView`/`SheetView`消费Base UI Dialog/AlertDialog/Collapsible。`overlayMount`只桥接真实imperative消费者的React上下文，临时子确认随父层销毁；独立全屏账户页保持独立生命周期，被覆盖的共享设置Sheet通过库的open状态暂停交互。
-
-`dr-overlays`沿用受管入口，冻结正常视觉并检查锚点、几何、焦点、返回、缩窗与宿主节点身份。旧桌面账户确认框的40px窄列属于已确认异常：旧图保留，候选验正确两列，其余正常图仍严格比较。菜单的物理像素取整和标准Tab离开已获Owner确认；41图及真实交互通过。独立root接入文档，imperative锚点的Tab只调用库公开close，不自写焦点循环。
-
-DR-5候选：角色列表/详情与实例弹窗、人设编辑在`features/characters/`；记忆视图按`features/memory/`的Parts/List/Detail/Contents拆分，日记/收藏为实际复用的子视图。控制器继续负责数据与原API，表单经props同步，不重建输入或修补光标。页面栈在退出动画完成、删除节点之前卸载组件；普通页面也登记弹层owner，父root卸载会释放其未完成确认。
-
-`dr-pages`调用真实生产挂载，预览只提供合成API和宿主边界。角色40对、记忆58对、陪伴64对共162对严格像素对照；输入/草稿、保存等待、跨断点焦点、短窗可达、子弹层销毁和内联按钮Esc有真实浏览器回归。陪伴列表/渠道/经典弹窗与验证内容位于`features/inbox/`；外部触发弹层以owner关联页面，host与opener各保留其原语义。DR-5本地候选完成。
-
-
-聊天自有界面位于`features/chat/`，剧情、灯箱、贴纸设置及语音气泡位于`features/story/`。控制器只投影展示数据与原业务动作；ST消息、原生输入、脚本卡、媒体服务和生成链保留原owner。公共菜单/确认层经`overlayMount`进入实际父页面的React树，退出或宿主移除时卸载，不能直接改写React内部节点。
-
-从仓库根目录运行下列既有场景；纯合成样板不访问11080。`--compare-reference`需要本worktree的`.review-queue/DR-*/`冻结旧源码/截图；缺失时不得用候选生成旧基线。所有对照使用原皮肤，无全局reset或默认组件库主题。
-
-| 入口 | 范围 |
+| 目录 | 职责 |
 | --- | --- |
-| `node integrations/sillytavern/scripts/desktop-appearance-accept.mjs --compare-reference` | 外观偏好、键盘与正常视觉 |
-| `node integrations/sillytavern/scripts/desktop-shell-accept.mjs --compare-reference` | 三处对齐、收展、断点及125/150/200% CSS视口+DPR模拟 |
-| `node integrations/sillytavern/scripts/desktop-models-accept.mjs --compare-reference` | 模型38图及保存/冲突/迟到响应 |
-| `node integrations/sillytavern/scripts/desktop-settings-accept.mjs --compare-reference` | 设置84图及语音/账户/敏感操作 |
-| `node integrations/sillytavern/scripts/desktop-overlays-accept.mjs --compare-reference` | 公共弹层41图、锚定/焦点/生命周期 |
-| `node integrations/sillytavern/scripts/desktop-overlays-accept.mjs --chat-widgets --compare-reference` | 聊天自有控件96图、宿主节点与切会话边界 |
-| `node integrations/sillytavern/scripts/desktop-pages-accept.mjs --feature all --compare-reference` | 角色/记忆/陪伴162图及实际操作 |
-| `node integrations/sillytavern/scripts/desktop-pages-accept.mjs --feature rich --compare-reference` | 剧情/灯箱/贴纸/语音64图及首次展开、媒体清理 |
+| `src/app/` | 启动、路由、Provider 与同意门禁接线 |
+| `src/shell/` | 导航、极光、浮层宿主和离开保护。`useChrome.ts` 按 `744 / 1180 / 1600px` 切换四档桌面布局 |
+| `src/design/` | 设计 token、分层 CSS 和 Base UI 控件皮肤。组件尺寸适配使用容器查询 |
+| `src/features/` | 聊天、角色、记忆、陪伴、剧情及产品与酒馆设置 |
+| `src/data/` | TanStack Query、API 接线、读写缓存与失效 |
+| `src/runtime/` | SessionBridge 提供会话订阅与命令。`desktop/standalone/session.js` 持有消息、流式状态与 F2 保存 |
+| `src/bridge/` | 原生 ST 的库模式挂载入口，提供旧原生控制器所需的 48 个运行时导出 |
 
-每批截图覆盖写一套after，before/reference不可覆盖。DR-6的ready参照固定补取完成及panel.refresh，原始诊断帧保留；公共壳层聊天对照复用该真实生产基线。刷新保留高亮已获Owner确认，4张建议回复帧另用accepted-selection，其余92张仍严格对原before；批准参照由冻结旧实现取得原皮肤的选中态，候选不补写选中。历史回放配对DR-7冻结的stickers.js与旧Sheet接口。DR-3历史语音截图只回放固定Git旧角色背景，交互前解除路由，角色生产页单独严格验证。不通过改文案、遮罩或阈值解决不同样板条件。
+React 负责桌面页面和消息 DOM。`desktop/standalone/cards/` 负责 Helper / EJS / MVU iframe 与脚本生命周期，React 提供独立挂载节点。桌面应用对扩展纯逻辑和运行模块的导入由 [递归白名单测试](../tests/desktop-import-boundary.test.mjs) 约束。布局、色彩和交互遵循 [DESIGN.md](../../../DESIGN.md)；范围与分工见 [DR2 计划](../../../docs/superpowers/plans/2026-11-04-desktop-react-rebuild.md)。
 
-完整宿主走查仍使用`accept-managed.mjs --filter vc-ui-walkthrough`，需已安装的Chrome与隔离栈，覆盖360/390/768/1024/1280/1440明暗。走查产物从当前受管入口的`ctx.artifactsDir`取得位置，在同级`walkthrough-latest/`覆盖保留一套；不会写入另一worktree的运行目录。真实provider、TTS、通知、手工浏览器缩放及手机软键盘不由这些合成场景证明。
+## 扩展目录保留项
 
+以下路径位于 `extension/vc-model-settings/desktop/`。原生扩展入口是 `../index.js`，UX-11 合成样板的入口是 `docs/product/v2-redesign/ux11/preview.js`。
 
-NF 电脑端替换使用同一工程与构建，不新建应用。开发入口 `/desktop/` 由原 host-auth 绑定账号/会话，直接返回自有 HTML；
-`extension/vc-model-settings/desktop/standalone/` 接入原 API、React 视图、主题和页面控制器，不导入完整 ST 启动入口。
-NF-01 只接通导航、历史和设置容器；发送与复杂卡验收分别在 NF-02–04，不将可编辑草稿当作可发送。
-受管 `accept-managed.mjs --filter nf-desktop` 延迟真实聊天准备模块，操作导航/设置/历史并检查实际请求与 iframe。
-唯一计划和后续范围见 `docs/planning/2026-11-02-desktop-frontend-refactor-plan.md` §11；根入口保留到 NF-10。
+| 文件 | 当前消费者 |
+| --- | --- |
+| `tavern-controller.js` | 桌面 `src/data/queries/tavern.ts`、`src/features/tavern/CodeField.tsx` |
+| `tavern-defaults.js`、`tavern-fields.js` | `tavern-controller.js` 的默认数据和字段定义 |
+| `notify.js` | 原生 `shell.js` 的收件箱角标和通知，样板 `settings-shell.js` 的通知权限 |
+| `presentation.js` | 原生角色、记忆、收件箱与剧情控制器读取宿主布局 |
+| `quick-switch.js` | 原生 `chat-view.js` 静态依赖，宽窗诊断和旧样板可挂载 |
+| `status-card.js` | `shell.js` 的宽窗动态入口，UX-11 样板和独立状态卡单测 |
+| `suggest.js` | 原生 `chat-react.js` 的回复建议，样板 `appearance.js` 的建议开关 |
+| `transition.js` | 原生 `shell.js`、`chat-react.js`、`chat-search.js`、`lightbox.js` 的动效，以及 UX-11 样板 |
+| `aurora.js`、`pointer-light.js` | UX-11 样板的极光和指针光，`aurora.js` 还由 `ambient.test.mjs` 消费 |
+| `settings-shell.js` | UX-11 样板的设置入口与设置卸载单测 |
+| `settings-voice.js`、`appearance.js` | `settings-shell.js` 的语音与外观分支，外观也用于旧 DR 对照 |
+| `theme.js` | UX-11 样板、`appearance.js` 与新旧主题偏好兼容验证 |
 
-NF-02 的 `desktop/standalone/engine/` 定向保留锁定 ST 的角色字段、世界书扫描/递归/定时效果、两代宏、正则、
-PromptManager、预算与 Chat Completion 请求计算。状态、tokenizer、世界书读取、事件与媒体资源显式注入；不导入
-`/script.js`、原生设置控件或扩展自动启动。`st/lib.js` 仅复用同源纯第三方库，原 AGPL 许可随源码保留。
-项目记忆、陪伴、剧情与模型投影继续使用原模块；卡片运行模块和发送/保存 owner 分别按 NF-04、NF-03 接线。
-`accept-managed.mjs --filter nf-prompts` 在真实发送前截住原生请求，与独立计算的最终 JSON、变量、世界书状态、
-历史窗口及事件时序逐项对照；覆盖 Chat、Responses、Claude 和旧宏引擎，只用合成输入，不调用模型。
+`/native/` 固定使用原生手机布局，`nf-startup`、`f2-native` 和 `mb-engine` 覆盖其宿主行为。旧宽窗与 UX-11 样板保留的模块用于诊断和视觉对照。电脑端门禁走下面的 `dr2-*` 和 `nf-*` 场景。
 
-NF-03 的 `standalone/session.js` 管理打开、输入、取消和F2保存；React拥有消息与输入，重用原流式解析与回复清理。
-`accept-managed.mjs --filter nf-chat` 用真实合成provider验证三协议的流式/非流式、原quiet规划、刷新、停止、断流、
-CAS冲突和草稿。F2冲突弹层沿原视觉，以动作回调接独立会话；原生手机宿主继续使用默认动作。
+## 构建与验证
 
-NF-04 的 `standalone/cards/` 给原EJS、Helper叶子与MVU提供上下文、F2、原角色/预设/设置和独占渲染槽位。
-受管装配生成EJS显式入口与MVU桌面派生物，原算法/许可与原生路径保留；卡片iframe仅包含卡片内容或脚本。
-`accept-managed.mjs --filter nf-cards` 验InitVar→世界书/EJS→生成→MVU→面板→F2/刷新、下一轮变量、编辑重处理、历史重演、
-六类变量存储及worker/sandbox；完整媒体和消息操作继续NF-05，产品/酒馆设置继续NF-06–07。
+从仓库根目录运行。首次准备按 [ST 集成说明](../README.md#首次准备) 安装 Node 22.13+ 依赖并装配锁定上游。
+
+```bash
+npm --prefix integrations/sillytavern run check:desktop
+npm --prefix integrations/sillytavern run build:desktop
+npm --prefix integrations/sillytavern run test:desktop
+bash scripts/check.sh
+```
+
+构建覆盖两份忽略的产物及其许可清单。桌面应用写到 `server-plugin/virtual-companion/desktop/app/`，原生桥写到 `extension/vc-model-settings/desktop/build/index.js`。受管装配会重建两者。直接跑离线 Node 单测前先构建。
+
+在 [隔离受管环境](../README.md#受管端到端验收scriptsaccept-managedmjs) 上运行 T11 整组。`catalog-admin` 由场景依赖自动补齐，总计 18 项。`nf-prompts` 包含正则参与实际生成的断言。`dr2-pages` 需要本机 `127.0.0.1:11438` 上的 `qwen3-embedding:0.6b`，`mb-engine` 需要同分支验收约定的手机 H5 产物。
+
+```bash
+node integrations/sillytavern/scripts/accept-managed.mjs --filter \
+  dr2-layout,dr2-mvu-new,dr2-settings,dr2-pages,nf-startup,nf-desktop,nf-chat,nf-operations,nf-prompts,nf-cards,nf-media,nf-tavern,nf-business,nf-settings,f2-browser,f2-native,mb-engine
+```
+
+重采 T12 矩阵时用 `--filter dr2-layout --capture`，并以 `VC_DR2_REVIEW_DIR` 指定本轮目录。设置 `VC_DR2_REVIEW_STATE` 可只采某个状态。各轮结论见 [DR2 复审记录](../../../.review-queue/DR2/NOTES.md)。

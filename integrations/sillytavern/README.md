@@ -294,7 +294,7 @@ W03 集成收口的受管链路：ST 前台生成经 server plugin 桥接 Go 后
 
 ## 桌面 React 自有界面
 
-正式电脑端在同源 `/` 独立启动，`/desktop/` 是同一应用的别名。React、Base UI、原 CSS/token 与 Go/ST 服务复用；桌面不加载完整 ST 页面或隐藏宿主。手机原生引擎使用明确的 `/native/`，保留原生卡片/配置消费者与同一 F2 聊天存储。构建约定见[desktop-ui 开发说明](desktop-ui/README.md)，各批结果见[唯一重构计划 §11](../../docs/planning/2026-11-02-desktop-frontend-refactor-plan.md)。`npm test` 与标准检查先重建同源 bundle。
+正式电脑端在同源 `/` 和 `/desktop/` 启动同一个 React 应用。React 管理页面、消息与输入，SessionBridge 接入既有会话和 F2 保存，Helper/EJS/MVU iframe 由独立卡片运行模块管理。构建分别生成 `server-plugin/virtual-companion/desktop/app/` 与原生扩展的 `desktop/build/`。手机原生引擎使用 `/native/`，由原生 ST 与桥接 bundle 提供卡片和配置，沿用同一 F2 聊天存储。架构、双构建和受管场景见 [desktop-ui 开发说明](desktop-ui/README.md)，当前任务见 [DR2 backlog](../../docs/planning/2026-10-31-handoff-backlog.md#k-电脑端前端重建dr2)。
 
 手机源码仍在 `mb-mobile`，联合候选为 `ff2af0c0`（含 `993fb625` 地址适配及原生后台F2冲突处理）；本分支不合入该分支的手机业务或 Go 变更。联合受管验收在手机工作树运行既有 `npm --prefix mobile run build:h5`，将生成的 `server-plugin/virtual-companion/mobile-dist/` 复制到当前插件同路径，再运行原 `assemble-managed` / `accept-managed`。产物固定覆盖一份、忽略不提交；缺少 H5 时 `/m/` 明确返回 503，不能拿桌面根页充当手机引擎。联合发布须带该新版 H5，本轮未进行生产镜像构建或部署。
 
