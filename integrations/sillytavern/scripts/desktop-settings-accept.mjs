@@ -585,6 +585,7 @@ export async function sceneDesktopProductSettings(ctx) {
         const binding=page.locator('select[data-bind="binding.FOREGROUND_CHAT"]');await binding.selectOption('vc03m-resp::reasoning');
         const bound=page.waitForResponse(response=>response.url().endsWith('/model-purposes/FOREGROUND_CHAT')&&response.request().method()==='PUT');
         await page.locator('[data-action="save-bindings"]').click();assert.equal((await bound).status(),200);
+        await page.locator('[data-action="save-bindings"]').waitFor({state:'hidden'});
         await go('chat');await waitChat();await page.waitForFunction(()=>!document.querySelector('#send_but')?.disabled);
         assert.deepEqual(await page.evaluate(()=>Object.fromEntries(Object.entries(SillyTavern.getContext().eventSource.events).map(([key,value])=>[key,value.length]))),listeners,'目录刷新不得重复注册钩子');
         assert.equal(await page.locator('#send_textarea').inputValue(),'NF06 保留草稿');
@@ -596,6 +597,7 @@ export async function sceneDesktopProductSettings(ctx) {
         await open('model');await page.getByRole('tab',{name:'用途绑定',exact:true}).click();await page.locator('[data-bind="bindingState.FOREGROUND_CHAT"]').uncheck();
         const disabled=page.waitForResponse(response=>response.url().endsWith('/model-purposes/FOREGROUND_CHAT')&&response.request().method()==='PUT');
         await page.locator('[data-action="save-bindings"]').click();assert.equal((await disabled).status(),200);
+        await page.locator('[data-action="save-bindings"]').waitFor({state:'hidden'});
         await go('chat');await page.getByRole('button',{name:'去设置',exact:true}).waitFor({state:'visible'});
         assert.equal(await page.locator('#send_but').isDisabled(),true);
         const noModelsBefore=await models(),unconfigured=await context.newPage();
@@ -611,6 +613,7 @@ export async function sceneDesktopProductSettings(ctx) {
         at('restore-binding');await open('model');await page.getByRole('tab',{name:'用途绑定',exact:true}).click();await page.locator('[data-bind="bindingState.FOREGROUND_CHAT"]').check();
         const enabled=page.waitForResponse(response=>response.url().endsWith('/model-purposes/FOREGROUND_CHAT')&&response.request().method()==='PUT');
         await page.locator('[data-action="save-bindings"]').click();assert.equal((await enabled).status(),200);
+        await page.locator('[data-action="save-bindings"]').waitFor({state:'hidden'});
         await go('chat');await waitChat();await page.locator('#send_textarea').fill('NF06 配置恢复草稿');await page.waitForFunction(()=>!document.querySelector('#send_but')?.disabled);
         assert.deepEqual(await page.evaluate(()=>Object.fromEntries(Object.entries(SillyTavern.getContext().eventSource.events).map(([key,value])=>[key,value.length]))),steadyListeners,'多次保存模型设置后运行模块仍只有一个owner');
         at('late-conversation');
