@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import Lightbox from 'yet-another-react-lightbox';
 import Zoom from 'yet-another-react-lightbox/plugins/zoom';
@@ -246,6 +246,16 @@ export function MessageList({
         () => (hiddenCount > 0 ? messages.slice(hiddenCount) : messages),
         [messages, hiddenCount],
     );
+    const firstDisplayedMessageId =
+        visibleMessages.length > 0 ? visibleMessages[0].index : null;
+
+    useLayoutEffect(() => {
+        if (!activeKey) return undefined;
+        bridge.setFirstDisplayedMessageId(activeKey, firstDisplayedMessageId);
+        return () => {
+            bridge.setFirstDisplayedMessageId(activeKey, null);
+        };
+    }, [bridge, activeKey, firstDisplayedMessageId]);
 
     const lightboxSlides = useMemo(() => {
         const slides: Array<{ src: string; alt: string }> = [];

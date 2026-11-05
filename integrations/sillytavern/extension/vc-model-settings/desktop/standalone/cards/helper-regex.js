@@ -1,32 +1,37 @@
-// PolyForm-Noncommercial-1.0.0. JS-Slash-Runner 0af42106 / src/function/tavern_regex.ts
+// PolyForm-Noncommercial-1.0.0. JS-Slash-Runner 0af421068 / src/function/tavern_regex.ts
 import { characters, chat, extension_settings, oai_settings, this_chid } from '../engine/ports.js';
-import { getRegexedString, regex_placement, substituteParams, getCardHost, RawCharacter } from './ejs-host.js';
-import { replaceMacroLike } from './helper-util.js';
+import { substituteParams } from '../engine/st/script.js';
+import { regex_placement } from '../../locked-source/st/scripts/extensions/regex/engine.js';
+import { getCardHost, getRegexedString, RawCharacter } from './ejs-host.js';
 import { klona } from './klona.js';
+import { replaceMacroLike } from './helper-util.js';
+import { to_tavern_regex, from_tavern_regex } from '../../locked-source/helper/function/tavern_regex.js';
 
-export function formatAsTavernRegexedString(text, source, destination, options = {}) {
-    if (typeof source === 'object' && source !== null) {
-        options = source;
-        source = options.source ?? 'ai_output';
-        destination = options.destination ?? 'display';
+export { to_tavern_regex, from_tavern_regex };
+
+export function formatAsTavernRegexedString(text, sourceOrOptions, destinationArg, optionsArg = {}) {
+    let source = sourceOrOptions;
+    let destination = destinationArg;
+    let options = optionsArg;
+    if (sourceOrOptions && typeof sourceOrOptions === 'object') {
+        source = sourceOrOptions.source;
+        destination = sourceOrOptions.destination;
+        options = sourceOrOptions;
     }
-    const { depth, character_name } = options;
-    let result = getRegexedString(
-        text,
-        {
-            user_input: regex_placement.USER_INPUT,
-            ai_output: regex_placement.AI_OUTPUT,
-            slash_command: regex_placement.SLASH_COMMAND,
-            world_info: regex_placement.WORLD_INFO,
-            reasoning: regex_placement.REASONING,
-        }[source],
-        {
-            characterOverride: character_name,
-            isMarkdown: destination === 'display',
-            isPrompt: destination === 'prompt',
-            depth,
-        },
-    );
+    const { depth, character_name } = options || {};
+    const placement = {
+        user_input: regex_placement.USER_INPUT,
+        ai_output: regex_placement.AI_OUTPUT,
+        slash_command: regex_placement.SLASH_COMMAND,
+        world_info: regex_placement.WORLD_INFO,
+        reasoning: regex_placement.REASONING,
+    }[source];
+    let result = getRegexedString(text, placement, {
+        characterOverride: character_name,
+        isMarkdown: destination === 'display',
+        isPrompt: destination === 'prompt',
+        depth,
+    });
     result = substituteParams(result, undefined, character_name, undefined, undefined);
     result = replaceMacroLike(result, {
         source: destination,
@@ -50,12 +55,12 @@ export function get_tavern_regexes_without_clone(option) {
             break;
         case 'character': {
             const id = RawCharacter.findIndex(option.name ?? 'current');
-            data = (id !== -1 ? characters?.at(id)?.data?.extensions?.regex_scripts : undefined) ?? [];
+            data = id >= 0 ? (characters.at(id)?.data?.extensions?.regex_scripts ?? []) : [];
             break;
         }
         case 'preset': {
-            const name = option.name ?? 'in_use';
             const host = getCardHost();
+            const name = option.name ?? 'in_use';
             const preset = name === 'in_use' ? oai_settings : host?.presets?.[name];
             data = preset?.extensions?.regex_scripts ?? [];
             break;
@@ -64,61 +69,10 @@ export function get_tavern_regexes_without_clone(option) {
     return data.map(to_tavern_regex);
 }
 
-export function to_tavern_regex(regex_script_data) {
-    return {
-        id: regex_script_data.id,
-        script_name: regex_script_data.scriptName,
-        enabled: !regex_script_data.disabled,
-        find_regex: regex_script_data.findRegex,
-        trim_strings: regex_script_data.trimStrings || [],
-        replace_string: regex_script_data.replaceString,
-        source: {
-            user_input: Boolean(regex_script_data.placement?.includes(regex_placement.USER_INPUT)),
-            ai_output: Boolean(regex_script_data.placement?.includes(regex_placement.AI_OUTPUT)),
-            slash_command: Boolean(regex_script_data.placement?.includes(regex_placement.SLASH_COMMAND)),
-            world_info: Boolean(regex_script_data.placement?.includes(regex_placement.WORLD_INFO)),
-            reasoning: Boolean(regex_script_data.placement?.includes(regex_placement.REASONING)),
-        },
-        destination: {
-            display: Boolean(regex_script_data.markdownOnly),
-            prompt: Boolean(regex_script_data.promptOnly),
-        },
-        run_on_edit: Boolean(regex_script_data.runOnEdit),
-        min_depth: typeof regex_script_data.minDepth === 'number' ? regex_script_data.minDepth : null,
-        max_depth: typeof regex_script_data.maxDepth === 'number' ? regex_script_data.maxDepth : null,
-    };
-}
-
-export function from_tavern_regex(tavern_regex) {
-    return {
-        id: tavern_regex.id,
-        scriptName: tavern_regex.script_name,
-        disabled: !tavern_regex.enabled,
-        runOnEdit: tavern_regex.run_on_edit,
-        findRegex: tavern_regex.find_regex,
-        trimStrings: tavern_regex.trim_strings || [],
-        replaceString: tavern_regex.replace_string,
-        placement: [
-            ...(tavern_regex.source?.user_input ? [regex_placement.USER_INPUT] : []),
-            ...(tavern_regex.source?.ai_output ? [regex_placement.AI_OUTPUT] : []),
-            ...(tavern_regex.source?.slash_command ? [regex_placement.SLASH_COMMAND] : []),
-            ...(tavern_regex.source?.world_info ? [regex_placement.WORLD_INFO] : []),
-            ...(tavern_regex.source?.reasoning ? [regex_placement.REASONING] : []),
-        ],
-        substituteRegex: 0,
-        minDepth: tavern_regex.min_depth ?? null,
-        maxDepth: tavern_regex.max_depth ?? null,
-        markdownOnly: Boolean(tavern_regex.destination?.display),
-        promptOnly: Boolean(tavern_regex.destination?.prompt),
-    };
-}
-
 export function isCharacterTavernRegexesEnabled() {
-    return Boolean(
-        extension_settings?.character_allowed_regex?.includes(
-            characters?.at(Number(this_chid))?.avatar ?? '',
-        ),
-    );
+    return Boolean(extension_settings?.character_allowed_regex?.includes(
+        characters.at(Number(this_chid))?.avatar ?? '',
+    ));
 }
 
 export function getTavernRegexes(option) {

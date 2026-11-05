@@ -1,7 +1,8 @@
 // AGPL-3.0-only. JS-Slash-Runner 0af421068 / src/iframe/exported/script.ts
 // 保留本地预编译拷贝：上游为 TypeScript 源码且依赖 Vue/Pinia runtime store，此处绑定 helper-host.js 的 useScriptIframeRuntimesStore/getButtonId 显式端口。
+import { getCardHost } from './ejs-host.js';
 import { _getScriptId } from './helper-util.js';
-import { useScriptIframeRuntimesStore, getButtonId } from './helper-host.js';
+import { useScriptIframeRuntimesStore, getButtonId, getFrameOwner, getInstanceToken, isInstanceDisposed } from './helper-host.js';
 import { klona } from './klona.js';
 const isPromise=value=>value!=null&&typeof value.then==='function';
 export function _getButtonEvent(button_name) {
@@ -18,6 +19,12 @@ export function _getScriptButtons() {
 export function getAllEnabledScriptButtons() {
     return klona(useScriptIframeRuntimesStore().button_map);
 }
+function replaceScriptButtonsOnTarget(script, new_buttons) {
+    if (!script) return;
+    if (!_.isEqual(script.button.buttons, new_buttons)) {
+        script.button.buttons = new_buttons;
+    }
+}
 export function _replaceScriptButtons(param1, param2) {
     const script = useScriptIframeRuntimesStore().get(_getScriptId.call(this));
     // TODO: 对于预设脚本、角色脚本, $(window).on('pagehide') 时已经切换了角色卡, get 会失败
@@ -25,21 +32,33 @@ export function _replaceScriptButtons(param1, param2) {
         return;
     }
     const new_buttons = typeof param1 === 'string' ? param2 : param1;
-    if (!_.isEqual(script.button.buttons, new_buttons)) {
-        script.button.buttons = new_buttons;
-    }
+    replaceScriptButtonsOnTarget(script, new_buttons);
 }
 export function _updateScriptButtonsWith(updater) {
-    const buttons = _getScriptButtons.call(this);
+    const scriptId = _getScriptId.call(this);
+    const initialHost = getCardHost();
+    const frameOwner = getFrameOwner(this);
+    const initialScript = useScriptIframeRuntimesStore(initialHost).get(scriptId);
+    const callerToken = getInstanceToken(this);
+    const frame = this?.frameElement;
+    const buttons = initialScript ? klona(initialScript.button.buttons) : [];
+    const canCommit = () => {
+        if (!initialScript || isInstanceDisposed(callerToken)) return false;
+        if (initialHost && (initialHost.destroyed || getCardHost() !== initialHost)) return false;
+        if (frameOwner && (frameOwner.destroyed || getCardHost() !== frameOwner)) return false;
+        if (frame && !frame.isConnected) return false;
+        return useScriptIframeRuntimesStore(initialHost).get(scriptId) === initialScript;
+    };
     let result = updater(buttons);
     if (isPromise(result)) {
-        result = result.then((result) => {
-            _replaceScriptButtons.call(this, result);
-            return result;
+        result = result.then((nextButtons) => {
+            if (canCommit()) {
+                replaceScriptButtonsOnTarget(initialScript, nextButtons);
+            }
+            return nextButtons;
         });
-    }
-    else {
-        _replaceScriptButtons.call(this, result);
+    } else if (canCommit()) {
+        replaceScriptButtonsOnTarget(initialScript, result);
     }
     return result;
 }

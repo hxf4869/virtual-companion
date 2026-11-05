@@ -1,10 +1,11 @@
-// AGPL-3.0-only. JS-Slash-Runner 0af421068 / src/iframe/exported/variables.ts
-// 保留本地预编译拷贝：上游为 TypeScript 源码且依赖 Pinia stores，此处绑定 ../engine/ports.js 与 helper-host.js 的轻量 store/持久化端口。
+// PolyForm-Noncommercial-1.0.0. JS-Slash-Runner 0af421068 / src/function/variables.ts
+// 保留本地 store/持久化/F2-CAS 端口：绑定 ../engine/ports.js 与 helper-host.js，纯变量更新变换复用 locked-source/helper/function/variables.js。
 import { chat, chat_metadata, characters, this_chid, name1, name2, extension_settings, oai_settings } from '../engine/ports.js';
 import { substituteParamsExtended } from '../engine/st/script.js';
 import { klona } from './klona.js';
 import { _getCurrentMessageId, _getIframeName, _getScriptId } from './helper-util.js';
 import { useScriptIframeRuntimesStore, useCharacterSettingsStore, usePresetSettingsStore, useVariableSchemasStore, saveChatConditionalDebounced, saveMetadataDebounced, saveSettingsDebounced, toRef } from './helper-host.js';
+import { createHelperVariableUpdates } from '../../locked-source/helper/function/variables.js';
 const isPromise=value=>value!=null&&typeof value.then==='function';
 export function registerVariableSchema(schema, { type }) {
     const store = useVariableSchemasStore();
@@ -183,29 +184,20 @@ export function _updateVariablesWith(updater, option = { type: 'chat' }) {
         ? updateVariablesWith(updater, { type: 'script', script_id: _getScriptId.call(this) })
         : updateVariablesWith(updater, option);
 }
-export function insertOrAssignVariables(variables, option = { type: 'chat' }) {
-    return updateVariablesWith(old_variables => _.mergeWith(old_variables, variables, (_lhs, rhs) => (_.isArray(rhs) ? rhs : undefined)), option);
-}
+export const {
+    insertOrAssignVariables,
+    insertVariables,
+    deleteVariable,
+} = createHelperVariableUpdates({ updateVariablesWith });
 export function _insertOrAssignVariables(variables, option = { type: 'chat' }) {
     return option.type === 'script'
         ? insertOrAssignVariables(variables, { type: 'script', script_id: _getScriptId.call(this) })
         : insertOrAssignVariables(variables, option);
 }
-export function insertVariables(variables, option = { type: 'chat' }) {
-    return updateVariablesWith(old_variables => _.mergeWith({}, variables, old_variables, (_lhs, rhs) => (_.isArray(rhs) ? rhs : undefined)), option);
-}
 export function _insertVariables(variables, option = { type: 'chat' }) {
     return option.type === 'script'
         ? insertVariables(variables, { type: 'script', script_id: _getScriptId.call(this) })
         : insertVariables(variables, option);
-}
-export function deleteVariable(variable_path, option = { type: 'chat' }) {
-    let delete_occurred = false;
-    const variables = updateVariablesWith(old_variables => {
-        delete_occurred = _.unset(old_variables, variable_path);
-        return old_variables;
-    }, option);
-    return { variables, delete_occurred };
 }
 export function _deleteVariable(variable_path, option = { type: 'chat' }) {
     return option.type === 'script'

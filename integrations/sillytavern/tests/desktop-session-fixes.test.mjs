@@ -9,164 +9,47 @@ const sourceIdentityUrl = new URL('../server-plugin/virtual-companion/lib/source
 
 registerHooks({
     resolve(specifier, context, nextResolve) {
-        if (specifier === '/lib.js') {
-            return { url: 'virtual:///lib.js', shortCircuit: true };
-        }
-        if (specifier === '/scripts/extensions/third-party/ST-Prompt-Template/dist/desktop.js') {
-            return { url: 'virtual:///ejs-desktop.js', shortCircuit: true };
-        }
         if (specifier === '/scripts/vc-runtime/source-identity.js') {
             return { url: sourceIdentityUrl, shortCircuit: true };
         }
         return nextResolve(specifier, context);
     },
-    load(url, context, nextLoad) {
-        if (url === 'virtual:///lib.js') {
-            return {
-                format: 'module',
-                shortCircuit: true,
-                source: `
-                    function chain(obj) {
-                        let current = obj;
-                        return {
-                            merge(...sources) {
-                                Object.assign(current, ...sources);
-                                return this;
-                            },
-                            value() {
-                                return current;
-                            },
-                        };
-                    }
-                    export const lodash = Object.assign(chain, {
-                        get(obj, path, def) {
-                            if (!obj) return def;
-                            const parts = Array.isArray(path) ? path : String(path).split('.');
-                            let cur = obj;
-                            for (const p of parts) {
-                                if (cur == null) return def;
-                                cur = cur[p];
-                            }
-                            return cur === undefined ? def : cur;
-                        },
-                        set(obj, path, value) {
-                            const parts = Array.isArray(path) ? path : String(path).split('.');
-                            let cur = obj;
-                            for (let i = 0; i < parts.length - 1; i++) {
-                                const p = parts[i];
-                                if (cur[p] == null || typeof cur[p] !== 'object') cur[p] = {};
-                                cur = cur[p];
-                            }
-                            cur[parts[parts.length - 1]] = value;
-                            return obj;
-                        },
-                        has(obj, key) {
-                            return Boolean(obj && key in obj);
-                        },
-                        pick(obj, keys) {
-                            const out = {};
-                            for (const k of keys) if (obj && k in obj) out[k] = obj[k];
-                            return out;
-                        },
-                        omit(obj, keys) {
-                            const set = new Set(Array.isArray(keys) ? keys : [keys]);
-                            const out = {};
-                            for (const [k, v] of Object.entries(obj || {})) if (!set.has(k)) out[k] = v;
-                            return out;
-                        },
-                        omitBy(obj, predicate) {
-                            const out = {};
-                            for (const [k, v] of Object.entries(obj || {})) {
-                                if (!predicate(v, k)) out[k] = v;
-                            }
-                            return out;
-                        },
-                        isEqual(a, b) {
-                            return JSON.stringify(a) === JSON.stringify(b);
-                        },
-                        cloneDeep(v) {
-                            return structuredClone(v);
-                        },
-                    });
-                    export const yaml = { parse: JSON.parse, stringify: JSON.stringify };
-                    export const showdown = {
-                        Converter: class {
-                            addExtension() {}
-                            makeHtml(t) {
-                                const s = String(t ?? '');
-                                if (s.includes('html>')) {
-                                    const escaped = s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-                                    return '<pre><code>' + escaped + '</code></pre>';
-                                }
-                                return s;
-                            }
-                        },
-                    };
-                    export const hljs = { highlightElement() {} };
-                    export const DOMPurify = { sanitize: s => String(s ?? ''), addHook() {} };
-                    export const css = { parse() { return {}; }, stringify() { return ''; } };
-                    export const chevrotain = { createToken: cfg => ({ ...cfg, name: cfg?.name }), Lexer: class { static SKIPPED = 'SKIPPED'; }, CstParser: class { RULE(n, fn) { return fn; } performSelfAnalysis() {} } };
-                    export const moment = () => ({ format: () => '', valueOf: () => 0 });
-                    export const seedrandom = () => () => 0.5;
-                    export const droll = { roll: () => ({ total: 1 }) };
-                    export const Handlebars = { compile: () => () => '' };
-                    export const Bowser = { getParser: () => ({ getBrowserName: () => 'Chrome' }) };
-                `,
-            };
-        }
-        if (url === 'virtual:///ejs-desktop.js') {
-            return {
-                format: 'module',
-                shortCircuit: true,
-                source: `
-                    export async function initializeDesktop() {
-                        const schema = {
-                            any: () => schema,
-                            string: () => schema,
-                            number: () => schema,
-                            boolean: () => schema,
-                            array: () => schema,
-                            object: () => schema,
-                            enum: () => schema,
-                            optional: () => schema,
-                            nullable: () => schema,
-                            default: () => schema,
-                            describe: () => schema,
-                            passthrough: () => schema,
-                            union: () => schema,
-                            record: () => schema,
-                            literal: () => schema,
-                            tuple: () => schema,
-                            function: () => ({ args: () => ({ returns: () => ({ implement: fn => fn }) }), implement: fn => fn }),
-                             parse: v => v,
-                            safeParse: v => ({ success: true, data: v }),
-                        };
-                        return {
-                            z: schema,
-                            settings: {},
-                            async render() {},
-                        };
-                    }
-                `,
-            };
-        }
-        return nextLoad(url, context);
-    },
 });
 
 const happyWindow = new Window({ url: 'http://localhost:8000/desktop/' });
+function jQuery(selector) {
+    if (typeof selector === 'string') {
+        const nodes = [...happyWindow.document.querySelectorAll(selector)];
+        return {
+            find(childSelector) {
+                const children = nodes.flatMap(node => [...node.querySelectorAll(childSelector)]);
+                return { text: () => children.map(node => node.textContent).join('') };
+            },
+        };
+    }
+    return { triggerHandler: async () => {}, off: () => {} };
+}
+jQuery.ui = {};
 Object.assign(globalThis, {
+    self: globalThis,
     window: happyWindow,
     document: happyWindow.document,
     location: happyWindow.location,
     localStorage: happyWindow.localStorage,
+    Element: happyWindow.Element,
+    Node: happyWindow.Node,
     HTMLElement: happyWindow.HTMLElement,
+    HTMLUnknownElement: happyWindow.HTMLUnknownElement,
+    NodeFilter: happyWindow.NodeFilter,
+    DOMParser: happyWindow.DOMParser,
     CustomEvent: happyWindow.CustomEvent,
     Event: happyWindow.Event,
+    EventTarget: happyWindow.EventTarget,
     MutationObserver: happyWindow.MutationObserver,
     getComputedStyle: happyWindow.getComputedStyle.bind(happyWindow),
     requestAnimationFrame: cb => setTimeout(cb, 0),
-    jQuery: Object.assign(() => ({ triggerHandler: async () => {}, off: () => {} }), { ui: {} }),
+    jQuery,
+    $: jQuery,
     toastr: { info() {}, warning() {}, error() {}, success() {} },
 });
 test.after(() => happyWindow.happyDOM.close());
@@ -697,7 +580,10 @@ test('B12: 稳定消息 key 保存在 Session 只读快照且不向 F2 提交包
             world_info: { globalSelect: [] },
             extension_settings: {
                 disabledExtensions: [],
-                tavern_helper: { render: { enabled: true, depth: 0, allow_streaming: true } },
+                tavern_helper: {
+                    script: { enabled: { characters: ['synthetic.png'] } },
+                    render: { enabled: true, depth: 0, allow_streaming: true },
+                },
             },
         };
         bindEngineContext(f.context, cardSettings, {});
@@ -724,6 +610,7 @@ test('B12: 稳定消息 key 保存在 Session 只读快照且不向 F2 提交包
         const cleanup1 = cards.renderMessage(host1, 1, f.context.chat[1], false);
         await cards.settle();
 
+        assert.equal(host0.hasAttribute('data-card-error'), false, '真实 EJS 加载后，首层普通消息应正常渲染');
         const frameBefore = host1.querySelector('iframe');
         assert.equal(Boolean(frameBefore), true, '第1层应挂载卡片 iframe');
         assert.equal(frameBefore === streamFrame, true, '流式结束且纯 HTML 未变化时必须保持同一 iframe 实例');

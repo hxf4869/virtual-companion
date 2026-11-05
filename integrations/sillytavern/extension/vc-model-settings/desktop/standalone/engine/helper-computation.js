@@ -6,18 +6,30 @@ import { persona_description_positions } from './st/constants.js';
 import { isImageInliningSupported } from './st/scripts/openai.js';
 import { createWorldInfoRuntime, wi_anchor_position } from './world-info.js';
 import { extension_prompt_roles, character_names_behavior, placeholder_prompt_default_order, default_order } from './helper-types.js';
-export function createHelperPromptRuntime({context,settings,regex,prompt,tokenizer,computation,loadWorldInfo,getMaxContextSize}) {
+export function createHelperPromptRuntime({context,settings,regex,prompt,tokenizer,computation,loadWorldInfo,getMaxContextSize,onTemporaryPromptWrite}) {
 const {ChatCompletion,Message,MessageCollection,Prompt,PromptCollection,setOpenAIMessages,setOpenAIMessageExamples,prepareOpenAIMessages}=prompt;
 const getContext=()=>context, eventSource=context.eventSource,event_types=context.eventTypes;
 const getRegexedString=regex.getRegexedString,regex_placement=regex.regex_placement,world_info_include_names=settings.world_info_include_names;
 const uuidv4=()=>crypto.randomUUID(),setupChatCompletionPromptManager=()=>prompt.manager;
 const NOTE_MODULE_NAME='2_floating_prompt',metadata_keys={prompt:'note_prompt',interval:'note_interval',depth:'note_depth',position:'note_position',role:'note_role'};
-computation.prepareAuthorNote();const shouldWIAddPrompt=computation.shouldWIAddPrompt;
+const trackTemporaryPromptWrite=(key,apply)=>{
+    const prompts=context.extensionPrompts;
+    const hadBefore=Object.hasOwn(prompts,key);
+    const before=prompts[key];
+    apply(prompts);
+    const hadAfter=Object.hasOwn(prompts,key);
+    const after=prompts[key];
+    onTemporaryPromptWrite?.({key,hadBefore,before,hadAfter,after});
+};
+const setTemporaryExtensionPrompt=(key,...args)=>trackTemporaryPromptWrite(key,()=>{setExtensionPrompt(key,...args);});
+const deleteTemporaryExtensionPrompt=key=>trackTemporaryPromptWrite(key,prompts=>{delete prompts[key];});
+trackTemporaryPromptWrite(NOTE_MODULE_NAME,()=>{computation.prepareAuthorNote();});
+const shouldWIAddPrompt=computation.shouldWIAddPrompt;
 const getWorldInfoPrompt=(...args)=>createWorldInfoRuntime({settings,context,loadWorldInfo,substituteParams,getTokenCountAsync:tokenizer.getTokenCountAsync,getRegexedString,regex_placement,eventSource,event_types,getExtensionPromptByName,shouldWIAddPrompt}).getWorldInfoPrompt(...args);
 const saveChatConditionalDebounced=()=>{context.metadataDirty=true;};
 const getBase64Async=file=>new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=reject;reader.readAsDataURL(file);});
 const isDataURL=value=>/^data:/.test(value);
-const injectPrompts=prompts=>{for(const item of prompts)setExtensionPrompt(item.id,item.content,item.position==='none'?-1:1,item.depth??4,item.scan??false,({system:0,user:1,assistant:2})[item.role??'system'],item.filter);};
+const injectPrompts=prompts=>{for(const item of prompts)setTemporaryExtensionPrompt(item.id,item.content,item.position==='none'?-1:1,item.depth??4,item.scan??false,({system:0,user:1,assistant:2})[item.role??'system'],item.filter);};
 async function convertFileToBase64(img) {
     const isDataUrl = typeof img === 'string' && isDataURL(img);
     let processedImg;
@@ -95,16 +107,16 @@ function isPromptFiltered(promptId, config) {
     return override !== undefined && override === '';
 }
 function addTemporaryUserMessage(userContent) {
-    setExtensionPrompt('TEMP_USER_MESSAGE', userContent, extension_prompt_types.IN_PROMPT, 0, true, 1);
+    setTemporaryExtensionPrompt('TEMP_USER_MESSAGE', userContent, extension_prompt_types.IN_PROMPT, 0, true, 1);
 }
 function removeTemporaryUserMessage() {
-    setExtensionPrompt('TEMP_USER_MESSAGE', '', extension_prompt_types.IN_PROMPT, 0, true, 1);
+    setTemporaryExtensionPrompt('TEMP_USER_MESSAGE', '', extension_prompt_types.IN_PROMPT, 0, true, 1);
 }
 async function clearInjectionPrompts(prefixes) {
     const prompts = getContext().extensionPrompts;
     Object.keys(prompts)
         .filter(key => prefixes.some(prefix => key.startsWith(prefix)))
-        .forEach(key => delete prompts[key]);
+        .forEach(key => deleteTemporaryExtensionPrompt(key));
     saveChatConditionalDebounced();
 }
 async function processImageArrayDirectly(processedUserInput, image) {
@@ -329,45 +341,47 @@ function handleCharDepthPrompt() {
     const depthPromptText = baseChatReplace(character?.data?.extensions?.depth_prompt?.prompt?.trim(), name1, name2) || '';
     const depthPromptDepth = character?.data?.extensions?.depth_prompt?.depth ?? 4;
     const depthPromptRole = getExtensionPromptRoleByName(character?.data?.extensions?.depth_prompt?.role ?? 'system');
-    setExtensionPrompt('DEPTH_PROMPT', depthPromptText, extension_prompt_types.IN_CHAT, depthPromptDepth, 
+    setTemporaryExtensionPrompt('DEPTH_PROMPT', depthPromptText, extension_prompt_types.IN_CHAT, depthPromptDepth,
     // @ts-expect-error 类型正确
-    extension_settings.note.allowWIScan, depthPromptRole);
+    extension_settings.note?.allowWIScan, depthPromptRole);
 }
 function setAuthorNotePrompt(config) {
     const authorNoteOverride = config?.overrides?.author_note;
     const prompt = authorNoteOverride ?? (chat_metadata.note_prompt ?? '');
-    setExtensionPrompt(NOTE_MODULE_NAME, prompt, chat_metadata[metadata_keys.position], chat_metadata[metadata_keys.depth], 
+    setTemporaryExtensionPrompt(NOTE_MODULE_NAME, prompt, chat_metadata[metadata_keys.position], chat_metadata[metadata_keys.depth],
     // @ts-expect-error 类型正确
-    extension_settings.note.allowWIScan, chat_metadata[metadata_keys.role]);
+    extension_settings.note?.allowWIScan, chat_metadata[metadata_keys.role]);
 }
 function setPersonaDescriptionExtensionPrompt() {
     const description = power_user.persona_description;
     const INJECT_TAG = 'PERSONA_DESCRIPTION';
-    setExtensionPrompt(INJECT_TAG, '', extension_prompt_types.IN_PROMPT, 0);
+    setTemporaryExtensionPrompt(INJECT_TAG, '', extension_prompt_types.IN_PROMPT, 0);
     if (!description || power_user.persona_description_position === persona_description_positions.NONE) {
         return;
     }
     //当user信息在作者注释前后 - 仅在作者注释未被过滤时执行
     const promptPositions = [persona_description_positions.BOTTOM_AN, persona_description_positions.TOP_AN];
     if (promptPositions.includes(power_user.persona_description_position) && shouldWIAddPrompt) {
-        const originalAN = _.get(extension_prompts, NOTE_MODULE_NAME);
+        const rawAN = _.get(extension_prompts, NOTE_MODULE_NAME);
+        const originalAN = typeof rawAN === 'string' ? rawAN : (rawAN?.value ?? '');
         const ANWithDesc = power_user.persona_description_position === persona_description_positions.TOP_AN
             ? `${description}\n${originalAN}`
             : `${originalAN}\n${description}`;
-        setExtensionPrompt(NOTE_MODULE_NAME, ANWithDesc, chat_metadata[metadata_keys.position], chat_metadata[metadata_keys.depth], 
+        setTemporaryExtensionPrompt(NOTE_MODULE_NAME, ANWithDesc, chat_metadata[metadata_keys.position], chat_metadata[metadata_keys.depth],
         // @ts-expect-error 类型正确
-        extension_settings.note.allowWIScan, chat_metadata[metadata_keys.role]);
+        extension_settings.note?.allowWIScan, chat_metadata[metadata_keys.role]);
     }
     // user信息深度注入不依赖于作者注释的状态，直接应用
     if (power_user.persona_description_position === persona_description_positions.AT_DEPTH) {
-        setExtensionPrompt(INJECT_TAG, description, extension_prompt_types.IN_CHAT, power_user.persona_description_depth, true, power_user.persona_description_role);
+        setTemporaryExtensionPrompt(INJECT_TAG, description, extension_prompt_types.IN_CHAT, power_user.persona_description_depth, true, power_user.persona_description_role);
     }
 }
 async function handleInjectedPrompts(promptConfig) {
     // generateRaw 的注入提示词会由代码自行注入, 不必在此注入
-    if (!promptConfig || !Array.isArray(promptConfig.inject) || !promptConfig.use_preset)
+    const injectList = promptConfig?.inject ?? promptConfig?.injects;
+    if (!promptConfig || !Array.isArray(injectList) || !promptConfig.use_preset)
         return;
-    injectPrompts(promptConfig.inject.map(prompt => ({ id: `TH-CustomInjects-${uuidv4()}`, ...prompt })), { once: true });
+    injectPrompts(injectList.map(prompt => ({ id: `TH-CustomInjects-${uuidv4()}`, ...prompt })), { once: true });
 }
 async function processChatHistory(chatHistory) {
     const coreChat = chatHistory.filter(x => !x.is_system);
@@ -432,7 +446,7 @@ function processWorldInfoDepth(worldInfoDepth) {
     if (Array.isArray(worldInfoDepth)) {
         worldInfoDepth.forEach(entry => {
             const joinedEntries = entry.entries.join('\n');
-            setExtensionPrompt(`customDepthWI-${entry.depth}-${entry.role}`, joinedEntries, extension_prompt_types.IN_CHAT, entry.depth, false, entry.role);
+            setTemporaryExtensionPrompt(`customDepthWI-${entry.depth}-${entry.role}`, joinedEntries, extension_prompt_types.IN_CHAT, entry.depth, false, entry.role);
         });
     }
 }
@@ -498,8 +512,20 @@ async function handlePresetPath(baseData, processedUserInput, config) {
             messages: baseData.chatContext.oaiMessages,
             messageExamples: baseData.chatContext.oaiMessageExamples,
         };
-        const [prompt] = await prepareOpenAIMessages(messageData, dryRun);
-        return { prompt };
+        let latestReadyEventData = null;
+        const onPromptReady = eventData => {
+            latestReadyEventData = eventData;
+        };
+        eventSource?.on?.(event_types.CHAT_COMPLETION_PROMPT_READY, onPromptReady);
+        try {
+            const [prompt] = await prepareOpenAIMessages(messageData, dryRun);
+            if (Array.isArray(latestReadyEventData?.chat) && latestReadyEventData.chat !== prompt) {
+                prompt.splice(0, prompt.length, ...latestReadyEventData.chat);
+            }
+            return { prompt };
+        } finally {
+            eventSource?.removeListener?.(event_types.CHAT_COMPLETION_PROMPT_READY, onPromptReady);
+        }
     }
     finally {
         // 恢复原始场景
@@ -644,7 +670,7 @@ async function processChatHistoryAndInject(baseData, promptConfig, chatCompletio
         baseData.chatContext.oaiMessages.unshift(userPrompt);
     }
     // 处理注入和添加消息
-    const messages = (await populationInjectionPrompts(baseData, baseData.chatContext.oaiMessages, promptConfig.inject, promptConfig)).reverse();
+    const messages = (await populationInjectionPrompts(baseData, baseData.chatContext.oaiMessages, promptConfig.inject ?? promptConfig.injects, promptConfig)).reverse();
     const imageInlining = isImageInliningSupported();
     // 添加聊天记录
     const chatPool = [...messages];
@@ -726,6 +752,12 @@ async function populationInjectionPrompts(baseData, messages, customInjects = []
     // 处理自定义注入
     if (Array.isArray(customInjects)) {
         for (const inject of customInjects) {
+            if (!inject || inject.position === 'none' || !inject.content) {
+                continue;
+            }
+            if (typeof inject.filter === 'function' && !(await inject.filter())) {
+                continue;
+            }
             injectionPrompts.push({
                 identifier: `INJECTION-${inject.role}-${inject.depth}`,
                 role: inject.role,
@@ -801,24 +833,21 @@ async function populationInjectionPrompts(baseData, messages, customInjects = []
     return processedMessages;
 }
 async function filteredGetExtensionPrompt(position = extension_prompt_types.IN_PROMPT, depth = undefined, separator = '\n', role = undefined, wrap = true) {
-    // @ts-expect-error 无视类型
-    const filterByFunction = async (prompt) => {
-        const hasFilter = typeof prompt.filter === 'function';
-        if (hasFilter && !(await prompt.filter())) {
-            return false;
-        }
-        return true;
-    };
-    const promptPromises = Object.keys(extension_prompts)
+    const candidates = Object.keys(extension_prompts)
         .sort()
         .filter(x => x !== '2_floating_prompt' && !/customDepthWI-\d+-\d+/.test(x) && !/TH-CustomInjects-.+/.test(x))
         // @ts-expect-error 无视类型
         .map(x => extension_prompts[x])
-        .filter(x => x.position == position && x.value)
+        .filter(x => x && x.position == position && x.value)
         .filter(x => depth === undefined || x.depth === undefined || x.depth === depth)
-        .filter(x => role === undefined || x.role === undefined || x.role === role)
-        .filter(filterByFunction);
-    const prompts = await Promise.all(promptPromises);
+        .filter(x => role === undefined || x.role === undefined || x.role === role);
+    const prompts = [];
+    for (const prompt of candidates) {
+        if (typeof prompt.filter === 'function' && !(await prompt.filter())) {
+            continue;
+        }
+        prompts.push(prompt);
+    }
     // @ts-expect-error 无视类型
     let values = prompts.map(x => x.value.trim()).join(separator);
     if (wrap && values.length && !values.startsWith(separator)) {
@@ -836,7 +865,7 @@ async function handleCustomPath(baseData, config, processedUserInput) {
     const chatCompletion = new ChatCompletion();
     chatCompletion.setTokenBudget(oai_settings.openai_max_context, oai_settings.openai_max_tokens);
     chatCompletion.reserveBudget(3);
-    const orderArray = config.order || default_order;
+    const orderArray = config.order || config.ordered_prompts || default_order;
     const positionMap = orderArray.reduce((acc, item, index) => {
         if (typeof item === 'string') {
             acc[item.toLowerCase()] = index;
@@ -890,7 +919,11 @@ async function handleCustomPath(baseData, config, processedUserInput) {
         await chatCompletion.squashSystemMessages();
     }
     const prompt = chatCompletion.getChat();
-    eventSource.emit(event_types.CHAT_COMPLETION_PROMPT_READY, { chat: prompt, dryRun: false });
+    const eventData = { chat: prompt, dryRun: false };
+    await eventSource.emit(event_types.CHAT_COMPLETION_PROMPT_READY, eventData);
+    if (Array.isArray(eventData.chat) && eventData.chat !== prompt) {
+        prompt.splice(0, prompt.length, ...eventData.chat);
+    }
     return { prompt };
 }
 function processInitialUserInput(user_input = '') {

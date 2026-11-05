@@ -14,66 +14,22 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import {
-    INTEG, ST_DIR, HELPER_DIR, EJS_DIR, MVU_DIR, MEMORYCORE_DIR, UPSTREAM_LOCK, VENDOR_LOCK, PATCH_SPEC,
+    INTEG, HELPER_DIR, EJS_DIR, MVU_DIR, UPSTREAM_LOCK, VENDOR_LOCK, PATCH_SPEC,
     DEV, DATA_ROOT, USER_DIR, EXT_DIR, RUN_DIR, CONFIG_PATH, DERIVED_MANIFEST, VENDOR_CACHE,
     ST_PORT, MVU_PATCH_SPEC, EJS_DESKTOP_PATCH_SPEC, MVU_DESKTOP_PATCH_SPEC,
 } from './lib/paths.mjs';
 import { sha256File, sha512Base64, readJson, writeJson, mkdirp, run, copyTree, ok, info, fail } from './lib/util.mjs';
 import { applySpecToFile } from './lib/patcher.mjs';
 import { createEjsEditorSource } from './lib/ejs-editor.mjs';
+import { ensureLockedStDependencies, prepareHelperPackages, verifyLockedCheckouts } from './lib/desktop-source-inputs.mjs';
 import { renderConfig } from './lib/config.mjs';
-import { verifyStDependencyTree, verifyVendorTree, verifyPatchedDist, VENDOR_SERVE_ROOT } from './lib/verify.mjs';
+import { verifyVendorTree, verifyPatchedDist, VENDOR_SERVE_ROOT } from './lib/verify.mjs';
 
 const args = process.argv.slice(2);
 const OFFLINE = args.includes('--offline');
 const REFRESH_VENDOR = args.includes('--refresh-vendor');
 
 function die(msg) { fail(msg, 2); }
-
-// ---------- 1. 上游 commit 与工作树 ----------
-function verifyUpstreams(lock) {
-    const dirById = { sillytavern: ST_DIR, 'tavern-helper': HELPER_DIR, 'ejs-template': EJS_DIR, mvu: MVU_DIR, memorycore: MEMORYCORE_DIR };
-    for (const c of lock.components) {
-        const dir = dirById[c.id];
-        if (!dir || !fs.existsSync(dir)) {
-            die(`upstream/${c.id} 不存在。按 README「首次拉取」克隆后重跑（克隆不在 bootstrap 内自动执行，避免隐式网络写操作）。`);
-        }
-        const head = run('git', ['-C', dir, 'rev-parse', 'HEAD']).trim();
-        if (head !== c.commit) die(`upstream/${c.id} HEAD ${head} != 锁定 ${c.commit}`);
-        const dirty = run('git', ['-C', dir, 'status', '--porcelain']).trim();
-        if (dirty) die(`upstream/${c.id} 工作树不干净：\n${dirty.slice(0, 400)}`);
-        ok(`upstream ${c.id} @ ${head.slice(0, 10)}（干净）`);
-    }
-}
-
-// ---------- 2. 原始产物 SHA ----------
-function verifyArtifacts(lock) {
-    const dirById = { sillytavern: ST_DIR, 'tavern-helper': HELPER_DIR, 'ejs-template': EJS_DIR, mvu: MVU_DIR, memorycore: MEMORYCORE_DIR };
-    for (const c of lock.components) {
-        for (const [rel, want] of Object.entries(c.artifact_sha256 || {})) {
-            const file = path.join(dirById[c.id], rel);
-            if (!fs.existsSync(file)) die(`缺少产物 ${c.id}/${rel}`);
-            const got = sha256File(file);
-            if (got !== want) die(`${c.id}/${rel} SHA256 不匹配：实际 ${got}，锁定 ${want}`);
-        }
-    }
-    ok('原始产物 SHA256 全部匹配 upstream.lock.json');
-}
-
-// ---------- 3. ST 依赖（按锁定 package-lock.json：树校验不一致才 npm ci；不运行 npm install、不改上游锁） ----------
-function ensureStDeps() {
-    const tree = verifyStDependencyTree();
-    if (tree.ok) { ok(`ST 依赖树与 package-lock 一致（${tree.checked} 个生产包）`); return; }
-    info(`ST 依赖树与锁不一致：缺 ${tree.missing.length}，版本不符 ${tree.mismatched.length}`);
-    if (OFFLINE) die('ST 依赖需要 npm ci 重建但处于 --offline');
-    info('npm ci --omit=dev --ignore-scripts（按锁定 package-lock.json 重建 node_modules）…');
-    run('npm', ['ci', '--no-audit', '--no-fund', '--loglevel=error', '--no-progress', '--omit=dev', '--ignore-scripts'], { cwd: ST_DIR });
-    const after = verifyStDependencyTree();
-    if (!after.ok) die(`npm ci 后依赖树仍不一致：缺 ${after.missing.slice(0, 3).join(',')} 版本不符 ${after.mismatched.slice(0, 3).join(',')}`);
-    const dirty = run('git', ['-C', ST_DIR, 'status', '--porcelain']).trim();
-    if (dirty) die(`npm ci 改动了上游工作树：\n${dirty.slice(0, 300)}`);
-    ok(`ST 依赖按锁重建完成（${after.checked} 个生产包）`);
-}
 
 // ---------- 4. vendor 资产 ----------
 async function fetchTo(url, file) {
@@ -215,15 +171,15 @@ async function main() {
     process.umask(0o077);
     const lock = readJson(UPSTREAM_LOCK);
     if (args.includes('--memorycore-only')) {
-        const selected = { ...lock, components: lock.components.filter((c) => c.id === 'memorycore') };
-        if (selected.components.length !== 1) die('MemoryCore lock missing');
-        verifyUpstreams(selected); verifyArtifacts(selected);
+        verifyLockedCheckouts(lock, ['memorycore']);
         ok('MemoryCore foundation bootstrap complete (no npm install / postinstall)'); return;
     }
     const vendorLock = readJson(VENDOR_LOCK);
-    verifyUpstreams(lock);
-    verifyArtifacts(lock);
-    ensureStDeps();
+    verifyLockedCheckouts(lock);
+    ok('上游检出及原始产物与 upstream.lock.json 一致');
+    const tree = ensureLockedStDependencies({ offline: OFFLINE });
+    ok(`ST 依赖树与 package-lock 一致（${tree.checked} 个生产包）`);
+    prepareHelperPackages({ offline: OFFLINE });
     const vendorReport = [];
     await ensureVendorAssets(vendorLock, vendorReport);
     let patchResult;

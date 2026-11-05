@@ -1,8 +1,8 @@
 // 一个桌面 realm 只有一个聊天计算 owner；页面/历史读取不等待此锁。
 import {wi_anchor_position, forceWorldInfoEntries} from './world-info.js';
 import {GENERATION_TYPE_TRIGGERS} from './st/constants.js';
-import { bindEngineContext, getMaxPromptTokens } from './ports.js';
-import { initMacros } from './st/scripts/macros.js';
+import { bindEngineContext, getMaxPromptTokens, isInjectedPromptRetired, readFirstDisplayedMessageId, resolveRuntimeExtensions } from './ports.js';
+import { initMacros, disposeMacros } from './st/scripts/macros.js';
 import { substituteParams, substituteParamsExtended, setExtensionPrompt, getBiasStrings, extractMessageBias, removeMacros, createRawPrompt } from './st/script.js';
 import { getCharaFilename } from './st/scripts/utils.js';
 import { Handlebars, Bowser, lodash } from './st/lib.js';
@@ -22,7 +22,7 @@ import { planReply } from '../../../reply-planner.js';
 import { createStoryContext } from '../../../story-context.js';
 import { companionToolSpecs, companionToolsShouldRegister, attachCompanionIdentity, COMPANION_TOOL_ACTION_ERROR } from '../../../companion-tools.js';
 import { recallSTMemory, resolveSTBinding } from '../../../api.js';
-import { loadBundledManifest } from '../../../stickers-logic.js';
+import { loadBundledManifest, setStickerRuntime } from '../../../stickers-logic.js';
 import { applyDocumentValues } from '../../../settings-documents.js';
 import { buildScope, characterKeyOf, chatKeyOf, advanceRunState, isToolContinuation, rewriteGenerateData, restoreManagedReasoningEffort, parseBindingMarker, settingsMarkerFor } from '../../../projection-logic.js';
 
@@ -81,10 +81,15 @@ export function projectModelSettings(settings, decision, scope) {
     if (decision.pinned.reasoningEffort !== undefined) oai.reasoning_effort = decision.pinned.reasoningEffort;
 }
 
-export async function createChatEngine({ client, context, settings, decision, presets, models, extensions = [], readInput = () => '', initializeCards, onToast = () => {} }) {
+export async function createChatEngine({ client, context, signal, settings, decision, presets, models, extensions, getEnabledExtensions, packet, readInput = () => '', readFirstDisplayedMessageId: customReadFirstDisplayedMessageId, initializeCards, onToast = () => {} }) {
+    signal?.throwIfAborted();
+    let destroyed = false;
     const getContext = () => context;
     const state = { runId: 0 };
-    const toast = { error: message => onToast(String(message), { type: 'failure' }), warning: message => onToast(String(message)) };
+    const toast = {
+        error: message => { if (!destroyed && !signal?.aborted) onToast(String(message), { type: 'failure' }); },
+        warning: message => { if (!destroyed && !signal?.aborted) onToast(String(message)); },
+    };
     const t = (strings, ...values) => String.raw({ raw: strings }, ...values);
     context.extensionPrompts ||= {};
     context.extensionSettings = settings.extension_settings;
@@ -94,21 +99,74 @@ export async function createChatEngine({ client, context, settings, decision, pr
     context.eventTypes = event_types;
     const locale = String(localStorage.getItem('language') || navigator.language || 'en').toLowerCase();
     const mobile = ['mobile', 'tablet'].includes(Bowser.getParser(navigator.userAgent).getPlatformType());
-    const environment = { readInput, firstDisplayedMessageId: 0, model: decision?.modelId || '', models,
-        openrouterWebsiteModel: '', locale, mobile, extensions };
-    bindEngineContext(context, settings, environment);
+    const initialExtensions = Array.isArray(extensions)
+        ? structuredClone(extensions)
+        : Array.isArray(context.extensions)
+          ? structuredClone(context.extensions)
+          : [];
+    let cards;
+    const readOwnerExtensions = () => [
+        'regex',
+        ...(typeof cards?.getEnabledExtensions === 'function' ? cards.getEnabledExtensions() : []),
+        ...(typeof getEnabledExtensions === 'function' ? getEnabledExtensions() : []),
+        ...initialExtensions,
+    ];
+    const environment = {
+        readInput,
+        readFirstDisplayedMessageId:
+            customReadFirstDisplayedMessageId ??
+            (() => (typeof context.readFirstDisplayedMessageId === 'function' ? context.readFirstDisplayedMessageId() : (context.firstDisplayedMessageId ?? null))),
+        firstDisplayedMessageId: context.firstDisplayedMessageId ?? null,
+        model: decision?.modelId || '',
+        models,
+        openrouterWebsiteModel: '',
+        locale,
+        mobile,
+        getEnabledExtensions: readOwnerExtensions,
+        rawExtensions: initialExtensions,
+        extensions: [],
+        packet,
+        enableExtensions: packet?.enable_extensions !== false,
+    };
+    const refreshExtensions = () => {
+        if (destroyed || signal?.aborted) return;
+        bindEngineContext(context, settings, environment);
+        environment.extensions = resolveRuntimeExtensions(initialExtensions, settings, packet);
+        context.extensions = environment.extensions;
+        bindEngineContext(context, settings, environment);
+    };
+    refreshExtensions();
     context.setExtensionPrompt = setExtensionPrompt;
     context.saveMetadataDebounced = () => { context.metadataDirty = true; };
     context.saveSettingsDebounced = () => { context.settingsDirty = true; };
     if (!initialized) {
-        initMacros();
         Handlebars.registerHelper('trim', () => '{{trim}}');
         Handlebars.registerHelper('helperMissing', function () { const options = arguments[arguments.length - 1]; return substituteParams(`{{${options.name}}}`); });
         initialized = true;
     }
+    initMacros(context.eventSource);
     // 清单读取与卡片资源独立；两者完成后才安装记忆/陪伴/剧情 hooks，保持 EJS 登记顺序。
-    const [, cards] = await Promise.all([loadBundledManifest({ getContext }),
-        initializeCards?.({ client, context, settings, presets, models })]);
+    try {
+        [, cards] = await Promise.all([
+            loadBundledManifest(),
+            initializeCards?.({
+                client,
+                context,
+                signal,
+                settings,
+                presets,
+                models,
+                persistSettings: () => client.saveSettings(() => settingsForSave(settings)),
+            }),
+        ]);
+        signal?.throwIfAborted();
+    } catch (error) {
+        disposeMacros(context.eventSource);
+        cards?.destroy?.();
+        throw error;
+    }
+    setStickerRuntime({ getContext });
+    refreshExtensions();
     const memory = createMemoryInjection({ getContext, recall: recallSTMemory, ensureBinding: async () => {
         const metadata = context.chatMetadata;
         if (metadata.vc_binding?.relationshipId && metadata.vc_binding?.conversationId) return metadata.vc_binding;
@@ -126,12 +184,15 @@ export async function createChatEngine({ client, context, settings, decision, pr
         rewriteGenerateData(data, decision, scope);
         restoreManagedReasoningEffort(data, decision, settings.oai_settings);
     };
+    const onChatChanged = () => { memory.reset(); state.runId = 0; context.forcedWorldInfoEntries?.clear(); };
+    const onWorldInfoForceActivate = entries => forceWorldInfoEntries(context, entries);
+    const onCompanionIdentity = data => attachCompanionIdentity(data, getContext);
     installHistoryWindow(getContext);
-    context.eventSource.on(event_types.CHAT_CHANGED, () => { memory.reset(); state.runId = 0; context.forcedWorldInfoEntries?.clear(); });
-    context.eventSource.on(event_types.WORLDINFO_FORCE_ACTIVATE, entries => forceWorldInfoEntries(context, entries));
+    context.eventSource.on(event_types.CHAT_CHANGED, onChatChanged);
+    context.eventSource.on(event_types.WORLDINFO_FORCE_ACTIVATE, onWorldInfoForceActivate);
     context.eventSource.on(event_types.CHAT_COMPLETION_SETTINGS_READY, onProjection);
     context.eventSource.on(event_types.CHAT_COMPLETION_SETTINGS_READY, memory.attach);
-    context.eventSource.on(event_types.CHAT_COMPLETION_SETTINGS_READY, data => attachCompanionIdentity(data, getContext));
+    context.eventSource.on(event_types.CHAT_COMPLETION_SETTINGS_READY, onCompanionIdentity);
     for (const spec of companionToolSpecs) ToolManager.registerFunctionTool({ ...spec,
         shouldRegister: () => companionToolsShouldRegister(getContext), action() { throw new Error(COMPANION_TOOL_ACTION_ERROR); } });
     story.install(context.eventSource, event_types.CHAT_COMPLETION_SETTINGS_READY);
@@ -224,7 +285,21 @@ export async function createChatEngine({ client, context, settings, decision, pr
         async generateHelper(config, { signal, onPhase = () => {} } = {}) {
             const [{createHelperPromptRuntime},{createGenerateResult}] = await Promise.all([import('./helper-computation.js'),import('./helper-types.js')]);
             signal.throwIfAborted();
-            const original = structuredClone(settings.oai_settings), prompts = Object.fromEntries(Object.entries(context.extensionPrompts).map(([key,value])=>[key,{...value}]));
+            const original = structuredClone(settings.oai_settings);
+            const tempPromptWrites = new Map();
+            const onTemporaryPromptWrite = ({ key, hadBefore, before, hadAfter, after }) => {
+                if (!tempPromptWrites.has(key)) {
+                    tempPromptWrites.set(key, { hadBefore, before, hadAfter, after });
+                } else {
+                    const entry = tempPromptWrites.get(key);
+                    if (hadBefore !== entry.hadAfter || before !== entry.after) {
+                        entry.hadBefore = hadBefore;
+                        entry.before = before;
+                    }
+                    entry.hadAfter = hadAfter;
+                    entry.after = after;
+                }
+            };
             const character = context.characters[context.characterId], scenario = character?.scenario;
             const resumeMemory = memory.suspendPending();
             try {
@@ -237,18 +312,25 @@ export async function createChatEngine({ client, context, settings, decision, pr
                 settings.oai_settings.stream_openai = config.stream;
                 projectModelSettings(settings, decision, buildScope(characterKeyOf(context),chatKeyOf(context.chatId),state.runId));
                 if (typeof custom.max_tokens === 'number') settings.oai_settings.openai_max_tokens = Math.min(custom.max_tokens,decision.maxOutputTokens);
+                signal.throwIfAborted();
+                if (destroyed) throw new DOMException('Engine destroyed', 'AbortError');
                 bindEngineContext(context,settings,environment);
                 const services = makeComputation({signal});
-                const calculation = createHelperPromptRuntime({context,settings,...services,getMaxContextSize:getMaxPromptTokens});
+                const calculation = createHelperPromptRuntime({context,settings,...services,getMaxContextSize:getMaxPromptTokens,onTemporaryPromptWrite});
                 const data = await calculation.prepare({...config,user_input:config.user_input || ''});
                 signal.throwIfAborted();
+                if (destroyed) throw new DOMException('Engine destroyed', 'AbortError');
                 await context.eventSource.emit('js_generation_started',config.generation_id);
+                signal.throwIfAborted();
+                if (destroyed) throw new DOMException('Engine destroyed', 'AbortError');
                 const packet = await services.prompt.createGenerationParameters(settings.oai_settings,decision.modelId,'normal',data.prompt,{jsonSchema:config.json_schema});
                 packet.generate_data.include_reasoning = true;
                 Object.assign(packet.generate_data,custom.custom_include_body || {});
                 for(const key of custom.custom_exclude_body || [])delete packet.generate_data[key];
                 if(config.tools?.length){packet.generate_data.tools=config.tools;if(config.tool_choice)packet.generate_data.tool_choice=config.tool_choice;}
                 await context.eventSource.emit(event_types.CHAT_COMPLETION_SETTINGS_READY,packet.generate_data);
+                signal.throwIfAborted();
+                if (destroyed) throw new DOMException('Engine destroyed', 'AbortError');
                 onPhase('transport');
                 let previous='',reasoning='';
                 const result=await readGenerationResponse(await client.generate({url:'/api/backends/chat-completions/generate',body:JSON.parse(JSON.stringify(packet.generate_data))},{signal}),{
@@ -263,15 +345,29 @@ export async function createChatEngine({ client, context, settings, decision, pr
                         previous=full;reasoning=thought;
                     },
                 });
+                signal.throwIfAborted();
+                if (destroyed) throw new DOMException('Engine destroyed', 'AbortError');
                 onPhase('callbacks');
                 const text=packet.stream?services.computation.cleanUpMessage({getMessage:result.text,isImpersonate:false,isContinue:false,displayIncompleteSentences:false}):result.text;
                 await context.eventSource.emit('js_generation_before_end',{message:text,...(result.state.reasoning?{reasoning:result.state.reasoning}:{})},config.generation_id);
+                signal.throwIfAborted();
+                if (destroyed) throw new DOMException('Engine destroyed', 'AbortError');
                 await context.eventSource.emit('js_generation_ended',text,config.generation_id,result.state.reasoning || undefined);
                 return createGenerateResult(result.text,{reasoning:result.state.reasoning,reasoning_signature:result.state.signature,tool_calls:result.toolCalls},config.should_return_reasoning);
             } finally {
-                updateObject(settings.oai_settings,original); updateObject(context.extensionPrompts,prompts);
+                updateObject(settings.oai_settings,original);
+                for (const [key, entry] of tempPromptWrites.entries()) {
+                    const hasCurrent = Object.hasOwn(context.extensionPrompts, key);
+                    const currentVal = context.extensionPrompts[key];
+                    if (hasCurrent !== entry.hadAfter || currentVal !== entry.after) continue;
+                    if (entry.hadBefore && !isInjectedPromptRetired(entry.before) && key !== 'TEMP_USER_MESSAGE' && !key.startsWith('TH-CustomInjects-')) {
+                        context.extensionPrompts[key] = entry.before;
+                    } else {
+                        delete context.extensionPrompts[key];
+                    }
+                }
                 if(character)character.scenario=scenario;
-                resumeMemory();bindEngineContext(context,settings,environment);
+                resumeMemory();
             }
         },
         applySettings(changes) {
@@ -279,18 +375,36 @@ export async function createChatEngine({ client, context, settings, decision, pr
             updateObject(settings, runtimeSettings(next));
             projectModelSettings(settings, decision, buildScope(characterKeyOf(context), chatKeyOf(context.chatId), state.runId));
             context.tagMap = settings.tag_map || {};
-            bindEngineContext(context, settings, environment);
+            refreshExtensions();
         },
         applyPreset(name, changes, value) { return presets[name] = applyDocumentValues(presets[name] || value,changes); },
-        bindContext() { bindEngineContext(context, settings, environment); cards?.bindContext?.(); },
+        bindContext() {
+            if (destroyed || signal?.aborted) return;
+            environment.firstDisplayedMessageId = readFirstDisplayedMessageId();
+            refreshExtensions();
+            initMacros(context.eventSource);
+            cards?.bindContext?.();
+        },
+        destroy() {
+            destroyed = true;
+            context.eventSource.removeListener?.(event_types.CHAT_CHANGED, onChatChanged);
+            context.eventSource.removeListener?.(event_types.WORLDINFO_FORCE_ACTIVATE, onWorldInfoForceActivate);
+            context.eventSource.removeListener?.(event_types.CHAT_COMPLETION_SETTINGS_READY, onProjection);
+            context.eventSource.removeListener?.(event_types.CHAT_COMPLETION_SETTINGS_READY, memory.attach);
+            context.eventSource.removeListener?.(event_types.CHAT_COMPLETION_SETTINGS_READY, onCompanionIdentity);
+            disposeMacros(context.eventSource);
+            cards?.destroy?.();
+        },
         updateCatalog(nextDecision, nextModels) {
             decision = nextDecision;
             models.splice(0, models.length, ...nextModels);
             environment.model = decision.modelId || '';
             projectModelSettings(settings, decision, buildScope(characterKeyOf(context), chatKeyOf(context.chatId), state.runId));
-            bindEngineContext(context, settings, environment);
+            if (!destroyed && !signal?.aborted) bindEngineContext(context, settings, environment);
         },
         async userMessage(input) {
+            signal?.throwIfAborted();
+            if (destroyed) throw new DOMException('Engine destroyed', 'AbortError');
             bindEngineContext(context, settings, environment);
             const bias = getBiasStrings(input, 'normal');
             const { messageBias } = bias;
@@ -306,6 +420,8 @@ export async function createChatEngine({ client, context, settings, decision, pr
         },
         editMessage(message, text) {
             // 锁定ST updateMessage 的编辑计算，移除原textarea/mesBlock读取。
+            signal?.throwIfAborted();
+            if (destroyed) throw new DOMException('Engine destroyed', 'AbortError');
             bindEngineContext(context, settings, environment);
             const regex = currentRegex(), placement = message.is_user ? regex.regex_placement.USER_INPUT
                 : message.extra?.type === 'narrator' ? regex.regex_placement.SLASH_COMMAND : regex.regex_placement.AI_OUTPUT;
@@ -327,8 +443,10 @@ export async function createChatEngine({ client, context, settings, decision, pr
             await previous;
             try {
                 options.signal?.throwIfAborted();
-                environment.firstDisplayedMessageId = context.firstDisplayedMessageId ?? 0;
-                bindEngineContext(context, settings, environment);
+                if (destroyed) throw new DOMException('Engine destroyed', 'AbortError');
+                environment.firstDisplayedMessageId = readFirstDisplayedMessageId();
+                refreshExtensions();
+                initMacros(context.eventSource);
                 const type = options.type || 'normal';
                 const eventOptions = { automatic_trigger: options.automatic_trigger ?? false, force_name2: options.force_name2 ?? false,
                     quiet_prompt: options.quiet_prompt || '', quietToLoud: options.quietToLoud ?? false, skipWIAN: options.skipWIAN ?? false,

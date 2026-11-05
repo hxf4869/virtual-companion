@@ -52,7 +52,9 @@ export function createDesktopSession({ client, context, engine, prepareSourceIde
     const f2IO = createNativeF2IO({getRequestHeaders:client.headers,client:f2});
     const getContext = () => context;
     const guard = createSourceGuard(getContext, { onSettled() {
-        if (current?.ready && !job) void save(current).catch(() => {});
+        if (current?.ready && !job) {
+            lastOperation = save(current).catch(() => {});
+        }
     }, onConflict(serialized, error, source) {
         if (current?.metadata === source.metadata) reject(current, error, serialized, true);
     } });
@@ -85,6 +87,24 @@ export function createDesktopSession({ client, context, engine, prepareSourceIde
     }
     async function save(target, { settled = !job && guard.isSettled() } = {}) {
         if (target.blocked) throw new F2ConflictError();
+        for (const message of target.messages) {
+            if (!message || typeof message !== 'object') continue;
+            if (Array.isArray(message.swipe_info)) {
+                const activeIdx = message.swipe_id ?? 0;
+                const currentInfo = message.swipe_info[activeIdx];
+                if (currentInfo && typeof currentInfo === 'object' && message.extra && typeof message.extra === 'object') {
+                    const send_date = message.send_date !== undefined ? message.send_date : currentInfo.send_date;
+                    const gen_started = message.gen_started !== undefined ? message.gen_started : currentInfo.gen_started;
+                    const gen_finished = message.gen_finished !== undefined ? message.gen_finished : currentInfo.gen_finished;
+                    message.swipe_info[activeIdx] = {
+                        ...(send_date !== undefined ? { send_date } : {}),
+                        ...(gen_started !== undefined ? { gen_started } : {}),
+                        ...(gen_finished !== undefined ? { gen_finished } : {}),
+                        extra: structuredClone(message.extra),
+                    };
+                }
+            }
+        }
         const savedMetadataRevision = metadataRevision;
         const payload = { avatar_url: target.row.avatar, file_name: target.row.file,
             chat: [{ ...target.header, chat_metadata: target.metadata }, ...target.messages] };
@@ -377,25 +397,96 @@ export function createDesktopSession({ client, context, engine, prepareSourceIde
         lastOperation = active.promise;
         return active.promise;
     }
-    function mutate(index, expected, change, refresh = [index], afterRefresh) {
+    function mutate(index, expected, change, refresh = [index], afterRefresh, refreshOptions, beforeMutation, { deferChatSave = false } = {}) {
         const target = current;
+        const mutationEpoch = epoch;
         if (!target?.ready || target.blocked || target.signal?.aborted || job || target.messages[index] !== expected) return Promise.resolve(false);
-        const active = { kind: 'mutation', target, controller: new AbortController(), promise: null };
+        const active = { kind: 'mutation', target, controller: new AbortController(), promise: null, phase: 'preparing' };
+        active.leaf = active;
         job = active; target.notice = ''; publish(target);
+        const isSessionActive = () =>
+            mutationEpoch === epoch &&
+            target === current &&
+            job === active &&
+            Boolean(target?.ready) &&
+            !target.blocked &&
+            !target.signal?.aborted &&
+            !active.controller.signal.aborted;
+        const canStartMutation = () => isSessionActive() && target.messages[index] === expected;
         active.promise = (async () => {
+            let beforeError = null;
             try {
+                let preAllowed = true;
+                let preIsAsync = false;
+                if (beforeMutation) {
+                    try {
+                        preAllowed = beforeMutation(target);
+                        preIsAsync = Boolean(preAllowed && typeof preAllowed.then === 'function');
+                        if (preIsAsync) {
+                            preAllowed.catch(() => {});
+                        } else if (preAllowed === false || !canStartMutation()) {
+                            return false;
+                        }
+                    } catch (err) {
+                        beforeError = err;
+                        throw err;
+                    }
+                }
                 await engine.cards?.settle();
+                if (!canStartMutation() || engine.cards?.isRendering?.()) {
+                    return false;
+                }
+                if (beforeMutation) {
+                    try {
+                        if (preIsAsync) {
+                            const resolved = await preAllowed;
+                            if (resolved === false || !canStartMutation()) {
+                                return false;
+                            }
+                        } else {
+                            let postAllowed = beforeMutation(target);
+                            if (postAllowed && typeof postAllowed.then === 'function') {
+                                postAllowed = await postAllowed;
+                            }
+                            if (postAllowed === false || !canStartMutation()) {
+                                return false;
+                            }
+                        }
+                    } catch (err) {
+                        beforeError = err;
+                        throw err;
+                    }
+                }
                 await change(target, index, expected);
+                if (!isSessionActive()) {
+                    return false;
+                }
+                if (deferChatSave) context.metadataDirty = true;
                 target.metadata.tainted = true; publish(target);
-                if (refresh.length || refresh === 'all') await engine.cards?.surface.refresh(refresh === 'all' ? target.messages.map((_, id) => id) : refresh);
-                if (afterRefresh) { await afterRefresh(target, index, expected); publish(target); }
-                await save(target, { settled: guard.isSettled() }); return true;
+                if (refresh.length || refresh === 'all') {
+                    const indices = refresh === 'all' ? target.messages.map((_, id) => id) : refresh;
+                    await engine.cards?.surface.refresh(indices, refreshOptions);
+                }
+                if (afterRefresh) {
+                    active.phase = 'callbacks';
+                    await afterRefresh(target, index, expected);
+                    publish(target);
+                }
+                if (!isSessionActive()) {
+                    return false;
+                }
+                if (!deferChatSave) {
+                    await save(target, { settled: guard.isSettled() });
+                }
+                await saveSettings();
+                return true;
             } catch (error) {
+                if (beforeError) throw beforeError;
                 if (!target.blocked) target.notice = '没有完成，请重试。';
                 return false;
             } finally { if (job === active) job = null; publish(target); }
         })();
-        lastOperation = active.promise;
+        lastOperation = active.promise.catch(() => {});
         return active.promise;
     }
     const api = { activate(row, records, options = {}) {
@@ -545,8 +636,21 @@ export function createDesktopSession({ client, context, engine, prepareSourceIde
                     gen_finished: message.gen_finished, extra: structuredClone(message.extra || {}) };
                 message.swipe_id = next; message.mes = message.swipes[next];
                 const info = message.swipe_info[next];
-                message.send_date = info?.send_date; message.gen_started = info?.gen_started; message.gen_finished = info?.gen_finished;
-                message.extra = structuredClone(info?.extra || {});
+                const rawExtra = info && typeof info === 'object'
+                    ? (info.extra && typeof info.extra === 'object'
+                        ? info.extra
+                        : Object.fromEntries(Object.entries(info).filter(([k]) => !['send_date', 'gen_started', 'gen_finished', 'extra'].includes(k))))
+                    : {};
+                const nextExtra = structuredClone(rawExtra);
+                if (info?.send_date !== undefined) message.send_date = info.send_date;
+                message.gen_started = info?.gen_started; message.gen_finished = info?.gen_finished;
+                message.extra = nextExtra;
+                message.swipe_info[next] = {
+                    ...(message.send_date !== undefined ? { send_date: message.send_date } : {}),
+                    ...(message.gen_started !== undefined ? { gen_started: message.gen_started } : {}),
+                    ...(message.gen_finished !== undefined ? { gen_finished: message.gen_finished } : {}),
+                    extra: structuredClone(nextExtra),
+                };
                 await context.eventSource.emit(context.eventTypes.MESSAGE_SWIPED, id);
             });
         },
@@ -575,10 +679,30 @@ export function createDesktopSession({ client, context, engine, prepareSourceIde
             return extractUnsavedUserInput(entry.snapshot, latest);
         },
     };
+    let activeTemplateScopes = 0;
+    let templateScopeEpoch = epoch;
+    const hasActiveTemplateScopes = () => templateScopeEpoch === epoch && activeTemplateScopes > 0;
     context.captureHelperScope = () => {
-        if (!job || job.phase === 'transport') return null;
-        const scope = { job, leaf: job.leaf, valid: true };
-        return { scope, release() { scope.valid = false; } };
+        if (templateScopeEpoch !== epoch) {
+            templateScopeEpoch = epoch;
+            activeTemplateScopes = 0;
+        }
+        const capturedEpoch = epoch;
+        const capturedOwner = current;
+        let released = false;
+        activeTemplateScopes++;
+        let scope;
+        const release = () => {
+            if (released) return;
+            released = true;
+            if (capturedEpoch === epoch && capturedOwner === current && templateScopeEpoch === epoch) {
+                activeTemplateScopes = Math.max(0, activeTemplateScopes - 1);
+            }
+            if (scope) scope.valid = false;
+        };
+        if (!job || job.phase === 'transport') return { scope: undefined, release };
+        scope = { job, leaf: job.leaf, valid: true };
+        return { scope, release };
     };
     context.generateHelper = (apiName, config, scoped) => {
         if (!catalogReady || budget?.insufficient || !current || current.blocked || current.signal?.aborted) return Promise.reject(new Error('请先配置聊天模型并打开聊天。'));
@@ -623,9 +747,153 @@ export function createDesktopSession({ client, context, engine, prepareSourceIde
         configurable: true,
         enumerable: true,
     });
-    context.mutateChatMessages = (expectedMetadata, change, { refresh = 'all', afterRefresh } = {}) => {
-        if (!current || current.metadata !== expectedMetadata || engine.cards?.isRendering?.()) return Promise.resolve(false);
-        return mutate(0, current.messages[0], target => change(target.messages), refresh, afterRefresh ? target => afterRefresh(target.messages) : undefined);
+    context.mutateChatMessages = (expectedMetadata, change, { refresh = 'all', afterRefresh, refreshOptions, structural = true, beforeMutation, deferChatSave = false } = {}) => {
+        if (
+            !current ||
+            current.blocked ||
+            current.signal?.aborted ||
+            current.metadata !== expectedMetadata ||
+            (engine.cards?.isRendering?.() && (hasActiveTemplateScopes() || typeof engine.cards?.settle !== 'function'))
+        ) {
+            return Promise.resolve(false);
+        }
+        const guardBeforeMutation = target => {
+            if (target !== current || target.blocked || target.signal?.aborted || target.metadata !== expectedMetadata) {
+                return false;
+            }
+            return beforeMutation ? beforeMutation(target) : true;
+        };
+        if (structural) {
+            if (!current.ready || job) return Promise.resolve(false);
+            return mutate(
+                0,
+                current.messages[0],
+                target => change(target.messages),
+                refresh,
+                afterRefresh ? target => afterRefresh(target.messages) : undefined,
+                refreshOptions,
+                guardBeforeMutation,
+            );
+        }
+        if (!job) {
+            if (!current.ready) return Promise.resolve(false);
+            return mutate(
+                0,
+                current.messages[0],
+                target => change(target.messages),
+                refresh,
+                afterRefresh ? target => afterRefresh(target.messages) : undefined,
+                refreshOptions,
+                guardBeforeMutation,
+                { deferChatSave },
+            );
+        }
+        if (job.target !== current || job.phase === 'transport') {
+            return Promise.resolve(false);
+        }
+        const target = current;
+        const parentJob = job;
+        const parentLeaf = job.leaf;
+        const nestedEpoch = epoch;
+        const canMutateNested = () =>
+            nestedEpoch === epoch &&
+            target === current &&
+            !target.blocked &&
+            !target.signal?.aborted &&
+            target.metadata === expectedMetadata &&
+            job === parentJob &&
+            job.target === target &&
+            job.leaf === parentLeaf &&
+            !job.controller?.signal?.aborted &&
+            job.phase !== 'transport';
+        return (async () => {
+            if (!canMutateNested()) {
+                return false;
+            }
+            let preAllowed = guardBeforeMutation(target);
+            const preIsAsync = Boolean(preAllowed && typeof preAllowed.then === 'function');
+            if (preIsAsync) {
+                preAllowed.catch(() => {});
+            } else if (preAllowed === false || !canMutateNested()) {
+                return false;
+            }
+            await engine.cards?.settle();
+            if (!canMutateNested() || engine.cards?.isRendering?.()) {
+                return false;
+            }
+            if (preIsAsync) {
+                const resolved = await preAllowed;
+                if (resolved === false || !canMutateNested()) {
+                    return false;
+                }
+            } else {
+                let postAllowed = guardBeforeMutation(target);
+                if (postAllowed && typeof postAllowed.then === 'function') {
+                    postAllowed = await postAllowed;
+                }
+                if (postAllowed === false || !canMutateNested()) {
+                    return false;
+                }
+            }
+            await change(target.messages);
+            if (!canMutateNested()) {
+                return false;
+            }
+            context.metadataDirty = true;
+            target.metadata.tainted = true;
+            publish(target);
+            if (job?.kind !== 'opening' && (refresh.length || refresh === 'all')) {
+                const indices = refresh === 'all' ? target.messages.map((_, id) => id) : refresh;
+                await engine.cards?.surface.refresh(indices, refreshOptions);
+            }
+            if (job?.kind !== 'opening' && afterRefresh) {
+                await afterRefresh(target.messages);
+                publish(target);
+            }
+            return true;
+        })();
+    };
+    context.commitHelperChanges = async expectedMetadata => {
+        const validateOwner = () => {
+            const activeSt = globalThis.SillyTavern;
+            const ownsContext = !activeSt || typeof activeSt.getContext !== 'function' || activeSt.getContext() === context;
+            return Boolean(ownsContext && current && !current.blocked && !current.signal?.aborted && expectedMetadata === current.metadata);
+        };
+        if (!validateOwner()) {
+            throw new Error('VC_CHAT_MUTATION_REJECTED');
+        }
+        if (job) {
+            if (job.target !== current || job.phase === 'transport') {
+                throw new Error('VC_CHAT_MUTATION_REJECTED');
+            }
+            return true;
+        }
+        if (!current.ready) {
+            throw new Error('VC_CHAT_MUTATION_REJECTED');
+        }
+        if (engine.cards?.isRendering?.()) {
+            if (hasActiveTemplateScopes() || typeof engine.cards?.settle !== 'function') {
+                throw new Error('VC_CHAT_MUTATION_REJECTED');
+            }
+            await engine.cards.settle();
+            if (!validateOwner() || !current.ready || hasActiveTemplateScopes() || engine.cards?.isRendering?.()) {
+                throw new Error('VC_CHAT_MUTATION_REJECTED');
+            }
+            if (job) {
+                if (job.target !== current || job.phase === 'transport') {
+                    throw new Error('VC_CHAT_MUTATION_REJECTED');
+                }
+                return true;
+            }
+        }
+        if (context.metadataDirty) {
+            if (!guard.isSettled()) {
+                throw new Error('VC_CHAT_MUTATION_REJECTED');
+            }
+            await save(current, { settled: true });
+        }
+        await saveSettings();
+        return true;
     };
     context.generate = type => type === 'regenerate' ? api.regenerate() : type === 'continue' ? api.continue() : type === 'swipe' ? api.swipe(context.chat.length - 1, 1) : api.retry();
     return api;

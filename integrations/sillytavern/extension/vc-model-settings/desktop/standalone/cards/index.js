@@ -1,9 +1,11 @@
 // 桌面卡片运行入口。只运行卡片HTML/脚本iframe与锁定EJS handler；没有ST页面宿主。
-import { lodash, yaml, showdown, hljs } from '/lib.js';
-import { bindCardHost, refreshCardHost, messageFormatting, getCardHost, getChatCompletionModel, getTokenCountAsync, loadWorldInfo,
-    getRegexedString, getThumbnailUrl, MessageFormatter, parseRegexFromString } from './ejs-host.js';
+import { lodash, yaml, showdown, hljs } from '../../locked-source/st/lib.js';
+import { bindCardHost, clearCardHost, refreshCardHost, messageFormatting, getCardHost, getChatCompletionModel, getTokenCountAsync, loadWorldInfo,
+    getRegexedString, getThumbnailUrl, MessageFormatter, parseRegexFromString, isHelperExtensionEnabled, isEjsExtensionEnabled,
+    isEjsExecutionAllowed, getEnabledCardExtensions } from './ejs-host.js';
 import { renderMarkdown } from './format.js';
-import { scripts, createScriptState, setHelperSchemaLibrary, notifyScriptButtons, onScriptButtonsChanged, waitUntil, getButtonId } from './helper-host.js';
+import { createScriptState, setHelperSchemaLibrary, notifyScriptButtons, onScriptButtonsChanged, waitUntil, getButtonId,
+    isCardExecutionAllowed, bindFrameInstance, disposeFrameInstance, getFrameOwner } from './helper-host.js';
 import * as variables from './helper-variables.js';
 import * as events from './helper-event.js';
 import * as util from './helper-util.js';
@@ -36,7 +38,8 @@ const loadScript = src => new Promise((resolve, reject) => {
 });
 
 export async function initializeCards(options) {
-    const { context, settings, client } = options;
+    const { context, settings, client, signal } = options;
+    signal?.throwIfAborted?.();
     const [version] = await Promise.all([
         fetch('/version').then(response => response.json()).then(value => value.pkgVersion),
         (async () => {
@@ -52,6 +55,7 @@ export async function initializeCards(options) {
             ]);
         })(),
     ]);
+    signal?.throwIfAborted?.();
     if (globalThis.toastr && document.querySelector?.('[data-vc-toast-host]')) {
         const toastOptions = (globalThis.toastr.options ||= {});
         if (!toastOptions.target || toastOptions.target === 'body') {
@@ -86,12 +90,11 @@ export async function initializeCards(options) {
             desktopToastPorts.add(toastr);
         }
     }
-    Object.assign(globalThis, { _: lodash, YAML: yaml, showdown, klona });
     const nodes = new Map(), byNode = new WeakMap(), pending = new Set(), frameUrls = new Map();
-    let ejs, serial = 0, activeMetadata, renderQueue = Promise.resolve();
+    const ownerScripts = new Map();
+    let ejs, serial = 0, openSerial = 0, activeMetadata, destroyed = false, renderQueue = Promise.resolve();
     const actions = document.createElement('div'); actions.className = 'vc-card-actions';
     const scriptFrames = document.createElement('div'); scriptFrames.dataset.vcCardScripts = '';
-    document.body.append(scriptFrames);
     function signatureOf(message) {
         return `${message?.swipe_id ?? 0}:${message?.extra?.display_text ?? ''}\u0000${message?.mes ?? ''}`;
     }
@@ -113,9 +116,10 @@ export async function initializeCards(options) {
         }
     }
     function valid(entry, ticket) {
-        return Boolean(entry && entry.node.isConnected && byNode.get(entry.node) === entry && entry.ticket === ticket && context.chat[entry.index] === entry.message);
+        return Boolean(!destroyed && !hostOwner.destroyed && entry && entry.node.isConnected && byNode.get(entry.node) === entry && entry.ticket === ticket && context.chat[entry.index] === entry.message);
     }
     function format(index, message = context.chat[index]) {
+        if (destroyed || hostOwner.destroyed) return;
         const entry = nodes.get(index), node = entry?.node;
         if (node && message) {
             entry.rendered = false;
@@ -124,23 +128,26 @@ export async function initializeCards(options) {
             for (const timer of entry.timers) clearTimeout(timer); entry.timers.clear();
             node.removeAttribute('data-vc-segs'); node.classList.remove('vc-segmented');
             const content = document.createElement('div'); content.className = 'mes_text';
-            const rawMes = util.replaceMacroLike(message.extra?.display_text || message.mes, {
-                source: 'display',
-                message_id: index,
-                role: message.is_user ? 'user' : message.is_system ? 'system' : 'assistant',
-            });
+            const rawMes = isHelperExtensionEnabled(hostOwner)
+                ? util.replaceMacroLike(message.extra?.display_text || message.mes, {
+                    source: 'display',
+                    message_id: index,
+                    role: message.is_user ? 'user' : message.is_system ? 'system' : 'assistant',
+                })
+                : (message.extra?.display_text || message.mes);
             content.innerHTML = messageFormatting(rawMes,
                 message.name, message.is_system, message.is_user, index);
             content.dataset.vcFormatted = ''; node.replaceChildren(content);
         }
     }
     async function render(index, { evaluate = true } = {}) {
+        if (destroyed || hostOwner.destroyed) return;
         const entry = nodes.get(index), message = context.chat[index];
         if (!entry || !message) return;
         const { node, ticket } = entry;
         const nextSignature = signatureOf(message);
         const rawText = String(message.extra?.display_text || message.mes || '');
-        if (entry.message === message && entry.formattedSignature === nextSignature && node.querySelector('iframe') && !/<%/.test(rawText)) {
+        if (entry.message === message && entry.formattedSignature === nextSignature && node.querySelector('iframe') && !/<%/.test(rawText) && isCardExecutionAllowed(hostOwner)) {
             rebindMessageFrames(node, entry.index);
             decorateCodes(node, { afterHtml: true });
             entry.signature = nextSignature;
@@ -148,9 +155,11 @@ export async function initializeCards(options) {
             return;
         }
         format(entry.index, message);
-        if (evaluate) await ejs.render(String(entry.index), 'desktop', true);
+        const canExecuteEjs = isEjsExecutionAllowed(hostOwner);
+        const canExecuteCard = isCardExecutionAllowed(hostOwner);
+        if (evaluate && canExecuteEjs) await ejs.render(String(entry.index), 'desktop', true);
         if (!valid(entry, ticket)) return;
-        mountHtml(node, entry.index);
+        if (canExecuteCard) mountHtml(node, entry.index);
         decorateCodes(node,{afterHtml:true});
         entry.signature = nextSignature;
         entry.rendered = true;
@@ -167,10 +176,37 @@ export async function initializeCards(options) {
         renderQueue = operation; return track(operation);
     };
     const surface = { format, async refresh(indices, options) {
+        if (destroyed || hostOwner.destroyed) return;
         await new Promise(resolve => requestAnimationFrame(resolve));
+        if (destroyed || hostOwner.destroyed) return;
         for (const index of indices) await schedule(index, options);
     }, codeBlocks:decorateCodes, media() {}, reasoning() {} };
-    bindCardHost({ ...options, surface });
+    const hostOwner = {
+        ...options,
+        surface,
+        scripts: ownerScripts,
+        notifyScriptButtons: () => {},
+        schemas: {},
+        customMacros: [],
+        destroyed: false,
+        ejs: null,
+        mvu: null,
+    };
+    Object.assign(globalThis, { _: lodash, YAML: yaml, showdown, klona });
+    const runtime = await import('../../locked-source/ejs/desktop.js');
+    signal?.throwIfAborted?.();
+    ejs = await runtime.initializeDesktop();
+    if (signal?.aborted) {
+        destroyed = true;
+        hostOwner.destroyed = true;
+        ejs?.destroy?.();
+        disposeFrameInstance(hostOwner);
+        clearCardHost(hostOwner);
+        signal.throwIfAborted();
+    }
+    hostOwner.ejs = ejs;
+    bindCardHost(hostOwner);
+    document.body.append(scriptFrames);
     Object.assign(context, { getRequestHeaders: client.headers, getChatCompletionModel, getTokenCountAsync, loadWorldInfo,
         ToolManager, getCharacterCardFields, registerFunctionTool: spec => ToolManager.registerFunctionTool(spec),
         unregisterFunctionTool: name => ToolManager.unregisterFunctionTool(name), messageFormatter: MessageFormatter,
@@ -183,13 +219,26 @@ export async function initializeCards(options) {
             return options.callGenericPopup(content, type, initial);
         } });
     Object.assign(globalThis, { SillyTavern: { getContext: () => context } });
-    const runtime = await import('/scripts/extensions/third-party/ST-Prompt-Template/dist/desktop.js');
-    ejs = await runtime.initializeDesktop(); setHelperSchemaLibrary(ejs.z); globalThis.z = ejs.z;
-    const onGenerateAfterData = (eventData, dryRun) => util.demacroOnPrompt(eventData, dryRun);
+    setHelperSchemaLibrary(ejs.z);
+    globalThis.z = ejs.z;
+    const onGenerateAfterData = (eventData, dryRun) => {
+        if (destroyed || hostOwner.destroyed || getCardHost() !== hostOwner || !isHelperExtensionEnabled(hostOwner)) return;
+        util.demacroOnPrompt(eventData, dryRun);
+    };
     context.eventSource.on(context.eventTypes.GENERATE_AFTER_DATA, onGenerateAfterData);
 
     function assertFrame(frame) {
-        if (!frame || !frame.isConnected || context.chatMetadata !== activeMetadata) throw new Error('VC_STALE_CARD_RUNTIME');
+        if (
+            destroyed ||
+            hostOwner.destroyed ||
+            getCardHost() !== hostOwner ||
+            !frame ||
+            !frame.isConnected ||
+            (getFrameOwner(frame) && getFrameOwner(frame) !== hostOwner) ||
+            context.chatMetadata !== activeMetadata
+        ) {
+            throw new Error('VC_STALE_CARD_RUNTIME');
+        }
     }
     const unsupportedHelper = name => function () {
         console.warn(`[TavernHelper] Unsupported helper interface called: ${name}`);
@@ -214,8 +263,11 @@ export async function initializeCards(options) {
         'createCharacter', 'deleteCharacter', 'replaceCharacter', 'updateCharacterWith', 'createOrReplaceCharacter', 'setCurrentCharacter',
         // persona write
         'createPersona', 'deletePersona', 'replacePersona', 'updatePersonaWith', 'createOrReplacePersona', 'setCurrentPersona',
-        // preset write
+        // preset write / model & proxy list
         'loadPreset', 'createPreset', 'deletePreset', 'createOrReplacePreset', 'renamePreset', 'replacePreset', 'updatePresetWith', 'setPreset',
+        'getModelList', 'getProxyPresetNames',
+        // script tree management
+        'getScriptTrees',
         // regex write
         'replaceTavernRegexes', 'updateTavernRegexesWith',
     ];
@@ -224,11 +276,13 @@ export async function initializeCards(options) {
     for (const [name, fn] of Object.entries({ ...variables, ...events, ...util, ...scriptApi, ...globals, ...slashApi, ...injectApi })) {
         if (!name.startsWith('_') || typeof fn !== 'function') continue;
         bind[name] = function (...args) {
-            if (!name.startsWith('_eventClear') && name !== '_eventRemoveListener') assertFrame(this.frameElement);
+            const frame = this.frameElement;
+            if (!name.startsWith('_eventClear') && name !== '_eventRemoveListener') assertFrame(frame);
+            if (frame && !destroyed && !hostOwner.destroyed && getCardHost() === hostOwner) bindFrameInstance(frame, hostOwner);
             const result = fn.apply(this, args);
             if (/^_(replaceScriptButtons|updateScriptButtonsWith|appendInexistentScriptButtons)$/.test(name)) {
-                if (result?.then) return result.then(value => { notifyScriptButtons(); return value; });
-                notifyScriptButtons();
+                if (result?.then) return result.then(value => { if (!destroyed && !hostOwner.destroyed && getCardHost() === hostOwner && frame?.isConnected && context.chatMetadata === activeMetadata) notifyScriptButtons(hostOwner); return value; });
+                if (!destroyed && !hostOwner.destroyed && getCardHost() === hostOwner) notifyScriptButtons(hostOwner);
             }
             return result;
         };
@@ -267,7 +321,7 @@ export async function initializeCards(options) {
         unregisterMacroLike: util.unregisterMacroLike,
         builtin_prompt_default_order,
         placeholder_prompt_default_order,
-        getActiveScriptIds: () => [...scripts.keys()],
+        getActiveScriptIds: () => (destroyed || hostOwner.destroyed ? [] : [...ownerScripts.keys()]),
         getTavernHelperVersion: () => '4.11.3',
         getFrontendVersion: () => '4.11.3',
         getTavernVersion: () => version,
@@ -316,25 +370,38 @@ export async function initializeCards(options) {
         const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><base href="${location.origin}/">${jquery}<script src="${vendor}vue-3.5.44/vue.runtime.global.prod.js"></script><script src="${vendor}vue-router-5.4.0/vue-router.global.prod.js"></script><script src="${base}predefine.js"></script>${script ? config.use_cleanup_protector ? `<script src="${iframeBase}cleanup_protector.js"></script>` : '' : `<script src="${iframeBase}adjust_viewport.js"></script><script src="${iframeBase}adjust_iframe_height.js"></script>`}</head><body>${content}</body></html>`;
         if (config.use_blob_url) { const url = URL.createObjectURL(new Blob([html], { type: 'text/html' })); frame.src = url; frameUrls.set(frame, url); }
         else frame.srcdoc = html;
-        frame.addEventListener('load', () => { void context.eventSource.emit('message_iframe_render_ended', id); });
+        bindFrameInstance(frame, hostOwner);
+        frame.addEventListener('load', () => {
+            if (destroyed || hostOwner.destroyed) return;
+            bindFrameInstance(frame, hostOwner);
+            if (script && globalThis.Mvu) hostOwner.mvu = globalThis.Mvu;
+            void context.eventSource.emit('message_iframe_render_ended', frame.id);
+        });
         return frame;
     }
     function releaseFrames(node) {
+        if (!node) return;
         for (const frame of node.querySelectorAll('iframe')) {
+            disposeFrameInstance(frame);
             const url = frameUrls.get(frame); if (url) { URL.revokeObjectURL(url); frameUrls.delete(frame); }
             frame.remove();
         }
     }
     async function closeScripts() {
+        const activeMvu = hostOwner.mvu;
         // Helper/MVU使用真实pagehide生命周期，等待其取消、解绑和唯一实例注销后才更换context。
         for (const frame of scriptFrames.querySelectorAll('iframe')) {
             const view = frame.contentWindow, jquery = view?.jQuery;
             if (jquery) { await jquery(view).triggerHandler('pagehide'); jquery(view).off('pagehide'); }
         }
-        releaseFrames(scriptFrames); scriptFrames.replaceChildren(); scripts.clear(); actions.replaceChildren();
-        delete globalThis.Mvu;
+        releaseFrames(scriptFrames); scriptFrames.replaceChildren(); ownerScripts.clear(); actions.replaceChildren();
+        if (getCardHost() === hostOwner || (activeMvu && globalThis.Mvu === activeMvu)) {
+            delete globalThis.Mvu;
+        }
+        hostOwner.mvu = null;
     }
     function mountHtml(node, index) {
+        if (destroyed || hostOwner.destroyed || !isCardExecutionAllowed(hostOwner)) return;
         const config=settings.extension_settings.tavern_helper?.render || {};
         if (config.enabled === false || !eligible(index,config.depth || 0,config.depth_ignore_hidden)) return;
         let number = 0;
@@ -370,41 +437,87 @@ export async function initializeCards(options) {
         }
     }
     const drawActions = () => {
+        if (destroyed || hostOwner.destroyed) return;
         actions.replaceChildren();
-        for (const [id, script] of scripts) {
+        for (const [id, script] of ownerScripts) {
             if (!script.button.enabled) continue;
             for (const button of script.button.buttons) {
                 if (!button.visible) continue;
                 const node = document.createElement('button'); node.type = 'button'; node.className = 'vc-btn'; node.textContent = button.name;
-                node.addEventListener('click', () => { void context.eventSource.emit(getButtonId(id, button.name)); }); actions.append(node);
+                node.addEventListener('click', () => { if (!destroyed && !hostOwner.destroyed) void context.eventSource.emit(getButtonId(id, button.name)); }); actions.append(node);
             }
         }
     };
-    onScriptButtonsChanged(drawActions);
+    onScriptButtonsChanged(drawActions, hostOwner);
     const api = { surface, bindContext: refreshCardHost, closeScripts, getPreset: presetsApi.getPreset,
+        getEnabledExtensions: () => getEnabledCardExtensions(hostOwner),
         destroy() {
+            if (destroyed) return;
+            destroyed = true;
+            hostOwner.destroyed = true;
+            openSerial++;
             context.eventSource.removeListener?.(context.eventTypes.GENERATE_AFTER_DATA, onGenerateAfterData);
+            ejs?.destroy?.();
+            disposeFrameInstance(hostOwner);
+            for (const entry of nodes.values()) {
+                for (const timer of entry.timers) clearTimeout(timer);
+                entry.timers.clear();
+                releaseFrames(entry.node);
+            }
+            nodes.clear();
+            for (const frame of scriptFrames.querySelectorAll('iframe')) {
+                const view = frame.contentWindow, jquery = view?.jQuery;
+                try {
+                    if (jquery) {
+                        jquery(view).triggerHandler('pagehide');
+                        jquery(view).off('pagehide');
+                    }
+                } catch {}
+            }
             releaseFrames(scriptFrames);
             scriptFrames.remove();
+            ownerScripts.clear();
+            actions.replaceChildren();
             actions.remove();
-            if (globalThis.SillyTavern?.getContext?.() === context) delete globalThis.SillyTavern;
-            if (globalThis.TavernHelper === publicApi) {
-                delete globalThis.TavernHelper;
-                for (const [name, value] of Object.entries(publicApi)) {
-                    if (!name.startsWith('_') && globalThis[name] === value) delete globalThis[name];
+            if (getCardHost() === hostOwner) {
+                if (globalThis.SillyTavern?.getContext?.() === context) delete globalThis.SillyTavern;
+                if (globalThis.TavernHelper === publicApi) {
+                    delete globalThis.TavernHelper;
+                    for (const [name, value] of Object.entries(publicApi)) {
+                        if (!name.startsWith('_') && globalThis[name] === value) delete globalThis[name];
+                    }
                 }
+                delete globalThis.Mvu;
+                delete globalThis.EjsTemplate;
+                if (ejs?.z && globalThis.z === ejs.z) delete globalThis.z;
+                clearCardHost(hostOwner);
+            } else if (hostOwner.mvu && globalThis.Mvu === hostOwner.mvu) {
+                delete globalThis.Mvu;
             }
+            hostOwner.mvu = null;
         },
         async configure({ restartScripts = false } = {}) {
-            Object.assign(ejs.settings, settings.extension_settings.EjsTemplate || {});
-            refreshCardHost();
-            if (restartScripts && context.characters[context.characterId]) {
-                await closeScripts(); await api.open();
+            if (destroyed || hostOwner.destroyed) return;
+            if (ejs?.settings) {
+                Object.assign(ejs.settings, settings.extension_settings.EjsTemplate || {});
+                if (!isEjsExtensionEnabled(hostOwner)) {
+                    ejs.settings.enabled = false;
+                }
             }
+            refreshCardHost();
+            if (!isHelperExtensionEnabled(hostOwner)) {
+                await closeScripts();
+            } else if (restartScripts && context.characters[context.characterId]) {
+                await closeScripts();
+                if (destroyed || hostOwner.destroyed) return;
+                await api.open();
+            }
+            if (destroyed || hostOwner.destroyed) return;
             await surface.refresh([...nodes.keys()]);
         },
         mountCardActions(node) { node.append(actions); return () => actions.remove(); },
         renderMessage(node, index, message, streaming) {
+            if (destroyed || hostOwner.destroyed) return () => {};
             const signature = signatureOf(message);
             const isStreaming = Boolean(streaming);
             const prev = byNode.get(node);
@@ -458,9 +571,17 @@ export async function initializeCards(options) {
         isRendering: () => pending.size > 0,
         async settle() { await Promise.allSettled([...pending]); await Promise.all(context.cardWrites?.splice(0) || []); },
         async open({ signal } = {}) {
+            if (destroyed || hostOwner.destroyed) return;
+            const myOpenTicket = ++openSerial;
             await Promise.allSettled([...pending]);
-            releaseFrames(scriptFrames); scriptFrames.replaceChildren(); scripts.clear(); actions.replaceChildren(); delete globalThis.Mvu;
+            if (destroyed || hostOwner.destroyed || myOpenTicket !== openSerial) return;
+            await closeScripts();
+            if (destroyed || hostOwner.destroyed || myOpenTicket !== openSerial) return;
             activeMetadata = context.chatMetadata;
+            if (!isHelperExtensionEnabled(hostOwner)) {
+                drawActions();
+                return;
+            }
             const helper = settings.extension_settings.tavern_helper || {};
             const enabled = helper.script?.enabled || {};
             const card = context.characters[context.characterId];
@@ -468,12 +589,12 @@ export async function initializeCards(options) {
             if (enabled.global !== false) trees.push({ type: 'global', entries: helper.script?.scripts || [] });
             const presetName = settings.oai_settings.preset_settings_openai;
             if (enabled.presets?.includes(presetName)) trees.push({ type: 'preset', entries: options.presets[presetName]?.extensions?.tavern_helper?.scripts || [] });
-            if (enabled.characters?.includes(card.avatar)) trees.push({ type: 'character', entries: card.data.extensions.tavern_helper?.scripts || [] });
+            if (card && enabled.characters?.includes(card.avatar)) trees.push({ type: 'character', entries: card.data.extensions.tavern_helper?.scripts || [] });
             const flatten = entries => entries.flatMap(entry => entry.type === 'folder' ? (entry.enabled === false ? [] : flatten(entry.scripts || entry.children || [])) : entry.enabled === false ? [] : [entry]);
             const enabledScripts = trees.flatMap(group => flatten(group.entries).map(script => ({ script, type: group.type })));
             for (const { script, type } of enabledScripts.sort((a, b) => a.script.id.localeCompare(b.script.id))) {
-                const value = createScriptState(script, type);
-                scripts.set(value.id, value);
+                const value = createScriptState(script, type, hostOwner);
+                ownerScripts.set(value.id, value);
                 const content = value.content.replaceAll('/user/files/mvu-bundle-d03b7dc8.js', '/scripts/extensions/third-party/JS-Slash-Runner/lib/mvu-desktop.js');
                 scriptFrames.append(iframe(`TH-script--character--${value.id}`, `<script type="module">${content}</script>`, true));
             }
@@ -482,14 +603,20 @@ export async function initializeCards(options) {
                 try {
                     await waitUntil(() => {
                         signal?.throwIfAborted();
-                        return globalThis.Mvu && (context.chat.length === 0 || context.chat.some(message => message.variables?.some(value => value?.stat_data)));
+                        if (destroyed || hostOwner.destroyed || myOpenTicket !== openSerial) return true;
+                        const ready = Boolean(globalThis.Mvu && (context.chat.length === 0 || context.chat.some(message => message.variables?.some(value => value?.stat_data))));
+                        if (ready) hostOwner.mvu = globalThis.Mvu;
+                        return ready;
                     }, { timeout: 25000 });
                 } catch (error) {
-                    await closeScripts();
+                    if (myOpenTicket === openSerial && !destroyed && !hostOwner.destroyed) {
+                        await closeScripts();
+                    }
                     throw error;
                 }
             }
         },
     };
+    signal?.addEventListener?.('abort', () => api.destroy(), { once: true });
     return api;
 }

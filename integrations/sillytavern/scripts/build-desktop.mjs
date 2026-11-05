@@ -4,12 +4,14 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { build } from 'vite';
+import { generateDesktopSource } from './lib/desktop-source.mjs';
 
 const INTEGRATION = fileURLToPath(new URL('../', import.meta.url));
 const BRIDGE_OUTPUT = path.join(INTEGRATION, 'extension/vc-model-settings/desktop/build');
 const APP_OUTPUT = path.join(INTEGRATION, 'server-plugin/virtual-companion/desktop/app');
 
 export async function buildDesktop() {
+    const sourceNotices = await generateDesktopSource();
     const checked = spawnSync(process.execPath, [path.join(INTEGRATION, 'node_modules/typescript/bin/tsc'), '--project', path.join(INTEGRATION, 'desktop-ui/tsconfig.json')], { stdio: 'inherit' });
     if (checked.error) throw checked.error;
     if (checked.status !== 0) throw new Error('桌面 TypeScript 检查失败，停止构建');
@@ -19,22 +21,11 @@ export async function buildDesktop() {
         results.push(await build({ configFile: path.join(INTEGRATION, 'desktop-ui/vite.config.mjs') }));
     }
     const packages = new Set();
-    const ejsUpstreamDir = path.join(INTEGRATION, 'upstream/ST-Prompt-Template');
-    let hasEjsRuntime = false;
-    let hasFaker = false;
     for (const result of results) {
         for (const bundle of Array.isArray(result) ? result : [result]) for (const chunk of bundle.output) {
             if (chunk.type !== 'chunk') continue;
             for (const id of Object.keys(chunk.modules)) {
                 const clean = id.replace(/^\0/, '').split('?')[0];
-                if (clean.startsWith(`${ejsUpstreamDir}${path.sep}`)) {
-                    packages.add(ejsUpstreamDir);
-                    hasEjsRuntime = true;
-                    if (clean.endsWith(`${path.sep}libs${path.sep}faker.mjs`)) {
-                        hasFaker = true;
-                    }
-                    continue;
-                }
                 if (!clean.startsWith(path.join(INTEGRATION, 'node_modules/'))) continue;
                 let directory = path.dirname(clean);
                 while (directory.includes(`${path.sep}node_modules${path.sep}`)) {
@@ -54,18 +45,7 @@ export async function buildDesktop() {
         if (!license) throw new Error(`缺少 bundle 依赖许可：${info.name}`);
         return `${info.name}@${info.version}\n\n${fs.readFileSync(path.join(directory, license), 'utf8')}`;
     });
-    if (hasEjsRuntime) {
-        notices.push(
-            [
-                hasFaker
-                    ? '@faker-js/faker@9.7.0 & unenv buffer (bundled in ST-Prompt-Template/libs/faker.mjs, MIT License)'
-                    : null,
-                'ST-Prompt-Template packaged dependencies (ejs Apache-2.0, acorn MIT, jsonrepair ISC, syntax-error MIT, xxhash-wasm MIT, zod MIT)',
-            ]
-                .filter(Boolean)
-                .join('\n\n'),
-        );
-    }
+    notices.push(sourceNotices.trimEnd());
     notices.push(fs.readFileSync(path.join(INTEGRATION, 'desktop-ui/THIRD_PARTY_LICENSES.txt'), 'utf8'));
     const content = `${notices.join('\n\n---\n\n')}\n`;
     for (const dir of [BRIDGE_OUTPUT, APP_OUTPUT]) {

@@ -10,6 +10,13 @@ document.querySelector('#read-state').addEventListener('click',()=>readState());
 </script></body></html>
 \`\`\``;
 
+// Worker 模块和动态 import 在 Chromium 中也可能记为 fetch/other。
+export function isRequiredCardResource(pathname, resourceType) {
+    return resourceType === 'script' || pathname === '/lib.js'
+        || /\/(?:JS-Slash-Runner\/lib|ST-Prompt-Template\/dist|desktop\/(?:locked-source|standalone\/cards))\/.+\.(?:js|css|woff2?)$/.test(pathname)
+        || /^\/user\/files\/mvu-bundle-[^/]+\.js$/.test(pathname);
+}
+
 export function complexReply(trust) {
     return `【固定回复】澄夏翻开了旅行笔记，与你聊起书中那座海边小镇。\n<UpdateVariable>\n_.set('trust', ${trust});\n_.set('discussed_book', true);\n</UpdateVariable>`;
 }

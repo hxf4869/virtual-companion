@@ -3,269 +3,15 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { registerHooks } from 'node:module';
 import { Window } from 'happy-dom';
-import { applySpecToText } from '../scripts/lib/patcher.mjs';
 
 const sourceIdentityUrl = new URL('../server-plugin/virtual-companion/lib/source-identity.js', import.meta.url).href;
-const ejsHostUrl = new URL('../extension/vc-model-settings/desktop/standalone/cards/ejs-host.js', import.meta.url).href;
-const ejsDistUrl = new URL('../upstream/ST-Prompt-Template/dist/index.js', import.meta.url);
-const ejsDesktopVirtualUrl = `${ejsDistUrl.href}?vc-ejs-desktop`;
-const ejsPatchSpec = JSON.parse(
-    fs.readFileSync(new URL('../patches/ejs-desktop-runtime.json', import.meta.url), 'utf8'),
-);
 
 registerHooks({
     resolve(specifier, context, nextResolve) {
-        if (specifier === '/lib.js' || specifier === '../../../../../lib.js') {
-            return { url: 'virtual:///lib.js', shortCircuit: true };
-        }
-        if (specifier === '/scripts/extensions/third-party/ST-Prompt-Template/dist/desktop.js') {
-            return { url: ejsDesktopVirtualUrl, shortCircuit: true };
-        }
-        if (specifier === '/scripts/extensions/third-party/vc-model-settings/desktop/standalone/cards/ejs-host.js') {
-            return { url: ejsHostUrl, shortCircuit: true };
-        }
         if (specifier === '/scripts/vc-runtime/source-identity.js') {
             return { url: sourceIdentityUrl, shortCircuit: true };
         }
         return nextResolve(specifier, context);
-    },
-    load(url, context, nextLoad) {
-        if (url === 'virtual:///lib.js') {
-            return {
-                format: 'module',
-                shortCircuit: true,
-                source: `
-                    function chain(obj) {
-                        let current = obj;
-                        return {
-                            values() {
-                                current = Object.values(current || {});
-                                return this;
-                            },
-                            map(fn) {
-                                current = (current || []).map(fn);
-                                return this;
-                            },
-                            filter(fn) {
-                                current = (current || []).filter(fn);
-                                return this;
-                            },
-                            sortBy(iteratee) {
-                                const arr = [...(current || [])];
-                                arr.sort((a, b) => {
-                                    const va = typeof iteratee === 'function' ? iteratee(a) : iteratee ? a?.[iteratee] : a;
-                                    const vb = typeof iteratee === 'function' ? iteratee(b) : iteratee ? b?.[iteratee] : b;
-                                    return va < vb ? -1 : va > vb ? 1 : 0;
-                                });
-                                current = arr;
-                                return this;
-                            },
-                            sortedUniq() {
-                                current = [...new Set(current || [])];
-                                return this;
-                            },
-                            set(path, val) {
-                                lodash.set(current, path, val);
-                                return this;
-                            },
-                            merge(...sources) {
-                                lodash.merge(current, ...sources);
-                                return this;
-                            },
-                            value() {
-                                return current;
-                            },
-                        };
-                    }
-                    export const lodash = Object.assign(chain, {
-                        get(obj, path, def) {
-                            if (!obj) return def;
-                            const parts = Array.isArray(path) ? path : String(path).split('.');
-                            let cur = obj;
-                            for (const p of parts) {
-                                if (cur == null) return def;
-                                cur = cur[p];
-                            }
-                            return cur === undefined ? def : cur;
-                        },
-                        set(obj, path, value) {
-                            const parts = Array.isArray(path) ? path : String(path).split('.');
-                            let cur = obj;
-                            for (let i = 0; i < parts.length - 1; i++) {
-                                const p = parts[i];
-                                if (cur[p] == null || typeof cur[p] !== 'object') cur[p] = {};
-                                cur = cur[p];
-                            }
-                            cur[parts[parts.length - 1]] = value;
-                            return obj;
-                        },
-                        unset(obj, path) {
-                            if (!obj) return true;
-                            const parts = Array.isArray(path) ? path : String(path).split('.');
-                            let cur = obj;
-                            for (let i = 0; i < parts.length - 1; i++) {
-                                if (cur == null) return true;
-                                cur = cur[parts[i]];
-                            }
-                            if (cur != null) delete cur[parts[parts.length - 1]];
-                            return true;
-                        },
-                        has(obj, key) {
-                            return Boolean(obj && key in obj);
-                        },
-                        pick(obj, keys) {
-                            const out = {};
-                            for (const k of keys) if (obj && k in obj) out[k] = obj[k];
-                            return out;
-                        },
-                        omit(obj, keys) {
-                            const set = new Set(Array.isArray(keys) ? keys : [keys]);
-                            const out = {};
-                            for (const [k, v] of Object.entries(obj || {})) if (!set.has(k)) out[k] = v;
-                            return out;
-                        },
-                        omitBy(obj, predicate) {
-                            const out = {};
-                            for (const [k, v] of Object.entries(obj || {})) {
-                                if (!predicate(v, k)) out[k] = v;
-                            }
-                            return out;
-                        },
-                        isEqual(a, b) {
-                            return JSON.stringify(a) === JSON.stringify(b);
-                        },
-                        cloneDeep(v) {
-                            return structuredClone(v);
-                        },
-                        defaults(target, ...sources) {
-                            for (const src of sources) {
-                                for (const [k, v] of Object.entries(src || {})) {
-                                    if (target[k] === undefined) target[k] = v;
-                                }
-                            }
-                            return target;
-                        },
-                        merge(target, ...sources) {
-                            for (const src of sources) {
-                                if (!src || typeof src !== 'object') continue;
-                                for (const [k, v] of Object.entries(src)) {
-                                    if (v && typeof v === 'object' && !Array.isArray(v) && typeof v !== 'function' && target[k] && typeof target[k] === 'object' && !Array.isArray(target[k])) {
-                                        lodash.merge(target[k], v);
-                                    } else {
-                                        target[k] = v;
-                                    }
-                                }
-                            }
-                            return target;
-                        },
-                        mergeWith(target, src, customizer) {
-                            return lodash.merge(target, src);
-                        },
-                        isPlainObject(v) {
-                            return Boolean(v && typeof v === 'object' && !Array.isArray(v) && Object.getPrototypeOf(v) === Object.prototype);
-                        },
-                        isArray: Array.isArray,
-                        castArray: v => (Array.isArray(v) ? v : v === undefined ? [] : [v]),
-                        isFunction: v => typeof v === 'function',
-                        entries: obj => Object.entries(obj || {}),
-                        clamp: (n, min, max) => Math.min(Math.max(n, min), max),
-                        inRange: (n, start, end) => n >= start && n < end,
-                        debounce: fn => fn,
-                        max: arr => (Array.isArray(arr) && arr.length ? Math.max(...arr) : undefined),
-                        min: arr => (Array.isArray(arr) && arr.length ? Math.min(...arr) : undefined),
-                        range: (start, end) => {
-                            if (end === undefined) { end = start; start = 0; }
-                            const out = [];
-                            for (let i = start; i < end; i++) out.push(i);
-                            return out;
-                        },
-                        remove(arr, predicate) {
-                            const removed = [];
-                            for (let i = arr.length - 1; i >= 0; i--) {
-                                const match = typeof predicate === 'function'
-                                    ? predicate(arr[i], i, arr)
-                                    : Object.entries(predicate || {}).every(([k, v]) => arr[i]?.[k] === v);
-                                if (match) {
-                                    removed.unshift(...arr.splice(i, 1));
-                                }
-                            }
-                            return removed;
-                        },
-                        pullAt(arr, indexes) {
-                            const sorted = [...indexes].sort((a, b) => b - a);
-                            const pulled = [];
-                            for (const idx of sorted) {
-                                if (idx >= 0 && idx < arr.length) {
-                                    pulled.unshift(...arr.splice(idx, 1));
-                                }
-                            }
-                            return pulled;
-                        },
-                        random: (min = 0, max = 1) => Math.floor((min + max) / 2),
-                        toString: v => (v == null ? '' : String(v)),
-                    });
-                    export const yaml = { parse: JSON.parse, stringify: JSON.stringify };
-                    export const showdown = {
-                        Converter: class {
-                            constructor(options = {}) {
-                                this.options = options;
-                                this.extensions = [...(options.extensions || [])].flatMap(ext => typeof ext === 'function' ? ext() : ext);
-                            }
-                            addExtension(ext) {
-                                const list = typeof ext === 'function' ? ext() : Array.isArray(ext) ? ext : [ext];
-                                this.extensions.push(...list);
-                            }
-                            makeHtml(t) {
-                                let s = String(t ?? '');
-                                if (s.includes('html>')) {
-                                    const escaped = s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-                                    return '<pre><code>' + escaped + '</code></pre>';
-                                }
-                                for (const ext of this.extensions) {
-                                    if (ext?.type === 'lang' && typeof ext.filter === 'function') {
-                                        s = ext.filter(s, this, this.options);
-                                    }
-                                }
-                                s = s.replace(/\\*\\*(.+?)\\*\\*/g, '<strong>$1</strong>');
-                                if (this.options.strikethrough) {
-                                    s = s.replace(/~~(.+?)~~/g, '<del>$1</del>');
-                                }
-                                if (this.options.tables && /^\\|.+\\|\\r?\\n\\|[-:| ]+\\|/m.test(s)) {
-                                    s = '<table>' + s + '</table>';
-                                }
-                                if (this.options.simpleLineBreaks) {
-                                    s = s.replace(/([^>])\\n(?!\\n)/g, '$1<br>\\n');
-                                }
-                                for (const ext of this.extensions) {
-                                    if (ext?.type === 'output' && typeof ext.filter === 'function') {
-                                        s = ext.filter(s, this, this.options);
-                                    }
-                                }
-                                return s;
-                            }
-                        },
-                    };
-                    export const hljs = { highlightElement() {} };
-                    export const DOMPurify = { sanitize: s => String(s ?? ''), addHook() {} };
-                    export const css = { parse() { return {}; }, stringify() { return ''; } };
-                    export const chevrotain = { createToken: cfg => ({ ...cfg, name: cfg?.name }), Lexer: class { static SKIPPED = 'SKIPPED'; }, CstParser: class { RULE(n, fn) { return fn; } performSelfAnalysis() {} } };
-                    export const moment = () => ({ format: () => '', valueOf: () => 0 });
-                    export const seedrandom = () => () => 0.5;
-                    export const droll = { roll: () => ({ total: 1 }) };
-                    export const Handlebars = { compile: () => () => '' };
-                    export const Bowser = { getParser: () => ({ getBrowserName: () => 'Chrome' }) };
-                `,
-            };
-        }
-        if (url === ejsDesktopVirtualUrl) {
-            const raw = fs.readFileSync(ejsDistUrl, 'utf8');
-            return {
-                format: 'module',
-                shortCircuit: true,
-                source: applySpecToText(raw, ejsPatchSpec).output,
-            };
-        }
-        return nextLoad(url, context);
     },
 });
 
@@ -345,14 +91,17 @@ const jQueryFn = selector => {
 };
 jQueryFn.ui = {};
 
-const { lodash } = await import('/lib.js');
 Object.assign(globalThis, {
     self: globalThis,
     window: happyWindow,
     document: happyWindow.document,
     location: happyWindow.location,
     localStorage: happyWindow.localStorage,
+    Element: happyWindow.Element,
+    Node: happyWindow.Node,
     HTMLElement: happyWindow.HTMLElement,
+    HTMLUnknownElement: happyWindow.HTMLUnknownElement,
+    NodeFilter: happyWindow.NodeFilter,
     DOMParser: happyWindow.DOMParser,
     CustomEvent: happyWindow.CustomEvent,
     Event: happyWindow.Event,
@@ -362,7 +111,6 @@ Object.assign(globalThis, {
     requestAnimationFrame: cb => setTimeout(cb, 0),
     jQuery: jQueryFn,
     $: jQueryFn,
-    _: lodash,
     toastr: { info() {}, warning() {}, error() {}, success() {} },
     fetch: async url => {
         if (String(url).includes('/version')) {
@@ -371,6 +119,8 @@ Object.assign(globalThis, {
         return new Response('', { status: 200 });
     },
 });
+const { lodash } = await import('../extension/vc-model-settings/desktop/locked-source/st/lib.js');
+globalThis._ = lodash;
 test.after(() => happyWindow.happyDOM.close());
 
 const { EventEmitter } = await import('../extension/vc-model-settings/desktop/standalone/engine/events.js');
@@ -378,6 +128,12 @@ const { event_types } = await import('../extension/vc-model-settings/desktop/sta
 const { bindEngineContext } = await import('../extension/vc-model-settings/desktop/standalone/engine/ports.js');
 const { openaiDefaults, powerUserDefaults } = await import('../extension/vc-model-settings/desktop/standalone/engine/defaults.js');
 const { initializeCards } = await import('../extension/vc-model-settings/desktop/standalone/cards/index.js');
+const {
+    executeSlashCommandsWithOptions,
+    SlashCommandAbortController,
+    SlashCommandParser,
+    SlashCommandScope,
+} = await import('../extension/vc-model-settings/desktop/standalone/cards/helper-slash.js');
 const { createDesktopSession } = await import('../extension/vc-model-settings/desktop/standalone/session.js');
 const { prepareSourceIdentities } = await import('../server-plugin/virtual-companion/lib/source-identity.js');
 const { documentEqual, documentValue, applyDocumentValues } = await import('../extension/vc-model-settings/settings-documents.js');
@@ -520,7 +276,8 @@ function createFixture() {
         ...structuredClone(initialMessages),
     ];
     prepareSourceIdentities(initialRecords, { settled: true, sourceTimezone: 'UTC' });
-    let savedSettingsCount = 0;
+    let generations = 0;
+    const settingsSaves = [];
     const f2Saves = [];
     const sessionStates = [];
     const refreshed = [];
@@ -619,8 +376,9 @@ function createFixture() {
                 capturedDocs[name] = structuredClone(next);
             },
         },
-        saveSettings: async () => {
-            savedSettingsCount++;
+        saveSettings: async payload => {
+            const value = typeof payload === 'function' ? payload() : payload;
+            settingsSaves.push(structuredClone(value));
             return new Response('{}', { status: 200 });
         },
         settingsChanged: () => false,
@@ -641,6 +399,7 @@ function createFixture() {
             return new Response('{}', { status: 200 });
         },
         async generate() {
+            generations++;
             if (notifyGenerateEntered) notifyGenerateEntered();
             if (generateGate) await generateGate;
             return new Response('{}', { status: 200 });
@@ -745,11 +504,13 @@ function createFixture() {
         container,
         refreshed,
         f2Saves,
+        settingsSaves,
         capturedDocs,
         sessionStates,
         get session() { return session; },
         get savedChatCount() { return f2Saves.length; },
-        get savedSettingsCount() { return savedSettingsCount; },
+        get savedSettingsCount() { return settingsSaves.length; },
+        get generations() { return generations; },
         pauseNextGenerate() {
             let release;
             generateGate = new Promise(resolve => { release = resolve; });
@@ -897,9 +658,12 @@ test('Batch 2: setLorebookSettings、triggerSlash/triggerSlashWithResult 与 _re
     const withRes = await th.triggerSlashWithResult('/incvar score | /getvar score');
     assert.equal(withRes, '43');
 
+    const savesBeforeEjs = f.savedChatCount;
     const ejsSlash = await globalThis.EjsTemplate.evalTemplate('<%= await execute("/setvar key=from_ejs 77 | /getvar from_ejs") %>');
     assert.equal(ejsSlash, '77');
     assert.equal(f.context.chatMetadata.variables.from_ejs, '77');
+    assert.equal(f.savedChatCount, savesBeforeEjs + 1);
+    assert.equal(f.f2Saves.at(-1).chat[0].chat_metadata.variables.from_ejs, '77');
 
     // 3. registerMacroLike / _bind._registerMacroLike / unregisterMacroLike
     assert.equal(typeof th.registerMacroLike, 'function');
@@ -1165,7 +929,18 @@ test('Batch 3: 世界书旧名包装、消息增删旋转、提示词注入、�
     assert.deepEqual(th.getCharacterIds(), ['helper-test.png']);
     assert.equal(th.getCharData('current').name, '测试角色');
     assert.equal(th.getCharAvatarPath('current'), '/characters/helper-test.png');
-    assert.equal(th.getCharacter('current').name, '测试角色');
+    const currentCharacter = await th.getCharacter('current');
+    assert.equal('name' in currentCharacter, false);
+    assert.equal(currentCharacter.avatar, 'helper-test.png');
+    assert.equal(currentCharacter.version, '1.0');
+    assert.equal(currentCharacter.creator, 'creatorA');
+    assert.equal(currentCharacter.creator_notes, '作者备注');
+    assert.equal(currentCharacter.description, '角色描述');
+    assert.deepEqual(currentCharacter.first_messages, ['你好，欢迎来到书店。', '备选开场1']);
+    assert.equal(currentCharacter.worldbook, '测试世界书');
+    assert.equal(currentCharacter.extensions.world, undefined);
+    assert.equal(currentCharacter.extensions.regex_scripts[0].script_name, '角色正则');
+    assert.equal(currentCharacter.extensions.tavern_helper.scripts[0].id, 'script-1');
     const brief = await th.getChatHistoryBrief('current');
     assert.equal(brief.length, 1);
     const detail = await th.getChatHistoryDetail(brief);
@@ -1366,6 +1141,201 @@ test('Audit 3: createChatMessages 事件顺序 (SENT/RECEIVED -> refresh -> REND
     assert.equal(savedPayload.chat[4].variables[0].mvu_floor_applied, true, 'RENDERED 回调写入的楼层变量必须进入同一次 F2 保存');
 });
 
+test('T14: /send 的 at 与 return 经真实 Session 提交，并等待 RENDERED 中的 EJS 变量回写', async t => {
+    const f = createFixture();
+    await f.init();
+    t.after(() => f.session.destroySession());
+    const th = globalThis.TavernHelper;
+    const initial = f.context.chat.map(message => message.mes);
+
+    const appended = await th.triggerSlash('/send at=-0 return=pipe appended');
+    assert.equal(appended, 'appended');
+    assert.deepEqual(f.context.chat.map(message => message.mes), [...initial, 'appended']);
+    assert.equal(f.savedChatCount, 1);
+
+    const rendered = Promise.withResolvers();
+    const finishRendered = Promise.withResolvers();
+    f.context.eventSource.on(event_types.USER_MESSAGE_RENDERED, async index => {
+        rendered.resolve(index);
+        await finishRendered.promise;
+        const suffix = await globalThis.EjsTemplate.evalTemplate(
+            '<%= await execute("/setvar key=rendered committed || /setglobalvar key=rendered_pref stored") %>',
+        );
+        f.context.chat[index].mes += ` ${suffix}`;
+    });
+    f.refreshed.length = 0;
+    const revisionBefore = f.context.chatMetadata.vc_f2.revision;
+    const settingsBefore = f.savedSettingsCount;
+    const pending = th.triggerSlash('/send at=-1 name=Fixture return=object inserted');
+    try {
+        assert.equal(await Promise.race([rendered.promise, pending]), initial.length);
+        assert.deepEqual(f.context.chat.map(message => message.mes), [...initial, 'inserted', 'appended']);
+        assert.deepEqual(f.refreshed, [initial.length, initial.length + 1]);
+        assert.equal(f.savedChatCount, 1, '异步 RENDERED 回写完成前不得提交 F2');
+        assert.equal(f.savedSettingsCount, settingsBefore);
+    } finally {
+        finishRendered.resolve();
+    }
+
+    const inserted = JSON.parse(await pending);
+    assert.equal(inserted.name, 'Fixture');
+    assert.equal(inserted.is_user, true);
+    assert.equal(inserted.mes, 'inserted stored');
+    assert.equal(f.savedChatCount, 2);
+    assert.equal(f.f2Saves.at(-1).chat[initial.length + 1].mes, inserted.mes);
+    const savedMetadata = f.f2Saves.at(-1).chat[0].chat_metadata;
+    assert.equal(savedMetadata.vc_f2.revision, revisionBefore);
+    assert.equal(f.context.chatMetadata.vc_f2.revision, revisionBefore + 1);
+    assert.equal(savedMetadata.variables.rendered, 'committed');
+    assert.equal(f.savedSettingsCount, settingsBefore + 1);
+    assert.equal(f.settingsSaves.at(-1).extension_settings.variables.global.rendered_pref, 'stored');
+    assert.equal(f.generations, 0);
+});
+
+test('T14: 在真实 Session 等待 cards.settle 时取消 /send，消息、变量和 F2 均保持原值', async t => {
+    const f = createFixture();
+    const cards = await f.init();
+    t.after(() => f.session.destroySession());
+    const messagesBefore = structuredClone(f.context.chat);
+    const { variables: variablesBefore, vc_f2: tokenBefore } = structuredClone(f.context.chatMetadata);
+    const settingsBefore = f.savedSettingsCount;
+    const cardWrite = Promise.withResolvers();
+    const settling = Promise.withResolvers();
+    f.context.cardWrites = [cardWrite.promise];
+    const settle = cards.settle.bind(cards);
+    cards.settle = () => {
+        const pending = settle();
+        settling.resolve(true);
+        return pending;
+    };
+
+    const abortController = new SlashCommandAbortController();
+    const pending = executeSlashCommandsWithOptions('/send cancelled-in-settle', { abortController });
+    try {
+        assert.equal(await Promise.race([settling.promise, pending]), true);
+        assert.equal(f.session.busy, true);
+        abortController.abort('fixture cancellation', true);
+    } finally {
+        cardWrite.resolve();
+    }
+    const result = await pending;
+    assert.equal(result.isAborted, true);
+    assert.equal(result.isError, false);
+    assert.deepEqual(f.context.chat, messagesBefore);
+    assert.deepEqual(f.context.chatMetadata.variables, variablesBefore);
+    assert.deepEqual(f.context.chatMetadata.vc_f2, tokenBefore);
+    assert.equal(f.context.metadataDirty, false);
+    assert.deepEqual(f.refreshed, []);
+    assert.equal(f.savedChatCount, 0);
+    assert.equal(f.savedSettingsCount, settingsBefore);
+});
+
+test('T14: 同一 Session 并行运行含 EJS 的共享闭包，各自使用当前的控制器并保留词法作用域', async t => {
+    const f = createFixture();
+    await f.init();
+    t.after(() => f.session.destroySession());
+    const entered = Promise.withResolvers();
+    const resume = Promise.withResolvers();
+    const defines = globalThis.EjsTemplate.defines;
+    let calls = 0;
+    defines.vcTestPause = async () => {
+        if (++calls === 1) {
+            entered.resolve(true);
+            await resume.promise;
+        }
+        return '';
+    };
+    const scope = new SlashCommandScope();
+    scope.letVariable('lexicalText', 'from-lexical-scope');
+    const definitionController = new SlashCommandAbortController();
+    const closure = new SlashCommandParser().parse(
+        '/ejs block=true await vcTestPause() || /send return=pipe {{var::lexicalText}}',
+        true,
+        {},
+        definitionController,
+    );
+    closure.scope.parent = scope;
+    scope.letVariable('shared', closure);
+
+    const firstController = new SlashCommandAbortController();
+    const secondController = new SlashCommandAbortController();
+    const first = executeSlashCommandsWithOptions('/run shared', { scope, abortController: firstController });
+    try {
+        assert.equal(await Promise.race([entered.promise, first]), true);
+        const second = await executeSlashCommandsWithOptions('/:shared', { scope, abortController: secondController });
+        assert.equal(second.isError, false);
+        assert.equal(second.pipe, 'from-lexical-scope');
+        assert.equal(f.savedChatCount, 1);
+        secondController.abort('fixture completed execution', true);
+    } finally {
+        resume.resolve();
+        delete defines.vcTestPause;
+    }
+
+    const result = await first;
+    assert.equal(result.isError, false);
+    assert.equal(result.isAborted, false);
+    assert.equal(result.pipe, 'from-lexical-scope');
+    assert.equal(f.savedChatCount, 2);
+    assert.deepEqual(f.context.chat.slice(-2).map(message => message.mes), ['from-lexical-scope', 'from-lexical-scope']);
+    assert.equal(closure.abortController, definitionController);
+    assert.equal(closure.scope.parent, scope);
+});
+
+test('T14: 切换真实 Session 聊天后，旧 EJS 模板延后调用 execute 不得写入新会话', async t => {
+    const f = createFixture();
+    await f.init();
+    t.after(() => f.session.destroySession());
+    const ejs = globalThis.EjsTemplate;
+    const entered = Promise.withResolvers();
+    const resume = Promise.withResolvers();
+    const locals = await ejs.prepareContext({
+        async vcTestPause() {
+            entered.resolve(true);
+            await resume.promise;
+        },
+    });
+    const previousMetadata = f.context.chatMetadata;
+    const previousChat = f.context.chat;
+    const previousMessages = structuredClone(previousChat);
+    const pending = ejs.evalTemplate(
+        '<% await vcTestPause() %><%- await execute("/setvar key=stale_ejs leaked || /send stale-ejs") %>',
+        locals,
+    );
+    const nextId = 'chat-f2-next';
+    let savesBeforeResume;
+    try {
+        assert.equal(await Promise.race([entered.promise, pending]), true);
+        const activated = await f.session.activate({ avatar: 'helper-test.png', file: 'chat-file-next.jsonl' }, [{
+            chat_metadata: {
+                integrity: 'next-test-integrity',
+                vc_f2: { id: nextId, revision: 1 },
+                vc_binding: { ...previousMetadata.vc_binding, chatIdentity: nextId, conversationId: nextId },
+                variables: {},
+            },
+        }]);
+        assert.equal(activated, true);
+        savesBeforeResume = f.savedChatCount;
+    } finally {
+        resume.resolve();
+    }
+    const outcome = await pending.then(() => 'fulfilled', () => 'rejected');
+    assert.equal(f.context.chatMetadata.vc_f2.id, nextId);
+    assert.deepEqual({
+        variable: f.context.chatMetadata.variables.stale_ejs,
+        messageCount: f.context.chat.length,
+        saves: f.savedChatCount,
+    }, {
+        variable: undefined,
+        messageCount: 0,
+        saves: savesBeforeResume,
+    });
+    assert.equal(f.context.metadataDirty, false);
+    assert.equal(previousMetadata.variables.stale_ejs, undefined);
+    assert.deepEqual(previousChat, previousMessages);
+    assert.equal(outcome, 'rejected');
+});
+
 test('Audit 4, 5, 6: 楼层变量宏 message_id 上下文、GENERATE_AFTER_DATA 单次替换与 formatAsTavernRegexedString role/depth 传递', async () => {
     const f = createFixture();
     await f.init();
@@ -1386,8 +1356,9 @@ test('Audit 4, 5, 6: 楼层变量宏 message_id 上下文、GENERATE_AFTER_DATA 
         'display',
         { depth: 0 },
     );
-    assert.equal(outFloor0, 'FLOOR_ZERO|FLOOR_ZERO|"FLOOR_ZERO"');
-    assert.equal(outFloor1, 'FLOOR_ONE|FLOOR_ONE|"FLOOR_ONE"');
+    // 锁定 Helper macro_like 直接返回字符串，quoted 只配置其他值的 YAML 序列化。
+    assert.equal(outFloor0, 'FLOOR_ZERO|FLOOR_ZERO|FLOOR_ZERO');
+    assert.equal(outFloor1, 'FLOOR_ONE|FLOOR_ONE|FLOOR_ONE');
 
     // Audit 5: 同一生成连续触发 GENERATE_AFTER_DATA 与 CHAT_COMPLETION_SETTINGS_READY 时，非幂等宏只能替换 1 次且带每行 role
     let count = 0;
@@ -1575,10 +1546,14 @@ test('Audit 11, 12, 13: builtin.duringGenerating 真实生成态、builtin.rende
     }
 
     // Audit 12: builtin.renderMarkdown 复用 cards/format.js 的配置化 converter（支持表格、删除线、单换行等）
-    const mdHtml = th.builtin.renderMarkdown('| A | B |\n| - | - |\n| 1 | 2 |\n\n~~删除线~~\n第一行\n第二行');
+    const mdHtml = th.builtin.renderMarkdown('| A | B |\n| --- | --- |\n| 1 | 2 |\n\n~~删除线~~\n\n第一行\n第二行');
     assert.ok(mdHtml.includes('<table>'), 'renderMarkdown 应支持表格');
     assert.ok(mdHtml.includes('<del>删除线</del>'), 'renderMarkdown 应支持删除线');
-    assert.ok(mdHtml.includes('第一行<br>\n第二行'), 'renderMarkdown 应支持单换行转 <br>');
+    const renderedMarkdown = happyWindow.document.createElement('div');
+    renderedMarkdown.innerHTML = mdHtml;
+    const lineBreak = renderedMarkdown.querySelector('br');
+    assert.equal(lineBreak?.previousSibling?.textContent?.trimEnd().endsWith('第一行'), true, '单换行前保留原文字');
+    assert.equal(lineBreak?.nextSibling?.textContent?.trimStart(), '第二行', '单换行须渲染为两行之间的 br 节点');
 
     // Audit 13: /let 与 /var 严格复用锁定 SlashCommandScope 语义（前导零数值归一、非 JSON 索引 catch 分支、同次共享/跨次隔离、不写 chat_metadata）
     const leadingZeroOut = await th.triggerSlash('/let x 001 | /var x');
@@ -1596,22 +1571,26 @@ test('Audit 11, 12, 13: builtin.duringGenerating 真实生成态、builtin.rende
     const objScopedOut = await th.triggerSlash('/let key=obj {"a":1} | /var index=b as=number obj 2 | /var obj');
     assert.equal(objScopedOut, '{"a":1,"b":2}');
 
-    await assert.rejects(
-        () => th.triggerSlash('/let s hello | /var index=0 s X'),
-        /Cannot assign to read only property/,
-        '非 JSON 字符串带 index 赋值走锁定 catch 分支 v[index]=...，在严格模式下抛错而非覆盖整串变量',
-    );
+    const indexedScope = new SlashCommandScope();
+    indexedScope.letVariable('s', 'hello');
+    const sanitizedError = { name: 'Error', message: 'Slash command execution failed' };
+    await assert.rejects(() => th.triggerSlash('/var index=0 s X', { scope: indexedScope }), sanitizedError);
+    assert.equal(indexedScope.getVariable('s'), 'hello', '非法索引赋值不得覆盖原局部变量');
 
     // 跨次执行不泄漏上次局部作用域，读取未声明局部变量抛错，重复 /let 同名变量抛错
-    await assert.rejects(() => th.triggerSlash('/var x'), /No such variable: "x"/);
-    await assert.rejects(() => th.triggerSlash('/let dup 1 | /let dup 2'), /Variable named "dup" already exists\./);
+    await assert.rejects(() => th.triggerSlash('/var x'), sanitizedError);
+    await assert.rejects(() => th.triggerSlash('/let dup 1 | /let dup 2'), sanitizedError);
 
-    // 顶层 || 禁止下一命令隐式 pipe 注入，单 | 保持隐式注入，保留括号、引号与显式 {{pipe}}
+    // 顶层 || 禁止下一命令隐式 pipe 注入，单 | 保持隐式注入。
     assert.equal(await th.triggerSlash('/echo piped | /echo'), 'piped');
     assert.equal(await th.triggerSlash('/echo piped || /echo'), '');
     assert.equal(await th.triggerSlash('/echo piped || /echo {{pipe}}'), 'piped');
-    assert.equal(await th.triggerSlash('/echo "a || b" | /echo'), 'a || b');
-    assert.equal(await th.triggerSlash('/echo {:a || b:} | /echo'), '{:a || b:}');
+    // 锁定 /echo 默认 rawQuotes；raw=false 与 STRICT_ESCAPING 保留引号内的 ||，未转义 {:...:} 解析为闭包。
+    assert.equal(await th.triggerSlash('/echo "a || b" | /echo'), '');
+    assert.equal(await th.triggerSlash('/echo raw=false "a || b" | /echo', {
+        parserFlags: { STRICT_ESCAPING: true },
+    }), 'a || b');
+    assert.equal(await th.triggerSlash('/echo {:a || b:} | /echo'), '[Closure]');
 
     const lenBeforeDoublePipeDel = f.context.chat.length;
     assert.ok(lenBeforeDoublePipeDel >= 4);

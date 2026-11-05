@@ -27,7 +27,7 @@ V2 方向（ADR-0009）的锁定 ST 宿主开发入口：真实上游栈 + 本�
 3. `node scripts/bootstrap.mjs`：校验上游 commit/产物 SHA → ST 依赖树按锁 `npm ci`（联网）→
    下载 `vendor.lock.json` 固定的 npm 官方 tarball（联网，逐文件 sha256）→ 在 `dev/data` 重建
    dataRoot（复制 Helper/EJS、应用确定性补丁、自托管 vendor 与 MVU bundle）→ 生成 `dev/config.yaml`。
-   `--offline` 复用已缓存资产；任何校验失败即硬失败，不产出半成品。
+   `--offline` 复用已缓存资产（含 Helper pnpm lock 固定的桌面依赖）；校验失败会停止装配。
 
 ## 日常入口
 
@@ -295,6 +295,12 @@ W03 集成收口的受管链路：ST 前台生成经 server plugin 桥接 Go 后
 ## 桌面 React 自有界面
 
 正式电脑端在同源 `/` 和 `/desktop/` 启动同一个 React 应用。React 管理页面、消息与输入，SessionBridge 接入既有会话和 F2 保存，Helper/EJS/MVU iframe 由独立卡片运行模块管理。构建分别生成 `server-plugin/virtual-companion/desktop/app/` 与原生扩展的 `desktop/build/`。手机原生引擎使用 `/native/`，由原生 ST 与桥接 bundle 提供卡片和配置，沿用同一 F2 聊天存储。架构、双构建和受管场景见 [desktop-ui 开发说明](desktop-ui/README.md)，当前任务见 [DR2 backlog](../../docs/planning/2026-10-31-handoff-backlog.md#k-电脑端前端重建dr2)。
+
+仅构建桌面或跑离线测试时，在本目录运行 `node scripts/prepare-desktop-source.mjs` 准备锁定源码和 npm 缓存。该命令只检出缺少的上游，不更新现有检出。CI 在桌面构建前显式执行该准备步骤。
+
+`npm run build:desktop` 离线验证输入，并在 `extension/vc-model-settings/desktop/locked-source/` 固定覆盖一份可由浏览器与 Node 直接 import 的 ESM。Vite 的应用构建消费同一目录。Helper 的桌面依赖来自锁定检出内的 `pnpm-lock.yaml`，原生 iframe 同源资源由 `vendor.lock.json` 和 bootstrap 装配。生成目录及应用输出内的 `THIRD_PARTY_NOTICES.txt` 随产物提供上游与依赖许可。
+
+桌面 HTML 卡片和 EJS 的执行权限来自当前角色或预设的 Helper 脚本启用名单，并受对应扩展开关约束。普通模型或导入内容中的 HTML/EJS 不自动取得执行权限；全局脚本启用只控制全局脚本。卡片实例销毁或切换会话后，旧回调不能写入新会话。消息与变量变更统一经 Session/F2/CAS 提交，MVU 的重新处理与重演在变量写回、刷新及异步渲染回调完成后各保存一次。
 
 手机源码仍在 `mb-mobile`，联合候选为 `ff2af0c0`（含 `993fb625` 地址适配及原生后台F2冲突处理）；本分支不合入该分支的手机业务或 Go 变更。联合受管验收在手机工作树运行既有 `npm --prefix mobile run build:h5`，将生成的 `server-plugin/virtual-companion/mobile-dist/` 复制到当前插件同路径，再运行原 `assemble-managed` / `accept-managed`。产物固定覆盖一份、忽略不提交；缺少 H5 时 `/m/` 明确返回 503，不能拿桌面根页充当手机引擎。联合发布须带该新版 H5，本轮未进行生产镜像构建或部署。
 

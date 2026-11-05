@@ -193,6 +193,7 @@ export interface SessionBridge {
     dismissConflict(): void;
     markVoicePlayed(index: number): void;
     cancelForCharacterDelete(avatar: string): Promise<void>;
+    setFirstDisplayedMessageId(key: string, id: number | null): void;
     getContext(): any;
     destroy(): void;
 }
@@ -249,6 +250,7 @@ export function createSessionBridge(
     let sessionPublishedKey = '';
     let retryRow: NormalizedRow | null = null;
     let attachCallerSignal: ((signal: AbortSignal) => void) | null = null;
+    let runtimeAbort: AbortController | null = null;
     let runtimeInstance: any = null;
     let runtimePromise: Promise<any> | null = null;
     let charactersReady: Promise<any> = Promise.resolve([]);
@@ -265,6 +267,16 @@ export function createSessionBridge(
     }
 
     const eventSource = new EventEmitter([event_types.APP_INITIALIZED, event_types.APP_READY]);
+    let firstDisplayedState: { key: string; id: number | null } = { key: '', id: null };
+
+    function readFirstDisplayedMessageId(): number | null {
+        const currentKey = snapshot.key || committedRow?.key || activeRow?.key || '';
+        if (!currentKey || firstDisplayedState.key !== currentKey) {
+            return null;
+        }
+        return firstDisplayedState.id;
+    }
+
     const context: any = {
         characters: [],
         chat: [],
@@ -276,7 +288,15 @@ export function createSessionBridge(
         extensionPrompts: {},
         eventSource,
         eventTypes: event_types,
+        readFirstDisplayedMessageId: () => readFirstDisplayedMessageId(),
     };
+    Object.defineProperty(context, 'firstDisplayedMessageId', {
+        configurable: true,
+        enumerable: true,
+        get() {
+            return readFirstDisplayedMessageId();
+        },
+    });
 
     const stOwner = { getContext: () => context };
     if (typeof globalThis !== 'undefined') {
@@ -409,6 +429,7 @@ export function createSessionBridge(
     };
 
     function syncGeneratingAttr(busy: boolean) {
+        if (dead) return;
         if (typeof document !== 'undefined' && document.body) {
             document.body.dataset.generating = String(Boolean(busy));
         }
@@ -582,52 +603,68 @@ export function createSessionBridge(
             return Promise.resolve(null);
         }
 
+        runtimeAbort?.abort();
+        const runtimeController = new AbortController();
+        runtimeAbort = runtimeController;
+        const runtimeSignal = runtimeController.signal;
+        const isDeadOrAborted = () => dead || runtimeSignal.aborted;
+
         snapshot = { ...snapshot, runtime: 'preparing' };
         emit();
 
         charactersReady =
-            typeof client.characters === 'function'
+            typeof client?.characters === 'function'
                 ? client
                       .characters()
                       .then((chars: any[]) => {
+                          if (isDeadOrAborted()) return [];
                           if (Array.isArray(chars)) context.characters = chars;
                           return chars;
                       })
                       .catch(() => {
-                          if (typeof document !== 'undefined' && document.documentElement) {
+                          if (
+                              !isDeadOrAborted() &&
+                              typeof document !== 'undefined' &&
+                              document.documentElement
+                          ) {
                               document.documentElement.dataset.vcCharacters = 'error';
                           }
                           return [];
                       })
                 : Promise.resolve([]);
 
-        void client
-            .settings()
-            .then((packet: any) => {
-                if (dead || !packet?.settings) return;
-                const parsed = JSON.parse(packet.settings);
-                const power = parsed?.power_user || {};
-                const sendOnEnter = power.send_on_enter;
-                snapshot = {
-                    ...snapshot,
-                    enterToSend: sendOnEnter === undefined ? true : Number(sendOnEnter) !== -1,
-                    preferences: { ...power },
-                };
-                if (!context.chatId) {
-                    context.name1 = parsed.username || '';
-                    context.userAvatar = parsed.user_avatar || '';
-                }
-                emit();
-            })
-            .catch(() => {});
+        if (client && typeof (client as any).settings === 'function') {
+            void client
+                .settings()
+                .then((packet: any) => {
+                    if (isDeadOrAborted() || !packet?.settings) return;
+                    const parsed = JSON.parse(packet.settings);
+                    const power = parsed?.power_user || {};
+                    const sendOnEnter = power.send_on_enter;
+                    snapshot = {
+                        ...snapshot,
+                        enterToSend: sendOnEnter === undefined ? true : Number(sendOnEnter) !== -1,
+                        preferences: { ...power },
+                    };
+                    if (!context.chatId) {
+                        context.name1 = parsed.username || '';
+                        context.userAvatar = parsed.user_avatar || '';
+                    }
+                    emit();
+                })
+                .catch(() => {});
+        }
 
         runtimePromise = prepareRuntimeFn({
             client,
             context,
+            signal: runtimeSignal,
             choosePersona,
             callGenericPopup,
             readInput: () => readScopedDraft(snapshot.key, false),
+            readFirstDisplayedMessageId: () => readFirstDisplayedMessageId(),
             onToast: (message: string, opts?: { type?: string }) => {
+                if (isDeadOrAborted()) return;
                 toast.show({
                     title: String(message || ''),
                     kind:
@@ -637,7 +674,7 @@ export function createSessionBridge(
                 });
             },
             onConflict: (serialized: string, error: any) => {
-                if (dead) return;
+                if (isDeadOrAborted()) return;
                 const activeKey = committedSnapshot?.key || snapshot.key;
                 const nextConflictSnapshot = {
                     raw: serialized,
@@ -661,7 +698,7 @@ export function createSessionBridge(
                 }
             },
             onChange: (state: any) => {
-                if (dead) return;
+                if (isDeadOrAborted()) return;
                 const matchesCommitted = Boolean(
                     committedSnapshot && state.key === committedSnapshot.key,
                 );
@@ -731,11 +768,13 @@ export function createSessionBridge(
                 }
             },
             onTakeDraft: (key: string, input: string) => {
+                if (isDeadOrAborted()) return;
                 if (readScopedDraft(key, false) === input) {
                     writeScopedDraft(key, '');
                 }
             },
             onRestoreDraft: (key: string, input: string) => {
+                if (isDeadOrAborted()) return;
                 if (input) {
                     const merged = mergeInput(readScopedDraft(key, false), input);
                     writeScopedDraft(key, merged);
@@ -743,7 +782,7 @@ export function createSessionBridge(
             },
             paint: () => {
                 if (
-                    dead ||
+                    isDeadOrAborted() ||
                     readAbort ||
                     !snapshot.key ||
                     snapshot.status !== 'ready' ||
@@ -762,19 +801,23 @@ export function createSessionBridge(
             },
         })
             .then(async (rt: any) => {
+                if (isDeadOrAborted()) {
+                    rt?.destroy?.();
+                    return rt;
+                }
                 const attemptedConfiguration: Array<(runtime: any) => unknown> = [];
                 try {
-                    while (!dead && pendingConfiguration.length) {
+                    while (!isDeadOrAborted() && pendingConfiguration.length) {
                         const apply = pendingConfiguration.shift()!;
                         attemptedConfiguration.push(apply);
                         await apply(rt);
                     }
                 } catch (error) {
-                    if (!dead) pendingConfiguration.unshift(...attemptedConfiguration);
+                    if (!isDeadOrAborted()) pendingConfiguration.unshift(...attemptedConfiguration);
                     rt?.destroy?.();
                     throw error;
                 }
-                if (dead) {
+                if (isDeadOrAborted()) {
                     rt?.destroy?.();
                     return rt;
                 }
@@ -785,12 +828,16 @@ export function createSessionBridge(
                 snapshot = { ...snapshot, runtime: 'prepared' };
                 await eventSource.emit(event_types.APP_INITIALIZED);
                 await eventSource.emit(event_types.APP_READY);
-                emit();
+                if (!isDeadOrAborted()) {
+                    emit();
+                }
                 return rt;
             })
             .catch((err: any) => {
-                runtimePromise = null;
-                if (dead) throw err;
+                if (runtimeAbort === runtimeController) {
+                    runtimePromise = null;
+                }
+                if (isDeadOrAborted()) throw err;
                 if (typeof document !== 'undefined' && document.documentElement) {
                     document.documentElement.dataset.vcRuntime = 'error';
                 }
@@ -1543,13 +1590,17 @@ export function createSessionBridge(
             snapshot.personaChoice?.resolve(avatar);
         },
         async copyRejected() {
+            if (dead) return '';
             const text =
                 (await runtimeInstance?.copyRejected?.()) ||
                 snapshot.conflictSnapshot?.input ||
                 '';
+            if (dead) return text;
             if (text && typeof navigator !== 'undefined' && navigator.clipboard) {
                 await navigator.clipboard.writeText(text);
-                toast.show({ title: '已复制', kind: 'success' });
+                if (!dead) {
+                    toast.show({ title: '已复制', kind: 'success' });
+                }
             }
             return text;
         },
@@ -1614,11 +1665,25 @@ export function createSessionBridge(
                 emit();
             }
         },
+        setFirstDisplayedMessageId(key: string, id: number | null) {
+            if (!key) return;
+            if (id === null) {
+                if (firstDisplayedState.key === key) {
+                    firstDisplayedState = { key, id: null };
+                }
+                return;
+            }
+            if (typeof id === 'number' && Number.isInteger(id) && id >= 0) {
+                firstDisplayedState = { key, id };
+            }
+        },
         getContext() {
             return context;
         },
         destroy() {
             dead = true;
+            runtimeAbort?.abort();
+            runtimeAbort = null;
             pendingConfiguration.length = 0;
             committedMetadata = null;
             readAbort?.abort();

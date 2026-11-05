@@ -49,8 +49,10 @@ function installRuntimeMediaBindings({ context, paint = () => {} }) {
     };
 }
 
-export async function prepareChatRuntime({ client, context, choosePersona, callGenericPopup, readInput, onChange, onTakeDraft, onRestoreDraft, onConflict, onToast, paint = () => {} }) {
+export async function prepareChatRuntime({ client, context, signal, choosePersona, callGenericPopup, readInput, readFirstDisplayedMessageId, onChange, onTakeDraft, onRestoreDraft, onConflict, onToast, paint = () => {} }) {
+    signal?.throwIfAborted();
     const [purposes, providers, packet] = await Promise.all([fetchModelPurposes(), fetchProviders(), client.settings()]);
+    signal?.throwIfAborted();
     const decision = resolveForegroundProjection(purposes, providers);
     const settings = runtimeSettings(JSON.parse(packet.settings));
     const scope = buildScope(characterKeyOf(context), chatKeyOf(context.chatId), 0);
@@ -59,20 +61,27 @@ export async function prepareChatRuntime({ client, context, choosePersona, callG
     client.documents.seedPresets(packet);
     const presets = Object.fromEntries(packet.openai_setting_names.map((name, index) => [name, JSON.parse(packet.openai_settings[index])]));
     const models = providers.flatMap(provider => provider.models.map(model => ({ id: model.modelId, ...model })));
-    const engine = await createChatEngine({ client, context, settings, decision, presets, models, readInput, onToast,
-        initializeCards: args => initializeCards({ ...args, packet, callGenericPopup }) });
+    const safeToast = onToast ? (message, opts) => { if (!signal?.aborted) onToast(message, opts); } : undefined;
+    const engine = await createChatEngine({ client, context, signal, settings, decision, presets, models, packet, readInput, readFirstDisplayedMessageId, onToast: safeToast,
+        initializeCards: args => initializeCards({ ...args, packet, callGenericPopup, signal }) });
+    if (signal?.aborted) {
+        engine.destroy?.();
+        signal.throwIfAborted();
+    }
     const session = createDesktopSession({ client, context, engine, prepareSourceIdentities, readResponse: readGenerationResponse,
         choosePersona, onChange, onTakeDraft, onRestoreDraft, onConflict });
     session.setCatalogStatus(decision.eligible, decision.eligible ? '' : '请先配置聊天模型。', !decision.eligible);
     let catalogRead = 0;
     async function refreshCatalog() {
+        if (signal?.aborted) return;
         const ticket = ++catalogRead;
         session.setCatalogStatus(false);
         try {
             const [purposes, providers] = await Promise.all([fetchModelPurposes(), fetchProviders()]);
+            if (signal?.aborted) return;
             const next = resolveForegroundProjection(purposes, providers);
             await session.whenIdle();
-            if (ticket !== catalogRead) return;
+            if (signal?.aborted || ticket !== catalogRead) return;
             engine.updateCatalog(next, providers.flatMap(provider => provider.models.map(model => ({ id: model.modelId, ...model }))));
             if(next.eligible){
                 const fields=['chat_completion_source','custom_url','reverse_proxy',next.modelField,'openai_max_context','openai_max_tokens',
@@ -81,7 +90,7 @@ export async function prepareChatRuntime({ client, context, choosePersona, callG
             }
             session.setCatalogStatus(next.eligible, next.eligible ? '' : '请先配置聊天模型。', !next.eligible);
         } catch (error) {
-            if (ticket === catalogRead) session.setCatalogStatus(false, error.kind === 'context-changed' || error.status === 401
+            if (!signal?.aborted && ticket === catalogRead) session.setCatalogStatus(false, error.kind === 'context-changed' || error.status === 401
                 ? '登录状态或聊天已变化，请重新打开页面。' : '模型配置没有加载出来，请重试。');
         }
     }
@@ -89,7 +98,7 @@ export async function prepareChatRuntime({ client, context, choosePersona, callG
     const restartFor = changes => changes.some(({ path }) => !path.length || path[0] === 'oai_settings' && (path.length === 1 || path[1] === 'preset_settings_openai')
         || path[0] === 'extension_settings' && (path.length === 1 || path[1] === 'tavern_helper' && (path.length === 2 || path[2] === 'script')));
     return Object.assign(session, media, {
-        destroy() { media.destroy(); session.destroySession?.(); },
+        destroy() { media.destroy(); session.destroySession?.(); engine.destroy?.(); },
         refreshCatalog, story: engine.story, renderMessage: engine.cards.renderMessage, mountCardActions: engine.cards.mountCardActions,
         applySettings(changes) { return session.configure(async () => {
             engine.applySettings(changes);

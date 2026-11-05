@@ -1,5 +1,5 @@
 // 锁定 EJS 的直接宿主端口。只读同一会话状态；不导回原生页面/初始化器。
-import { lodash, yaml } from '/lib.js';
+import { DOMPurify, lodash, yaml } from '../../locked-source/st/lib.js';
 import { createRegexRuntime } from '../engine/regex.js';
 import { createTokenizer } from '../engine/tokenizers.js';
 import { getChatCompletionModel as modelOf } from '../engine/st/scripts/openai.js';
@@ -15,7 +15,7 @@ import {
     SlashCommandNamedArgument,
     SlashCommandParser,
     executeSlashCommands,
-    executeSlashCommandsWithOptions,
+    executeSlashCommandsWithOptions as executeHelperSlashCommandsWithOptions,
 } from './helper-slash.js';
 export * from '../engine/ports.js';
 export {
@@ -31,8 +31,33 @@ export {
     SlashCommandNamedArgument,
     SlashCommandParser,
     executeSlashCommands,
-    executeSlashCommandsWithOptions,
 };
+const STALE_SCOPE_ERROR_MESSAGE = '角色卡执行上下文已失效。';
+const SLASH_EXECUTION_ERROR_MESSAGE = 'VC_SLASH_EXECUTION_ERROR';
+
+function createSanitizedError(message = STALE_SCOPE_ERROR_MESSAGE) {
+    const error = new Error(message);
+    Object.defineProperty(error, 'message', {
+        get: () => message,
+        set: () => {},
+        enumerable: false,
+        configurable: true,
+    });
+    return error;
+}
+
+export async function executeSlashCommandsWithOptions(text, options) {
+    let result;
+    try {
+        result = await executeHelperSlashCommandsWithOptions(text, options);
+    } catch {
+        throw createSanitizedError(SLASH_EXECUTION_ERROR_MESSAGE);
+    }
+    if (result?.isError) {
+        throw createSanitizedError(SLASH_EXECUTION_ERROR_MESSAGE);
+    }
+    return result;
+}
 
 let owner;
 export let user_avatar, world_info, selected_world_info, world_names;
@@ -48,31 +73,347 @@ export function bindCardHost(options) {
     user_avatar = context.userAvatar;
     world_info = settings.world_info ||= {};
     selected_world_info = world_info.globalSelect ||= [];
-    world_names = packet.world_names || [];
+    world_names = packet?.world_names || [];
     world_info_case_sensitive = settings.world_info_case_sensitive ?? false;
     world_info_match_whole_words = settings.world_info_match_whole_words ?? false;
     world_info_use_group_scoring = settings.world_info_use_group_scoring ?? false;
     world_info_max_recursion_steps = settings.world_info_max_recursion_steps ?? 0;
-    configureAccountStorage(() => { settings.accountStorage = accountStorage.getState(); context.saveSettingsDebounced(); });
+    configureAccountStorage({
+        saveSettingsDebounced: () => {
+            settings.accountStorage = accountStorage.getState();
+            return context.saveSettingsDebounced?.();
+        },
+        persistSettings: () => {
+            settings.accountStorage = accountStorage.getState();
+            if (typeof owner.persistSettings === 'function') {
+                return owner.persistSettings();
+            }
+            return undefined;
+        },
+        syncState: state => {
+            settings.accountStorage = state;
+        },
+    });
     accountStorage.init(settings.accountStorage);
     configureFormatting({ getRegexedString, regex_placement, accountStorage, toastr: globalThis.toastr,
         t: (strings, ...values) => String.raw({ raw: strings }, ...values) });
 }
 export const getCardHost = () => owner;
-// 每次模板求值拥有可撤销的生成作用域；异步计时器不能沿用已结束模板的授权。
+export function clearCardHost(targetOwner) {
+    if (!targetOwner || owner === targetOwner) {
+        owner = undefined;
+    }
+}
+function isExtensionDisabled(settings, names, packet) {
+    if (!settings || typeof settings !== 'object') return true;
+    if (
+        packet?.enable_extensions === false
+        || settings.enable_extensions === false
+        || settings.extension_settings?.enable_extensions === false
+    ) {
+        return true;
+    }
+    const disabled = settings.extension_settings?.disabledExtensions;
+    if (!Array.isArray(disabled)) return false;
+    const lowered = new Set(disabled.map(item => String(item).toLowerCase()));
+    return names.some(name => lowered.has(name.toLowerCase()));
+}
+export function isHelperExtensionEnabled(host = owner) {
+    const settings = host?.settings;
+    if (!settings || host?.destroyed) return false;
+    if (isExtensionDisabled(settings, ['JS-Slash-Runner', 'third-party/JS-Slash-Runner', 'tavern_helper'], host?.packet)) {
+        return false;
+    }
+    if (settings.extension_settings?.tavern_helper?.enabled === false) {
+        return false;
+    }
+    return true;
+}
+export function isEjsExtensionEnabled(host = owner) {
+    const settings = host?.settings;
+    if (!settings || host?.destroyed) return false;
+    if (isExtensionDisabled(settings, ['ST-Prompt-Template', 'third-party/ST-Prompt-Template', 'EjsTemplate'], host?.packet)) {
+        return false;
+    }
+    if (settings.extension_settings?.EjsTemplate?.enabled === false) {
+        return false;
+    }
+    return true;
+}
+export function hasExplicitCardAuthorization(host = owner) {
+    const context = host?.context;
+    const settings = host?.settings;
+    if (!context || !settings || host?.destroyed) return false;
+    const enabled = settings.extension_settings?.tavern_helper?.script?.enabled;
+    if (!enabled || typeof enabled !== 'object') return false;
+    const card = context.characters?.[context.characterId];
+    const avatar = card?.avatar;
+    if (typeof avatar === 'string' && avatar.length > 0 && Array.isArray(enabled.characters) && enabled.characters.includes(avatar)) {
+        return true;
+    }
+    const presetName = settings.oai_settings?.preset_settings_openai;
+    if (typeof presetName === 'string' && presetName.length > 0 && Array.isArray(enabled.presets) && enabled.presets.includes(presetName)) {
+        return true;
+    }
+    return false;
+}
+export function isCardExecutionAllowed(host = owner) {
+    return isHelperExtensionEnabled(host) && hasExplicitCardAuthorization(host);
+}
+export function isEjsExecutionAllowed(host = owner) {
+    return isEjsExtensionEnabled(host) && hasExplicitCardAuthorization(host);
+}
+export const isCardDisplayExecutionAllowed = () => isEjsExecutionAllowed(owner);
+export function getEnabledCardExtensions(host = owner) {
+    if (!host || host.destroyed || host !== owner) {
+        return [];
+    }
+    const list = [];
+    if (isHelperExtensionEnabled(host)) {
+        list.push('third-party/JS-Slash-Runner');
+    }
+    if (host.ejs && isEjsExtensionEnabled(host)) {
+        list.push('third-party/ST-Prompt-Template');
+    }
+    return list;
+}
+export function sanitizeRenderedHtml(html) {
+    return DOMPurify.sanitize(String(html ?? ''), {
+        ADD_TAGS: ['custom-style'],
+        FORCE_BODY: true,
+    });
+}
+const MESSAGE_MUTATION_INTERNAL_INDEX = new Map([
+    ['setChatMessages', 2],
+    ['createChatMessages', 2],
+    ['deleteChatMessages', 2],
+    ['setChatMessage', 3],
+    ['rotateChatMessages', 4],
+]);
+
+const UPDATER_HELPER_INDEX = new Map([
+    ['updateVariablesWith', 0],
+    ['updateWorldbookWith', 1],
+    ['updateLorebookEntriesWith', 1],
+]);
+
+const EJS_SCOPED_DATA_METHODS = [
+    'setvar', 'setLocalVar', 'setGlobalVar', 'setMessageVar',
+    'getvar', 'getLocalVar', 'getGlobalVar', 'getMessageVar',
+    'incvar', 'incLocalVar', 'incGlobalVar', 'incMessageVar',
+    'decvar', 'decLocalVar', 'decGlobalVar', 'decMessageVar',
+    'delvar', 'delLocalVar', 'delGlobalVar', 'delMessageVar',
+    'insvar', 'insertLocalVar', 'insertGlobalVar', 'insertMessageVar',
+    'patchVariables', 'applyVarYamlAnnotate', 'setVariableSchema', 'define',
+    'injectPrompt', 'activateWorldInfo', 'activewi', 'activateWorldInfoByKeywords', 'activateRegex',
+    'evalTemplate', 'getwi', 'getWorldInfo', 'getchr', 'getchar', 'getChara',
+    'getprp', 'getpreset', 'getPresetPrompt', 'getqr', 'getQuickReply',
+];
+
+// 每次模板求值创建独立浅层执行数据并拥有可撤销作用域；异步计时器或跨会话恢复不能沿用已结束模板的授权。
 export function enterTemplateScope(data) {
-    const lease = owner.context.captureHelperScope?.();
-    const metadata = owner.context.chatMetadata; let valid = true;
-    const generate = (name, config) => {
-        if (!valid || owner.context.chatMetadata !== metadata) return Promise.reject(new Error('角色卡执行上下文已失效。'));
-        return owner.context.generateHelper(name,config,lease?.scope);
+    const activeOwner = owner;
+    const activeContext = activeOwner?.context;
+    const lease = activeContext?.captureHelperScope?.();
+    const metadata = activeContext?.chatMetadata;
+    let valid = true;
+    let released = false;
+    const release = () => {
+        if (released) return;
+        released = true;
+        valid = false;
+        lease?.release();
     };
-    const previous = Object.getOwnPropertyDescriptor(data,'TavernHelper');
-    Object.defineProperty(data,'TavernHelper',{configurable:true,enumerable:true,writable:true,value:{...globalThis.TavernHelper,
-        generate:config=>generate('generate',config),
-        generateRaw:config=>generate('generateRaw',config),
-    }});
-    return () => {valid=false;lease?.release();if(previous)Object.defineProperty(data,'TavernHelper',previous);else delete data.TavernHelper;};
+    if (!data || typeof data !== 'object') {
+        return { data, release };
+    }
+
+    const isScopeValid = () => Boolean(
+        valid
+        && activeOwner
+        && !activeOwner.destroyed
+        && owner === activeOwner
+        && activeContext
+        && activeOwner.context === activeContext
+        && activeContext.chatMetadata === metadata
+        && (!lease?.scope || lease.scope.valid),
+    );
+    const assertScopeValid = (message = STALE_SCOPE_ERROR_MESSAGE) => {
+        if (!isScopeValid()) {
+            throw createSanitizedError(message);
+        }
+    };
+
+    const scopedData = Object.create(
+        Object.getPrototypeOf(data),
+        Object.getOwnPropertyDescriptors(data),
+    );
+
+    const prepareCallArgs = (name, args) => {
+        if (MESSAGE_MUTATION_INTERNAL_INDEX.has(name)) {
+            const internalIndex = MESSAGE_MUTATION_INTERNAL_INDEX.get(name);
+            const nextArgs = [...args];
+            const existingInternal = nextArgs[internalIndex] && typeof nextArgs[internalIndex] === 'object'
+                ? nextArgs[internalIndex]
+                : {};
+            const prevAssert = typeof existingInternal.assertActive === 'function'
+                ? existingInternal.assertActive
+                : null;
+            nextArgs[internalIndex] = {
+                ...existingInternal,
+                assertActive: () => {
+                    prevAssert?.();
+                    assertScopeValid(STALE_SCOPE_ERROR_MESSAGE);
+                },
+            };
+            return nextArgs;
+        }
+        if (UPDATER_HELPER_INDEX.has(name)) {
+            const updaterIndex = UPDATER_HELPER_INDEX.get(name);
+            const origUpdater = args[updaterIndex];
+            if (typeof origUpdater === 'function') {
+                const nextArgs = [...args];
+                nextArgs[updaterIndex] = function (...uArgs) {
+                    assertScopeValid(STALE_SCOPE_ERROR_MESSAGE);
+                    const out = origUpdater.apply(this, uArgs);
+                    return out && typeof out.then === 'function'
+                        ? out.then(val => {
+                            assertScopeValid(STALE_SCOPE_ERROR_MESSAGE);
+                            return val;
+                        })
+                        : (assertScopeValid(STALE_SCOPE_ERROR_MESSAGE), out);
+                };
+                return nextArgs;
+            }
+        }
+        return args;
+    };
+
+    let scopedHelper;
+    const wrapMethod = (name, fn, receiver) =>
+        function (...args) {
+            assertScopeValid(STALE_SCOPE_ERROR_MESSAGE);
+            const callArgs = prepareCallArgs(name, args);
+            const target = this === scopedData || this === scopedHelper ? receiver : this;
+            const result = fn.apply(target, callArgs);
+            if (name === 'define' && (typeof args[0] === 'string' || Array.isArray(args[0]))) {
+                lodash.set(scopedData, args[0], lodash.get(data, args[0]));
+            }
+            if (result && typeof result.then === 'function') {
+                return result.then(
+                    value => {
+                        assertScopeValid(STALE_SCOPE_ERROR_MESSAGE);
+                        return value;
+                    },
+                    error => {
+                        if (!isScopeValid()) {
+                            throw createSanitizedError(STALE_SCOPE_ERROR_MESSAGE);
+                        }
+                        throw error;
+                    },
+                );
+            }
+            return result;
+        };
+
+    const generate = (name, config) => {
+        if (!isScopeValid()) {
+            return Promise.reject(createSanitizedError(STALE_SCOPE_ERROR_MESSAGE));
+        }
+        return Promise.resolve(activeContext.generateHelper(name, config, lease?.scope)).then(
+            value => {
+                assertScopeValid(STALE_SCOPE_ERROR_MESSAGE);
+                return value;
+            },
+            error => {
+                if (!isScopeValid()) {
+                    throw createSanitizedError(STALE_SCOPE_ERROR_MESSAGE);
+                }
+                throw error;
+            },
+        );
+    };
+
+    const rawHelper = globalThis.TavernHelper;
+    scopedHelper = {};
+    if (rawHelper && typeof rawHelper === 'object') {
+        for (const [key, value] of Object.entries(rawHelper)) {
+            if (key === 'generate' || key === 'generateRaw') {
+                scopedHelper[key] = config => generate(key, config);
+            } else if (key === 'builtin' && value && typeof value === 'object') {
+                const scopedBuiltin = {};
+                for (const [bKey, bVal] of Object.entries(value)) {
+                    scopedBuiltin[bKey] = typeof bVal === 'function'
+                        ? wrapMethod(`builtin.${bKey}`, bVal, value)
+                        : bVal;
+                }
+                scopedHelper.builtin = scopedBuiltin;
+            } else if (typeof value === 'function' && key !== 'RawCharacter') {
+                scopedHelper[key] = wrapMethod(key, value, rawHelper);
+            } else {
+                scopedHelper[key] = value;
+            }
+        }
+    } else {
+        scopedHelper.generate = config => generate('generate', config);
+        scopedHelper.generateRaw = config => generate('generateRaw', config);
+    }
+
+    const rawExecute = typeof data.execute === 'function' ? data.execute : null;
+    const scopedExecute = async (...args) => {
+        assertScopeValid(SLASH_EXECUTION_ERROR_MESSAGE);
+        if (!rawExecute) {
+            throw createSanitizedError(SLASH_EXECUTION_ERROR_MESSAGE);
+        }
+        try {
+            const value = await rawExecute.apply(scopedData, args);
+            assertScopeValid(SLASH_EXECUTION_ERROR_MESSAGE);
+            return value;
+        } catch {
+            throw createSanitizedError(SLASH_EXECUTION_ERROR_MESSAGE);
+        }
+    };
+
+    const defineScopedValue = (key, value, enumerable = true) => {
+        Object.defineProperty(scopedData, key, {
+            configurable: true,
+            enumerable,
+            writable: true,
+            value,
+        });
+    };
+
+    defineScopedValue('TavernHelper', scopedHelper);
+    defineScopedValue('execute', scopedExecute, Object.getOwnPropertyDescriptor(data, 'execute')?.enumerable ?? true);
+
+    for (const [key, fn] of Object.entries(scopedHelper)) {
+        if (key.startsWith('_') || key === 'TavernHelper' || typeof fn !== 'function') continue;
+        if (!Object.hasOwn(data, key) || data[key] === rawHelper?.[key]) {
+            const prevEnum = Object.getOwnPropertyDescriptor(data, key)?.enumerable ?? false;
+            defineScopedValue(key, fn, prevEnum);
+        }
+    }
+
+    for (const key of EJS_SCOPED_DATA_METHODS) {
+        if (Object.hasOwn(data, key) && typeof data[key] === 'function') {
+            const prevEnum = Object.getOwnPropertyDescriptor(data, key)?.enumerable ?? true;
+            defineScopedValue(key, wrapMethod(key, data[key], data), prevEnum);
+        }
+    }
+
+    if (Object.hasOwn(data, 'SillyTavern')) {
+        const prevStDesc = Object.getOwnPropertyDescriptor(data, 'SillyTavern');
+        Object.defineProperty(scopedData, 'SillyTavern', {
+            configurable: true,
+            enumerable: prevStDesc?.enumerable ?? true,
+            get() {
+                assertScopeValid(STALE_SCOPE_ERROR_MESSAGE);
+                return activeContext;
+            },
+        });
+    }
+
+    return { data: scopedData, release };
 }
 export function refreshCardHost() {
     user_avatar = owner.context.userAvatar;
@@ -169,7 +510,10 @@ export function parseRegexFromString(input) {
     try { return new RegExp(pattern, flags); } catch { return null; }
 }
 export function updateMessageBlock(index, message) { owner.surface?.format(index, message); }
-export function addCopyToCodeBlocks(parent) { owner.surface?.codeBlocks(parent?.jquery ? parent[0] : parent); }
+export function addCopyToCodeBlocks(parent) {
+    const node = parent?.jquery || Array.isArray(parent) ? parent[0] : parent;
+    if (node?.querySelectorAll) owner.surface?.codeBlocks(node);
+}
 export function appendMediaToMessage(message, parent) { owner.surface?.media(message, parent); }
 export function updateReasoningUI(parent) { owner.surface?.reasoning(parent); }
 export const getSTContext = getContext;

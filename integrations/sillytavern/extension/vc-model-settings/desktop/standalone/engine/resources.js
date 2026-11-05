@@ -5,7 +5,7 @@ export function isDataURL(str) {
     return typeof str === 'string' && regex.test(str);
 }
 import { quietConsole } from './diagnostics.js';
-export function createResourcePorts({getRequestHeaders,fetch=globalThis.fetch,toast,t}) {
+export function createResourcePorts({getRequestHeaders,fetch=globalThis.fetch,toast,t,baseOrigin:configuredOrigin}) {
 const console=quietConsole,toastr=toast;
 function calculateThumbnailSize(width, height, maxWidth, maxHeight) {
     // Calculate the thumbnail dimensions while maintaining the aspect ratio
@@ -119,24 +119,78 @@ function getAudioDurationFromDataURL(dataUrl) {
     });
 }
 
-async function getFileAttachment(url) {
+function resolveBaseOrigin() {
+    const candidate = configuredOrigin || globalThis.location?.origin || globalThis.window?.location?.origin || '';
+    if (typeof candidate !== 'string' || !candidate || candidate === 'null') return null;
     try {
-        const result = await fetch(url, {
+        const parsed = new URL(candidate);
+        if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null;
+        return parsed.origin;
+    } catch {
+        return null;
+    }
+}
+
+function normalizeUserFileUrl(rawUrl) {
+    if (typeof rawUrl !== 'string') return null;
+    const trimmed = rawUrl.trim();
+    if (!trimmed || trimmed.startsWith('//') || trimmed.includes('\\')) return null;
+    if (/(?:^|\/)\.\.(?:\/|$)|%2e%2e|%2f|%5c/i.test(trimmed)) return null;
+    const baseOrigin = resolveBaseOrigin();
+    if (!baseOrigin) return null;
+    let parsed;
+    try {
+        parsed = new URL(trimmed, baseOrigin);
+    } catch {
+        return null;
+    }
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null;
+    if (parsed.username || parsed.password) return null;
+    if (parsed.origin !== baseOrigin) return null;
+    if (parsed.search || parsed.hash) return null;
+    if (!parsed.pathname.startsWith('/user/files/')) return null;
+    const filename = parsed.pathname.slice('/user/files/'.length);
+    if (!filename || filename === '.' || filename === '..' || filename.includes('/')) return null;
+    try {
+        const decoded = decodeURIComponent(filename);
+        if (!decoded || decoded === '.' || decoded === '..' || decoded.includes('/') || decoded.includes('\\') || decoded.includes('\0')) {
+            return null;
+        }
+    } catch {
+        return null;
+    }
+    return parsed.pathname;
+}
+
+async function getFileAttachment(url) {
+    const normalizedPath = normalizeUserFileUrl(url);
+    if (!normalizedPath) {
+        return undefined;
+    }
+    try {
+        const result = await fetch(normalizedPath, {
             method: 'GET',
             cache: 'force-cache',
+            redirect: 'error',
             headers: getRequestHeaders(),
         });
 
-        if (!result.ok) {
-            const error = await result.text();
-            throw new Error(error);
+        if (result.redirected || !result.ok || result.status !== 200) {
+            throw new Error('Could not download file');
+        }
+        if (result.url) {
+            const responsePath = normalizeUserFileUrl(result.url);
+            if (!responsePath || responsePath !== normalizedPath) {
+                throw new Error('Could not download file');
+            }
         }
 
         const text = await result.text();
         return text;
-    } catch (error) {
-        toastr.error(error, t`Could not download file`);
-        console.error('Could not download file', error);
+    } catch {
+        toastr.error(t`Could not download file`);
+        console.error('Could not download file');
+        return undefined;
     }
 }
 async function appendFileContent(message, messageText) {
@@ -153,6 +207,9 @@ async function appendFileContent(message, messageText) {
             if (fileText) {
                 fileTexts.push(fileText);
             }
+        }
+        if (fileTexts.length === 0) {
+            return messageText;
         }
         const mergedFileTexts = fileTexts.join('\n\n') + '\n\n';
         message.extra.fileLength = mergedFileTexts.length;

@@ -6,76 +6,17 @@ import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { init, parse } from 'es-module-lexer';
 import ts from 'typescript';
+import { build } from 'vite';
+import { desktopResolvedGraph, isDesktopPackageImport, isWhitelistedExtensionModule } from '../scripts/lib/desktop-source-boundary.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ST_ROOT = path.resolve(__dirname, '..');
 const DESKTOP_SRC_ROOT = path.join(ST_ROOT, 'desktop-ui', 'src');
 const EXTENSION_ROOT = path.join(ST_ROOT, 'extension', 'vc-model-settings');
-
-/**
- * Plan §2 扩展模块白名单（相对于 extension/vc-model-settings/）。
- * 电脑端 desktop-ui/src/**（bridge/ 除外）只允许直接或传递 import 下列模块。
- */
-const EXACT_WHITELIST = new Set([
-    // Plan §2 显式列出的扩展模块
-    'settings-documents.js',
-    'desktop/tavern-defaults.js',
-    'desktop/tavern-fields.js',
-    'desktop/themes/index.js',
-    'desktop/tavern-controller.js',
-    'api.js',
-    'inbox-client.js',
-    'account-logic.js',
-    'model-logic.js',
-    'conversations.js',
-    'instance-queries.js',
-    'companion-prompt.js',
-    'companion-tools.js',
-    'user-expressions.js',
-    'prompt-history.js',
-    'reply-pipeline.js',
-    'reply-planner.js',
-    'story-action.js',
-    'story-context.js',
-    'story-projection.js',
-    'projection-save.js',
-    'ui/icons.js',
-    'ui/tint.js',
-    // api.js 直接复用的内部依赖（本次核对确认保留）；注意该模块不是纯函数集合（含显式 DOM 通知函数 noteCompanionBound），本任务不改其行为
-    'instance-binding.js',
-    // Plan §1 表中全部 *-logic.js
-    'chat-logic.js',
-    'voice-logic.js',
-    'stickers-logic.js',
-    'f2-logic.js',
-    'instance-logic.js',
-    'memory-logic.js',
-    'inbox-logic.js',
-    'story-logic.js',
-    'consent-logic.js',
-    'theme-logic.js',
-    'status-logic.js',
-    'projection-logic.js',
-    'memory-injection-logic.js',
-    // Plan §2 desktop/standalone/** 允许集合
-    'desktop/standalone/client.js',
-    'desktop/standalone/business.js',
-    'desktop/standalone/personas.js',
-    'desktop/standalone/input-markdown.js',
-    'desktop/standalone/runtime.js',
-    'desktop/standalone/session.js',
-]);
+const SOURCE_IDENTITY_FILE = path.join(ST_ROOT, 'server-plugin/virtual-companion/lib/source-identity.js');
 
 function toPosix(filePath) {
     return filePath.split(path.sep).join('/');
-}
-
-export function isWhitelistedExtensionModule(relPath) {
-    const normalized = toPosix(relPath).replace(/^\/+/, '');
-    if (EXACT_WHITELIST.has(normalized)) return true;
-    if (normalized.startsWith('desktop/standalone/engine/')) return true;
-    if (normalized.startsWith('desktop/standalone/cards/')) return true;
-    return false;
 }
 
 const RESOLVE_EXTENSIONS = ['.ts', '.tsx', '.js', '.mjs', '.css'];
@@ -86,8 +27,9 @@ const EXTENSION_RUNTIME_PREFIXES = [
 
 function resolveLocalSpecifier(fromFile, specifier, extensionRoot = EXTENSION_ROOT) {
     if (!specifier) return null;
-    if (specifier === '/scripts/vc-runtime/source-identity.js') {
-        return resolveFileCandidate(path.join(ST_ROOT, 'server-plugin', 'virtual-companion', 'lib', 'source-identity.js'));
+    const importer = toPosix(path.relative(extensionRoot, fromFile));
+    if (importer === 'desktop/standalone/runtime.js' && specifier === '/scripts/vc-runtime/source-identity.js') {
+        return SOURCE_IDENTITY_FILE;
     }
     for (const prefix of EXTENSION_RUNTIME_PREFIXES) {
         if (specifier.startsWith(prefix)) {
@@ -159,10 +101,13 @@ async function extractSpecifiers(filePath) {
 
     const [imports] = parse(transpiled, filePath);
     for (const item of imports) {
-        const spec = item.specifier ?? item.n;
-        if (spec) {
-            specifiers.add(spec);
+        if (item.type === 'dynamic' && !item.specifier) {
+            const expr = transpiled.slice(item.start, item.end).trim();
+            const monaco = path.join(DESKTOP_SRC_ROOT, 'features/tavern/CodeField.tsx');
+            if (filePath === monaco && expr === 'SELF_HOSTED_EDITOR_URL') continue;
+            throw new Error(`Unexpected computed desktop import in ${filePath}`);
         }
+        if (item.specifier && item.specifier !== 'react/jsx-runtime') specifiers.add(item.specifier);
     }
     return [...specifiers];
 }
@@ -176,6 +121,8 @@ export async function analyzeDesktopImportBoundary({
     desktopSrcRoot = DESKTOP_SRC_ROOT,
     extensionRoot = EXTENSION_ROOT,
 } = {}) {
+    desktopSrcRoot = fs.realpathSync(desktopSrcRoot);
+    extensionRoot = fs.realpathSync(extensionRoot);
     const roots = entryFiles ?? [path.join(desktopSrcRoot, 'app', 'main.tsx')];
     const visited = new Set();
     const reachableExtensionModules = new Set();
@@ -197,8 +144,11 @@ export async function analyzeDesktopImportBoundary({
         const specifiers = await extractSpecifiers(normalizedCurrent);
         for (const specifier of specifiers) {
             const resolved = resolveLocalSpecifier(normalizedCurrent, specifier, extensionRoot);
-            if (!resolved) continue;
-
+            if (!resolved) {
+                if (isDesktopPackageImport(normalizedCurrent, specifier)) continue;
+                violations.push({ type: 'unapproved-import', specifier, target: specifier, chain });
+                continue;
+            }
             const nextChain = [...chain, resolved];
             if (!fs.existsSync(resolved)) {
                 violations.push({
@@ -210,7 +160,8 @@ export async function analyzeDesktopImportBoundary({
                 continue;
             }
 
-            const relToDesktop = toPosix(path.relative(desktopSrcRoot, resolved));
+            const actual = fs.realpathSync(resolved);
+            const relToDesktop = toPosix(path.relative(desktopSrcRoot, actual));
             if (relToDesktop === 'bridge' || relToDesktop.startsWith('bridge/')) {
                 violations.push({
                     type: 'forbidden-bridge-import',
@@ -221,7 +172,7 @@ export async function analyzeDesktopImportBoundary({
                 continue;
             }
 
-            const relToExtension = toPosix(path.relative(extensionRoot, resolved));
+            const relToExtension = toPosix(path.relative(extensionRoot, actual));
             const insideExtension = !relToExtension.startsWith('..') && !path.isAbsolute(relToExtension);
             if (insideExtension) {
                 reachableExtensionModules.add(relToExtension);
@@ -236,12 +187,16 @@ export async function analyzeDesktopImportBoundary({
                 }
             }
 
-            await walk(resolved, nextChain);
+            if (!insideExtension && !actual.startsWith(`${desktopSrcRoot}${path.sep}`) && actual !== SOURCE_IDENTITY_FILE) {
+                violations.push({ type: 'unapproved-import', specifier, target: specifier, chain: nextChain });
+                continue;
+            }
+            await walk(actual, nextChain);
         }
     }
 
     for (const entry of roots) {
-        const resolvedEntry = path.resolve(entry);
+        const resolvedEntry = fs.existsSync(entry) ? fs.realpathSync(entry) : path.resolve(entry);
         const relToDesktop = toPosix(path.relative(desktopSrcRoot, resolvedEntry));
         if (relToDesktop === 'bridge' || relToDesktop.startsWith('bridge/')) {
             continue;
@@ -459,7 +414,9 @@ test('/scripts/extensions/third-party/vc-model-settings/ 前缀与 /scripts/vc-r
             desktopSrcRoot: fakeSrc,
             extensionRoot: fakeExt,
         });
-        assert.deepEqual(cleanReport.violations, []);
+        assert.deepEqual(cleanReport.violations.map(({ type, target }) => `${type}:${target}`), [
+            'unapproved-import:/scripts/extensions/third-party/other-extension/index.js',
+        ]);
         assert.deepEqual(cleanReport.reachableExtensionModules, ['api.js']);
 
         // 2. 直接违规与传递违规（含本地中间模块与扩展内传递）
@@ -498,5 +455,54 @@ test('/scripts/extensions/third-party/vc-model-settings/ 前缀与 /scripts/vc-r
         );
     } finally {
         fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+});
+
+test('边界拒绝未知裸导入及未列出的 cards 文件', async () => {
+    const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'vc-boundary-unknown-'));
+    try {
+        const desktopSrcRoot = path.join(temp, 'src');
+        const extensionRoot = path.join(temp, 'extension');
+        const extra = 'desktop/standalone/cards/unlisted.js';
+        const entry = path.join(desktopSrcRoot, 'entry.js');
+        fs.mkdirSync(desktopSrcRoot);
+        fs.mkdirSync(path.join(extensionRoot, path.dirname(extra)), { recursive: true });
+        fs.writeFileSync(path.join(extensionRoot, extra), 'export const bad = true;');
+        fs.writeFileSync(entry, `import 'unknown-package'; import '../extension/${extra}';`);
+        const report = await analyzeDesktopImportBoundary({ entryFiles: [entry], desktopSrcRoot, extensionRoot });
+        assert.deepEqual(report.violations.map(({ type, target }) => `${type}:${target}`), [
+            'unapproved-import:unknown-package',
+            `non-whitelisted-extension-module:${extra}`,
+        ]);
+    } finally {
+        fs.rmSync(temp, { recursive: true, force: true });
+    }
+});
+
+test('Vite 实际解析拒绝已存在的裸包与外部动态导入', async () => {
+    const entry = path.join(EXTENSION_ROOT, 'desktop/standalone/cards/helper-host.js');
+    const cases = [
+        { code: 'import "react"; export const value = 1;', failure: /Unexpected desktop import react/ },
+        { code: 'import "/lib.js"; export const value = 1;', failure: /Unexpected desktop import \/lib\.js/ },
+        {
+            code: 'export const value = () => import("https://example.invalid/runtime.js");',
+            external: ['https://example.invalid/runtime.js'],
+            failure: /Unexpected desktop external import https:\/\/example\.invalid/,
+        },
+    ];
+    for (const { code, external, failure } of cases) {
+        await assert.rejects(build({
+            configFile: false,
+            logLevel: 'silent',
+            plugins: [
+                desktopResolvedGraph(),
+                { name: 'desktop-bad-import-fixture', enforce: 'pre', load: id => id === entry ? code : null },
+            ],
+            build: {
+                write: false,
+                lib: { entry, formats: ['es'] },
+                rollupOptions: { external },
+            },
+        }), failure);
     }
 });

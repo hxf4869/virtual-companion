@@ -1,8 +1,9 @@
 // AGPL-3.0-only. JS-Slash-Runner 0af421068 / src/iframe/exported/event.ts
 // 保留本地预编译拷贝：上游为 TypeScript 源码且依赖 Pinia/原生页面 store，此处绑定 ../engine/ports.js 的 eventSource 与 helper-script/helper-util 显式端口。
 import { eventSource } from '../engine/ports.js';
+import { getCardHost } from './ejs-host.js';
 import { _getButtonEvent } from './helper-script.js';
-import { _getIframeName } from './helper-util.js';
+import { GLOBAL_INSTANCE_TOKEN, getInstanceToken, registerInstanceCleanup } from './helper-host.js';
 export function getOrSet(map, key, defaulter) {
     const existing_value = map.get(key);
     if (existing_value) {
@@ -12,21 +13,72 @@ export function getOrSet(map, key, defaulter) {
     map.set(key, default_value);
     return default_value;
 }
-const iframe_event_listener_wrapper_map = new Map();
-function get_event_listener_wrapper_map() {
-    return getOrSet(iframe_event_listener_wrapper_map, _getIframeName.call(this), () => new Map());
+const iframe_event_listener_wrapper_map = new WeakMap();
+function getEffectiveToken(caller) {
+    const token = getInstanceToken(caller);
+    if (token === GLOBAL_INSTANCE_TOKEN) {
+        const host = getCardHost();
+        if (host) return getInstanceToken(host);
+    }
+    return token;
 }
-function get_listener_wrapper_map(event_type) {
-    const event_listener_wrapper_map = get_event_listener_wrapper_map.call(this);
+function get_event_listener_wrapper_map(token) {
+    return getOrSet(iframe_event_listener_wrapper_map, token, () => {
+        const map = new Map();
+        if (token !== GLOBAL_INSTANCE_TOKEN) {
+            registerInstanceCleanup(token, () => {
+                clear_instance_listeners(token);
+            });
+        }
+        return map;
+    });
+}
+function peek_listener_wrapper_map(token, event_type) {
+    return iframe_event_listener_wrapper_map.get(token)?.get(event_type);
+}
+function clear_instance_listeners(token) {
+    const event_listener_wrapper_map = iframe_event_listener_wrapper_map.get(token);
+    if (!event_listener_wrapper_map) return;
+    event_listener_wrapper_map.forEach((listeners, event_type) => {
+        listeners.forEach((wrapper, listener) => {
+            listeners.delete(listener);
+            const emitter = wrapper.__vcEmitter ?? eventSource;
+            emitter?.removeListener?.(event_type, wrapper);
+        });
+    });
+    iframe_event_listener_wrapper_map.delete(token);
+}
+function get_listener_wrapper_map(token, event_type) {
+    const event_listener_wrapper_map = get_event_listener_wrapper_map(token);
     return getOrSet(event_listener_wrapper_map, event_type, () => new Map());
 }
-function register_listener_wrapper(event_type, listener, options = {}) {
-    const listener_wrapper_map = get_listener_wrapper_map.call(this, event_type);
+function remove_listener_by_token(token, event_type, listener) {
+    const listener_wrapper_map = peek_listener_wrapper_map(token, event_type);
+    if (!listener_wrapper_map) return;
+    const wrapper = listener_wrapper_map.get(listener);
+    if (wrapper) {
+        listener_wrapper_map.delete(listener);
+        const emitter = wrapper.__vcEmitter ?? eventSource;
+        emitter?.removeListener?.(event_type, wrapper);
+        return;
+    }
+    for (const [origListener, candidateWrapper] of listener_wrapper_map.entries()) {
+        if (candidateWrapper === listener) {
+            listener_wrapper_map.delete(origListener);
+            const emitter = candidateWrapper.__vcEmitter ?? eventSource;
+            emitter?.removeListener?.(event_type, candidateWrapper);
+            return;
+        }
+    }
+}
+function register_listener_wrapper(token, event_type, listener, options = {}) {
+    const emitter = getCardHost()?.context?.eventSource ?? eventSource;
+    const listener_wrapper_map = get_listener_wrapper_map(token, event_type);
     return getOrSet(listener_wrapper_map, listener, () => {
         const wrapper = (...args) => {
-            const listener_wrapper_map = get_listener_wrapper_map.call(this, event_type);
-            if (!listener_wrapper_map?.has(listener)) {
-                eventSource.removeListener(event_type, wrapper);
+            const current_map = peek_listener_wrapper_map(token, event_type);
+            if (!current_map?.has(listener)) {
+                emitter?.removeListener?.(event_type, wrapper);
                 return;
             }
             if ([
@@ -43,76 +95,77 @@ function register_listener_wrapper(event_type, listener, options = {}) {
                     return;
                 }
             }
-            const result = listener(...args);
             if (options.once) {
-                _eventRemoveListener.call(this, event_type, listener);
+                remove_listener_by_token(token, event_type, listener);
             }
-            return result;
+            return listener(...args);
         };
+        wrapper.__vcEmitter = emitter;
         return wrapper;
     });
 }
-function make_event_on_return(event_type, listener) {
+function make_event_on_return(token, event_type, listener) {
     return {
-        stop: () => _eventRemoveListener.call(this, event_type, listener),
+        stop: () => remove_listener_by_token(token, event_type, listener),
     };
 }
 export function _eventOn(event_type, listener) {
-    const wrapped = register_listener_wrapper.call(this, event_type, listener);
-    eventSource.on(event_type, wrapped);
-    return make_event_on_return.call(this, event_type, wrapped);
+    const token = getEffectiveToken(this);
+    const wrapped = register_listener_wrapper(token, event_type, listener);
+    (wrapped.__vcEmitter ?? eventSource).on(event_type, wrapped);
+    return make_event_on_return(token, event_type, listener);
 }
 export function _eventOnButton(event_type, listener) {
-    _eventOn.call(this, _getButtonEvent.call(this, event_type), listener);
+    return _eventOn.call(this, _getButtonEvent.call(this, event_type), listener);
 }
 export function _eventMakeLast(event_type, listener) {
-    const wrapped = register_listener_wrapper.call(this, event_type, listener);
-    eventSource.makeLast(event_type, wrapped);
-    return make_event_on_return.call(this, event_type, wrapped);
+    const token = getEffectiveToken(this);
+    const wrapped = register_listener_wrapper(token, event_type, listener);
+    (wrapped.__vcEmitter ?? eventSource).makeLast(event_type, wrapped);
+    return make_event_on_return(token, event_type, listener);
 }
 export function _eventMakeFirst(event_type, listener) {
-    const wrapped = register_listener_wrapper.call(this, event_type, listener);
-    eventSource.makeFirst(event_type, wrapped);
-    return make_event_on_return.call(this, event_type, wrapped);
+    const token = getEffectiveToken(this);
+    const wrapped = register_listener_wrapper(token, event_type, listener);
+    (wrapped.__vcEmitter ?? eventSource).makeFirst(event_type, wrapped);
+    return make_event_on_return(token, event_type, listener);
 }
 export function _eventOnce(event_type, listener) {
-    const wrapped = register_listener_wrapper.call(this, event_type, listener, { once: true });
-    eventSource.once(event_type, wrapped);
-    return make_event_on_return.call(this, event_type, wrapped);
+    const token = getEffectiveToken(this);
+    const wrapped = register_listener_wrapper(token, event_type, listener, { once: true });
+    (wrapped.__vcEmitter ?? eventSource).on(event_type, wrapped);
+    return make_event_on_return(token, event_type, listener);
 }
 export async function _eventEmit(event_type, ...data) {
-    await eventSource.emit(event_type, ...data);
+    const emitter = getCardHost()?.context?.eventSource ?? eventSource;
+    await emitter.emit(event_type, ...data);
 }
 export function _eventEmitAndWait(event_type, ...data) {
-    eventSource.emitAndWait(event_type, ...data);
+    const emitter = getCardHost()?.context?.eventSource ?? eventSource;
+    emitter.emitAndWait(event_type, ...data);
 }
 export function _eventRemoveListener(event_type, listener) {
-    const listener_wrapper_map = get_listener_wrapper_map.call(this, event_type);
-    if (listener_wrapper_map) {
-        const wrapper = listener_wrapper_map.get(listener);
-        if (wrapper) {
-            listener_wrapper_map.delete(listener);
-            eventSource.removeListener(event_type, wrapper);
-        }
-    }
+    const token = getEffectiveToken(this);
+    remove_listener_by_token(token, event_type, listener);
 }
 export function _eventClearEvent(event_type) {
-    get_listener_wrapper_map.call(this, event_type)?.forEach((_wrapper, listener) => {
-        _eventRemoveListener.call(this, event_type, listener);
-    });
+    const token = getEffectiveToken(this);
+    const map = peek_listener_wrapper_map(token, event_type);
+    if (!map) return;
+    for (const listener of [...map.keys()]) {
+        remove_listener_by_token(token, event_type, listener);
+    }
 }
 export function _eventClearListener(listener) {
-    get_event_listener_wrapper_map.call(this).forEach((_listeners, event_type) => {
-        _eventRemoveListener.call(this, event_type, listener);
-    });
+    const token = getEffectiveToken(this);
+    const map = iframe_event_listener_wrapper_map.get(token);
+    if (!map) return;
+    for (const event_type of [...map.keys()]) {
+        remove_listener_by_token(token, event_type, listener);
+    }
 }
 export function _eventClearAll() {
-    get_event_listener_wrapper_map.call(this).forEach((listeners, event_type) => {
-        listeners.forEach((_wrapper, listener) => {
-            _eventRemoveListener.call(this, event_type, listener);
-        });
-    });
-    iframe_event_listener_wrapper_map.delete(_getIframeName.call(this));
+    clear_instance_listeners(getEffectiveToken(this));
 }
 export const iframe_events = {
     MESSAGE_IFRAME_RENDER_STARTED: 'message_iframe_render_started',

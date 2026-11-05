@@ -93,6 +93,8 @@ integrations/sillytavern/node_modules/
 integrations/sillytavern/desktop-ui/node_modules/
 # DR-1 桌面 React 同源资源：固定一份输出，由 build:desktop / 受管装配重建。
 integrations/sillytavern/extension/vc-model-settings/desktop/build/
+integrations/sillytavern/extension/vc-model-settings/desktop/locked-source/
+integrations/sillytavern/extension/vc-model-settings/desktop/locked-source.tmp/
 # V2-W03 受管（managed）运行装配目录（受管 dataRoot/st-run 运行副本/pid/日志/manifest）
 integrations/sillytavern/dev-managed/
 

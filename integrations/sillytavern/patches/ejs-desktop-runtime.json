@@ -111,7 +111,7 @@
     },
     {
       "from": "$((async()=>{await kv()}))",
-      "to": "initializeDesktop=async function(){const stored=b.extension_settings.EjsTemplate??={};for(const entry of Object.values(x)){w[entry.name]=stored[entry.name]??entry.value;} l.eventSource.makeLast(l.event_types.CHAT_CHANGED,Xg),l.eventSource.on(l.event_types.GENERATION_AFTER_COMMANDS,Yg),l.eventSource.on(l.event_types.WORLDINFO_UPDATED,Hg),l.eventSource.on(l.event_types.GENERATION_AFTER_COMMANDS,Vg),l.eventSource.on(l.event_types.GENERATE_AFTER_DATA,Jg),l.eventSource.on(l.event_types.CHAT_COMPLETION_SETTINGS_READY,qg),nv.forEach((e=>l.eventSource.on(e,Kg))),l.eventSource.on(l.event_types.WORLDINFO_ENTRIES_LOADED,Wg),iv.forEach((e=>l.eventSource.on(e,Qg))),l.eventSource.makeFirst(l.event_types.CHARACTER_MESSAGE_RENDERED,Kg),l.eventSource.on(\"js_generation_before_end\",ev),l.eventSource.on(l.event_types.MESSAGE_SWIPE_DELETED,tv);await dv();return {settings:w,render:Kg,preload:Xg,z:c,commands:desktopCommands};}",
+      "to": "initializeDesktop=async function(){const stored=b.extension_settings.EjsTemplate??={};for(const entry of Object.values(x)){w[entry.name]=stored[entry.name]??entry.value;}const es=l.eventSource,et=l.event_types;es.__vcCleanupEjs?.();let active=!0;const listeners=[],isCurrent=()=>active&&l.eventSource===es&&(!__WEBPACK_EXTERNAL_MODULE__script_js_588e7203__.getCardHost()?.context?.eventSource||__WEBPACK_EXTERNAL_MODULE__script_js_588e7203__.getCardHost().context.eventSource===es),reg=(m,evt,fn)=>{const wFn=(...a)=>isCurrent()?fn(...a):void 0;listeners.push([evt,wFn]);es[m](evt,wFn);};const destroy=()=>{active=!1;for(const[evt,wFn]of listeners)es.removeListener?.(evt,wFn);listeners.length=0;if(es.__vcCleanupEjs===destroy)delete es.__vcCleanupEjs;};es.__vcCleanupEjs=destroy;reg(\"makeLast\",et.CHAT_CHANGED,Xg),reg(\"on\",et.GENERATION_AFTER_COMMANDS,Yg),reg(\"on\",et.WORLDINFO_UPDATED,Hg),reg(\"on\",et.GENERATION_AFTER_COMMANDS,Vg),reg(\"on\",et.GENERATE_AFTER_DATA,Jg),reg(\"on\",et.CHAT_COMPLETION_SETTINGS_READY,qg),reg(\"on\",et.WORLDINFO_ENTRIES_LOADED,Wg),iv.forEach((e=>reg(\"on\",e,Qg))),reg(\"on\",\"js_generation_before_end\",ev),reg(\"on\",et.MESSAGE_SWIPE_DELETED,tv);await dv();return {settings:w,render:(...a)=>isCurrent()?Kg(...a):void 0,preload:(...a)=>isCurrent()?Xg(...a):void 0,z:c,commands:desktopCommands,destroy};}",
       "count": 1
     },
     {
@@ -131,15 +131,125 @@
     },
     {
       "from": "try{if(w.compile_workers)",
-      "to": "const __vcTemplateScope=__WEBPACK_EXTERNAL_MODULE__script_js_588e7203__.enterTemplateScope(t);try {if(w.compile_workers)",
+      "to": "const __vcTemplateScope=__WEBPACK_EXTERNAL_MODULE__script_js_588e7203__.enterTemplateScope(t);t=__vcTemplateScope.data;try {if(w.compile_workers)",
       "count": 1
     },
     {
       "from": "throw t}return h}async function tg",
-      "to": "throw t}finally{__vcTemplateScope?.()}return h}async function tg",
+      "to": "throw t}finally{__vcTemplateScope.release()}return h}async function tg",
+      "count": 1
+    },
+    {
+      "from": "async function Vg(e,t,n){if(!1!==w.enabled&&(Bg=n,!n))",
+      "to": "async function Vg(e,t,n){if(!1!==w.enabled&&__WEBPACK_EXTERNAL_MODULE__script_js_588e7203__.isCardDisplayExecutionAllowed()&&(Bg=n,!n))",
+      "count": 1
+    },
+    {
+      "from": "async function Wg(e){var t;if(!1===w.enabled)return;",
+      "to": "async function Wg(e){var t;if(!1===w.enabled||!__WEBPACK_EXTERNAL_MODULE__script_js_588e7203__.isCardDisplayExecutionAllowed())return;",
+      "count": 1
+    },
+    {
+      "from": "async function Jg(e,t){var n;if(Bg=null!=t?t:Bg,Bg)return;if(!1===w.enabled)return;",
+      "to": "async function Jg(e,t){var n;if(Bg=null!=t?t:Bg,Bg)return;if(!1===w.enabled||!__WEBPACK_EXTERNAL_MODULE__script_js_588e7203__.isCardDisplayExecutionAllowed())return;",
+      "count": 1
+    },
+    {
+      "from": "async function qg(e){var t;Bg=!1,!1!==w.enabled&&!1!==w.generate_enabled&&(e.messages=await Gg(e.messages,null!==(t=e.type)&&void 0!==t?t:Mg))}",
+      "to": "async function qg(e){var t;Bg=!1,!1!==w.enabled&&!1!==w.generate_enabled&&__WEBPACK_EXTERNAL_MODULE__script_js_588e7203__.isCardDisplayExecutionAllowed()&&(e.messages=await Gg(e.messages,null!==(t=e.type)&&void 0!==t?t:Mg))}",
+      "count": 1
+    },
+    {
+      "from": "function Dg(e,t){window.setTimeout((()=>{(0,bg.getTokenCountAsync)(e).then((n=>{",
+      "to": "function Dg(e,t){const __vcEs=l.eventSource;window.setTimeout((()=>{if(l.eventSource!==__vcEs)return;(0,bg.getTokenCountAsync)(e).then((n=>{if(l.eventSource!==__vcEs)return;",
+      "count": 1
+    },
+    {
+      "from": "async function Gg(e){let t=arguments.length>1&&void 0!==arguments[1]?arguments[1]:Mg;if(!1===w.enabled)return e;",
+      "to": "async function Gg(e){const __vcEs=l.eventSource;let t=arguments.length>1&&void 0!==arguments[1]?arguments[1]:Mg;if(!1===w.enabled||!__WEBPACK_EXTERNAL_MODULE__script_js_588e7203__.isCardDisplayExecutionAllowed())return e;",
+      "count": 1
+    },
+    {
+      "from": "const i=await se(),r=await tg(-1-Number(wh.isInPlace),{runType:\"generate\"",
+      "to": "const i=await se();if(l.eventSource!==__vcEs)return e;const r=await tg(-1-Number(wh.isInPlace),{runType:\"generate\"",
+      "count": 1
+    },
+    {
+      "from": "finally{null==a||a.destroy(),af(!1)}for(const t of e)",
+      "to": "finally{null==a||a.destroy(),af(!1)}if(l.eventSource!==__vcEs)return e;for(const t of e)",
+      "count": 1
+    },
+    {
+      "from": "async function Kg(e,t,n){var i,r,a;if(!1===w.enabled)return;if(!1===w.render_enabled)return;",
+      "to": "async function Kg(e,t,n){var i,r,a;const __vcEs=l.eventSource;if(!1===w.enabled)return;if(!1===w.render_enabled||!__WEBPACK_EXTERNAL_MODULE__script_js_588e7203__.isCardDisplayExecutionAllowed())return;",
+      "count": 1
+    },
+    {
+      "from": "const h=await se(),f=w.sandbox?new Tg:null;",
+      "to": "const h=await se();if(l.eventSource!==__vcEs)return;const f=w.sandbox?new Tg:null;",
+      "count": 1
+    },
+    {
+      "from": "p.runType=\"render\",null!=t&&(u.mes=t,(0,l.updateMessageBlock)(s,u,{rerenderMessage:!0}))",
+      "to": "if(p.runType=\"render\",l.eventSource!==__vcEs)return;null!=t&&(u.mes=t,(0,l.updateMessageBlock)(s,u,{rerenderMessage:!0}))",
+      "count": 1
+    },
+    {
+      "from": "var b;g&&g!==v&&(d.html(g),(0,wg.updateReasoningUI)(c),(0,l.addCopyToCodeBlocks)(c),(0,l.appendMediaToMessage)(u,c)),null!==(a=g)&&void 0!==a&&a.includes(\"<pre>\")&&n&&(Ug=!0,console.debug(\"[HTML] rendering #\".concat(s,\" message\")),u.is_user?await l.eventSource.emit(l.event_types.USER_MESSAGE_RENDERED,e):u.is_system||await l.eventSource.emit(l.event_types.CHARACTER_MESSAGE_RENDERED,e,t),Ug=!1),",
+      "to": "var b;if(l.eventSource!==__vcEs)return;g&&g!==v&&(d.html(__WEBPACK_EXTERNAL_MODULE__script_js_588e7203__.sanitizeRenderedHtml(g)),(0,wg.updateReasoningUI)(c),(0,l.addCopyToCodeBlocks)(c),(0,l.appendMediaToMessage)(u,c)),",
+      "count": 1
+    },
+    {
+      "from": "async function Xg(e){let t=arguments.length>1&&void 0!==arguments[1]&&arguments[1];if(!1===w.enabled)return;",
+      "to": "async function Xg(e){const __vcEs=l.eventSource;let t=arguments.length>1&&void 0!==arguments[1]&&arguments[1];if(!1===w.enabled||!__WEBPACK_EXTERNAL_MODULE__script_js_588e7203__.isCardDisplayExecutionAllowed())return;",
+      "count": 1
+    },
+    {
+      "from": "const i=await se(),r=i.filter((e=>{const t=new le(e);return t.isEnabled&&t.isPreloadEntry}))",
+      "to": "const i=await se();if(l.eventSource!==__vcEs)return;const r=i.filter((e=>{const t=new le(e);return t.isEnabled&&t.isPreloadEntry}))",
+      "count": 1
+    },
+    {
+      "from": "finally{null==o||o.destroy()}const s=Date.now()-n;if(console.log(\"[Prompt Template] processing \".concat(r.length,\" world info in \").concat(s,\"ms\")),l.chat.length>1)",
+      "to": "finally{null==o||o.destroy()}if(l.eventSource!==__vcEs)return;const s=Date.now()-n;if(console.log(\"[Prompt Template] processing \".concat(r.length,\" world info in \").concat(s,\"ms\")),l.chat.length>1)",
+      "count": 1
+    },
+    {
+      "from": "async function Hg(e,t){if(!1===w.enabled)return;if(!1===w.preload_worldinfo_enabled)return;",
+      "to": "async function Hg(e,t){const __vcEs=l.eventSource;if(!1===w.enabled||!__WEBPACK_EXTERNAL_MODULE__script_js_588e7203__.isCardDisplayExecutionAllowed())return;if(!1===w.preload_worldinfo_enabled)return;",
+      "count": 1
+    },
+    {
+      "from": "const i=await ee(e);console.debug(i);",
+      "to": "const i=await ee(e);if(l.eventSource!==__vcEs)return;console.debug(i);",
+      "count": 1
+    },
+    {
+      "from": "async function Yg(e,t,n){if(!1===w.enabled)return;if(n)return;",
+      "to": "async function Yg(e,t,n){if(!1===w.enabled||!__WEBPACK_EXTERNAL_MODULE__script_js_588e7203__.isCardDisplayExecutionAllowed())return;if(n)return;",
+      "count": 1
+    },
+    {
+      "from": "async function Qg(e,t){!1!==w.enabled&&\"append\"!==t&&\"continue\"!==t&&\"appendFinal\"!==t&&\"first_message\"!==t&&\"impersonate\"!==t&&Uh(e)}",
+      "to": "async function Qg(e,t){!1!==w.enabled&&__WEBPACK_EXTERNAL_MODULE__script_js_588e7203__.isCardDisplayExecutionAllowed()&&\"append\"!==t&&\"continue\"!==t&&\"appendFinal\"!==t&&\"first_message\"!==t&&\"impersonate\"!==t&&Uh(e)}",
+      "count": 1
+    },
+    {
+      "from": "async function ev(e,t){if(!1===w.enabled)return;if(!1===w.render_enabled)return;if(!1===w.raw_message_evaluation_enabled)return;",
+      "to": "async function ev(e,t){const __vcEs=l.eventSource;if(!1===w.enabled)return;if(!1===w.render_enabled)return;if(!1===w.raw_message_evaluation_enabled||!__WEBPACK_EXTERNAL_MODULE__script_js_588e7203__.isCardDisplayExecutionAllowed())return;",
+      "count": 1
+    },
+    {
+      "from": "finally{null==a||a.destroy()}null!=r&&(e.message=r);",
+      "to": "finally{null==a||a.destroy()}if(l.eventSource!==__vcEs)return;null!=r&&(e.message=r);",
+      "count": 1
+    },
+    {
+      "from": "async function tv(e,t){var n,i,r,a;if(!1===w.enabled)return;",
+      "to": "async function tv(e,t){var n,i,r,a;if(!1===w.enabled||!__WEBPACK_EXTERNAL_MODULE__script_js_588e7203__.isCardDisplayExecutionAllowed())return;",
       "count": 1
     }
   ],
-  "expected_output_sha256": "747de0f2d5637d60ac5545ddc72ec953b93362fe61d318fc7836b7fce0ce93be",
+  "expected_output_sha256": "e13a777a497f3ab52b23446ca1ea3671338e5b653e7eae5117a6d60f0a5000f8",
   "desktop_editor_sha256": "f144528f1bfb7b061670c7d1ebb0ef8dcd778174b617d3d45aa6f0c36357e6b6"
 }

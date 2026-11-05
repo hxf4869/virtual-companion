@@ -4,8 +4,8 @@ import { MEDIA_DISPLAY, system_message_types } from './constants.js';
 import { Handlebars } from './lib.js';
 import { quietConsole as console, chat, chat_metadata, characters, this_chid, name1, name2, groups, selected_group, main_api, power_user, extension_prompts, getGeneratingModel, getMaxPromptTokens, getMaxContextTokens, getMaxResponseTokens, getCurrentChatId, eventSource, event_types, getGroupNames, getGroupCharacterCardsLazy } from '../ports.js';
 export { chat, chat_metadata, characters, this_chid, name1, name2, groups, selected_group, main_api, power_user, extension_prompts, getGeneratingModel, getMaxPromptTokens, getMaxContextTokens, getMaxResponseTokens, getCurrentChatId, eventSource, event_types, getGroupNames, getGroupCharacterCardsLazy } from '../ports.js';
-import { MacroEngine } from './scripts/macros/engine/MacroEngine.js';
-import { MacroEnvBuilder } from './scripts/macros/engine/MacroEnvBuilder.js';
+import { MacroEngine } from '../../../locked-source/st/scripts/macros/engine/MacroEngine.js';
+import { MacroEnvBuilder } from '../../../locked-source/st/scripts/macros/engine/MacroEnvBuilder.js';
 import { MacrosParser, evaluateMacros } from './scripts/macros.js';
 import { getInstructMacros, formatInstructModeExamples } from './scripts/instruct-mode.js';
 import { collapseNewlines } from './scripts/utils.js';
@@ -155,7 +155,7 @@ export function substituteParams(content, options = {}) {
         return substituteParamsLegacy(content, options.name1Override, options.name2Override, options.original, options.groupOverride, options.replaceCharacterCard, options.dynamicMacros, options.postProcessFn);
     }
 
-    const ctx = /** @type {import('./scripts/macros/engine/MacroEnvBuilder.js').MacroEnvRawContext} */ ({
+    const ctx = /** @type {import('../../../locked-source/st/scripts/macros/engine/MacroEnvBuilder.js').MacroEnvRawContext} */ ({
         content,
         name1Override: options.name1Override,
         name2Override: options.name2Override,
@@ -334,21 +334,19 @@ export function getExtensionPromptMaxDepth() {
 }
 
 export async function getExtensionPrompt(position = extension_prompt_types.IN_PROMPT, depth = undefined, separator = '\n', role = undefined, wrap = true) {
-    const filterByFunction = async (prompt) => {
-        const hasFilter = typeof prompt.filter === 'function';
-        if (hasFilter && !await prompt.filter()) {
-            return false;
-        }
-        return true;
-    };
-    const promptPromises = Object.keys(extension_prompts)
+    const candidates = Object.keys(extension_prompts)
         .sort()
         .map((x) => extension_prompts[x])
-        .filter(x => x.position == position && x.value)
+        .filter(x => x && x.position == position && x.value)
         .filter(x => depth === undefined || x.depth === undefined || x.depth === depth)
-        .filter(x => role === undefined || x.role === undefined || x.role === role)
-        .filter(filterByFunction);
-    const prompts = await Promise.all(promptPromises);
+        .filter(x => role === undefined || x.role === undefined || x.role === role);
+    const prompts = [];
+    for (const prompt of candidates) {
+        if (typeof prompt.filter === 'function' && !(await prompt.filter())) {
+            continue;
+        }
+        prompts.push(prompt);
+    }
 
     let values = prompts.map(x => x.value.trim()).join(separator);
     if (wrap && values.length && !values.startsWith(separator)) {

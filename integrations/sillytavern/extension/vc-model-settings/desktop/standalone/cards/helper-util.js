@@ -1,102 +1,97 @@
 // AGPL-3.0-only. JS-Slash-Runner 0af421068 / src/iframe/exported/util.ts
 // 保留本地预编译拷贝：上游为 TypeScript 源码，此处绑定 ../engine/st/script.js 的 substituteParamsExtended 与 helper-host.js 的 zod 实例。
-import { lodash } from '/lib.js';
 import { chat } from '../engine/ports.js';
 import { substituteParamsExtended } from '../engine/st/script.js';
-import { z } from './helper-host.js';
+import { createHelperMacroLike } from '../../locked-source/helper/function/macro_like.js';
+import { getCardHost } from './ejs-host.js';
+import { GLOBAL_INSTANCE_TOKEN, z, getFrameOwner, getInstanceToken, registerInstanceCleanup } from './helper-host.js';
 import { get_variables_without_clone } from './helper-variables.js';
 const isPromise=value=>value!=null&&typeof value.then==='function';
 
-function getVariableOption(context, type = 'chat') {
-    const resolved = (type ?? 'chat').toLowerCase();
-    return resolved !== 'message'
-        ? { type: resolved }
-        : {
-              type: 'message',
-              message_id:
-                  context?.message_id ??
-                  chat.findLastIndex(message => {
-                      const vars = message?.variables?.[message?.swipe_id ?? 0];
-                      return Boolean(vars && typeof vars === 'object');
-                  }),
-          };
+const { macros: builtinMacros } = createHelperMacroLike({
+    get_variables_without_clone,
+    getChat: () => getCardHost()?.context?.chat ?? chat,
+});
+const fallbackCustomMacros = [];
+function getOwnerCustomMacros(host = getCardHost()) {
+    if (!host) return fallbackCustomMacros;
+    return (host.customMacros ||= []);
 }
 
-const macros = [
-    {
-        regex: /\{\{get_(?:(global|preset|character|chat|message)_)?variable::(.*?)\}\}/g,
-        replace: (context, _match, type, path) => {
-            try {
-                const variables = get_variables_without_clone(getVariableOption(context, type));
-                const variable = lodash.get(variables, path);
-                if (typeof variable === 'string') return variable;
-                if (variable === undefined) return 'undefined';
-                return JSON.stringify(variable);
-            } catch {
-                return 'undefined';
-            }
-        },
-    },
-    {
-        regex: /\{\{format_(?:(global|preset|character|chat|message)_)?variable_quoted::(.*?)\}\}/g,
-        replace: (context, _match, type, path) => {
-            try {
-                const variables = get_variables_without_clone(getVariableOption(context, type));
-                const variable = lodash.get(variables, path);
-                return String(JSON.stringify(variable));
-            } catch {
-                return 'undefined';
-            }
-        },
-    },
-    {
-        regex: /\{\{format_(?:(global|preset|character|chat|message)_)?variable::(.*?)\}\}/g,
-        replace: (context, _match, type, path) => {
-            try {
-                const variables = get_variables_without_clone(getVariableOption(context, type));
-                const variable = lodash.get(variables, path);
-                return typeof variable === 'string' ? variable : String(JSON.stringify(variable));
-            } catch {
-                return 'undefined';
-            }
-        },
-    },
-];
-
 export function registerMacroLike(regex, replace) {
-    if (!macros.some(macro => macro.regex.source === regex.source)) {
-        macros.push({ regex, replace });
+    const frameOwner = getFrameOwner(this);
+    if (frameOwner && (frameOwner.destroyed || getCardHost() !== frameOwner)) {
+        return { unregister: () => {} };
     }
+    const host = getCardHost();
+    const customMacros = getOwnerCustomMacros(host);
+    if (
+        builtinMacros.some(macro => macro.regex.source === regex.source) ||
+        customMacros.some(macro => macro.regex.source === regex.source)
+    ) {
+        return { unregister: () => {} };
+    }
+    const entry = { regex, replace, owner: host };
+    customMacros.push(entry);
+    let removed = false;
     return {
-        unregister: () => unregisterMacroLike(regex),
+        unregister: () => {
+            if (removed) return;
+            removed = true;
+            const index = customMacros.indexOf(entry);
+            if (index !== -1) {
+                customMacros.splice(index, 1);
+            }
+        },
     };
 }
 export function _registerMacroLike(regex, replace) {
-    const { unregister } = registerMacroLike(regex, replace);
+    const frameOwner = getFrameOwner(this);
+    if (frameOwner && (frameOwner.destroyed || getCardHost() !== frameOwner)) {
+        return { unregister: () => {} };
+    }
+    const host = getCardHost();
+    const { unregister } = registerMacroLike.call(this, regex, replace);
     let cleaned = false;
+    let disposeCleanup = null;
+    const win = this && this !== globalThis.TavernHelper ? (this.window ?? this) : null;
+    const jq = win?.jQuery ?? globalThis.jQuery ?? globalThis.$;
     const onceUnregister = () => {
         if (cleaned) return;
         cleaned = true;
+        disposeCleanup?.();
+        try {
+            jq?.(win)?.off?.('pagehide', onceUnregister);
+            win?.removeEventListener?.('pagehide', onceUnregister);
+        } catch {}
         unregister();
     };
+    const rawToken = getInstanceToken(this);
+    const token = rawToken === GLOBAL_INSTANCE_TOKEN && host ? getInstanceToken(host) : rawToken;
+    disposeCleanup = registerInstanceCleanup(token, onceUnregister);
     try {
-        const win = this && this !== globalThis.TavernHelper ? (this.window ?? this) : null;
-        const jq = win?.jQuery ?? globalThis.jQuery ?? globalThis.$;
         jq?.(win)?.on?.('pagehide', onceUnregister);
         win?.addEventListener?.('pagehide', onceUnregister, { once: true });
     } catch {}
     return { unregister: onceUnregister };
 }
 export function unregisterMacroLike(regex) {
-    const index = macros.findIndex(macro => macro.regex.source === regex.source);
+    const frameOwner = getFrameOwner(this);
+    if (frameOwner && (frameOwner.destroyed || getCardHost() !== frameOwner)) {
+        return;
+    }
+    const customMacros = getOwnerCustomMacros(getCardHost());
+    const index = customMacros.findIndex(macro => macro.regex.source === regex.source);
     if (index !== -1) {
-        macros.splice(index, 1);
+        customMacros.splice(index, 1);
     }
 }
+export const _unregisterMacroLike = unregisterMacroLike;
 export function replaceMacroLike(text, context = {}) {
     if (typeof text !== 'string') return text;
     const ctx = { source: 'other', ...context };
-    return macros.reduce((acc, macro) => {
+    const customMacros = getOwnerCustomMacros(getCardHost());
+    return [...builtinMacros, ...customMacros].reduce((acc, macro) => {
         macro.regex.lastIndex = 0;
         return acc.replace(macro.regex, (...args) => macro.replace(ctx, ...args));
     }, text);

@@ -1,14 +1,14 @@
 {
   "id": "mvu-desktop-runtime",
-  "reason": "NF-04: use the real desktop script registry instead of native Helper DOM for the unique-script preference; keep original filtering/last-owner algorithm and native F2 lifecycle patch.",
+  "reason": "NF-04 / DR2-14: use the real desktop script registry for the unique-script preference; capture MVU own writes at the Session synchronous apply boundary while retaining source checks before and after asynchronous work; unify reprocess/replay button F2 save lifecycles. Native F2 lifecycle behavior is unchanged.",
   "upstream": {
     "component": "mvu",
     "commit": "d03b7dc8a6ebf9bd611c7e2dc91f3b35462deebc"
   },
-  "removal_condition": "Upstream offers a script registry port and managed complex-card chain passes without this patch.",
+  "removal_condition": "Upstream offers a script registry port and a guarded asynchronous message-write completion boundary, and the managed complex-card chain passes without this patch.",
   "target": "user/files/mvu-bundle-d03b7dc8.js",
   "expected_input_sha256": "efee060d84fa365ab1d93f72a5e4921017c326fa4615e25f229d74b21529a9db",
-  "expected_output_sha256": "51244a164e4f5a1cddd98f9c2c2d081dfa162af38d1b76c332d5945ee7cf420c",
+  "expected_output_sha256": "892fc637579cd417d03c52b93d84b721d1ed51f3fa7cfae0dda626c24e166e43",
   "replacements": [
     {
       "from": "_($('#tavern_helper').find('div[data-script-id]').toArray()).map(e=>String($(e).attr('data-script-id')))",
@@ -18,6 +18,26 @@
     {
       "from": "/*! For license information please see bundle.js.LICENSE.txt */",
       "to": "/*! For license information please see mvu-desktop.js.LICENSE.txt */",
+      "count": 1
+    },
+    {
+      "from": "const vcWrite=setChatMessages([{message_id:e,message:i}],{refresh:'none'});vcS=vcG?.capture(e);await vcWrite;vcCheck()",
+      "to": "const vcWrite=setChatMessages([{message_id:e,message:i}],{refresh:'none'},{assertActive:vcCheck,onApplied:()=>{vcS=vcG?.capture(e)},deferChatSave:true});await vcWrite;vcCheck()",
+      "count": 1
+    },
+    {
+      "from": "if('user'!==a.role)await setChatMessages([{message_id:e}],{refresh:'affected'});",
+      "to": "if('user'!==a.role)await setChatMessages([{message_id:e}],{refresh:'affected'},{assertActive:vcCheck,deferChatSave:true});",
+      "count": 1
+    },
+    {
+      "from": "{name:'重新处理变量',label_key:'panel.button.reprocessVariables',function:async()=>{const e=getLastMessageId();e<1||0!==SillyTavern.chat.length&&(await updateVariablesWith(e=>(_.unset(e,'stat_data'),_.unset(e,'delta_data'),_.unset(e,'display_data'),_.unset(e,'schema'),e),{type:'message',message_id:e}),await cn(getLastMessageId()))}}",
+      "to": "{name:'重新处理变量',label_key:'panel.button.reprocessVariables',function:async()=>{const e=getLastMessageId();if(e<1||0===SillyTavern.chat.length)return;const vcG=globalThis.parent?.[Symbol.for('virtual-companion.f2-source')]??globalThis[Symbol.for('virtual-companion.f2-source')];let vcS=vcG?.capture(e);const vcCheck=()=>{if(vcS)vcG.assert(vcS)};const vcDone=vcG?.begin(e);let vcOK=true;try{vcCheck();const vcWrite=updateVariablesWith(e=>(_.unset(e,'stat_data'),_.unset(e,'delta_data'),_.unset(e,'display_data'),_.unset(e,'schema'),e),{type:'message',message_id:e});vcS=vcG?.capture(e);await vcWrite;vcCheck();await cn(e)}catch(vcError){vcOK=false;throw vcError}finally{vcDone?.(vcOK)}}}",
+      "count": 1
+    },
+    {
+      "from": "{name:'重演楼层',label_key:'panel.button.replayFloor',is_legacy:!0,function:async()=>{const e=await SillyTavern.callGenericPopup((0,xt.tr)('runtime.button.replayPrompt'),SillyTavern.POPUP_TYPE.INPUT,'-1');if(!e)return;let t=parseInt(e);if(-1===t&&(t=getLastMessageId()),isNaN(t)||void 0===SillyTavern.chat[t])return void toastr.error((0,xt.tr)('runtime.button.invalidFloorInput',{value:_.escape(e)}),(0,xt.tr)('runtime.button.replayFailedTitle'));const n=Et(t);if(-1===n)return void toastr.error((0,xt.tr)('runtime.button.replayNoAvailableFloor'),(0,xt.tr)('runtime.button.replayFailedTitle'));const o=await SillyTavern.callGenericPopup((0,xt.tr)('runtime.button.replayStartPrompt',{floor:n}),SillyTavern.POPUP_TYPE.INPUT,n.toString());if(!o)return;const r=parseInt(o);if(isNaN(r))return void toastr.error((0,xt.tr)('runtime.button.invalidFloorInput',{value:_.escape(o)}),(0,xt.tr)('runtime.button.replayFailedTitle'));const a=(0,yt.klona)(getVariables({type:'message',message_id:r}));if(void 0===a||!_.has(a,'stat_data')||!_.has(a,'schema'))return void toastr.error((0,xt.tr)('runtime.button.replayNeedsVariables',{value:_.escape(o)}),(0,xt.tr)('runtime.button.replayFailedTitle'));let i=0;for(let e=r+1;e<=t;e++){const n=SillyTavern.chat[e],o=e-(r+1);console.log((0,xt.tr)('runtime.button.replayingFloorLog',{index:o,content:n.mes})),await ln(n.mes,a),i++,i%50==0&&toastr.info((0,xt.tr)('runtime.button.replayProgress',{processed:i,total:t-r}),(0,xt.tr)('runtime.button.replayTitle'))}await updateVariablesWith(e=>(e.stat_data=a.stat_data,e.display_data=a.display_data,e.delta_data=a.delta_data,e.initialized_lorebooks=a.initialized_lorebooks,e.schema=a.schema,e),{type:'message',message_id:t}),SillyTavern.saveChat().then(()=>toastr.success((0,xt.tr)('runtime.button.replayCompleted',{floor:t,count:i}),(0,xt.tr)('runtime.button.replayTitle'))),await setChatMessages([{message_id:t}],{refresh:'affected'})}}",
+      "to": "{name:'重演楼层',label_key:'panel.button.replayFloor',is_legacy:!0,function:async()=>{const e=await SillyTavern.callGenericPopup((0,xt.tr)('runtime.button.replayPrompt'),SillyTavern.POPUP_TYPE.INPUT,'-1');if(!e)return;let t=parseInt(e);if(-1===t&&(t=getLastMessageId()),isNaN(t)||void 0===SillyTavern.chat[t])return void toastr.error((0,xt.tr)('runtime.button.invalidFloorInput',{value:_.escape(e)}),(0,xt.tr)('runtime.button.replayFailedTitle'));const n=Et(t);if(-1===n)return void toastr.error((0,xt.tr)('runtime.button.replayNoAvailableFloor'),(0,xt.tr)('runtime.button.replayFailedTitle'));const o=await SillyTavern.callGenericPopup((0,xt.tr)('runtime.button.replayStartPrompt',{floor:n}),SillyTavern.POPUP_TYPE.INPUT,n.toString());if(!o)return;const r=parseInt(o);if(isNaN(r))return void toastr.error((0,xt.tr)('runtime.button.invalidFloorInput',{value:_.escape(o)}),(0,xt.tr)('runtime.button.replayFailedTitle'));const a=(0,yt.klona)(getVariables({type:'message',message_id:r}));if(void 0===a||!_.has(a,'stat_data')||!_.has(a,'schema'))return void toastr.error((0,xt.tr)('runtime.button.replayNeedsVariables',{value:_.escape(o)}),(0,xt.tr)('runtime.button.replayFailedTitle'));const vcG=globalThis.parent?.[Symbol.for('virtual-companion.f2-source')]??globalThis[Symbol.for('virtual-companion.f2-source')];const vcS=vcG?.capture(t);const vcCheck=()=>{if(vcS)vcG.assert(vcS)};let i=0;for(let e=r+1;e<=t;e++){vcCheck();const n=SillyTavern.chat[e];await ln(n.mes,a),vcCheck(),i++,i%50==0&&toastr.info((0,xt.tr)('runtime.button.replayProgress',{processed:i,total:t-r}),(0,xt.tr)('runtime.button.replayTitle'))}const vcMerged=Object.assign(getVariables({type:'message',message_id:t}),{stat_data:a.stat_data,display_data:a.display_data,delta_data:a.delta_data,initialized_lorebooks:a.initialized_lorebooks,schema:a.schema});await setChatMessages([{message_id:t,data:vcMerged}],{refresh:'affected'},{assertActive:vcCheck});toastr.success((0,xt.tr)('runtime.button.replayCompleted',{floor:t,count:i}),(0,xt.tr)('runtime.button.replayTitle'))}}",
       "count": 1
     }
   ]

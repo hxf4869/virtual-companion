@@ -5,27 +5,95 @@ import { substituteParamsExtended } from '../engine/st/script.js';
 import { klona } from './klona.js';
 import { system_message_types } from '../engine/st/constants.js';
 import { normalizeMessageId, refreshMessages } from './helper-host.js';
-import { getCardHost, saveChatConditional } from './ejs-host.js';
+import { getCardHost } from './ejs-host.js';
 import { messageFormatting } from './format.js';
 import { replaceMacroLike } from './helper-util.js';
-function string_to_range(input, min, max) {
-    let start, end;
-    const clamp = (value) => _.clamp(value < 0 ? max + value + 1 : value, min, max);
-    if (input.match(/^(-?\d+)$/)) {
-        start = end = clamp(Number(input));
-    }
-    else {
-        const match = input.match(/^(-?\d+)-(-?\d+)$/);
-        if (!match) {
-            return null;
-        }
-        [start, end] = _.sortBy([match[1], match[2]].map(Number).map(clamp));
-    }
-    if (isNaN(start) || isNaN(end)) {
-        return null;
-    }
-    return { start, end };
+import { string_to_range } from '../../locked-source/helper/function/chat_message.js';
+
+function resolveAssertActive(options, internal) {
+    if (typeof internal?.assertActive === 'function') return internal.assertActive;
+    if (typeof options?.assertActive === 'function') return options.assertActive;
+    return undefined;
 }
+const SWIPE_INFO_META_KEYS = new Set(['send_date', 'gen_started', 'gen_finished', 'extra']);
+
+function isSwipeInfoWrapper(value) {
+    if (!_.isPlainObject(value)) return false;
+    if (_.isPlainObject(value.extra)) return true;
+    const keys = Object.keys(value);
+    return keys.length > 0 && keys.every(k => SWIPE_INFO_META_KEYS.has(k));
+}
+
+function extractSwipeExtra(info, fallbackExtra) {
+    if (_.isPlainObject(info)) {
+        if (_.isPlainObject(info.extra)) {
+            return klona(info.extra);
+        }
+        if (isSwipeInfoWrapper(info)) {
+            return klona(_.isPlainObject(fallbackExtra) ? fallbackExtra : {});
+        }
+        return klona(info);
+    }
+    return klona(_.isPlainObject(fallbackExtra) ? fallbackExtra : {});
+}
+
+function projectCandidateInfo(message, index) {
+    const activeSwipeId = message?.swipe_id ?? 0;
+    const existingInfo = Array.isArray(message?.swipe_info) ? message.swipe_info[index] : undefined;
+    const existingWrapper = isSwipeInfoWrapper(existingInfo) ? existingInfo : null;
+    if (index === activeSwipeId) {
+        const extra = _.isPlainObject(message?.extra)
+            ? klona(message.extra)
+            : extractSwipeExtra(existingInfo, {});
+        const send_date = message?.send_date !== undefined ? message.send_date : existingWrapper?.send_date;
+        const gen_started = message?.gen_started !== undefined ? message.gen_started : existingWrapper?.gen_started;
+        const gen_finished = message?.gen_finished !== undefined ? message.gen_finished : existingWrapper?.gen_finished;
+        const entry = { extra };
+        if (send_date !== undefined) entry.send_date = send_date;
+        if (gen_started !== undefined) entry.gen_started = gen_started;
+        if (gen_finished !== undefined) entry.gen_finished = gen_finished;
+        return entry;
+    }
+    const extra = extractSwipeExtra(existingInfo, {});
+    const entry = { extra };
+    if (existingWrapper?.send_date !== undefined) entry.send_date = existingWrapper.send_date;
+    if (existingWrapper?.gen_started !== undefined) entry.gen_started = existingWrapper.gen_started;
+    if (existingWrapper?.gen_finished !== undefined) entry.gen_finished = existingWrapper.gen_finished;
+    return entry;
+}
+
+function applyCandidateInfoInput(input, baseEntry) {
+    const base = baseEntry ? klona(baseEntry) : { extra: {} };
+    if (input === undefined) {
+        return base;
+    }
+    let nextExtra;
+    let send_date = base.send_date;
+    let gen_started = base.gen_started;
+    let gen_finished = base.gen_finished;
+
+    if (isSwipeInfoWrapper(input)) {
+        nextExtra = _.isPlainObject(input.extra) ? klona(input.extra) : klona(base.extra ?? {});
+        if (input.send_date !== undefined) send_date = input.send_date;
+        if (input.gen_started !== undefined) gen_started = input.gen_started;
+        if (input.gen_finished !== undefined) gen_finished = input.gen_finished;
+    } else if (_.isPlainObject(input)) {
+        nextExtra = klona(input);
+    } else {
+        nextExtra = klona(base.extra ?? {});
+    }
+
+    if (nextExtra.vc_source === undefined && base.extra?.vc_source !== undefined) {
+        nextExtra.vc_source = klona(base.extra.vc_source);
+    }
+
+    const entry = { extra: nextExtra };
+    if (send_date !== undefined) entry.send_date = send_date;
+    if (gen_started !== undefined) entry.gen_started = gen_started;
+    if (gen_finished !== undefined) entry.gen_finished = gen_finished;
+    return entry;
+}
+
 export function getChatMessages(range, { role = 'all', hide_state = 'all', include_swipes = false } = {}) {
     const range_demacroed = substituteParamsExtended(range.toString());
     const range_number = string_to_range(range_demacroed, 0, chat.length - 1);
@@ -59,14 +127,20 @@ export function getChatMessages(range, { role = 'all', hide_state = 'all', inclu
             return null;
         }
         const swipe_id = message?.swipe_id ?? 0;
-        let swipes = message?.swipes ?? [message.mes];
-        let swipes_data = message?.variables ?? [{}];
-        let swipes_info = message?.swipe_info ?? [message?.extra ?? {}];
-        const swipe_length = swipes.length;
-        swipes = _.range(0, swipe_length).map(i => swipes[i] ?? '');
-        swipes_data = _.range(0, swipe_length).map(i => swipes_data[i] ?? {});
-        swipes_info = _.range(0, swipe_length).map(i => swipes_info[i] ?? {});
-        const extra = swipes_info[swipe_id];
+        const raw_swipes = Array.isArray(message?.swipes) && message.swipes.length > 0 ? message.swipes : [message.mes ?? ''];
+        const raw_variables = Array.isArray(message?.variables)
+            ? message.variables
+            : _.isPlainObject(message?.variables)
+              ? [message.variables]
+              : [];
+        const raw_swipe_info = Array.isArray(message?.swipe_info) ? message.swipe_info : [];
+        const swipe_length = Math.max(raw_swipes.length, raw_swipe_info.length, swipe_id + 1, 1);
+        const swipes = _.range(0, swipe_length).map(i =>
+            i === swipe_id ? (message.mes ?? raw_swipes[i] ?? '') : (raw_swipes[i] ?? ''),
+        );
+        const swipes_data = _.range(0, swipe_length).map(i => klona(_.isPlainObject(raw_variables[i]) ? raw_variables[i] : {}));
+        const swipes_info = _.range(0, swipe_length).map(i => projectCandidateInfo(message, i));
+        const extra = klona(swipes_info[swipe_id]?.extra ?? {});
         const data = swipes_data[swipe_id];
         if (include_swipes) {
             return {
@@ -99,7 +173,11 @@ export function getChatMessages(range, { role = 'all', hide_state = 'all', inclu
         .filter(chat_message => chat_message !== null);
     return klona(chat_messages);
 }
-export async function setChatMessages(chat_messages, { refresh = 'affected' } = {}) {
+export async function setChatMessages(chat_messages, options = {}, internal = {}) {
+    const refresh = options?.refresh ?? 'affected';
+    const assertActive = resolveAssertActive(options, internal);
+    const onApplied = typeof internal?.onApplied === 'function' ? internal.onApplied : undefined;
+    const deferChatSave = internal?.deferChatSave === true;
     const convert_and_merge_messages = (data) => {
         return _(data)
             .map(chat_message => ({
@@ -114,81 +192,169 @@ export async function setChatMessages(chat_messages, { refresh = 'affected' } = 
             .value();
     };
     const is_chat_message = (chat_message) => {
-        return _.has(chat_message, 'message') || _.has(chat_message, 'data');
+        return _.has(chat_message, 'message') || _.has(chat_message, 'data') || _.has(chat_message, 'extra');
     };
-    const modify = async (chat_message) => {
-        const data = chat[chat_message.message_id];
-        if (data === undefined) {
-            return;
-        }
-        // 与提示词模板的兼容性
-        if (_.isPlainObject(data?.variables)) {
-            _.set(data, 'variables', _.range(0, data.swipes?.length ?? 1).map(i => data.variables[i] ?? {}));
-        }
-        if (chat_message?.name !== undefined) {
-            _.set(data, 'name', chat_message.name);
-        }
-        if (chat_message?.role !== undefined) {
-            _.set(data, 'is_user', chat_message.role === 'user');
-            if (chat_message.role === 'system') {
-                _.set(data, 'extra.type', system_message_types.NARRATOR);
-            }
-            else {
-                _.unset(data, 'extra.type');
-            }
-        }
-        if (chat_message?.is_hidden !== undefined) {
-            _.set(data, 'is_system', chat_message.is_hidden);
-        }
-        if (is_chat_message(chat_message)) {
-            if (chat_message?.message !== undefined) {
-                _.set(data, 'mes', chat_message.message);
-                if (data?.swipes !== undefined) {
-                    _.set(data, ['swipes', data.swipe_id], chat_message.message);
+    let affectedIds = [];
+    await runChatMessagesMutation(
+        refresh,
+        (messages, refreshIndices) => {
+            const modify = (chat_message) => {
+                const data = messages[chat_message.message_id];
+                if (data === undefined) {
+                    return;
                 }
-            }
-            if (chat_message?.data !== undefined) {
-                if (data?.variables === undefined) {
-                    _.set(data, 'variables', _.times(data.swipes?.length ?? 1, _.constant({})));
+                const current_swipe_id = data.swipe_id ?? 0;
+                const base_length = Math.max(
+                    Array.isArray(data.swipes) ? data.swipes.length : 0,
+                    Array.isArray(data.variables) ? data.variables.length : 0,
+                    Array.isArray(data.swipe_info) ? data.swipe_info.length : 0,
+                    current_swipe_id + 1,
+                    1,
+                );
+                // 与提示词模板的兼容性
+                if (_.isPlainObject(data?.variables)) {
+                    _.set(data, 'variables', _.range(0, base_length).map(i => klona(_.isPlainObject(data.variables[i]) ? data.variables[i] : {})));
                 }
-                _.set(data, ['variables', data.swipe_id ?? 0], chat_message.data);
-            }
-            if (chat_message?.extra !== undefined) {
-                if (data?.swipes_info === undefined) {
-                    _.set(data, 'swipe_info', _.times(data.swipes?.length ?? 1, _.constant({})));
+                if (chat_message?.name !== undefined) {
+                    _.set(data, 'name', chat_message.name);
                 }
-                _.set(data, 'extra', chat_message?.extra);
-                _.set(data, ['swipe_info', data.swipe_id ?? 0], chat_message?.extra);
+                if (chat_message?.role !== undefined) {
+                    _.set(data, 'is_user', chat_message.role === 'user');
+                    if (chat_message.role === 'system') {
+                        _.set(data, 'extra.type', system_message_types.NARRATOR);
+                    }
+                    else {
+                        _.unset(data, 'extra.type');
+                    }
+                }
+                if (chat_message?.is_hidden !== undefined) {
+                    _.set(data, 'is_system', chat_message.is_hidden);
+                }
+                if (is_chat_message(chat_message)) {
+                    if (chat_message?.message !== undefined) {
+                        const nextSwipes = _.range(0, base_length).map(i =>
+                            i === current_swipe_id ? (data.mes ?? data.swipes?.[i] ?? '') : (data.swipes?.[i] ?? ''),
+                        );
+                        nextSwipes[current_swipe_id] = chat_message.message;
+                        _.set(data, 'mes', chat_message.message);
+                        _.set(data, 'swipes', nextSwipes);
+                    }
+                    if (chat_message?.data !== undefined) {
+                        const nextVariables = _.range(0, base_length).map(i =>
+                            klona(_.isPlainObject(data.variables?.[i]) ? data.variables[i] : {}),
+                        );
+                        nextVariables[current_swipe_id] = klona(chat_message.data);
+                        _.set(data, 'variables', nextVariables);
+                    }
+                    if (chat_message?.extra !== undefined) {
+                        const nextSwipeInfo = _.range(0, base_length).map(i => projectCandidateInfo(data, i));
+                        const updatedEntry = applyCandidateInfoInput(
+                            chat_message.extra,
+                            nextSwipeInfo[current_swipe_id],
+                        );
+                        nextSwipeInfo[current_swipe_id] = updatedEntry;
+                        delete data.swipes_info;
+                        _.set(data, 'swipe_info', nextSwipeInfo);
+                        _.set(data, 'extra', klona(updatedEntry.extra));
+                        if (updatedEntry.send_date !== undefined) _.set(data, 'send_date', updatedEntry.send_date);
+                        if (updatedEntry.gen_started !== undefined) _.set(data, 'gen_started', updatedEntry.gen_started);
+                        if (updatedEntry.gen_finished !== undefined) _.set(data, 'gen_finished', updatedEntry.gen_finished);
+                    }
+                }
+                else if (chat_message?.swipe_id !== undefined ||
+                    chat_message?.swipes !== undefined ||
+                    chat_message?.swipes_data !== undefined ||
+                    chat_message?.swipes_info !== undefined) {
+                    const explicitLengths = [
+                        chat_message.swipes?.length,
+                        chat_message.swipes_data?.length,
+                        chat_message.swipes_info?.length,
+                        chat_message.swipe_id !== undefined ? chat_message.swipe_id + 1 : undefined,
+                    ].filter(n => typeof n === 'number' && n > 0);
+                    const max_length = Math.max(
+                        ...(chat_message.swipes !== undefined ? explicitLengths : [...explicitLengths, base_length]),
+                        1,
+                    );
+                    const next_swipe_id = _.clamp(chat_message.swipe_id ?? current_swipe_id, 0, max_length - 1);
+                    const baseSwipes = _.range(0, max_length).map(i =>
+                        i === current_swipe_id ? (data.mes ?? data.swipes?.[i] ?? '') : (data.swipes?.[i] ?? ''),
+                    );
+                    const baseSwipeInfo = _.range(0, max_length).map(i => projectCandidateInfo(data, i));
+                    const nextSwipes = _.range(0, max_length).map(i =>
+                        chat_message.swipes?.[i] !== undefined
+                            ? chat_message.swipes[i]
+                            : baseSwipes[i],
+                    );
+                    const nextVariables = _.range(0, max_length).map(i =>
+                        chat_message.swipes_data?.[i] !== undefined
+                            ? klona(chat_message.swipes_data[i])
+                            : klona(_.isPlainObject(data.variables?.[i]) ? data.variables[i] : {}),
+                    );
+                    const nextSwipeInfo = _.range(0, max_length).map(i =>
+                        applyCandidateInfoInput(chat_message.swipes_info?.[i], baseSwipeInfo[i]),
+                    );
+                    delete data.swipes_info;
+                    _.set(data, 'swipes', nextSwipes);
+                    _.set(data, 'variables', nextVariables);
+                    _.set(data, 'swipe_info', nextSwipeInfo);
+                    _.set(data, 'swipe_id', next_swipe_id);
+                    if (next_swipe_id !== current_swipe_id) {
+                        _.set(data, 'mes', nextSwipes[next_swipe_id]);
+                        const activeInfo = nextSwipeInfo[next_swipe_id];
+                        _.set(data, 'extra', klona(activeInfo?.extra ?? {}));
+                        if (activeInfo?.send_date !== undefined) _.set(data, 'send_date', activeInfo.send_date);
+                        _.set(data, 'gen_started', activeInfo?.gen_started);
+                        _.set(data, 'gen_finished', activeInfo?.gen_finished);
+                    } else {
+                        if (chat_message.swipes?.[current_swipe_id] !== undefined) {
+                            _.set(data, 'mes', nextSwipes[current_swipe_id]);
+                        }
+                        if (chat_message.swipes_info?.[current_swipe_id] !== undefined) {
+                            const activeInfo = nextSwipeInfo[current_swipe_id];
+                            _.set(data, 'extra', klona(activeInfo?.extra ?? {}));
+                            if (activeInfo?.send_date !== undefined) _.set(data, 'send_date', activeInfo.send_date);
+                            if (activeInfo?.gen_started !== undefined) _.set(data, 'gen_started', activeInfo.gen_started);
+                            if (activeInfo?.gen_finished !== undefined) _.set(data, 'gen_finished', activeInfo.gen_finished);
+                        }
+                    }
+                }
+            };
+            const merged = convert_and_merge_messages(chat_messages);
+            for (const item of merged) {
+                modify(item);
             }
-        }
-        else if (chat_message?.swipe_id !== undefined ||
-            chat_message?.swipes !== undefined ||
-            chat_message?.swipes_data !== undefined ||
-            chat_message?.swipes_info !== undefined) {
-            const max_length = _.max([chat_message.swipes?.length, chat_message.swipes_data?.length, chat_message.swipes_info?.length]) ??
-                data.swipes?.length ??
-                1;
-            _.set(chat_message, 'swipe_id', _.clamp(chat_message.swipe_id ?? data.swipe_id ?? 0, 0, max_length - 1));
-            _.set(chat_message, 'swipes', chat_message.swipes ?? data.swipes ?? [data.mes]);
-            _.set(chat_message, 'swipes_data', chat_message.swipes_data ?? data.variables ?? [{}]);
-            _.set(chat_message, 'swipes_info', chat_message.swipes_info ?? data.swipe_info ?? [{}]);
-            chat_message.swipes = _.range(0, max_length).map(i => chat_message.swipes?.[i] ?? '');
-            chat_message.swipes_data = _.range(0, max_length).map(i => chat_message.swipes_data?.[i] ?? {});
-            chat_message.swipes_info = _.range(0, max_length).map(i => chat_message.swipes_info?.[i] ?? {});
-            _.set(data, 'swipes', chat_message.swipes);
-            _.set(data, 'variables', chat_message.swipes_data);
-            _.set(data, 'swipe_info', chat_message.swipes_info);
-            _.set(data, 'swipe_id', chat_message.swipe_id);
-            _.set(data, 'mes', chat_message.swipes[chat_message.swipe_id]);
-            _.set(data, 'extra', chat_message.swipes_info[chat_message.swipe_id]);
-        }
-    };
-    chat_messages = convert_and_merge_messages(chat_messages);
-    await Promise.all(chat_messages.map(modify));
-    await refreshMessages(refresh, chat_messages.map(message => message.message_id));
+            affectedIds = merged
+                .map(message => message.message_id)
+                .filter(id => Number.isInteger(id) && id >= 0 && id < messages.length);
+            if (refresh === 'affected') {
+                refreshIndices.push(...affectedIds);
+            }
+            onApplied?.();
+        },
+        refresh === 'none'
+            ? undefined
+            : async messages => {
+                  for (const index of affectedIds) {
+                      const message = messages[index];
+                      if (!message) continue;
+                      await eventSource?.emit?.(
+                          message.is_user
+                              ? event_types.USER_MESSAGE_RENDERED
+                              : event_types.CHARACTER_MESSAGE_RENDERED,
+                          index,
+                      );
+                  }
+              },
+        { structural: false, assertActive, deferChatSave },
+    );
 }
 
-function runChatMessagesMutation(refresh, change, afterRefresh) {
+function runChatMessagesMutation(
+    refresh,
+    change,
+    afterRefresh,
+    { structural = true, refreshOptions, assertActive, deferChatSave = false } = {},
+) {
     const host = getCardHost();
     const context = host?.context;
     const expectedMetadata = context?.chatMetadata;
@@ -197,16 +363,41 @@ function runChatMessagesMutation(refresh, change, afterRefresh) {
     }
     const refreshIndices = [];
     const refreshOption = refresh === 'none' ? [] : refresh === 'all' ? 'all' : refreshIndices;
-    return context.mutateChatMessages(
-        expectedMetadata,
-        messages => change(messages, refreshIndices),
-        { refresh: refreshOption, afterRefresh },
-    ).then(ok => {
-        if (!ok) throw new Error('VC_CHAT_MUTATION_REJECTED');
-    });
+    const verifyHostAndOwner = () => {
+        const activeHost = getCardHost();
+        const activeSt = globalThis.SillyTavern;
+        const ownsContext = !activeSt || typeof activeSt.getContext !== 'function' || activeSt.getContext() === context;
+        return Boolean(activeHost && activeHost === host && ownsContext && context?.chatMetadata === expectedMetadata);
+    };
+    const beforeMutation = () => {
+        if (!verifyHostAndOwner()) {
+            return false;
+        }
+        if (typeof assertActive === 'function') {
+            const active = assertActive();
+            if (active && typeof active.then === 'function') {
+                return active.then(resolved => Boolean(resolved !== false && verifyHostAndOwner()));
+            }
+            if (active === false || !verifyHostAndOwner()) {
+                return false;
+            }
+        }
+        return true;
+    };
+    return context
+        .mutateChatMessages(
+            expectedMetadata,
+            messages => change(messages, refreshIndices),
+            { refresh: refreshOption, afterRefresh, refreshOptions, structural, beforeMutation, deferChatSave },
+        )
+        .then(ok => {
+            if (!ok) throw new Error('VC_CHAT_MUTATION_REJECTED');
+        });
 }
 
-export async function createChatMessages(chat_messages, { insert_at, insert_before = 'end', refresh = 'affected' } = {}) {
+export async function createChatMessages(chat_messages, options = {}, internal = {}) {
+    const { insert_at, insert_before = 'end', refresh = 'affected' } = options ?? {};
+    const assertActive = resolveAssertActive(options, internal);
     const convert = (chat_message) => {
         let result = _({});
         if (chat_message?.name !== undefined) {
@@ -267,52 +458,68 @@ export async function createChatMessages(chat_messages, { insert_at, insert_befo
                 ),
             );
         },
+        { assertActive },
+    );
+    return insertedMessages;
+}
+
+export async function deleteChatMessages(message_ids, options = {}, internal = {}) {
+    const refresh = options?.refresh ?? 'affected';
+    const assertActive = resolveAssertActive(options, internal);
+    const hasValidId = Array.isArray(message_ids)
+        && message_ids.some(id => Number.isInteger(id) && id >= -chat.length && id < chat.length);
+    if (!hasValidId && !assertActive) {
+        return;
+    }
+    await runChatMessagesMutation(
+        refresh,
+        async (messages, refreshIndices) => {
+            const normalizeId = id => (id < 0 ? messages.length + id : id);
+            const valid_ids = _(message_ids)
+                .filter(id => Number.isInteger(id) && id >= -messages.length && id < messages.length)
+                .map(normalizeId)
+                .sortBy()
+                .sortedUniq()
+                .value();
+            if (valid_ids.length === 0) {
+                return;
+            }
+            for (let i = valid_ids.length - 1; i >= 0; i--) {
+                messages.splice(valid_ids[i], 1);
+            }
+            if (refresh === 'affected') {
+                const min_affected = Math.min(...valid_ids);
+                refreshIndices.push(..._.range(min_affected, messages.length));
+            }
+            for (const deleted_id of valid_ids) {
+                await eventSource?.emit?.(event_types.MESSAGE_DELETED, deleted_id);
+            }
+        },
+        undefined,
+        { assertActive },
     );
 }
 
-export async function deleteChatMessages(message_ids, { refresh = 'affected' } = {}) {
-    const hasValidId = Array.isArray(message_ids)
-        && message_ids.some(id => Number.isInteger(id) && id >= -chat.length && id < chat.length);
-    if (!hasValidId) {
-        return;
-    }
-    await runChatMessagesMutation(refresh, async (messages, refreshIndices) => {
-        const normalizeId = id => (id < 0 ? messages.length + id : id);
-        const valid_ids = _(message_ids)
-            .filter(id => Number.isInteger(id) && id >= -messages.length && id < messages.length)
-            .map(normalizeId)
-            .sortBy()
-            .sortedUniq()
-            .value();
-        if (valid_ids.length === 0) {
-            return;
-        }
-        for (let i = valid_ids.length - 1; i >= 0; i--) {
-            messages.splice(valid_ids[i], 1);
-        }
-        if (refresh === 'affected') {
-            const min_affected = Math.min(...valid_ids);
-            refreshIndices.push(..._.range(min_affected, messages.length));
-        }
-        for (const deleted_id of valid_ids) {
-            await eventSource?.emit?.(event_types.MESSAGE_DELETED, deleted_id);
-        }
-    });
-}
-
-export async function rotateChatMessages(begin, middle, end, { refresh = 'affected' } = {}) {
-    await runChatMessagesMutation(refresh, (messages, refreshIndices) => {
-        const normalizeId = id => (id < 0 ? messages.length + id : id);
-        const b = _.clamp(normalizeId(begin), 0, messages.length);
-        const e = _.clamp(normalizeId(end), 0, messages.length);
-        const m = _.clamp(normalizeId(middle), b, e);
-        const right_part = messages.splice(m, e - m);
-        messages.splice(b, 0, ...right_part);
-        if (refresh === 'affected') {
-            const min_affected = Math.min(b, m, e);
-            refreshIndices.push(..._.range(min_affected, messages.length));
-        }
-    });
+export async function rotateChatMessages(begin, middle, end, options = {}, internal = {}) {
+    const refresh = options?.refresh ?? 'affected';
+    const assertActive = resolveAssertActive(options, internal);
+    await runChatMessagesMutation(
+        refresh,
+        (messages, refreshIndices) => {
+            const normalizeId = id => (id < 0 ? messages.length + id : id);
+            const b = _.clamp(normalizeId(begin), 0, messages.length);
+            const e = _.clamp(normalizeId(end), 0, messages.length);
+            const m = _.clamp(normalizeId(middle), b, e);
+            const right_part = messages.splice(m, e - m);
+            messages.splice(b, 0, ...right_part);
+            if (refresh === 'affected') {
+                const min_affected = Math.min(b, m, e);
+                refreshIndices.push(..._.range(min_affected, messages.length));
+            }
+        },
+        undefined,
+        { assertActive },
+    );
 }
 
 export function formatAsDisplayedMessage(text, { message_id = 'last' } = {}) {
@@ -399,7 +606,9 @@ export async function refreshOneMessage(message_id) {
     await refreshMessages('affected', [normalized]);
 }
 
-export async function setChatMessage(field_values, message_id, { swipe_id = 'current', refresh = 'display_and_render_current', } = {}) {
+export async function setChatMessage(field_values, message_id, options = {}, internal = {}) {
+    const { swipe_id = 'current', refresh = 'display_and_render_current' } = options ?? {};
+    const assertActive = resolveAssertActive(options, internal);
     field_values = typeof field_values === 'string' ? { message: field_values } : field_values;
     if (typeof swipe_id !== 'number' && swipe_id !== 'current') {
         throw Error(`提供的 swipe_id 无效, 请提供 'current' 或序号, 你提供的是: ${swipe_id} `);
@@ -407,53 +616,101 @@ export async function setChatMessage(field_values, message_id, { swipe_id = 'cur
     if (!['none', 'display_current', 'display_and_render_current', 'all'].includes(refresh)) {
         throw Error(`提供的 refresh 无效, 请提供 'none', 'display_current', 'display_and_render_current' 或 'all', 你提供的是: ${refresh} `);
     }
-    const chat_message = chat.at(message_id);
-    if (!chat_message) {
+    if (!chat.at(message_id) && !assertActive) {
         return;
     }
-    const add_swipes_if_required = () => {
-        if (swipe_id === 'current') {
-            return false;
-        }
-        // swipe_id 对应的消息页存在
-        if (swipe_id == 0 || (chat_message.swipes && swipe_id < chat_message.swipes.length)) {
-            return true;
-        }
-        if (!chat_message.swipes) {
-            chat_message.swipe_id = 0;
-            chat_message.swipes = [chat_message.mes];
-            chat_message.variables = [{}];
-        }
-        for (let i = chat_message.swipes.length; i <= swipe_id; ++i) {
-            chat_message.swipes.push('');
-            chat_message.variables.push({});
-        }
-        return true;
-    };
-    const swipe_id_previous_index = chat_message.swipe_id ?? 0;
-    const swipe_id_to_set_index = swipe_id == 'current' ? swipe_id_previous_index : swipe_id;
-    const swipe_id_to_use_index = refresh != 'none' ? swipe_id_to_set_index : swipe_id_previous_index;
-    const message = field_values.message ??
-        (chat_message.swipes ? chat_message.swipes[swipe_id_to_set_index] : undefined) ??
-        chat_message.mes;
-    const update_chat_message = () => {
-        const message_demacroed = substituteParamsExtended(message);
-        if (field_values.data) {
-            if (!chat_message.variables) {
-                chat_message.variables = [];
+    const refreshMode = refresh === 'none' ? 'none' : refresh === 'all' ? 'all' : 'affected';
+    const evaluate = refresh !== 'display_current';
+    let targetIndex = -1;
+    await runChatMessagesMutation(
+        refreshMode,
+        (messages, refreshIndices) => {
+            targetIndex = message_id < 0 ? messages.length + message_id : message_id;
+            const chat_message = messages[targetIndex];
+            if (!chat_message) {
+                return;
             }
-            chat_message.variables[swipe_id_to_set_index] = field_values.data;
-        }
-        if (chat_message.swipes) {
-            chat_message.swipes[swipe_id_to_set_index] = message_demacroed;
+            const swipe_id_previous_index = chat_message.swipe_id ?? 0;
+            const swipe_id_to_set_index = swipe_id === 'current' ? swipe_id_previous_index : swipe_id;
+            const swipe_id_to_use_index = refresh !== 'none' ? swipe_id_to_set_index : swipe_id_previous_index;
+            const target_len = Math.max(
+                chat_message.swipes?.length ?? 1,
+                Array.isArray(chat_message.variables) ? chat_message.variables.length : 1,
+                Array.isArray(chat_message.swipe_info) ? chat_message.swipe_info.length : 1,
+                swipe_id_previous_index + 1,
+                swipe_id_to_set_index + 1,
+            );
+            const nextSwipes = _.range(0, target_len).map(i =>
+                i === swipe_id_previous_index
+                    ? (chat_message.mes ?? chat_message.swipes?.[i] ?? '')
+                    : (chat_message.swipes?.[i] ?? ''),
+            );
+            const rawVariables = Array.isArray(chat_message.variables)
+                ? chat_message.variables
+                : _.isPlainObject(chat_message.variables)
+                  ? [chat_message.variables]
+                  : [];
+            const nextVariables = _.range(0, target_len).map(i =>
+                klona(_.isPlainObject(rawVariables[i]) ? rawVariables[i] : {}),
+            );
+            const nextSwipeInfo = _.range(0, target_len).map(i => projectCandidateInfo(chat_message, i));
+
+            if (field_values.data !== undefined) {
+                nextVariables[swipe_id_to_set_index] = klona(field_values.data);
+            }
+            if (field_values.extra !== undefined) {
+                nextSwipeInfo[swipe_id_to_set_index] = applyCandidateInfoInput(
+                    field_values.extra,
+                    nextSwipeInfo[swipe_id_to_set_index],
+                );
+            }
+            if (field_values.message !== undefined) {
+                nextSwipes[swipe_id_to_set_index] = substituteParamsExtended(field_values.message);
+            }
+
+            delete chat_message.swipes_info;
+            chat_message.swipes = nextSwipes;
+            chat_message.variables = nextVariables;
+            chat_message.swipe_info = nextSwipeInfo;
             chat_message.swipe_id = swipe_id_to_use_index;
-        }
-        if (swipe_id_to_use_index === swipe_id_to_set_index) {
-            chat_message.mes = message_demacroed;
-        }
-    };
-    const should_update_swipe = add_swipes_if_required();
-    update_chat_message();
-    await saveChatConditional();
-    if (refresh !== 'none') await refreshMessages(refresh === 'all' ? 'all' : 'affected', [normalizeMessageId(message_id)], { evaluate: refresh !== 'display_current' });
+
+            if (swipe_id_to_use_index !== swipe_id_previous_index) {
+                chat_message.mes = nextSwipes[swipe_id_to_use_index] ?? '';
+                const activeInfo = nextSwipeInfo[swipe_id_to_use_index];
+                chat_message.extra = klona(activeInfo?.extra ?? {});
+                if (activeInfo?.send_date !== undefined) chat_message.send_date = activeInfo.send_date;
+                chat_message.gen_started = activeInfo?.gen_started;
+                chat_message.gen_finished = activeInfo?.gen_finished;
+            } else if (swipe_id_to_set_index === swipe_id_previous_index) {
+                if (field_values.message !== undefined) {
+                    chat_message.mes = nextSwipes[swipe_id_previous_index] ?? '';
+                }
+                if (field_values.extra !== undefined) {
+                    const activeInfo = nextSwipeInfo[swipe_id_previous_index];
+                    chat_message.extra = klona(activeInfo?.extra ?? {});
+                    if (activeInfo?.send_date !== undefined) chat_message.send_date = activeInfo.send_date;
+                    if (activeInfo?.gen_started !== undefined) chat_message.gen_started = activeInfo.gen_started;
+                    if (activeInfo?.gen_finished !== undefined) chat_message.gen_finished = activeInfo.gen_finished;
+                }
+            }
+
+            if (refreshMode === 'affected' && targetIndex >= 0 && targetIndex < messages.length) {
+                refreshIndices.push(targetIndex);
+            }
+        },
+        refreshMode === 'none' || !evaluate
+            ? undefined
+            : async messages => {
+                  if (targetIndex < 0 || targetIndex >= messages.length) return;
+                  const message = messages[targetIndex];
+                  if (!message) return;
+                  await eventSource?.emit?.(
+                      message.is_user
+                          ? event_types.USER_MESSAGE_RENDERED
+                          : event_types.CHARACTER_MESSAGE_RENDERED,
+                      targetIndex,
+                  );
+              },
+        { structural: false, refreshOptions: { evaluate }, assertActive },
+    );
 }
