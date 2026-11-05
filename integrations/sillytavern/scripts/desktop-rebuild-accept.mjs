@@ -12,6 +12,19 @@ import { bindForeground } from './lib/accept-scene-helpers.mjs';
 import { reauthForWrite } from './lib/reauth-write.mjs';
 import { complexCard } from './lib/complex-card.mjs';
 import { prepareSourceIdentities } from '../server-plugin/virtual-companion/lib/source-identity.js';
+import {
+    assertIconButtonConsumer,
+    assertSvgUseConsumer,
+    assertStorySrOnly,
+    assertCharactersDetailLayout,
+    assertVoiceSwitches,
+    assertSegmentedReply,
+    assertNarrow390Diary,
+    assertNarrow390Inbox,
+    captureSettingsNavGeometry,
+    assertSettingsTavernNavContinuity,
+    assertOverlayBackdropBlur,
+} from './lib/dr2-review-assertions.mjs';
 
 const LAYOUT_VIEWPORTS = [
     { width: 390, height: 844 },
@@ -751,6 +764,7 @@ async function captureRebuildReviewScreenshots(
                     page.locator('#chat > .mes.vc-streaming[is_user="false"]:last-child'),
                     '03-chat-streaming',
                 );
+                await assertIconButtonConsumer(page, '#mes_stop', '03-chat-streaming 停止图标按钮');
             },
             cleanup: async () => {
                 try {
@@ -834,6 +848,9 @@ async function captureRebuildReviewScreenshots(
                     '06-characters-detail',
                 );
             },
+            verifyBeforeShot: async vp => {
+                await assertCharactersDetailLayout(page, vp);
+            },
             cleanup: async () => {
                 const detail = page.locator('.vc-character-detail');
                 if (await detail.isVisible()) {
@@ -857,6 +874,9 @@ async function captureRebuildReviewScreenshots(
                     page.locator('#vc-wizard-name'),
                     '07-characters-wizard',
                 );
+            },
+            verifyBeforeShot: async vp => {
+                await assertOverlayBackdropBlur(page, '[role="dialog"][data-open]', `07-characters-wizard@${vp.width}x${vp.height}`);
             },
             cleanup: async () => {
                 const dialog = page.locator('[role="dialog"][data-open]');
@@ -913,6 +933,9 @@ async function captureRebuildReviewScreenshots(
                 await page.getByText('还没有日记', { exact: true }).waitFor({ state: 'visible' });
                 await assertInViewport(page, diary, '10-memory-diary');
             },
+            verifyBeforeShot: async vp => {
+                if (vp.width <= 390) await assertNarrow390Diary(page);
+            },
             cleanup: async () => {
                 const timelineTab = page.getByRole('tab', { name: '时间线', exact: true });
                 if (await timelineTab.isVisible()) {
@@ -936,6 +959,9 @@ async function captureRebuildReviewScreenshots(
                     page.getByRole('button', { name: '保存策略', exact: true }),
                     '11-inbox',
                 );
+            },
+            verifyBeforeShot: async vp => {
+                if (vp.width <= 390) await assertNarrow390Inbox(page);
             },
         },
         {
@@ -984,6 +1010,9 @@ async function captureRebuildReviewScreenshots(
                 }
                 await assertInViewport(page, stagePlaying, '13-story-stage');
             },
+            verifyBeforeShot: async vp => {
+                await assertStorySrOnly(page, `13-story-stage@${vp.width}x${vp.height}`);
+            },
             cleanup: async () => {
                 const closeBtn = page
                     .locator('.vc-story-tab[data-view="stage"] [data-action="close"]')
@@ -1017,6 +1046,9 @@ async function captureRebuildReviewScreenshots(
                     page.locator('[data-voice-field="dailyChatLimit"]'),
                     '15-settings-voice',
                 );
+            },
+            verifyBeforeShot: async vp => {
+                await assertVoiceSwitches(page, `15-settings-voice@${vp.width}x${vp.height}`);
             },
         },
         {
@@ -1072,6 +1104,13 @@ async function captureRebuildReviewScreenshots(
                 const menu = page.locator('.vc-menu.vc-compose-menu[data-open], [role="menu"][data-open]').first();
                 await assertInViewport(page, menu, '19-overlay-menu');
             },
+            verifyBeforeShot: async vp => {
+                await assertOverlayBackdropBlur(
+                    page,
+                    '.vc-menu.vc-compose-menu[data-open], [role="menu"][data-open]',
+                    `19-overlay-menu@${vp.width}x${vp.height}`,
+                );
+            },
             cleanup: async () => {
                 await page.keyboard.press('Escape');
                 await page
@@ -1095,6 +1134,9 @@ async function captureRebuildReviewScreenshots(
                     alertDialog.getByRole('button', { name: '放弃', exact: true }),
                     '20-overlay-confirm',
                 );
+            },
+            verifyBeforeShot: async vp => {
+                await assertOverlayBackdropBlur(page, '[role="alertdialog"][data-open]', `20-overlay-confirm@${vp.width}x${vp.height}`);
             },
             cleanup: async () => {
                 const alertDialog = page.locator('[role="alertdialog"][data-open]');
@@ -1399,6 +1441,16 @@ export async function sceneDr2Layout(ctx) {
                     destination: dest,
                 });
                 if (dest === 'chat') {
+                    if (vp.width === 390) {
+                        await assertIconButtonConsumer(
+                            page,
+                            'button[data-chat-back], button[data-list-toggle]',
+                            'chat@390 返回/列表图标按钮',
+                        );
+                    } else if (vp.width === 1440) {
+                        await assertIconButtonConsumer(page, 'button[data-collapse]', 'chat@1440 侧栏折叠图标按钮');
+                        await assertIconButtonConsumer(page, '#send_but', 'chat@1440 发送图标按钮');
+                    }
                     const panelToggle = page.locator('[data-panel-toggle]');
                     if (
                         (await page.locator('#vc-shell').getAttribute('data-panel-open')) !==
@@ -1415,6 +1467,13 @@ export async function sceneDr2Layout(ctx) {
                         height: vp.height,
                         destination: 'chat-panel-open',
                     });
+                    if (vp.width === 1440) {
+                        await assertIconButtonConsumer(
+                            page,
+                            'button.vc-desk-character-close',
+                            'chat-panel@1440 关闭图标按钮',
+                        );
+                    }
                     if (vp.width < 1600) {
                         await panelToggle.click();
                         await page.waitForFunction(
@@ -1422,7 +1481,45 @@ export async function sceneDr2Layout(ctx) {
                         );
                         await settlePage(page);
                     }
+                } else if (dest === 'memory' && vp.width === 390) {
+                    await page.getByRole('tab', { name: '日记', exact: true }).click();
+                    await page.locator('.vc-memory-diary[aria-label="角色日记"]').waitFor({ state: 'visible' });
+                    await settlePage(page);
+                    await assertNarrow390Diary(page);
+                    await page.getByRole('tab', { name: '时间线', exact: true }).click();
+                    await settlePage(page);
+                } else if (dest === 'inbox' && vp.width === 390) {
+                    await assertNarrow390Inbox(page);
+                } else if (dest === 'story' && vp.width === 1440) {
+                    const enterBtn = page.locator('.vc-story-tab[data-view="gate"] [data-action="enter"]').first();
+                    if (await enterBtn.isVisible()) {
+                        await enterBtn.click();
+                        await page
+                            .locator('.vc-story-tab[data-view="stage"] .vc-story[data-state="playing"]')
+                            .waitFor({ state: 'visible' });
+                        await settlePage(page);
+                        await assertStorySrOnly(page, 'story@1440');
+                        await page.locator('.vc-story-tab[data-view="stage"] [data-action="close"]').first().click();
+                        await page.locator('.vc-story-tab[data-view="gate"]').waitFor({ state: 'visible' });
+                        await settlePage(page);
+                    }
                 }
+            }
+            if (dest === 'characters') {
+                await page.setViewportSize({ width: 1440, height: 900 });
+                await settlePage(page);
+                const firstCard = page.locator('.vc-characters-route .vc-character-card[data-ref]').first();
+                await firstCard.waitFor({ state: 'visible' });
+                await firstCard.click();
+                await page.locator('.vc-character-detail').waitFor({ state: 'visible' });
+                for (const vp of REVIEW_VIEWPORTS) {
+                    await page.setViewportSize(vp);
+                    await settlePage(page);
+                    await assertCharactersDetailLayout(page, vp);
+                }
+                const detailClose = page.locator('.vc-character-detail').getByRole('button', { name: '关闭', exact: true });
+                await detailClose.click();
+                await page.locator('.vc-character-detail').waitFor({ state: 'hidden' });
             }
         }
 
@@ -1437,6 +1534,8 @@ export async function sceneDr2Layout(ctx) {
         await menuTrigger.click();
         const menuPopup = page.locator('[role="menu"]').first();
         await menuPopup.waitFor({ state: 'visible' });
+        await settlePage(page);
+        await assertOverlayBackdropBlur(page, '[role="menu"]', 'chat@1440 消息菜单');
         for (const vp of LAYOUT_VIEWPORTS) {
             await page.setViewportSize(vp);
             await settlePage(page);
@@ -1469,6 +1568,58 @@ export async function sceneDr2Layout(ctx) {
         }
         await page.keyboard.press('Escape');
         await emojiPopup.waitFor({ state: 'hidden' });
+
+        // 真实流式回复停止图标按钮与分段回复 .mes_text 隐藏 / .vc-seg 气泡合同
+        let releaseSegStream;
+        const segStreamGate = new Promise(resolve => {
+            releaseSegStream = resolve;
+        });
+        await ctx.fixtureHttp.setOverride('vc03m-chat', async (_req, res) => {
+            res.writeHead(200, {
+                'Content-Type': 'text/event-stream; charset=utf-8',
+                'Cache-Control': 'no-cache, no-transform',
+                Connection: 'keep-alive',
+            });
+            res.write(
+                `data: ${JSON.stringify({
+                    id: 'chatcmpl-dr2-r5-seg',
+                    object: 'chat.completion.chunk',
+                    choices: [{ index: 0, delta: { role: 'assistant', content: 'DR2 流式分片一，先停在这里。' }, finish_reason: null }],
+                })}\n\n`,
+            );
+            await segStreamGate;
+            res.write(
+                `data: ${JSON.stringify({
+                    id: 'chatcmpl-dr2-r5-seg',
+                    object: 'chat.completion.chunk',
+                    choices: [{ index: 0, delta: { content: '第二句自然气泡回复，验证真实分段渲染。' }, finish_reason: 'stop' }],
+                })}\n\n`,
+            );
+            res.write('data: [DONE]\n\n');
+            res.end();
+        });
+        try {
+            await page.locator('#send_textarea').fill('DR2 触发真实流式与分段回复');
+            await page.waitForFunction(() => !document.querySelector('#send_but')?.disabled);
+            await page.locator('#send_but').click();
+            await page.locator('#mes_stop').waitFor({ state: 'visible' });
+            await settlePage(page);
+            await assertIconButtonConsumer(page, '#mes_stop', 'chat-streaming@1440 停止图标按钮');
+            releaseSegStream();
+            await page.waitForFunction(
+                () =>
+                    document.body.dataset.generating !== 'true' &&
+                    !document.querySelector('#mes_stop') &&
+                    document.querySelectorAll('#chat :is(.mes.vc-segmented, .vc-desktop-message-content.vc-segmented)').length > 0,
+                null,
+                { timeout: 15000 },
+            );
+            await settlePage(page);
+            await assertSegmentedReply(page, 'chat-segmented@1440');
+        } finally {
+            releaseSegStream();
+            await ctx.fixtureHttp.setOverride('vc03m-chat', null);
+        }
 
         // 检查键盘 Tab 后 :focus-visible 元素具有真实可见 outline
         await page.keyboard.press('Tab');
@@ -1846,6 +1997,14 @@ export async function sceneDr2Settings(ctx) {
             'data',
         ]) {
             await openSettingsCategory(page, cat);
+            if (cat === 'voice') {
+                await assertVoiceSwitches(page, 'dr2-settings:voice');
+                await assertSvgUseConsumer(
+                    page,
+                    '.vc-settings-categories [data-category] svg',
+                    'dr2-settings:nav-icons',
+                );
+            }
         }
 
         // 模型设置：编辑 provider 与脏状态离开保护
@@ -1857,6 +2016,8 @@ export async function sceneDr2Settings(ctx) {
         await page.locator('#vc-shell .vc-sidebar [data-nav="memory"]').click();
         const modelLeaveDialog1 = page.locator('[role="alertdialog"][data-open]');
         await modelLeaveDialog1.waitFor({ state: 'visible' });
+        await settlePage(page);
+        await assertOverlayBackdropBlur(page, '[role="alertdialog"][data-open]', 'dr2-settings:leave-dialog');
         await modelLeaveDialog1.getByRole('button', { name: '继续编辑', exact: true }).click();
         await page.locator('[role="alertdialog"]').waitFor({ state: 'hidden' });
         assert.equal(await page.locator('#vc-shell').getAttribute('data-settings'), 'open');
@@ -1975,6 +2136,7 @@ export async function sceneDr2Settings(ctx) {
 
         // 外观设置（含 B11 角色主题与回复样式持久化）
         await openSettingsCategory(page, 'appearance');
+        const settingsNavBefore = await captureSettingsNavGeometry(page);
         await page
             .getByRole('radiogroup', { name: '外观', exact: true })
             .getByRole('radio', { name: '深色', exact: true })
@@ -2003,6 +2165,10 @@ export async function sceneDr2Settings(ctx) {
         ]) {
             await openSettingsCategory(page, panel);
             await page.locator('.vc-tavern-form').waitFor({ state: 'visible' });
+            if (panel === 'left-nav-panel') {
+                const tavernNavAfter = await captureSettingsNavGeometry(page);
+                assertSettingsTavernNavContinuity(settingsNavBefore, tavernNavAfter, 'dr2-settings:nav-continuity');
+            }
         }
 
         await openSettingsCategory(page, 'left-nav-panel');
