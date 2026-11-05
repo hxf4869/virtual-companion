@@ -80,17 +80,18 @@ describe('DR2-12-R3 regressions (F11, F12, F14, F15, F16, F17, F23)', () => {
       charactersCss,
       /@container\s+vc-characters\s*\(\s*min-width\s*:\s*920px\s*\)/,
     );
-    // Either @container vc-main is used for .vc-characters-route.has-detail or @container vc-characters targets a child element (> .vc-character-detail)
+    expect(selfContainerBlock).toBe('');
+    expect(charactersCss).not.toMatch(
+      /\.vc-characters-route\.has-detail\s*\{\s*grid-template-columns\s*:\s*minmax\(0,\s*1fr\)\s+auto/,
+    );
+    expect(charactersCss).not.toMatch(/@container\s+vc-main\s*\(\s*max-width\s*:\s*919px\s*\)/);
     expect(charactersCss).toMatch(
       /@container\s+vc-main\s*\(\s*min-width\s*:\s*920px\s*\)\s*\{[\s\S]*?\.vc-characters-route\.has-detail\s*\{[\s\S]*?grid-template-columns\s*:\s*minmax\(0,\s*1fr\)\s+400px/,
     );
-    if (selfContainerBlock) {
-      expect(selfContainerBlock).toMatch(/\.vc-character-detail/);
-    }
 
-    // Narrow container (<= 919px, covering 390 and 1024 compact 906px container) preserves overlay
+    // Narrow container (<= 919px, covering 390 and 1024 compact 906px container) preserves overlay and puts -webkit-backdrop-filter before backdrop-filter (F22)
     expect(charactersCss).toMatch(
-      /@container\s+vc-characters\s*\(\s*max-width\s*:\s*919px\s*\)\s*\{[\s\S]*?\.vc-character-detail\s*\{[\s\S]*?position\s*:\s*absolute/,
+      /@container\s+vc-characters\s*\(\s*max-width\s*:\s*919px\s*\)\s*\{[\s\S]*?\.vc-character-detail\s*\{[\s\S]*?position\s*:\s*absolute[\s\S]*?-webkit-backdrop-filter\s*:\s*blur\(var\(--vc-blur-3\)\)\s+saturate\(180%\)\s*;\s*backdrop-filter\s*:\s*blur\(var\(--vc-blur-3\)\)\s+saturate\(180%\)/,
     );
 
     const queryClient = createQueryClient();

@@ -14,27 +14,9 @@
         color: var(--vc-ink);
     }
 
-    .vc-characters-route.has-detail {
-        grid-template-columns: minmax(0, 1fr) auto;
-    }
-
     @container vc-main (min-width: 920px) {
         .vc-characters-route.has-detail {
             grid-template-columns: minmax(0, 1fr) 400px;
-        }
-    }
-
-    @container vc-main (max-width: 919px) {
-        .vc-characters-route.has-detail {
-            grid-template-columns: minmax(0, 1fr);
-        }
-    }
-
-    @container vc-characters (min-width: 920px) {
-        .vc-characters-route.has-detail > .vc-character-detail {
-            position: relative;
-            width: 400px;
-            flex: 0 0 400px;
         }
     }
 
@@ -243,8 +225,8 @@
             width: 400px;
             max-width: 100%;
             background: var(--vc-glass-3);
-            backdrop-filter: blur(var(--vc-blur-3)) saturate(180%);
             -webkit-backdrop-filter: blur(var(--vc-blur-3)) saturate(180%);
+            backdrop-filter: blur(var(--vc-blur-3)) saturate(180%);
             box-shadow: var(--vc-shadow-overlay);
         }
     }
