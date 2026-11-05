@@ -1,6 +1,18 @@
+import { useCallback } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAppClient } from '../../app/providers';
+import { useSessionBridge } from '../../runtime/session-bridge';
 import { queryKeys } from '../queryKeys';
+
+export function useExitDesktopAccount() {
+  const queryClient = useQueryClient();
+  const bridge = useSessionBridge();
+  return useCallback(() => {
+    bridge.destroy();
+    queryClient.clear();
+    window.location.replace('/auth/');
+  }, [bridge, queryClient]);
+}
 
 export function useSessionQuery(enabled = true) {
   const client = useAppClient();

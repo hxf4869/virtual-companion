@@ -70,7 +70,6 @@ export function MessageList({
     const conflict = useChatSnapshot(s => s.conflict);
     const catalogBlocked = useChatSnapshot(s => s.catalogBlocked);
     const settingsRequired = useChatSnapshot(s => s.settingsRequired);
-    const relationshipId = useChatSnapshot(s => s.relationshipId);
     const popupRequest = useChatSnapshot(s => s.popupRequest);
     const personaChoice = useChatSnapshot(s => s.personaChoice);
     const portalContainer = usePortalContainer();
@@ -78,15 +77,25 @@ export function MessageList({
     const chatRef = useRef<HTMLDivElement | null>(null);
     const cardActionsRef = useRef<HTMLDivElement | null>(null);
 
-    const [editing, setEditing] = useState<{ index: number; text: string } | null>(null);
+    const [editing, setEditing] = useState<{
+        key: string;
+        messageKey: string;
+        text: string;
+    } | null>(null);
     const [removing, setRemoving] = useState<{
-        index: number;
+        key: string;
+        messageKey: string;
         anchor: HTMLElement | null;
     } | null>(null);
-    const [reminding, setReminding] = useState<{ index: number; text: string } | null>(null);
+    const [reminding, setReminding] = useState<{
+        key: string;
+        messageKey: string;
+        text: string;
+    } | null>(null);
     const [lightbox, setLightbox] = useState<{ url: string; alt: string } | null>(null);
     const [reactionTarget, setReactionTarget] = useState<{
-        index: number;
+        key: string;
+        messageKey: string;
         anchor: HTMLElement | null;
     } | null>(null);
     const [popupInput, setPopupInput] = useState('');
@@ -138,9 +147,22 @@ export function MessageList({
         return () => onReadingPosition?.(null);
     }, [onReadingPosition, reading.jumpToMessage, reading.notifySent]);
 
+    const resolveActionTarget = (target: { key: string; messageKey: string } | null) => {
+        if (!target || !target.key || !target.messageKey) return null;
+        const snapshot = bridge.getSnapshot();
+        if (snapshot.status !== 'ready' || snapshot.key !== target.key) {
+            return null;
+        }
+        const index = snapshot.messages.findIndex(msg => msg.key === target.messageKey);
+        if (index < 0) return null;
+        return { snapshot, index };
+    };
+
     const openEditDialog = (index: number, currentText: string) => {
+        const messageKey = messages[index]?.key;
+        if (!activeKey || !messageKey) return;
         editForm.reset({ text: currentText });
-        setEditing({ index, text: currentText });
+        setEditing({ key: activeKey, messageKey, text: currentText });
     };
 
     const submitEdit = editForm.handleSubmit(async values => {
@@ -153,23 +175,29 @@ export function MessageList({
             });
             return;
         }
-        const targetIndex = editing.index;
+        const resolved = resolveActionTarget(editing);
         const nextText = parsed.data.text;
         setEditing(null);
-        await bridge.edit(targetIndex, nextText);
+        if (!resolved) return;
+        await bridge.edit(resolved.index, nextText);
     });
 
     const openRemindDialog = (index: number, text: string) => {
+        const messageKey = messages[index]?.key;
+        if (!activeKey || !messageKey) return;
         remindForm.reset({
             topic: remindSeed(text),
             presetId: REMIND_PRESETS[0]?.id || 'tonight',
             customDueAt: '',
         });
-        setReminding({ index, text });
+        setReminding({ key: activeKey, messageKey, text });
     };
 
     const submitRemind = remindForm.handleSubmit(async values => {
-        if (!reminding || !relationshipId) {
+        if (!reminding) return;
+        const resolved = resolveActionTarget(reminding);
+        const targetRelationshipId = resolved?.snapshot.relationshipId;
+        if (!resolved || !targetRelationshipId) {
             setReminding(null);
             return;
         }
@@ -186,7 +214,7 @@ export function MessageList({
               : null;
         if (!remindAt) return;
         try {
-            await createReminder(relationshipId, {
+            await createReminder(targetRelationshipId, {
                 text: parsed.data.topic.trim(),
                 remindAt,
             });
@@ -319,11 +347,21 @@ export function MessageList({
                                         prevMessage={prevMsg}
                                         onQuote={onQuote}
                                         onEdit={openEditDialog}
-                                        onRemove={(idx, anchor) => setRemoving({ index: idx, anchor })}
+                                        onRemove={(idx, anchor) => {
+                                            const messageKey = messages[idx]?.key;
+                                            if (!activeKey || !messageKey) return;
+                                            setRemoving({ key: activeKey, messageKey, anchor });
+                                        }}
                                         onRemind={openRemindDialog}
-                                        onOpenReactionPicker={(idx, anchor) =>
-                                            setReactionTarget({ index: idx, anchor })
-                                        }
+                                        onOpenReactionPicker={(idx, anchor) => {
+                                            const messageKey = messages[idx]?.key;
+                                            if (!activeKey || !messageKey) return;
+                                            setReactionTarget({
+                                                key: activeKey,
+                                                messageKey,
+                                                anchor,
+                                            });
+                                        }}
                                         onOpenLightbox={(url, alt) => setLightbox({ url, alt })}
                                     />
                                 </React.Fragment>
@@ -452,9 +490,10 @@ export function MessageList({
                 danger
                 onConfirm={async () => {
                     if (!removing) return;
-                    const idx = removing.index;
+                    const resolved = resolveActionTarget(removing);
                     setRemoving(null);
-                    await bridge.remove(idx);
+                    if (!resolved) return;
+                    await bridge.remove(resolved.index);
                 }}
             />
 
@@ -565,10 +604,11 @@ export function MessageList({
                     if (!open) setReactionTarget(null);
                 }}
                 onSelectReaction={emoji => {
-                    if (reactionTarget) {
-                        void bridge.react(reactionTarget.index, emoji);
-                    }
+                    const resolved = resolveActionTarget(reactionTarget);
                     setReactionTarget(null);
+                    if (resolved) {
+                        void bridge.react(resolved.index, emoji);
+                    }
                 }}
             />
 

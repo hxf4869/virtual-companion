@@ -10,6 +10,7 @@ import {
     useNavigate,
     useParams,
     useRouterState,
+    useSearch,
     type RouterHistory,
 } from '@tanstack/react-router';
 import { useConversationsQuery } from '../data/queries/chat';
@@ -433,9 +434,30 @@ export function createDesktopRouter(
     const settingsCategoryRoute = createRoute({
         getParentRoute: () => rootRoute,
         path: '/settings/$category',
+        validateSearch: (
+            search: Record<string, unknown>,
+        ): { relationshipId?: string } => {
+            const raw =
+                typeof search?.relationshipId === 'string'
+                    ? search.relationshipId.trim()
+                    : typeof search?.relationshipId === 'number' &&
+                        Number.isSafeInteger(search.relationshipId) &&
+                        search.relationshipId > 0
+                      ? String(search.relationshipId)
+                      : '';
+            return /^[1-9]\d*$/.test(raw) ? { relationshipId: raw } : {};
+        },
         component: function SettingsCategoryPage() {
             const { category } = useParams({ from: settingsCategoryRoute.id });
-            return <SettingsComp category={category} />;
+            const { relationshipId } = useSearch({ from: settingsCategoryRoute.id });
+            return (
+                <SettingsComp
+                    category={category}
+                    {...(category === 'voice' && relationshipId
+                        ? { relationshipId }
+                        : {})}
+                />
+            );
         },
     });
 

@@ -87,6 +87,9 @@ export function useReadingPosition({
     const chatStorageIdRef = useRef(chatStorageId);
     chatStorageIdRef.current = chatStorageId;
 
+    const statusRef = useRef(status);
+    statusRef.current = status;
+
     const [latestShown, setLatestShown] = useState(false);
     const [latestAriaLabel, setLatestAriaLabel] = useState(() => latestLabel(0));
     const [unreadBadgeText, setUnreadBadgeText] = useState('');
@@ -390,11 +393,12 @@ export function useReadingPosition({
 
     // Open / restore reading position when conversation becomes ready
     useEffect(() => {
+        if (posTimerRef.current !== undefined) clearTimeout(posTimerRef.current);
+        if (readTimerRef.current !== undefined) clearTimeout(readTimerRef.current);
         if (status !== 'ready' || !chatStorageId) return undefined;
         const chat = chatRef.current;
         if (!chat) return undefined;
 
-        if (posTimerRef.current !== undefined) clearTimeout(posTimerRef.current);
         hideDateChip();
         dividerIdRef.current = null;
         stateRef.current = 'follow';
@@ -593,13 +597,15 @@ export function useReadingPosition({
 
         const scheduleRead = () => {
             if (readTimerRef.current !== undefined) clearTimeout(readTimerRef.current);
+            const storageId = chatStorageIdRef.current;
             readTimerRef.current = setTimeout(() => {
-                const storageId = chatStorageIdRef.current;
                 if (
                     !isConversationVisible() ||
                     document.hidden ||
                     holdingRef.current ||
-                    !storageId
+                    !storageId ||
+                    chatStorageIdRef.current !== storageId ||
+                    statusRef.current !== 'ready'
                 ) {
                     return;
                 }
@@ -622,9 +628,17 @@ export function useReadingPosition({
 
         const schedulePos = () => {
             if (posTimerRef.current !== undefined) clearTimeout(posTimerRef.current);
+            const storageId = chatStorageIdRef.current;
             posTimerRef.current = setTimeout(() => {
-                const storageId = chatStorageIdRef.current;
-                if (!isConversationVisible() || holdingRef.current || !storageId) return;
+                if (
+                    !isConversationVisible() ||
+                    holdingRef.current ||
+                    !storageId ||
+                    chatStorageIdRef.current !== storageId ||
+                    statusRef.current !== 'ready'
+                ) {
+                    return;
+                }
                 if (getGap() <= ATTACH_PX) {
                     writeStoredNumber(posKey(storageId), null);
                     return;

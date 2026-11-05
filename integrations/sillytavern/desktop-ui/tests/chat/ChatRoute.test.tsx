@@ -1264,8 +1264,13 @@ describe('ChatRoute streaming isolation, B5 open lifecycle, and B13 VoiceBubble 
         expect(env.bridge.getSnapshot().canSend).toBe(false);
         expect(env.bridge.getSnapshot().settingsRequired).toBe(true);
         expect(env.bridge.getSnapshot().notice).toContain('当月可用额度不足，测试与发送暂不可用。设置仍可保存。');
-        expect(env.bridge.draft.read(key)).toBe('NF06 原会话草稿');
-        expect((container.querySelector('#send_textarea') as HTMLTextAreaElement | null)?.value).toBe('NF06 原会话草稿');
+        expect(
+            env.bridge
+                .getSnapshot()
+                .messages.filter((message) => message.is_user && message.mes === 'NF06 原会话草稿'),
+        ).toHaveLength(1);
+        expect(env.bridge.draft.read(key)).toBe('');
+        expect((container.querySelector('#send_textarea') as HTMLTextAreaElement | null)?.value).toBe('');
         expect((container.querySelector('#send_but') as HTMLButtonElement | null)?.disabled).toBe(true);
         expect(container.querySelector('#vc-chat-gen button')?.textContent).toBe('去设置');
 
@@ -1275,6 +1280,8 @@ describe('ChatRoute streaming isolation, B5 open lifecycle, and B13 VoiceBubble 
 
         expect(env.bridge.getSnapshot().canSend).toBe(true);
         expect(env.bridge.getSnapshot().settingsRequired).toBe(false);
+        const textarea = container.querySelector('#send_textarea') as HTMLTextAreaElement;
+        fireEvent.change(textarea, { target: { value: '额度恢复后的新消息' } });
         expect((container.querySelector('#send_but') as HTMLButtonElement | null)?.disabled).toBe(false);
 
         env.bridge.destroy();

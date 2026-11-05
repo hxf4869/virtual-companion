@@ -11,7 +11,7 @@ import {
 } from '../../../../extension/vc-model-settings/consent-logic.js';
 import { iconSpriteUrl } from '../../../../extension/vc-model-settings/ui/icons.js';
 import { useAppClient } from '../../app/providers';
-import { useConsentsQuery, useRecordConsentMutation } from '../../data/queries/account';
+import { useConsentsQuery, useExitDesktopAccount, useRecordConsentMutation } from '../../data/queries/account';
 import { Icon } from '../../design/components/Icon';
 
 export interface AppConsentGateProps {
@@ -30,6 +30,7 @@ function isReauthError(err: unknown): boolean {
 
 export function AppConsentGate({ children }: AppConsentGateProps) {
   const client = useAppClient();
+  const exit = useExitDesktopAccount();
   const consentsQuery = useConsentsQuery();
   const recordConsentMutation = useRecordConsentMutation();
   const sprite = iconSpriteUrl();
@@ -93,12 +94,17 @@ export function AppConsentGate({ children }: AppConsentGateProps) {
   }, [busy, recordConsentMutation, consentsQuery]);
 
   const handleLogout = useCallback(async () => {
+    if (busy) return;
+    setBusy(true);
     try {
-      await client.go.logoutCurrent?.();
+      await client.go.logoutCurrent();
+      exit();
     } catch {
-      // ignore logout error
+      setError(CONSENT_ERROR_COPY);
+    } finally {
+      setBusy(false);
     }
-  }, [client.go]);
+  }, [busy, client.go, exit]);
 
   const handleVerifyReauth = useCallback(
     async (e: React.FormEvent<HTMLFormElement>) => {

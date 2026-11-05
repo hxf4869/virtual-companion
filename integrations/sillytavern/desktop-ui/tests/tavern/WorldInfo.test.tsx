@@ -180,6 +180,7 @@ describe('WorldInfo (B14 deleting world clears global/char/chat references in on
     const deletedWorlds: string[] = [];
     const settingsSaves: Array<Record<string, unknown>> = [];
     const characterMerges: Array<Record<string, unknown>> = [];
+    const worldSaves: string[] = [];
     const commitMetadataSpy = vi.fn(async () => {});
     const applyWorldbookSpy = vi.fn(async () => {});
 
@@ -227,6 +228,12 @@ describe('WorldInfo (B14 deleting world clears global/char/chat references in on
         },
       },
     };
+    const bobCard = {
+      avatar: 'bob.png',
+      name: 'Bob',
+      data: { name: 'Bob', extensions: { world: 'Lore Alpha' } },
+    };
+    const cards = [{ avatar: 'alice.png', name: 'Alice' }, bobCard];
 
     globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
@@ -243,10 +250,11 @@ describe('WorldInfo (B14 deleting world clears global/char/chat references in on
         });
       }
       if (url === '/api/characters/all') {
-        return jsonResponse([{ avatar: 'alice.png', name: 'Alice' }]);
+        return jsonResponse(cards);
       }
       if (url === '/api/characters/get') {
-        return jsonResponse(aliceCard);
+        const { avatar_url } = JSON.parse(String(init?.body || '{}'));
+        return jsonResponse(avatar_url === bobCard.avatar ? bobCard : aliceCard);
       }
       if (url === '/api/worldinfo/list') {
         return jsonResponse([{ file_id: 'Lore Alpha' }, { file_id: 'Lore Beta' }]);
@@ -262,6 +270,10 @@ describe('WorldInfo (B14 deleting world clears global/char/chat references in on
       if (url === '/api/worldinfo/delete') {
         const body = JSON.parse(String(init?.body || '{}'));
         deletedWorlds.push(body.name);
+        return jsonResponse({ ok: true });
+      }
+      if (url === '/api/worldinfo/edit') {
+        worldSaves.push(JSON.parse(String(init?.body || '{}')).name);
         return jsonResponse({ ok: true });
       }
       if (url === '/api/settings/save') {
@@ -332,7 +344,7 @@ describe('WorldInfo (B14 deleting world clears global/char/chat references in on
 
     // QueryClient holds real values for settingsDoc, characters, character detail, worldbookList, and worldbook(name)
     expect(qc.getQueryData(queryKeys.settingsDoc)).toBeDefined();
-    expect(qc.getQueryData(queryKeys.characters)).toEqual([{ avatar: 'alice.png', name: 'Alice' }]);
+    expect(qc.getQueryData(queryKeys.characters)).toEqual(cards);
     expect(qc.getQueryData([...queryKeys.characters, 'alice.png'])).toEqual(aliceCard);
     expect(qc.getQueryData(['settingsDoc', 'worldbookList'])).toEqual([
       { file_id: 'Lore Alpha' },
@@ -344,7 +356,13 @@ describe('WorldInfo (B14 deleting world clears global/char/chat references in on
       },
     });
 
-    // Click '删除世界书' and confirm in alertdialog
+    fireEvent.change(worldSelect, { target: { value: 'Lore Beta' } });
+    await screen.findByRole('button', { name: 'Lore Beta Entry' });
+    fireEvent.click(screen.getByRole('button', { name: '新增条目' }));
+    fireEvent.change(worldSelect, { target: { value: 'Lore Alpha' } });
+    await screen.findByRole('button', { name: 'Lore Alpha Entry' });
+
+    // Delete Alpha while Beta has an unsaved entry.
     fireEvent.click(screen.getByRole('button', { name: '删除世界书' }));
     const alertDialog = await screen.findByRole('alertdialog');
     fireEvent.click(
@@ -354,7 +372,7 @@ describe('WorldInfo (B14 deleting world clears global/char/chat references in on
     await waitFor(() => {
       expect(deletedWorlds).toEqual(['Lore Alpha']);
       expect(settingsSaves).toHaveLength(1);
-      expect(characterMerges).toHaveLength(1);
+      expect(characterMerges).toHaveLength(2);
       expect(commitMetadataSpy).toHaveBeenCalledTimes(1);
     });
 
@@ -381,15 +399,10 @@ describe('WorldInfo (B14 deleting world clears global/char/chat references in on
       },
     });
 
-    // Verify character merge cleared data.extensions.world
-    expect(characterMerges[0]).toEqual({
-      avatar: 'alice.png',
-      data: {
-        extensions: {
-          world: '',
-        },
-      },
-    });
+    expect(characterMerges).toEqual(expect.arrayContaining([
+      { avatar: 'alice.png', data: { extensions: { world: '' } } },
+      { avatar: 'bob.png', data: { extensions: { world: '' } } },
+    ]));
 
     // Verify chat metadata commit cleared world_info and passed captured expectedKey
     expect(commitMetadataSpy).toHaveBeenCalledWith(
@@ -403,9 +416,10 @@ describe('WorldInfo (B14 deleting world clears global/char/chat references in on
       '["alice.png","chat-1"]',
     );
 
-    // Verify form is clean after one-commit deletion
+    // Deleting Alpha must preserve Beta's draft without saving it.
     const saveButton = screen.getByRole('button', { name: '保存' }) as HTMLButtonElement;
-    expect(saveButton.disabled).toBe(true);
+    expect(worldSaves).toEqual([]);
+    expect(saveButton.disabled).toBe(false);
   });
 
   it('WorldCodeEditorDialog 30-item prefs & text act as drafts: Cancel discards both without writing localStorage, Apply saves and preserves unknown keys', async () => {

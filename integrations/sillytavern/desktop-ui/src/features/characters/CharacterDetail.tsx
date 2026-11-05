@@ -3,9 +3,9 @@ import { useNavigate } from '@tanstack/react-router';
 import { AlertDialog } from '../../design/components/AlertDialog';
 import { Button } from '../../design/components/Button';
 import { Icon } from '../../design/components/Icon';
+import { toast } from '../../design/components/Toast';
 import { useSessionBridge } from '../../runtime/session-bridge';
 import {
-    useCreateInstance,
     useDeleteCharacter,
     type CharacterCardItem,
     type CharacterInstanceItem,
@@ -28,7 +28,6 @@ export function CharacterDetail({ card, onClose, onDeleted }: CharacterDetailPro
     const navigate = useNavigate();
     const bridge = useSessionBridge();
     const deleteMutation = useDeleteCharacter();
-    const createInstanceMutation = useCreateInstance();
 
     const [editingPersona, setEditingPersona] = useState(false);
     const [descExpanded, setDescExpanded] = useState(false);
@@ -36,11 +35,15 @@ export function CharacterDetail({ card, onClose, onDeleted }: CharacterDetailPro
     const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
     const [deleteError, setDeleteError] = useState('');
     const mountedRef = useRef(true);
+    const openingRef = useRef(false);
+    const openRequestRef = useRef(0);
 
     useEffect(() => {
         mountedRef.current = true;
         return () => {
             mountedRef.current = false;
+            openRequestRef.current += 1;
+            openingRef.current = false;
         };
     }, []);
     const [instanceDialogState, setInstanceDialogState] = useState<{
@@ -60,6 +63,8 @@ export function CharacterDetail({ card, onClose, onDeleted }: CharacterDetailPro
         setDescExpanded(false);
         setDeleteDialogOpen(false);
         setDeleteError('');
+        openRequestRef.current += 1;
+        openingRef.current = false;
     }, [card.characterRef, card.avatar]);
 
     const showAvatarImg = Boolean(
@@ -67,35 +72,35 @@ export function CharacterDetail({ card, onClose, onDeleted }: CharacterDetailPro
     );
 
     const handleOpenInstance = async (inst: CharacterInstanceItem) => {
-        if (card.avatar && inst.file) {
-            const status = await bridge.open({ avatar: card.avatar, file: inst.file });
-            if (!mountedRef.current) return;
-            if (status === 'opened' && inst.conversationKey) {
+        if (openingRef.current) return;
+        openingRef.current = true;
+        const requestId = ++openRequestRef.current;
+        try {
+            const status =
+                card.avatar && inst.file
+                    ? await bridge.open({ avatar: card.avatar, file: inst.file })
+                    : await bridge.open({
+                          avatar: card.avatar,
+                          relationshipId: inst.relationshipId,
+                          chatIdentity: inst.chatIdentity || undefined,
+                      });
+            if (!mountedRef.current || requestId !== openRequestRef.current) return;
+            const conversationKey = bridge.getSnapshot().key || inst.conversationKey;
+            if (status === 'opened' && conversationKey) {
                 await navigate({
                     to: '/chat/$conversationKey',
-                    params: { conversationKey: inst.conversationKey },
+                    params: { conversationKey },
                 });
+            } else if (status === 'failed') {
+                toast.show({ title: '聊天没有加载出来，请重试。', kind: 'error' });
             }
-            return;
-        }
-        const created = await createInstanceMutation.mutateAsync({
-            characterRef: card.characterRef,
-            avatar: card.avatar,
-            displayName: inst.name || card.name,
-            mode: 'COMPANION',
-        });
-        if (!mountedRef.current) return;
-        if (created.avatar && created.file) {
-            const status = await bridge.open({
-                avatar: created.avatar,
-                file: created.file,
-            });
-            if (!mountedRef.current) return;
-            if (status === 'opened' && created.conversationKey) {
-                await navigate({
-                    to: '/chat/$conversationKey',
-                    params: { conversationKey: created.conversationKey },
-                });
+        } catch {
+            if (mountedRef.current && requestId === openRequestRef.current) {
+                toast.show({ title: '聊天没有加载出来，请重试。', kind: 'error' });
+            }
+        } finally {
+            if (requestId === openRequestRef.current) {
+                openingRef.current = false;
             }
         }
     };
@@ -216,18 +221,6 @@ export function CharacterDetail({ card, onClose, onDeleted }: CharacterDetailPro
                     </Button>
                     <Button
                         type="button"
-                        variant="gray"
-                        onClick={() => {
-                            void navigate({
-                                to: '/settings/$category',
-                                params: { category: 'voice' },
-                            });
-                        }}
-                    >
-                        声音
-                    </Button>
-                    <Button
-                        type="button"
                         variant="danger-soft"
                         disabled={deleteMutation.isPending}
                         onClick={() => setDeleteDialogOpen(true)}
@@ -281,6 +274,21 @@ export function CharacterDetail({ card, onClose, onDeleted }: CharacterDetailPro
                                     }
                                 >
                                     改名
+                                </Button>
+                                <Button
+                                    type="button"
+                                    variant="text"
+                                    onClick={() => {
+                                        void navigate({
+                                            to: '/settings/$category',
+                                            params: { category: 'voice' },
+                                            search: {
+                                                relationshipId: inst.relationshipId,
+                                            } as never,
+                                        });
+                                    }}
+                                >
+                                    声音
                                 </Button>
                             </div>
                         ))}

@@ -89,11 +89,18 @@ export function MemoryItemDetail({
   const mountedRef = useRef(true);
   const jumpTicketRef = useRef(0);
   const navigatingSelfRef = useRef(false);
+  const scopeRef = useRef<{ itemId: string | null }>({ itemId });
+  if (scopeRef.current.itemId !== itemId) {
+    scopeRef.current = { itemId };
+  }
 
   const [editing, setEditing] = useState(false);
   const [confirmForgetOpen, setConfirmForgetOpen] = useState(false);
   const [reauthOpen, setReauthOpen] = useState(false);
-  const [pendingAction, setPendingAction] = useState<'pin' | 'forget' | null>(null);
+  const [pendingAction, setPendingAction] = useState<{
+    kind: 'pin' | 'forget';
+    scope: { itemId: string | null };
+  } | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [jumpingSourceIdx, setJumpingSourceIdx] = useState<number | null>(null);
@@ -112,6 +119,8 @@ export function MemoryItemDetail({
     jumpTicketRef.current += 1;
     setEditing(false);
     setConfirmForgetOpen(false);
+    setReauthOpen(false);
+    setPendingAction(null);
     setNotice(null);
     setErrorMessage(null);
     setJumpingSourceIdx(null);
@@ -132,14 +141,18 @@ export function MemoryItemDetail({
 
   const handlePinToggle = async () => {
     if (!itemId) return;
+    const requestScope = scopeRef.current;
+    const targetItemId = itemId;
     setErrorMessage(null);
     try {
-      const updated = await pinMutation.mutateAsync({ id: itemId, pinned: !isPinned });
+      const updated = await pinMutation.mutateAsync({ id: targetItemId, pinned: !isPinned });
+      if (!mountedRef.current || scopeRef.current !== requestScope) return;
       onItemUpdated?.(updated);
     } catch (err) {
+      if (!mountedRef.current || scopeRef.current !== requestScope) return;
       const status = (err as { status?: number })?.status;
       if (status === 401 || status === 403) {
-        setPendingAction('pin');
+        setPendingAction({ kind: 'pin', scope: requestScope });
         setReauthOpen(true);
         return;
       }
@@ -149,15 +162,19 @@ export function MemoryItemDetail({
 
   const handleForget = async () => {
     if (!itemId) return;
+    const requestScope = scopeRef.current;
+    const targetItemId = itemId;
     setErrorMessage(null);
     try {
-      await forgetMutation.mutateAsync({ id: itemId });
+      await forgetMutation.mutateAsync({ id: targetItemId });
+      if (!mountedRef.current || scopeRef.current !== requestScope) return;
       setNotice(FORGET_NOTICE);
-      onItemForgotten?.(itemId);
+      onItemForgotten?.(targetItemId);
     } catch (err) {
+      if (!mountedRef.current || scopeRef.current !== requestScope) return;
       const status = (err as { status?: number })?.status;
       if (status === 401 || status === 403) {
-        setPendingAction('forget');
+        setPendingAction({ kind: 'forget', scope: requestScope });
         setReauthOpen(true);
         return;
       }
@@ -381,10 +398,24 @@ export function MemoryItemDetail({
 
       <ReauthDialog
         open={reauthOpen}
-        onOpenChange={setReauthOpen}
+        onOpenChange={(open) => {
+          setReauthOpen(open);
+          if (!open) {
+            setPendingAction(null);
+          }
+        }}
         onSuccess={() => {
-          if (pendingAction === 'pin') return handlePinToggle();
-          if (pendingAction === 'forget') return handleForget();
+          if (
+            !mountedRef.current ||
+            !pendingAction ||
+            pendingAction.scope !== scopeRef.current ||
+            pendingAction.scope.itemId !== itemId
+          ) {
+            return;
+          }
+          setPendingAction(null);
+          if (pendingAction.kind === 'pin') return handlePinToggle();
+          if (pendingAction.kind === 'forget') return handleForget();
         }}
       />
     </aside>

@@ -482,7 +482,7 @@ export function createTavernController(opts = {}) {
         bindings.set(id, { record, path, spec, disabled: extra.disabled });
         let displayed = value;
         if (spec.kind === 'json') displayed = textDrafts.has(id) ? textDrafts.get(id) : JSON.stringify(value, null, 2);
-        if (spec.kind === 'number') displayed = textDrafts.has(id) ? textDrafts.get(id) : value;
+        if (spec.kind === 'number' || spec.kind === 'list') displayed = textDrafts.has(id) ? textDrafts.get(id) : value;
         if (spec.nullableBoolean) displayed = String(raw ?? null);
         return { ...spec, ...extra, key: id, value: displayed, error: errors.get(id) };
     }
@@ -1102,7 +1102,10 @@ export function createTavernController(opts = {}) {
         if (record.kind === 'metadata' && !canMetadata()) return;
         let parsed = value;
         errors.delete(id);
-        if (spec.kind === 'json' || spec.kind === 'number') {
+        if (spec.kind === 'list' && typeof value === 'string') {
+            textDrafts.set(id, value);
+            parsed = value.split('\n').map((s) => s.trim()).filter(Boolean);
+        } else if (spec.kind === 'json' || spec.kind === 'number') {
             textDrafts.set(id, String(value));
             try {
                 if (spec.kind === 'json') {
@@ -1222,6 +1225,73 @@ export function createTavernController(opts = {}) {
                 if (validation) errors.set(next, validation);
             }
         }
+    }
+
+    function clearWorldbookSettings(value, name) {
+        for (const info of [value?.world_info_settings?.world_info, value?.world_info]) {
+            if (Array.isArray(info?.globalSelect) && info.globalSelect.includes(name)) {
+                info.globalSelect = info.globalSelect.filter(book => book !== name);
+            }
+            if (Array.isArray(info?.charLore)) {
+                info.charLore = info.charLore.map(row =>
+                    Array.isArray(row?.extraBooks) && row.extraBooks.includes(name)
+                        ? { ...row, extraBooks: row.extraBooks.filter(book => book !== name) }
+                        : row,
+                );
+            }
+        }
+        return value;
+    }
+
+    async function detachWorldbook(name) {
+        const chat = metadata;
+        const chatKey = metadataExpectedKey;
+        const view = clearWorldbookSettings(copy(settings.view), name);
+        const changes = documentChanges(settings.raw, settings.view, view);
+        if (changes.length) {
+            await post('/api/settings/save', { vc_changes: changes });
+            if (!alive()) return false;
+            settings.raw = applyDocumentValues(copy(settings.raw), changes);
+            settings.view = view;
+            clearWorldbookSettings(settings.next, name);
+            await opts.onSettingsCommit?.(changes, copy(settings.raw));
+        }
+        if (!alive()) return false;
+
+        const cards = await readCharacters({ fresh: true });
+        if (!alive()) return false;
+        const loaded = [...records.values()].filter(record => record.kind === 'character');
+        const candidates = new Set(
+            [...(Array.isArray(cards) ? cards : []), ...loaded.map(record => record.raw)]
+                .filter(card => card?.avatar && card.data?.extensions?.world === name)
+                .map(card => card.avatar),
+        );
+        for (const avatar of candidates) {
+            const fresh = await readCharacterDetail(avatar, { fresh: true });
+            if (!alive()) return false;
+            if (fresh?.data?.extensions?.world !== name) continue;
+            await post('/api/characters/merge-attributes', { avatar, data: { extensions: { world: '' } } });
+            if (!alive()) return false;
+            const record = records.get(`character:${avatar}`);
+            for (const document of [record?.raw, record?.view, record?.next]) {
+                if (document?.data?.extensions?.world === name) document.data.extensions.world = '';
+            }
+            await opts.onCharacterSaved?.(avatar);
+            if (!alive()) return false;
+        }
+
+        if (chat?.raw?.world_info === name) {
+            if (metadata !== chat || metadataExpectedKey !== chatKey || !canMetadata()) {
+                throw new Error('聊天已切换或尚未就绪，聊天绑定尚未保存；其他设置可继续保存。');
+            }
+            const next = { ...chat.view, world_info: '' };
+            const metadataChanges = documentChanges(chat.raw, chat.view, next);
+            await opts.onMetadataCommit(metadataChanges, chatKey);
+            if (!alive()) return false;
+            chat.raw = applyDocumentValues(copy(chat.raw), metadataChanges);
+            chat.view = next;
+        }
+        return true;
     }
 
     async function commitDirtyRecords() {
@@ -1800,43 +1870,17 @@ export function createTavernController(opts = {}) {
             }
             await run(async () => {
                 const deletedName = record.name;
-                if (record.raw !== undefined) await post('/api/worldinfo/delete', { name: deletedName });
+                if (record.raw !== undefined) {
+                    if (!await detachWorldbook(deletedName)) return;
+                    await post('/api/worldinfo/delete', { name: deletedName });
+                }
                 if (!alive()) return;
                 records.delete(record.id);
                 worlds = worlds.filter(name => name !== deletedName);
                 selectedWorld = worlds[0] || '';
                 selectedPrompt = '';
                 clearRecordText(record);
-                await opts.onWorldbookCommit?.(deletedName, null, 'delete');
-                if (!alive()) return;
-
-                // B14: synchronously clean references to deletedName in globalSelect, charLore, character, and chat metadata
-                const wi = settings?.next?.world_info_settings?.world_info;
-                if (wi) {
-                    if (Array.isArray(wi.globalSelect) && wi.globalSelect.includes(deletedName)) {
-                        wi.globalSelect = wi.globalSelect.filter(name => name !== deletedName);
-                    }
-                    if (Array.isArray(wi.charLore)) {
-                        wi.charLore = wi.charLore.map(row =>
-                            Array.isArray(row?.extraBooks) && row.extraBooks.includes(deletedName)
-                                ? { ...row, extraBooks: row.extraBooks.filter(name => name !== deletedName) }
-                                : row,
-                        );
-                    }
-                }
-                if (object(settings?.next?.world_info)) {
-                    const topWi = settings.next.world_info;
-                    if (Array.isArray(topWi.globalSelect) && topWi.globalSelect.includes(deletedName)) {
-                        topWi.globalSelect = topWi.globalSelect.filter(name => name !== deletedName);
-                    }
-                    if (Array.isArray(topWi.charLore)) {
-                        topWi.charLore = topWi.charLore.map(row =>
-                            Array.isArray(row?.extraBooks) && row.extraBooks.includes(deletedName)
-                                ? { ...row, extraBooks: row.extraBooks.filter(name => name !== deletedName) }
-                                : row,
-                        );
-                    }
-                }
+                clearWorldbookSettings(settings?.next, deletedName);
                 for (const r of records.values()) {
                     if (r.kind === 'character' && r.next?.data?.extensions?.world === deletedName) {
                         r.next.data.extensions.world = '';
@@ -1846,11 +1890,11 @@ export function createTavernController(opts = {}) {
                     metadata.next.world_info = '';
                 }
 
+                if (record.raw !== undefined) await opts.onWorldbookCommit?.(deletedName, null, 'delete');
+                if (!alive()) return;
                 if (selectedWorld) {
                     await loadWorld(selectedWorld);
-                    if (!alive()) return;
                 }
-                await commitDirtyRecords();
             });
             return;
         }

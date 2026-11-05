@@ -1,6 +1,6 @@
 // AGPL-3.0-only. SillyTavern 7e8663cd9c184a550b37238218bdd32c6efc68e9 / scripts/macros/definitions/core-macros.js
 // 保留本地拷贝：注入 quietConsole as console，从 ../../../../ports.js 与本地 ../../../lib.js、../../../script.js 导入依赖，替代上游 textgen-settings.js/constants.js/原生 script.js。
-import { quietConsole as console } from "../../../../ports.js";
+import { quietConsole as console, readInput } from "../../../../ports.js";
 import { seedrandom, droll } from "../../../lib.js";
 import { chat_metadata, main_api, getMaxPromptTokens, getMaxContextTokens, getMaxResponseTokens, extension_prompts, getCurrentChatId } from "../../../script.js";
 import { getStringHash, isFalseBoolean } from "../../utils.js";
@@ -232,7 +232,7 @@ export function registerCoreMacros() {
         category: MacroCategory.UTILITY,
         description: 'Current text from the send textarea.',
         returns: 'Current text from the send textarea.',
-        handler: () => (/** @type {HTMLTextAreaElement} */(document.querySelector('#send_textarea')))?.value ?? '',
+        handler: readInput,
     });
 
     // {{maxPrompt}} -> max context size (context minus response)

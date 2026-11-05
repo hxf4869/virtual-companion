@@ -596,3 +596,53 @@ export async function refreshVoiceAvailability() {
     }
     return available;
 }
+
+const RELATIONSHIP_VOICE_BASE_KEYS = Object.freeze([
+    'companionName',
+    'userAddressAs',
+    'replyLength',
+    'initiative',
+    'humor',
+    'advicePref',
+    'remindersAllowed',
+    'memoryShareScope',
+    'avoidTopics',
+    'gender',
+    'avatarRef',
+]);
+
+export function buildRelationshipVoicePayload(values = {}, relationship = {}) {
+    const body = Object.fromEntries(
+        RELATIONSHIP_VOICE_BASE_KEYS.map((key) => [key, relationship?.[key]]),
+    );
+    body.kokoroVoice = String(values.kokoroVoice || '') || null;
+    body.cosyVoice = String(values.cosyVoice || '') || null;
+    body.speed = Number(values.speed ?? relationship?.speed ?? 1);
+    body.voiceFrequency = String(values.voiceFrequency || '') || null;
+    body.proactiveVoice =
+        'proactiveVoice' in values
+            ? Boolean(values.proactiveVoice)
+            : relationship?.proactiveVoice !== false;
+    body.proactiveEngine = String(values.proactiveEngine || '') || null;
+    return body;
+}
+
+export function resolvePreviewVoice(engine, values = {}, relationship = {}, engines = {}) {
+    const key = engine === 'kokoro' ? 'kokoroVoice' : 'cosyVoice';
+    const choice = String(values?.[key] || '');
+    let voice =
+        choice ||
+        (engine === 'kokoro'
+            ? relationship?.gender === 'MALE'
+                ? 'zm_010'
+                : 'zf_001'
+            : 'default');
+    if (engine === 'cosyvoice' && !choice && relationship?.gender === 'MALE') {
+        const ttsList = Array.isArray(engines?.tts) ? engines.tts : [];
+        voice =
+            ttsList
+                .find((item) => item?.engine === engine)
+                ?.voices?.find((item) => item?.gender === 'MALE')?.id || 'default';
+    }
+    return voice;
+}

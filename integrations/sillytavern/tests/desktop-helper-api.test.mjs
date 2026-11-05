@@ -1605,6 +1605,20 @@ test('Audit 11, 12, 13: builtin.duringGenerating 真实生成态、builtin.rende
     // 跨次执行不泄漏上次局部作用域，读取未声明局部变量抛错，重复 /let 同名变量抛错
     await assert.rejects(() => th.triggerSlash('/var x'), /No such variable: "x"/);
     await assert.rejects(() => th.triggerSlash('/let dup 1 | /let dup 2'), /Variable named "dup" already exists\./);
+
+    // 顶层 || 禁止下一命令隐式 pipe 注入，单 | 保持隐式注入，保留括号、引号与显式 {{pipe}}
+    assert.equal(await th.triggerSlash('/echo piped | /echo'), 'piped');
+    assert.equal(await th.triggerSlash('/echo piped || /echo'), '');
+    assert.equal(await th.triggerSlash('/echo piped || /echo {{pipe}}'), 'piped');
+    assert.equal(await th.triggerSlash('/echo "a || b" | /echo'), 'a || b');
+    assert.equal(await th.triggerSlash('/echo {:a || b:} | /echo'), '{:a || b:}');
+
+    const lenBeforeDoublePipeDel = f.context.chat.length;
+    assert.ok(lenBeforeDoublePipeDel >= 4);
+    await th.triggerSlash('/echo 3 || /del');
+    assert.equal(f.context.chat.length, lenBeforeDoublePipeDel - 1, '/echo 3 || /del 中无参 /del 不应隐式继承 pipe，只删 1 条');
+    await th.triggerSlash('/echo 2 | /del');
+    assert.equal(f.context.chat.length, lenBeforeDoublePipeDel - 3, '/echo 2 | /del 单竖线保持隐式 pipe 注入，应删 2 条');
 });
 
 test('Residual 1: cards.destroy() 公开销毁入口不抛 ReferenceError 且完整移除脚本容器、全局 API 与事件监听', async () => {

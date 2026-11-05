@@ -1,12 +1,16 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from '@tanstack/react-router';
 import {
+  buildRelationshipVoicePayload,
   invalidateVoicePolicy,
+  resolvePreviewVoice,
   voicePlayer,
   waitForVoiceClip,
 } from '../../../../extension/vc-model-settings/voice-logic.js';
 import { useAppClient } from '../../app/providers';
 import { ConflictError } from '../../data/client';
+import { queryKeys } from '../../data/queryKeys';
 import {
   usePreviewVoiceMutation,
   useSaveVoiceSettingsMutation,
@@ -77,17 +81,53 @@ export interface VoiceSectionProps {
   relationshipId?: string;
 }
 
+function voiceRelationship(rows: unknown, id?: string) {
+  return Array.isArray(rows)
+    ? rows.find((row) => String(row?.relationshipId) === id)
+    : undefined;
+}
+
 export function VoiceSection({ relationshipId }: VoiceSectionProps = {}) {
   const client = useAppClient();
+  const queryClient = useQueryClient();
   const router = useRouter({ warn: false });
   const settingsQuery = useVoiceSettingsQuery();
   const enginesQuery = useVoiceEnginesQuery();
   const saveMutation = useSaveVoiceSettingsMutation();
   const previewMutation = usePreviewVoiceMutation();
+  const relationshipsQuery = useQuery({
+    queryKey: queryKeys.relationships,
+    queryFn: () => client.go.fetchRelationships(),
+    enabled: Boolean(relationshipId),
+  });
+  const saveRelationship = useMutation({
+    mutationFn: async (draft: { values: VoiceValues; baseline: Record<string, any> }) => {
+      const fresh = voiceRelationship(await client.go.fetchRelationships(), relationshipId);
+      if (!fresh) throw new Error('没有完成，请重试。');
+      const payload: Record<string, unknown> = buildRelationshipVoicePayload(draft.values, fresh);
+      const original: Record<string, unknown> = buildRelationshipVoicePayload(
+        voiceFormValues(draft.baseline, draft.baseline),
+        fresh,
+      );
+      for (const key of ['kokoroVoice', 'cosyVoice', 'speed', 'voiceFrequency', 'proactiveEngine', 'proactiveVoice']) {
+        if (Object.is(payload[key], original[key])) delete payload[key];
+      }
+      return client.go.storyRequest('PATCH', `/api/v1/relationships/${encodeURIComponent(relationshipId!)}`, payload);
+    },
+    onSuccess: (saved) => {
+      queryClient.setQueryData(queryKeys.relationships, (rows) =>
+        Array.isArray(rows)
+          ? rows.map((row) => String(row?.relationshipId) === relationshipId ? saved : row)
+          : [saved],
+      );
+    },
+  });
+  const latestSource = relationshipId
+    ? voiceRelationship(relationshipsQuery.data, relationshipId)
+    : settingsQuery.data;
 
   const [values, setValues] = useState<VoiceValues>({});
-  const [baseline, setBaseline] = useState<string>('');
-  const [loaded, setLoaded] = useState(false);
+  const [baseline, setBaseline] = useState<Record<string, any> | null>(null);
   const [statusMessage, setStatusMessage] = useState<string>('');
   const [showLoadLatest, setShowLoadLatest] = useState(false);
   const [confirmDiscardOpen, setConfirmDiscardOpen] = useState(false);
@@ -105,34 +145,27 @@ export function VoiceSection({ relationshipId }: VoiceSectionProps = {}) {
     };
   }, []);
 
-  const currentSnapshot = useMemo(() => {
-    if (!loaded || !settingsQuery.data) return '';
-    return JSON.stringify(
-      buildGlobalVoicePayload(values, settingsQuery.data as Record<string, any>),
-    );
-  }, [loaded, settingsQuery.data, values]);
+  const loaded = baseline !== null;
+  const working = saveMutation.isPending || saveRelationship.isPending;
+  const loading = enginesQuery.isLoading || settingsQuery.isLoading ||
+    Boolean(relationshipId && relationshipsQuery.isLoading);
+  const loadError = settingsQuery.isError || enginesQuery.isError ||
+    Boolean(relationshipId && (relationshipsQuery.isError || (!loading && !latestSource)));
+  const buildPayload = relationshipId ? buildRelationshipVoicePayload : buildGlobalVoicePayload;
+  const isDirty = Boolean(baseline && JSON.stringify(buildPayload(values, baseline)) !==
+    JSON.stringify(buildPayload(voiceFormValues(baseline, relationshipId ? baseline : undefined), baseline)));
 
-  const isDirty = Boolean(loaded && baseline && currentSnapshot !== baseline);
+  const adoptSource = useCallback((source: Record<string, any>) => {
+    setBaseline(source);
+    setValues(voiceFormValues(source, relationshipId ? source : undefined));
+    setStatusMessage('');
+    setShowLoadLatest(false);
+  }, [relationshipId]);
 
-  // Initialize or update values from query when not dirty
   useEffect(() => {
-    if (!settingsQuery.data || !enginesQuery.data) return;
-    if (!loaded || (!isDirty && !showLoadLatest)) {
-      const nextValues = voiceFormValues(settingsQuery.data as Record<string, unknown>);
-      setValues(nextValues);
-      setBaseline(
-        JSON.stringify(
-          buildGlobalVoicePayload(
-            nextValues,
-            settingsQuery.data as Record<string, any>,
-          ),
-        ),
-      );
-      setLoaded(true);
-      setStatusMessage('');
-      setShowLoadLatest(false);
-    }
-  }, [settingsQuery.data, enginesQuery.data, loaded, isDirty, showLoadLatest]);
+    if (!latestSource || !enginesQuery.data || working || isDirty || showLoadLatest) return;
+    adoptSource(latestSource);
+  }, [latestSource, enginesQuery.data, working, isDirty, showLoadLatest, adoptSource]);
 
   const handleFieldChange = useCallback((key: string, value: string | boolean) => {
     setValues((prev) => ({ ...prev, [key]: value }));
@@ -145,29 +178,23 @@ export function VoiceSection({ relationshipId }: VoiceSectionProps = {}) {
 
   const handleLoadLatest = useCallback(async () => {
     setStatusMessage('');
-    const [sRes] = await Promise.all([
-      settingsQuery.refetch(),
+    const [sRes, enginesRes] = await Promise.all([
+      relationshipId ? relationshipsQuery.refetch() : settingsQuery.refetch(),
       enginesQuery.refetch(),
     ]);
-    if (sRes.data) {
-      const nextValues = voiceFormValues(sRes.data as Record<string, unknown>);
-      setValues(nextValues);
-      setBaseline(
-        JSON.stringify(
-          buildGlobalVoicePayload(nextValues, sRes.data as Record<string, any>),
-        ),
-      );
-      setLoaded(true);
-      setShowLoadLatest(false);
+    const source = relationshipId ? voiceRelationship(sRes.data, relationshipId) : sRes.data;
+    if (sRes.isError || enginesRes.isError || !source) {
+      setStatusMessage('没有完成，请重试。');
+      return;
     }
-  }, [settingsQuery, enginesQuery]);
+    adoptSource(source);
+  }, [settingsQuery, enginesQuery, relationshipsQuery, relationshipId, adoptSource]);
 
   const handlePreview = useCallback(
     async (engine: string) => {
-      if (!relationshipId || !settingsQuery.data) return;
+      if (!relationshipId || !settingsQuery.data || !baseline) return;
       const ticket = ++previewEpochRef.current;
-      const key = engine === 'kokoro' ? 'kokoroVoice' : 'cosyVoice';
-      const voice = String(values[key] || '') || (engine === 'kokoro' ? 'zf_001' : 'default');
+      const voice = resolvePreviewVoice(engine, values, baseline, enginesQuery.data);
       const speed = Number(values.speed) || 1;
       setPreviewState({ [engine]: { busy: true } });
       try {
@@ -209,36 +236,30 @@ export function VoiceSection({ relationshipId }: VoiceSectionProps = {}) {
         }
       }
     },
-    [relationshipId, settingsQuery.data, values, previewMutation, client.go],
+    [relationshipId, settingsQuery.data, baseline, enginesQuery.data, values, previewMutation, client.go],
   );
 
   const handleSave = useCallback(async () => {
     if (
-      saveMutation.isPending ||
-      settingsQuery.isLoading ||
-      !loaded ||
+      working ||
+      loading ||
+      !baseline ||
       !isDirty ||
-      !settingsQuery.data
+      !latestSource
     ) {
       return;
     }
     if (formRef.current && !formRef.current.reportValidity()) return;
     setStatusMessage('');
-    const payload = buildGlobalVoicePayload(
-      values,
-      settingsQuery.data as Record<string, any>,
-    );
     try {
-      const saved: any = await saveMutation.mutateAsync(payload);
+      const saved = relationshipId
+        ? await saveRelationship.mutateAsync({ values, baseline })
+        : await saveMutation.mutateAsync(buildGlobalVoicePayload(values, baseline));
+      if (!saved) throw new Error('没有完成，请重试。');
       invalidateVoicePolicy();
       globalThis.dispatchEvent?.(new Event('vc-voice-settings-changed'));
-      const refetched = saved || (await settingsQuery.refetch()).data || settingsQuery.data;
-      setBaseline(
-        JSON.stringify(
-          buildGlobalVoicePayload(values, refetched as Record<string, any>),
-        ),
-      );
-      setShowLoadLatest(false);
+      if (!relationshipId) queryClient.setQueryData(queryKeys.voiceSettings, saved);
+      adoptSource(saved);
       toast.show({ title: '已保存', kind: 'success' });
     } catch (err: any) {
       const isConflict =
@@ -252,10 +273,7 @@ export function VoiceSection({ relationshipId }: VoiceSectionProps = {}) {
       );
       setShowLoadLatest(isConflict);
     }
-  }, [saveMutation, settingsQuery, loaded, isDirty, values]);
-
-  const working = saveMutation.isPending;
-  const loading = settingsQuery.isLoading || enginesQuery.isLoading;
+  }, [working, loading, baseline, isDirty, latestSource, relationshipId, saveRelationship, values, saveMutation, queryClient, adoptSource]);
   const enginesData = (enginesQuery.data as any) ?? { tts: [], asr: {} };
 
   return (
@@ -318,11 +336,11 @@ export function VoiceSection({ relationshipId }: VoiceSectionProps = {}) {
         <p role="status">
           {loading && !loaded
             ? '正在加载…'
-            : settingsQuery.isError || enginesQuery.isError
+            : loadError
               ? '没有完成，请重试。'
               : statusMessage}
         </p>
-        {(showLoadLatest || settingsQuery.isError || enginesQuery.isError) && (
+        {(showLoadLatest || loadError) && (
           <Button
             type="button"
             variant="text"
@@ -344,14 +362,8 @@ export function VoiceSection({ relationshipId }: VoiceSectionProps = {}) {
         danger
         onConfirm={() => {
           setConfirmDiscardOpen(false);
-          if (settingsQuery.data) {
-            const nextValues = voiceFormValues(
-              settingsQuery.data as Record<string, unknown>,
-            );
-            setValues(nextValues);
-            setStatusMessage('');
-            setShowLoadLatest(false);
-          }
+          const source = latestSource ?? baseline;
+          if (source) adoptSource(source);
         }}
       />
     </section>

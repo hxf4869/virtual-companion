@@ -589,15 +589,7 @@ export function TavernFieldRow({
           className="vc-tavern-list-input"
           value={Array.isArray(f.value) ? f.value.join('\n') : String(f.value ?? '')}
           disabled={disabled}
-          onChange={(e) =>
-            onField(
-              f.key,
-              e.target.value
-                .split('\n')
-                .map((s) => s.trim())
-                .filter(Boolean),
-            )
-          }
+          onChange={(e) => onField(f.key, e.target.value)}
         />
       ) : f.kind === 'multiselect' ? (
         <div id={id} className="vc-tavern-checks">

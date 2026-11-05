@@ -192,10 +192,13 @@ export function ChatCharacterPanel() {
                             iconSize={20}
                             className="vc-icon-btn vc-circle"
                             aria-label="声音"
+                            disabled={!relationshipId}
                             onClick={() => {
+                                if (!relationshipId) return;
                                 void navigate({
                                     to: '/settings/$category',
                                     params: { category: 'voice' },
+                                    search: { relationshipId: String(relationshipId) },
                                 });
                             }}
                         />

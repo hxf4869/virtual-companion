@@ -742,7 +742,15 @@ export function createSessionBridge(
                 }
             },
             paint: () => {
-                if (dead || !snapshot.key) return;
+                if (
+                    dead ||
+                    readAbort ||
+                    !snapshot.key ||
+                    snapshot.status !== 'ready' ||
+                    sessionPublishedKey !== snapshot.key
+                ) {
+                    return;
+                }
                 snapshot = {
                     ...snapshot,
                     messages: mapMessages(context.chat),

@@ -1,8 +1,10 @@
 import { useState } from 'react';
 import { Button } from '@base-ui/react/button';
 import { useAppClient } from '../../app/providers';
+import { useExitDesktopAccount } from '../../data/queries/account';
 import { Avatar } from '../../design/components/Avatar';
 import { Icon } from '../../design/components/Icon';
+import { toast } from '../../design/components/Toast';
 import { useSessionBridge } from '../../runtime/session-bridge';
 import { DesktopAccountDialog } from './DesktopAccountDialog';
 
@@ -14,6 +16,7 @@ const ACCOUNT_ITEMS = [
 
 export function AccountSection() {
   const client = useAppClient();
+  const exit = useExitDesktopAccount();
   const bridge = useSessionBridge();
   const context = bridge.getContext() || {};
   const name = String(context.name1 || '').trim() || '账户';
@@ -24,6 +27,20 @@ export function AccountSection() {
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [dialogScreen, setDialogScreen] = useState<string>('home');
+  const [signingOut, setSigningOut] = useState(false);
+
+  const logout = async () => {
+    if (signingOut) return;
+    setSigningOut(true);
+    try {
+      await client.go.logoutCurrent();
+      exit();
+    } catch {
+      toast.show({ title: '没有完成，请重试。', kind: 'error' });
+    } finally {
+      setSigningOut(false);
+    }
+  };
 
   const openScreen = (screen: string) => {
     setDialogScreen(screen);
@@ -59,7 +76,8 @@ export function AccountSection() {
           type="button"
           className="vc-cell is-danger"
           data-action="logout"
-          onClick={() => void client.go.logoutCurrent()}
+          disabled={signingOut}
+          onClick={() => void logout()}
         >
           <span className="vc-grow">退出当前会话</span>
         </Button>

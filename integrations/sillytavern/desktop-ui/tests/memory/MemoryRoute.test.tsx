@@ -7,6 +7,7 @@ import { createDesktopRouter } from '../../src/app/router';
 import { SessionBridgeProvider, createSessionBridge } from '../../src/runtime/session-bridge';
 import type { AppClient } from '../../src/data/client';
 import { MemoryRoute } from '../../src/features/memory/MemoryRoute';
+import { MemoryItemDetail } from '../../src/features/memory/MemoryItemDetail';
 import { useRelationshipMemoriesQuery } from '../../src/data/queries/chat';
 
 function setupMatchMedia(initialWidth = 1440) {
@@ -192,6 +193,31 @@ describe('MemoryRoute', () => {
   afterEach(() => {
     cleanup();
     vi.restoreAllMocks();
+  });
+
+  it('ignores a reauth challenge for a memory that is no longer selected', async () => {
+    let rejectForget!: (error: Error) => void;
+    const request = new Promise<void>((_resolve, reject) => { rejectForget = reject; });
+    const forget = vi.fn((_id: string) => request);
+    const { client, page1Items, page2Items } = createMemoryTestClient({ forgetMemory: forget });
+    const queryClient = createQueryClient();
+    const view = (item: (typeof page1Items)[number] | (typeof page2Items)[number]) => (
+      <AppProviders client={client} queryClient={queryClient}>
+        <MemoryItemDetail item={item} />
+      </AppProviders>
+    );
+    const { rerender } = render(view(page1Items[0]));
+    fireEvent.click(await screen.findByRole('button', { name: '遗忘' }));
+    fireEvent.click(await screen.findByRole('button', { name: '确认遗忘' }));
+    await waitFor(() => expect(forget).toHaveBeenCalledWith('mem-1'));
+    rerender(view(page2Items[0]));
+    await act(async () => {
+      rejectForget(Object.assign(new Error('recent reauthentication required'), { status: 403 }));
+      await request.catch(() => {});
+    });
+    await waitFor(() => expect(queryClient.isMutating()).toBe(0));
+    expect(screen.queryByRole('dialog', { name: '验证身份' })).toBeNull();
+    expect(forget).toHaveBeenCalledTimes(1);
   });
 
   it('opens the memory page after the chat preview has populated the same cache', async () => {

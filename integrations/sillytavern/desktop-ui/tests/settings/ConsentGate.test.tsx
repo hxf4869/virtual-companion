@@ -6,6 +6,7 @@ import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/re
 import { AppProviders, createQueryClient, queryClient } from '../../src/app/providers';
 import type { AppClient } from '../../src/data/client';
 import { AppConsentGate } from '../../src/features/settings/AppConsentGate';
+import type { SessionBridge } from '../../src/runtime/session-bridge';
 import { CONSENT_VERSION, REQUIRED_CONSENTS } from '../../../extension/vc-model-settings/consent-logic.js';
 
 const APP_CONSENT_GATE_SRC = resolve(__dirname, '../../src/features/settings/AppConsentGate.tsx');
@@ -21,6 +22,26 @@ describe('AppConsentGate', () => {
     cleanup();
     queryClient.clear();
     vi.restoreAllMocks();
+  });
+
+  it('destroys the private session and returns to login after logout succeeds', async () => {
+    const client = { go: {
+      listConsents: async () => [],
+      logoutCurrent: vi.fn(async () => ({ ok: true })),
+    } } as unknown as AppClient;
+    const destroy = vi.fn();
+    const replace = vi.spyOn(window.location, 'replace').mockImplementation(() => {});
+    const cache = createQueryClient();
+    cache.setQueryData(['private-test'], { loaded: true });
+    render(
+      <AppProviders client={client} queryClient={cache} sessionBridge={{ destroy } as unknown as SessionBridge}>
+        <AppConsentGate />
+      </AppProviders>,
+    );
+    fireEvent.click(await screen.findByRole('button', { name: '退出登录' }));
+    await waitFor(() => expect(replace).toHaveBeenCalledWith('/auth/'));
+    expect(destroy).toHaveBeenCalledTimes(1);
+    expect(cache.getQueryData(['private-test'])).toBeUndefined();
   });
 
   it('blocks app until required consents granted', async () => {

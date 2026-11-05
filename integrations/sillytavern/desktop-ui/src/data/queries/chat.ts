@@ -23,6 +23,7 @@ export interface ConversationRow {
     timeText?: string;
     relationshipId?: string;
     conversationId?: string;
+    chatIdentity?: string;
     characterRef?: string;
     mode?: string;
     unread?: boolean;

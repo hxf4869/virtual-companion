@@ -406,8 +406,11 @@ export async function rebindChatWorldbook(name, book) {
 export async function getOrCreateChatWorldbook(name, book) {
     if(name !== 'current') throw new Error('目前不支持非当前聊天');
     const existing=getChatWorldbookName(name);if(existing)return existing;
-    const next=book || `Chat Book ${getCurrentChatId()}`.replace(/[^a-z0-9]/gi,'_').replace(/_{2,}/g,'_').substring(0,64);
+    const expectedMetadata = chat_metadata;
+    const expectedChatId = getCurrentChatId();
+    const next=book || `Chat Book ${expectedChatId}`.replace(/[^a-z0-9]/gi,'_').replace(/_{2,}/g,'_').substring(0,64);
     if(!await createWorldbook(next))throw new Error('同名世界书已存在');
+    if (chat_metadata !== expectedMetadata || getCurrentChatId() !== expectedChatId) throw Error('VC_STALE_SOURCE');
     await rebindChatWorldbook(name,next);return next;
 }
 export async function deleteWorldbook(name) {
@@ -567,7 +570,27 @@ export async function replaceLorebookEntries(lorebook, entries) {
         throw Error(`未能找到世界书 '${lorebook}'`);
     }
     const raw = await loadWorldInfo(lorebook);
-    const converted = handleLorebookEntriesCollision(entries).map(fromPartialLorebookEntry);
+    const preservedKeys = [
+        'useProbability',
+        'addMemo',
+        'matchPersonaDescription',
+        'matchCharacterDescription',
+        'matchCharacterPersonality',
+        'matchCharacterDepthPrompt',
+        'matchScenario',
+        'matchCreatorNotes',
+    ];
+    const converted = handleLorebookEntriesCollision(entries).map((entry, index) => {
+        const next = fromPartialLorebookEntry(entry);
+        const existing = entries[index]?.uid === entry.uid ? raw?.entries?.[entry.uid] : undefined;
+        if (!existing) return next;
+        for (const key of preservedKeys) {
+            if (entry?.[key] === undefined && existing[key] !== undefined) {
+                next[key] = existing[key];
+            }
+        }
+        return next;
+    });
     await commitWorldbookRaw(lorebook, converted, raw);
 }
 

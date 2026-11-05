@@ -532,6 +532,7 @@ function splitPipeline(script) {
     let current = '';
     let quote = null;
     let braceDepth = 0;
+    let injectPipe = true;
     for (let i = 0; i < script.length; i++) {
         const ch = script[i];
         const next = script[i + 1];
@@ -561,20 +562,22 @@ function splitPipeline(script) {
             current += ch;
             continue;
         }
-        if (ch === '|' && next === '|') {
-            stages.push(current.trim());
+        if (ch === '|' && next === '|' && braceDepth === 0) {
+            stages.push({ raw: current.trim(), injectPipe });
             current = '';
+            injectPipe = false;
             i++;
             continue;
         }
         if (ch === '|' && braceDepth === 0) {
-            stages.push(current.trim());
+            stages.push({ raw: current.trim(), injectPipe });
             current = '';
+            injectPipe = true;
             continue;
         }
         current += ch;
     }
-    if (current.trim()) stages.push(current.trim());
+    if (current.trim()) stages.push({ raw: current.trim(), injectPipe });
     return stages;
 }
 
@@ -651,8 +654,8 @@ export async function executeSlashCommandsWithOptions(text, options = {}) {
     const stages = splitPipeline(raw);
     let pipe = '';
     for (const stage of stages) {
-        if (!stage) continue;
-        const { name, namedArgs, unnamedValue } = parseStage(stage);
+        if (!stage?.raw) continue;
+        const { name, namedArgs, unnamedValue } = parseStage(stage.raw);
         if (!name) continue;
         if (name === '//' || name === 'comment' || name === 'note') continue;
         const cmd = commandRegistry.get(name);
@@ -670,7 +673,7 @@ export async function executeSlashCommandsWithOptions(text, options = {}) {
         for (const [k, v] of Object.entries(namedArgs)) {
             resolvedArgs[k] = expandStepMacros(String(v), pipe, scope);
         }
-        const expandedUnnamed = unnamedValue !== '' ? expandStepMacros(unnamedValue, pipe, scope) : pipe;
+        const expandedUnnamed = unnamedValue !== '' ? expandStepMacros(unnamedValue, pipe, scope) : (stage.injectPipe ? pipe : '');
         const callbackValue = cmd.splitUnnamedArguments
             ? (unnamedValue === ''
                 ? []

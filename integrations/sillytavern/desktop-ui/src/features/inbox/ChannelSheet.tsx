@@ -1,6 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useChannels, useSaveChannel, type Channel } from '../../data/queries/inbox';
+import { useRelationships } from '../../data/queries/memory';
 import { Button } from '../../design/components/Button';
+import { Checkbox } from '../../design/components/Checkbox';
 import { Dialog } from '../../design/components/Dialog';
 import { Field } from '../../design/components/Field';
 import { Switch } from '../../design/components/Switch';
@@ -10,6 +12,7 @@ import {
   credentialPlaceholder,
   draftsFromChannels,
 } from '../../../../extension/vc-model-settings/inbox-logic.js';
+import { relationshipLabel } from '../../../../extension/vc-model-settings/memory-logic.js';
 import { ReauthDialog } from './ReauthDialog';
 
 interface ChannelDraft {
@@ -37,51 +40,52 @@ export interface ChannelSheetProps {
 
 export function ChannelSheet({ relId }: ChannelSheetProps) {
   const channelsQuery = useChannels();
+  const relationshipsQuery = useRelationships();
+  const relationships = relationshipsQuery.data ?? [];
   const saveChannelMutation = useSaveChannel();
 
-  const [drafts, setDrafts] = useState<ChannelDraft[]>([]);
-  const [editingKind, setEditingKind] = useState<string | null>(null);
+  const [activeDraft, setActiveDraft] = useState<ChannelDraft | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [reauthOpen, setReauthOpen] = useState(false);
 
-  useEffect(() => {
-    const rows = (channelsQuery.data ?? []) as Channel[];
-    setDrafts(draftsFromChannels(rows, relId || '') as ChannelDraft[]);
-  }, [channelsQuery.data, relId]);
-
-  const activeDraft = drafts.find((d) => d.channel === editingKind) ?? null;
+  const rows = (channelsQuery.data ?? []) as Channel[];
+  const drafts = draftsFromChannels(rows, relId || '') as ChannelDraft[];
+  const relationshipOptions = new Map(
+    relationships.map((rel) => [
+      String(rel.relationshipId),
+      relationshipLabel(rel, relationships),
+    ]),
+  );
+  const savedChannel = drafts.find((draft) => draft.channel === activeDraft?.channel);
+  for (const id of savedChannel?.relationshipIds ?? []) {
+    if (!relationshipOptions.has(id)) relationshipOptions.set(id, id);
+  }
 
   const updateActiveDraft = (patch: Partial<ChannelDraft>) => {
-    if (!editingKind) return;
-    setDrafts((prev) =>
-      prev.map((item) => {
-        if (item.channel !== editingKind) return item;
-        const next = { ...item, ...patch };
-        if (Object.prototype.hasOwnProperty.call(patch, 'credential')) {
-          if (patch.credential) {
-            next.credential = patch.credential;
-            next.credentialMode = 'set';
-          } else if (item.credentialMode !== 'clear') {
-            next.credential = '';
-            next.credentialMode = 'keep';
-          }
-        }
-        return next;
-      }),
-    );
+    setActiveDraft((draft) => {
+      if (!draft) return null;
+      const next = { ...draft, ...patch };
+      if (patch.credential !== undefined && patch.credentialMode === undefined) {
+        next.credentialMode = patch.credential ? 'set' : draft.credentialMode === 'clear' ? 'clear' : 'keep';
+      }
+      return next;
+    });
+  };
+
+  const toggleRelationship = (id: string, checked: boolean) => {
+    if (!activeDraft) return;
+    const currentIds = activeDraft.relationshipIds;
+    const nextIds = checked
+      ? currentIds.includes(id)
+        ? currentIds
+        : [...currentIds, id]
+      : currentIds.filter((item) => item !== id);
+    updateActiveDraft({ relationshipIds: nextIds });
   };
 
   const handleCloseSheet = (open: boolean) => {
     if (!open) {
-      // Clear any unsaved secret input on close
-      setDrafts((prev) =>
-        prev.map((d) => ({
-          ...d,
-          credential: '',
-          credentialMode: 'keep',
-        })),
-      );
-      setEditingKind(null);
+      setActiveDraft(null);
       setErrorMessage(null);
     }
   };
@@ -146,7 +150,7 @@ export function ChannelSheet({ relId }: ChannelSheetProps) {
                 size="sm"
                 onClick={() => {
                   setErrorMessage(null);
-                  setEditingKind(draft.channel);
+                  setActiveDraft(draft);
                 }}
               >
                 配置
@@ -199,6 +203,18 @@ export function ChannelSheet({ relId }: ChannelSheetProps) {
                 onCheckedChange={(checked) => updateActiveDraft({ previewBody: checked })}
               />
             </Field>
+            <Field label="关联关系">
+              <div role="group" aria-label="关联关系">
+                {[...relationshipOptions].map(([id, label]) => (
+                  <Checkbox
+                    key={id}
+                    label={label}
+                    checked={activeDraft.relationshipIds.includes(id)}
+                    onCheckedChange={(checked) => toggleRelationship(id, checked)}
+                  />
+                ))}
+              </div>
+            </Field>
             <Field label="渠道凭据">
               <TextInput
                 aria-label="渠道凭据"
@@ -207,6 +223,18 @@ export function ChannelSheet({ relId }: ChannelSheetProps) {
                 placeholder={credentialPlaceholder(activeDraft)}
                 value={activeDraft.credential}
                 onValueChange={(val) => updateActiveDraft({ credential: val })}
+              />
+            </Field>
+            <Field label="清除凭据">
+              <Switch
+                aria-label="清除凭据"
+                checked={activeDraft.credentialMode === 'clear'}
+                onCheckedChange={(checked) =>
+                  updateActiveDraft({
+                    credential: '',
+                    credentialMode: checked ? 'clear' : 'keep',
+                  })
+                }
               />
             </Field>
             {errorMessage ? (

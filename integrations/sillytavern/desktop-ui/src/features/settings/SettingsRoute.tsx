@@ -45,6 +45,7 @@ const NotificationSectionLazy = React.lazy(() => import('./NotificationSection')
 
 export interface SettingsRouteProps {
   category?: string;
+  relationshipId?: string;
 }
 
 function normalizeCategory(raw?: string): ProductSettingsCategory {
@@ -53,7 +54,10 @@ function normalizeCategory(raw?: string): ProductSettingsCategory {
   return matched ? matched.key : 'account';
 }
 
-export function SettingsRoute({ category = 'account' }: SettingsRouteProps = {}) {
+export function SettingsRoute({
+  category = 'account',
+  relationshipId,
+}: SettingsRouteProps = {}) {
   const router = useRouter({ warn: false });
   const [localCategory, setLocalCategory] = useState<ProductSettingsCategory>(() =>
     normalizeCategory(category),
@@ -116,7 +120,7 @@ export function SettingsRoute({ category = 'account' }: SettingsRouteProps = {})
       case 'model':
         return <ModelSection />;
       case 'voice':
-        return <VoiceSection />;
+        return <VoiceSection key={relationshipId ?? 'global'} relationshipId={relationshipId} />;
       case 'notifications':
         return (
           <Suspense fallback={null}>

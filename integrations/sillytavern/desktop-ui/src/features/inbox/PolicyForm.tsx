@@ -78,13 +78,15 @@ const MODE_OPTIONS = [
 export interface PolicyFormProps {
   relId: string | null;
   onSaved?: (policy: ProactivePolicy) => void;
+  onDirtyChange?: (isDirty: boolean) => void;
 }
 
-export function PolicyForm({ relId, onSaved }: PolicyFormProps) {
+export function PolicyForm({ relId, onSaved, onDirtyChange }: PolicyFormProps) {
   const policyQuery = useProactivePolicy(relId);
   const saveMutation = useSavePolicy(relId);
   const activeRelRef = useRef<string | null>(relId);
   activeRelRef.current = relId;
+  const prevRelIdRef = useRef<string | null>(relId);
 
   const [conflictLatest, setConflictLatest] = useState<ProactivePolicy | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
@@ -104,24 +106,45 @@ export function PolicyForm({ relId, onSaved }: PolicyFormProps) {
 
   const values = watch();
   const leaveGuardDialog = useLeaveGuard(isDirty);
+  const isPolicyReady =
+    Boolean(relId) &&
+    Boolean(policyQuery.data) &&
+    (!policyQuery.data?.relationshipId || policyQuery.data.relationshipId === relId) &&
+    !policyQuery.isLoading &&
+    !policyQuery.isPending &&
+    !policyQuery.isError &&
+    !policyQuery.error;
+
+  useEffect(() => {
+    onDirtyChange?.(isDirty);
+  }, [isDirty, onDirtyChange]);
 
   // Reset form when relationship changes
   useEffect(() => {
+    if (prevRelIdRef.current === relId) return;
+    prevRelIdRef.current = relId;
     setConflictLatest(null);
     setFormError(null);
-  }, [relId]);
+    setReauthOpen(false);
+    if (isPolicyReady && policyQuery.data) {
+      reset(toFormValues(policyQuery.data));
+    } else {
+      reset(toFormValues(readProactivePolicy({}, relId ?? '') as ProactivePolicy));
+    }
+  }, [relId, isPolicyReady, policyQuery.data, reset]);
 
   // Populate form when initial server policy arrives (and don't overwrite user's dirty draft on conflict)
   useEffect(() => {
-    if (!policyQuery.data) return;
+    if (!isPolicyReady || !policyQuery.data) return;
     if (isDirty || conflictLatest) return;
     reset(toFormValues(policyQuery.data));
-  }, [policyQuery.data, isDirty, conflictLatest, reset]);
+  }, [isPolicyReady, policyQuery.data, isDirty, conflictLatest, reset]);
 
   const executeSave = async () => {
-    if (!relId) return;
+    if (!relId || !isPolicyReady || prevRelIdRef.current !== relId) return;
     const capturedRelId = relId;
     const rawValues = getValues();
+    if (rawValues.relationshipId && rawValues.relationshipId !== capturedRelId) return;
     const parsed = policyFormSchema.safeParse({
       ...rawValues,
       relationshipId: capturedRelId,
@@ -382,6 +405,7 @@ export function PolicyForm({ relId, onSaved }: PolicyFormProps) {
           <Button
             type="submit"
             variant="filled"
+            disabled={!isPolicyReady}
             pending={saveMutation.isPending}
           >
             保存策略

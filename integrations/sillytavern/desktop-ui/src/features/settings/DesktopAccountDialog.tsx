@@ -24,6 +24,7 @@ import { iconSpriteUrl } from '../../../../extension/vc-model-settings/ui/icons.
 import { useAppClient } from '../../app/providers';
 import {
   useConsentsQuery,
+  useExitDesktopAccount,
   useSessionQuery,
   useSessionsQuery,
   useTrustedDevicesQuery,
@@ -76,6 +77,9 @@ function errorCopyFor(error: unknown): string {
   return '操作尚未完成，请稍后重试。';
 }
 
+const DELETION_COMPLETE_COPY = '在线数据已删除。离线备份按保留策略另行清理。';
+const DELETION_POLL_MS = 2000;
+
 export function DesktopAccountDialog({
   open,
   initialScreen = 'home',
@@ -83,6 +87,7 @@ export function DesktopAccountDialog({
   onOpenChange,
 }: DesktopAccountDialogProps) {
   const client = useAppClient();
+  const exit = useExitDesktopAccount();
   const active = open || inline;
 
   const sessionQuery = useSessionQuery(active);
@@ -94,6 +99,7 @@ export function DesktopAccountDialog({
   const [screen, setScreen] = useState<string>(initialScreen);
   const [busy, setBusy] = useState(false);
   const [deleted, setDeleted] = useState(false);
+  const [deletionDomains, setDeletionDomains] = useState<string[] | null>(null);
   const [statuses, setStatuses] = useState<Record<string, string>>({});
   const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
   const [downloadVisible, setDownloadVisible] = useState(false);
@@ -121,6 +127,7 @@ export function DesktopAccountDialog({
     setPasswordReset((n) => n + 1);
     setReauthReset((n) => n + 1);
     setDeleteReset((n) => n + 1);
+    setDeleteChecked(false);
   }, []);
 
   useEffect(() => {
@@ -147,8 +154,54 @@ export function DesktopAccountDialog({
     };
   }, [active, initialScreen, clearSecrets, clearTimers]);
 
+  const deletionPending = deletionDomains !== null || sessionQuery.data?.deletionPending === true;
+  useEffect(() => {
+    if (!active || !deletionPending || deleted) return;
+    setDeleteFormHidden(true);
+    setDeleteOpen(true);
+    setStatuses((prev) => ({
+      ...prev,
+      delete: deletionProgressText({ pendingDomains: deletionDomains ?? [] }),
+    }));
+    const epoch = epochRef.current;
+    let stopped = false;
+    const current = () => !stopped && epochRef.current === epoch;
+    const poll = async () => {
+      try {
+        const session = await client.go.fetchSession();
+        if (!current()) return;
+        if (session?.accountId && String(session.accountId) !== client.identity.accountId) {
+          exit();
+          return;
+        }
+        if (session?.accountId && session?.deletionPending !== true) {
+          setDeleted(true);
+          setDeletionDomains(null);
+          setStatuses((prev) => ({ ...prev, delete: DELETION_COMPLETE_COPY }));
+          return;
+        }
+      } catch (error) {
+        if (!current()) return;
+        if ((error as { status?: number }).status === 401) {
+          exit();
+          return;
+        }
+      }
+      if (current()) timer = setTimeout(poll, DELETION_POLL_MS);
+    };
+    let timer = setTimeout(poll, DELETION_POLL_MS);
+    return () => {
+      stopped = true;
+      clearTimeout(timer);
+    };
+  }, [active, deletionPending, deletionDomains, deleted, client, exit]);
+
   const closeDialog = useCallback(() => {
     if (busy) return;
+    if (deleted) {
+      exit();
+      return;
+    }
     if (reauthOpen) {
       setPending(null);
       clearSecrets();
@@ -165,7 +218,7 @@ export function DesktopAccountDialog({
     setDownloadUrl(null);
     setDownloadVisible(false);
     onOpenChange(false);
-  }, [busy, reauthOpen, clearTimers, clearSecrets, onOpenChange]);
+  }, [busy, deleted, reauthOpen, clearTimers, clearSecrets, onOpenChange, exit]);
 
   const authText = useMemo(
     () => authenticatorStatusText(sessionQuery.data),
@@ -368,30 +421,34 @@ export function DesktopAccountDialog({
         ) {
           showExport(result || {}, epoch);
         } else if (currentPending.action === 'delete') {
+          setDeleteFormHidden(true);
+          setDeleteOpen(true);
           if (result?.ok === true && result?.status !== 'PENDING') {
             setDeleted(true);
             setDownloadVisible(false);
             setStatuses((prev) => ({
               ...prev,
-              delete: '在线数据已删除。离线备份按保留策略另行清理。',
+              delete: DELETION_COMPLETE_COPY,
             }));
           } else {
-            const domains = Array.isArray(result?.pendingDomains)
-              ? result.pendingDomains
-              : [];
-            setDeleteFormHidden(true);
-            setDeleteOpen(true);
-            setStatuses((prev) => ({
-              ...prev,
-              delete: deletionProgressText({ pendingDomains: domains }),
-            }));
+            setDeletionDomains(Array.isArray(result?.pendingDomains) ? result.pendingDomains : []);
+            void sessionQuery.refetch();
           }
         } else if (currentPending.action === 'consent-revoke') {
           await consentsQuery.refetch();
         }
       } catch (err) {
         if (epoch !== epochRef.current) return;
-        setStatuses((prev) => ({ ...prev, reauth: errorCopyFor(err) }));
+        const domains = (err as { pendingDomains?: unknown })?.pendingDomains;
+        if (currentPending.action === 'delete' && Array.isArray(domains)) {
+          setPending(null);
+          setReauthOpen(false);
+          setStatuses((prev) => ({ ...prev, reauth: '' }));
+          setDeletionDomains(domains);
+          void sessionQuery.refetch();
+        } else {
+          setStatuses((prev) => ({ ...prev, reauth: errorCopyFor(err) }));
+        }
       } finally {
         if (epoch === epochRef.current) {
           setReauthReset((n) => n + 1);
@@ -414,6 +471,10 @@ export function DesktopAccountDialog({
   const handleAction = useCallback(
     async (action: string, target: HTMLElement) => {
       if (busy) return;
+      if (deleted) {
+        if (action === 'back' || action === 'close') exit();
+        return;
+      }
       if (action.endsWith('-page')) {
         const nextScreen = action.slice(0, -5);
         setScreen(nextScreen);
@@ -544,6 +605,7 @@ export function DesktopAccountDialog({
         setBusy(true);
         try {
           await client.go.logoutCurrent();
+          exit();
         } catch (err) {
           setStatuses((prev) => ({ ...prev, session: errorCopyFor(err) }));
         } finally {
@@ -553,6 +615,8 @@ export function DesktopAccountDialog({
     },
     [
       busy,
+      deleted,
+      exit,
       screen,
       closeDialog,
       clearSecrets,

@@ -25,8 +25,11 @@ export function useLeaveGuard(
       ? { description: messageOrOptions }
       : messageOrOptions ?? {};
 
+  const shouldBlock = Boolean(dirty || opts.busy);
+
   const blocker = useBlocker({
-    shouldBlockFn: () => Boolean(dirty || opts.busy),
+    shouldBlockFn: () => shouldBlock,
+    enableBeforeUnload: shouldBlock,
     withResolver: true,
   });
 

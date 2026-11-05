@@ -10,6 +10,7 @@ import {
     useCreateInstance,
     useImportCharacter,
     type CreatedInstanceResult,
+    type ImportedCharacterResult,
 } from '../../data/queries/characters';
 import {
     GENDERS,
@@ -52,30 +53,30 @@ export function CreateWizard({ open, onOpenChange, onCreated }: CreateWizardProp
     const [firstMesCustomized, setFirstMesCustomized] = useState(false);
     const [stepError, setStepError] = useState('');
     const [submitting, setSubmitting] = useState(false);
+    const [hasImported, setHasImported] = useState(false);
 
     const mountedRef = useRef(true);
     const openRef = useRef(open);
     openRef.current = open;
     const submitEpochRef = useRef(0);
-
-    useEffect(() => {
-        mountedRef.current = true;
-        return () => {
-            mountedRef.current = false;
-            submitEpochRef.current += 1;
-        };
-    }, []);
-
-    useEffect(() => {
-        if (!open) {
-            submitEpochRef.current += 1;
-        }
-    }, [open]);
-
-    const busy = submitting || importMutation.isPending || createInstanceMutation.isPending;
+    const submitIntentRef = useRef<{
+        chatIdentity: string;
+        imported: ImportedCharacterResult | null;
+        created: CreatedInstanceResult | null;
+    }>({
+        chatIdentity: '',
+        imported: null,
+        created: null,
+    });
 
     const resetWizard = () => {
         submitEpochRef.current += 1;
+        submitIntentRef.current = {
+            chatIdentity: '',
+            imported: null,
+            created: null,
+        };
+        setHasImported(false);
         setStep(1);
         setName('');
         setGender('女生');
@@ -89,6 +90,27 @@ export function CreateWizard({ open, onOpenChange, onCreated }: CreateWizardProp
         setFirstMesCustomized(false);
         setStepError('');
     };
+
+    useEffect(() => {
+        mountedRef.current = true;
+        return () => {
+            mountedRef.current = false;
+            submitEpochRef.current += 1;
+            submitIntentRef.current = {
+                chatIdentity: '',
+                imported: null,
+                created: null,
+            };
+        };
+    }, []);
+
+    useEffect(() => {
+        if (!open) {
+            resetWizard();
+        }
+    }, [open]);
+
+    const busy = submitting || importMutation.isPending || createInstanceMutation.isPending;
 
     const handleDialogOpenChange = (nextOpen: boolean) => {
         if (busy) return;
@@ -130,7 +152,7 @@ export function CreateWizard({ open, onOpenChange, onCreated }: CreateWizardProp
     };
 
     const handlePrevStep = () => {
-        if (busy || step <= 1) return;
+        if (busy || hasImported || step <= 1) return;
         setStepError('');
         setStep((prev) => Math.max(1, prev - 1));
     };
@@ -147,36 +169,53 @@ export function CreateWizard({ open, onOpenChange, onCreated }: CreateWizardProp
         const ticket = ++submitEpochRef.current;
         const isAlive = () =>
             mountedRef.current && openRef.current && submitEpochRef.current === ticket;
+        if (!submitIntentRef.current.chatIdentity) {
+            submitIntentRef.current.chatIdentity = crypto.randomUUID();
+        }
+        const chatIdentity = submitIntentRef.current.chatIdentity;
         setSubmitting(true);
         setStepError('');
         try {
-            const cardPayload = buildCharacterCard({
-                name: cleanName,
-                relation,
-                gender,
-                styles,
-                customPersonality,
-                scenario,
-                first_mes: firstMes,
-                userAddressAs,
-                avoidTopicsText,
-            });
-            const bytes = new TextEncoder().encode(JSON.stringify(cardPayload));
-            const imported = await importMutation.mutateAsync({
-                name: `${cleanName}.json`,
-                bytes,
-            });
-            if (!isAlive()) return;
-            const created = await createInstanceMutation.mutateAsync({
-                characterRef: imported.characterRef,
-                avatar: imported.avatar,
-                displayName: cleanName,
-                mode: 'COMPANION',
-            });
-            if (!isAlive()) return;
-            if (!created.avatar || !created.file) {
-                setStepError('聊天没有加载出来，请重试。');
-                return;
+            let imported = submitIntentRef.current.imported;
+            if (!imported) {
+                const cardPayload = buildCharacterCard({
+                    name: cleanName,
+                    relation,
+                    gender,
+                    styles,
+                    customPersonality,
+                    scenario,
+                    first_mes: firstMes,
+                    userAddressAs,
+                    avoidTopicsText,
+                });
+                const bytes = new TextEncoder().encode(JSON.stringify(cardPayload));
+                const nextImported = await importMutation.mutateAsync({
+                    name: `${cleanName}.json`,
+                    bytes,
+                });
+                if (!isAlive()) return;
+                imported = nextImported;
+                submitIntentRef.current.imported = nextImported;
+                setHasImported(true);
+            }
+            let created = submitIntentRef.current.created;
+            if (!created) {
+                const nextCreated = await createInstanceMutation.mutateAsync({
+                    characterRef: imported.characterRef,
+                    avatar: imported.avatar,
+                    displayName: cleanName,
+                    chatIdentity,
+                    mode: 'COMPANION',
+                });
+                if (!isAlive()) return;
+                if (!nextCreated.avatar || !nextCreated.file) {
+                    setStepError('聊天没有加载出来，请重试。');
+                    return;
+                }
+                created = nextCreated;
+                submitIntentRef.current.created = nextCreated;
+                submitIntentRef.current.chatIdentity = nextCreated.chatIdentity || chatIdentity;
             }
             const openStatus = await bridge.open({
                 avatar: created.avatar,
@@ -222,7 +261,7 @@ export function CreateWizard({ open, onOpenChange, onCreated }: CreateWizardProp
                         <Button
                             type="button"
                             variant="gray"
-                            disabled={busy}
+                            disabled={busy || hasImported}
                             onClick={handlePrevStep}
                         >
                             上一步
@@ -411,8 +450,9 @@ export function CreateWizard({ open, onOpenChange, onCreated }: CreateWizardProp
                             id="vc-wizard-first-mes"
                             rows={4}
                             value={firstMes}
-                            disabled={busy}
+                            disabled={busy || hasImported}
                             onChange={(e) => {
+                                if (busy || hasImported) return;
                                 setFirstMes(e.target.value);
                                 setFirstMesCustomized(true);
                             }}

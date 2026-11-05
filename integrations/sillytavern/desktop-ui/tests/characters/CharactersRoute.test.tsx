@@ -547,13 +547,10 @@ describe('CharactersRoute (B15 delete character, instance creation & rename)', (
             )!,
         );
 
-        await waitFor(() => {
-            expect(createConversationSpy).toHaveBeenCalledTimes(1);
-            expect(activatedRows).toEqual([
-                { avatar: 'alice.png', file: '2026-11-04@09h00m' },
-                { avatar: 'alice.png', file: '2026-11-04@12h00m' },
-            ]);
-        });
+        expect(await screen.findByText('聊天没有加载出来，请重试。')).toBeTruthy();
+        expect(createConversationSpy).not.toHaveBeenCalled();
+        expect(activatedRows).toEqual([{ avatar: 'alice.png', file: '2026-11-04@09h00m' }]);
+        expect(router.state.location.pathname).toBe('/characters/alice.png');
     });
 
     it('blocks switching character card or closing detail when PersonaEditor is dirty, preserving draft on cancel and switching on confirm', async () => {

@@ -79,15 +79,21 @@ export function isWhitelistedExtensionModule(relPath) {
 }
 
 const RESOLVE_EXTENSIONS = ['.ts', '.tsx', '.js', '.mjs', '.css'];
+const EXTENSION_RUNTIME_PREFIXES = [
+    '/scripts/vc-runtime/',
+    '/scripts/extensions/third-party/vc-model-settings/',
+];
 
-function resolveLocalSpecifier(fromFile, specifier) {
+function resolveLocalSpecifier(fromFile, specifier, extensionRoot = EXTENSION_ROOT) {
     if (!specifier) return null;
     if (specifier === '/scripts/vc-runtime/source-identity.js') {
         return resolveFileCandidate(path.join(ST_ROOT, 'server-plugin', 'virtual-companion', 'lib', 'source-identity.js'));
     }
-    if (specifier.startsWith('/scripts/vc-runtime/')) {
-        const subPath = specifier.slice('/scripts/vc-runtime/'.length);
-        return resolveFileCandidate(path.join(EXTENSION_ROOT, subPath));
+    for (const prefix of EXTENSION_RUNTIME_PREFIXES) {
+        if (specifier.startsWith(prefix)) {
+            const subPath = specifier.slice(prefix.length);
+            return resolveFileCandidate(path.join(extensionRoot, subPath));
+        }
     }
     if (!specifier.startsWith('.')) {
         return null;
@@ -190,7 +196,7 @@ export async function analyzeDesktopImportBoundary({
 
         const specifiers = await extractSpecifiers(normalizedCurrent);
         for (const specifier of specifiers) {
-            const resolved = resolveLocalSpecifier(normalizedCurrent, specifier);
+            const resolved = resolveLocalSpecifier(normalizedCurrent, specifier, extensionRoot);
             if (!resolved) continue;
 
             const nextChain = [...chain, resolved];
@@ -405,6 +411,91 @@ test('边界检查能识别直接违规、经本地中间模块的传递违规�
         ]);
         const transitiveViolation = report.violations.find((v) => v.target === 'ui/sheet.js');
         assert.equal(transitiveViolation.chain.length, 4, '应完整记录 main -> mid1 -> mid2 -> ui/sheet.js 传递链');
+    } finally {
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+});
+
+test('/scripts/extensions/third-party/vc-model-settings/ 前缀与 /scripts/vc-runtime/ 一致纳入白名单与传递违规检查，且不扩大到其它第三方扩展', async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vc-boundary-runtime-prefix-'));
+    try {
+        const fakeSrc = path.join(tmpDir, 'desktop-ui', 'src');
+        const fakeExt = path.join(tmpDir, 'extension', 'vc-model-settings');
+        fs.mkdirSync(path.join(fakeSrc, 'app'), { recursive: true });
+        fs.mkdirSync(path.join(fakeSrc, 'data'), { recursive: true });
+        fs.mkdirSync(path.join(fakeSrc, 'bridge'), { recursive: true });
+        fs.mkdirSync(path.join(fakeExt, 'ui'), { recursive: true });
+
+        fs.writeFileSync(path.join(fakeExt, 'api.js'), 'export const ok = true;\n');
+        // 白名单模块内部经 /scripts/extensions/third-party/vc-model-settings/ 传递引入非白名单模块
+        fs.writeFileSync(
+            path.join(fakeExt, 'inbox-client.js'),
+            "import { openSheet } from '/scripts/extensions/third-party/vc-model-settings/ui/sheet.js';\nexport const badTransitive = openSheet;\n",
+        );
+        fs.writeFileSync(path.join(fakeExt, 'f2-client.js'), 'export const legacy = true;\n');
+        fs.writeFileSync(path.join(fakeExt, 'ui', 'sheet.js'), 'export function openSheet() {}\n');
+
+        // bridge/ 入口通过静态路径引用旧模块，仍应被排除
+        const bridgeEntry = path.join(fakeSrc, 'bridge', 'index.tsx');
+        fs.writeFileSync(
+            bridgeEntry,
+            "import { openSheet } from '/scripts/extensions/third-party/vc-model-settings/ui/sheet.js';\nexport { openSheet };\n",
+        );
+
+        // 1. 合法白名单引用 + 其它第三方扩展静态路径（不应被当成 vc-model-settings 解析报错）
+        const cleanEntry = path.join(fakeSrc, 'app', 'clean.tsx');
+        fs.writeFileSync(
+            cleanEntry,
+            [
+                "import { ok as okRuntime } from '/scripts/vc-runtime/api.js';",
+                "import { ok as okThirdParty } from '/scripts/extensions/third-party/vc-model-settings/api.js';",
+                "import '/scripts/extensions/third-party/other-extension/index.js';",
+                'export const clean = [okRuntime, okThirdParty];',
+            ].join('\n'),
+        );
+
+        const cleanReport = await analyzeDesktopImportBoundary({
+            entryFiles: [cleanEntry, bridgeEntry],
+            desktopSrcRoot: fakeSrc,
+            extensionRoot: fakeExt,
+        });
+        assert.deepEqual(cleanReport.violations, []);
+        assert.deepEqual(cleanReport.reachableExtensionModules, ['api.js']);
+
+        // 2. 直接违规与传递违规（含本地中间模块与扩展内传递）
+        const directThirdPartyViolation = path.join(fakeSrc, 'app', 'directThirdParty.tsx');
+        fs.writeFileSync(
+            directThirdPartyViolation,
+            "import { legacy } from '/scripts/extensions/third-party/vc-model-settings/f2-client.js';\nexport const d = legacy;\n",
+        );
+
+        fs.writeFileSync(
+            path.join(fakeSrc, 'data', 'hop.ts'),
+            "export { badTransitive } from '/scripts/extensions/third-party/vc-model-settings/inbox-client.js';\n",
+        );
+        const transitiveThirdPartyViolation = path.join(fakeSrc, 'app', 'transitiveThirdParty.tsx');
+        fs.writeFileSync(
+            transitiveThirdPartyViolation,
+            "import { badTransitive } from '../data/hop';\nexport const t = badTransitive;\n",
+        );
+
+        const violationReport = await analyzeDesktopImportBoundary({
+            entryFiles: [directThirdPartyViolation, transitiveThirdPartyViolation, bridgeEntry],
+            desktopSrcRoot: fakeSrc,
+            extensionRoot: fakeExt,
+        });
+
+        const targets = violationReport.violations.map((v) => `${v.type}:${v.target}`).sort();
+        assert.deepEqual(targets, [
+            'non-whitelisted-extension-module:f2-client.js',
+            'non-whitelisted-extension-module:ui/sheet.js',
+        ]);
+        const sheetViolation = violationReport.violations.find((v) => v.target === 'ui/sheet.js');
+        assert.equal(
+            sheetViolation.chain.length,
+            4,
+            '应完整记录 transitiveThirdParty.tsx -> data/hop.ts -> inbox-client.js -> ui/sheet.js 传递链',
+        );
     } finally {
         fs.rmSync(tmpDir, { recursive: true, force: true });
     }

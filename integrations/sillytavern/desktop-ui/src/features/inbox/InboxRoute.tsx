@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useRelationships } from '../../data/queries/memory';
+import { AlertDialog } from '../../design/components/AlertDialog';
 import { Select } from '../../design/components/Select';
 import { Switch } from '../../design/components/Switch';
 import { useChatSnapshot } from '../../runtime/session-bridge';
@@ -29,6 +30,8 @@ export function InboxRoute({ initialRelationshipId = null }: InboxRouteProps) {
   const [selectedRelId, setSelectedRelId] = useState<string | null>(
     initialRelationshipId ?? (activeChatRelId ? String(activeChatRelId) : null),
   );
+  const [policyDirty, setPolicyDirty] = useState(false);
+  const [pendingRelId, setPendingRelId] = useState<string | null>(null);
   const [desktopNotify, setDesktopNotify] = useState<boolean>(() => systemNotifyEnabled());
 
   useEffect(() => {
@@ -72,7 +75,14 @@ export function InboxRoute({ initialRelationshipId = null }: InboxRouteProps) {
               aria-label="选择角色关系"
               value={selectedRelId ?? ''}
               options={relOptions}
-              onValueChange={(val) => setSelectedRelId(val)}
+              onValueChange={(val) => {
+                if (val === selectedRelId) return;
+                if (policyDirty) {
+                  setPendingRelId(val);
+                  return;
+                }
+                setSelectedRelId(val);
+              }}
             />
           ) : null}
         </div>
@@ -88,7 +98,11 @@ export function InboxRoute({ initialRelationshipId = null }: InboxRouteProps) {
 
       <div className="vc-inbox-route__grid">
         <div className="vc-inbox-route__main">
-          <PolicyForm relId={selectedRelId} />
+          <PolicyForm
+            key={selectedRelId ?? 'none'}
+            relId={selectedRelId}
+            onDirtyChange={setPolicyDirty}
+          />
           <FollowUps relId={selectedRelId} />
           <InboxList />
         </div>
@@ -97,6 +111,27 @@ export function InboxRoute({ initialRelationshipId = null }: InboxRouteProps) {
           <Deliveries relId={selectedRelId} />
         </aside>
       </div>
+
+      <AlertDialog
+        open={pendingRelId !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setPendingRelId(null);
+          }
+        }}
+        title="放弃更改？"
+        description="切换后本次输入将丢失。"
+        confirmLabel="放弃"
+        cancelLabel="继续编辑"
+        danger
+        onConfirm={() => {
+          if (pendingRelId !== null) {
+            setPolicyDirty(false);
+            setSelectedRelId(pendingRelId);
+            setPendingRelId(null);
+          }
+        }}
+      />
     </div>
   );
 }

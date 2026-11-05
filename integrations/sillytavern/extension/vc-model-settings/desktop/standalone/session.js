@@ -350,7 +350,7 @@ export function createDesktopSession({ client, context, engine, prepareSourceIde
                 if (error.status === 401 || /ACCOUNT|SESSION/.test(error.details?.code || error.code || '')) {
                     target.blocked = true; target.notice = '登录状态或聊天已变化，请重新打开页面。';
                 }
-                if (!savedUser || budget?.insufficient) onRestoreDraft(target.key, input);
+                if (!savedUser && draftInput !== null) onRestoreDraft(target.key, draftInput);
                 return false;
             } finally {
                 clearTimeout(slowTimer);
