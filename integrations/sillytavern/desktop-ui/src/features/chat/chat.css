@@ -1669,6 +1669,13 @@ html[data-vc-app] #toast-container > .toast .toast-message:empty {
 }
 
 html[data-vc-app] #toast-container > .toast .toast-close-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+    width: 40px;
+    height: 40px;
+    padding: 0;
     position: static;
     float: none;
     order: 1;
@@ -1676,6 +1683,14 @@ html[data-vc-app] #toast-container > .toast .toast-close-button {
     color: var(--vc-ink-2);
     text-shadow: none;
     opacity: 1;
+}
+
+html[data-vc-app] #toast-container > .toast .toast-close-button svg {
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.75;
+    stroke-linecap: round;
+    stroke-linejoin: round;
 }
 
 html[data-vc-app] #toast-container > .toast .toast-progress {

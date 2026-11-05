@@ -25,10 +25,12 @@ import { substituteParamsExtended, getCharacterCardFields } from '../engine/st/s
 import { uuidv4 } from '../engine/st/scripts/utils.js';
 import { MacrosParser } from '../engine/st/scripts/macros.js';
 import { renderReplyBubbles } from './reply-bubbles.js';
+import { icon } from '../../../ui/icons.js';
 
 const base = '/scripts/extensions/third-party/vc-model-settings/desktop/standalone/cards/';
 const iframeBase = '/scripts/extensions/third-party/JS-Slash-Runner/src/iframe/';
 const vendor = '/scripts/extensions/third-party/JS-Slash-Runner/lib/vendor/';
+const desktopToastPorts = new WeakSet();
 const loadScript = src => new Promise((resolve, reject) => {
     const script = document.createElement('script'); script.src = src; script.onload = resolve; script.onerror = reject; document.head.append(script);
 });
@@ -54,6 +56,34 @@ export async function initializeCards(options) {
         const toastOptions = (globalThis.toastr.options ||= {});
         if (!toastOptions.target || toastOptions.target === 'body') {
             toastOptions.target = '[data-vc-toast-host]';
+        }
+        if (!desktopToastPorts.has(globalThis.toastr)) {
+            const toastr = globalThis.toastr;
+            for (const kind of ['success', 'info', 'warning', 'error']) {
+                const notify = toastr[kind];
+                toastr[kind] = (message, title, overrides = {}) => {
+                    const previous = toastr.getContainer().children();
+                    const next = notify(message, title, {
+                        ...(kind === 'error' ? {
+                            timeOut: 0,
+                            extendedTimeOut: 0,
+                            closeButton: true,
+                            closeHtml: `<button type="button" aria-label="关闭提示">${icon('x', { size: 16 })}</button>`,
+                        } : {}),
+                        ...overrides,
+                    });
+                    if (next) {
+                        next.addClass('toast');
+                        previous.each((_, element) => {
+                            const oldToast = globalThis.jQuery(element);
+                            toastr.clear(oldToast, { force: true });
+                            oldToast.finish();
+                        });
+                    }
+                    return next;
+                };
+            }
+            desktopToastPorts.add(toastr);
         }
     }
     Object.assign(globalThis, { _: lodash, YAML: yaml, showdown, klona });

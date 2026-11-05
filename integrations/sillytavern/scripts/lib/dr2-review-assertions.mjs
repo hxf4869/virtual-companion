@@ -1,6 +1,97 @@
 // Virtual Companion · DR2-12-R5 桌面重建真实浏览器回归断言辅助
 // 许可：AGPL-3.0-only（见 integrations/sillytavern/README.md）
 import assert from 'node:assert/strict';
+import { PNG } from 'pngjs';
+
+export async function assertCardToastPresentation(page, screenshotPath) {
+    const duplicate = await page.evaluate(() => {
+        const options = { timeOut: 0, extendedTimeOut: 0, preventDuplicates: true };
+        const first = globalThis.toastr.warning('T12 去重提示', 'T12 提示', options);
+        const second = globalThis.toastr.warning('T12 去重提示', 'T12 提示', options);
+        return { retained: first[0].isConnected, suppressed: second === undefined, count: document.querySelectorAll('#toast-container > div').length };
+    });
+    assert.ok(duplicate.retained && duplicate.suppressed && duplicate.count === 1, `被去重的通知不得清空当前提示: ${JSON.stringify(duplicate)}`);
+    await page.evaluate(() => {
+        window.__t12ToastClicked = false;
+        for (const kind of ['success', 'info', 'warning', 'error']) {
+            const toast = globalThis.toastr[kind](
+                'T12 合成长提示正文，用于确认提示留在内容面板内，长内容最多显示两行且不会堆叠。',
+                `T12 ${kind} 合成长提示标题`,
+                { timeOut: 0, extendedTimeOut: 0, onclick: () => { window.__t12ToastClicked = true; } },
+            );
+            if (kind === 'error') window.__t12ToastElement = toast[0];
+        }
+    });
+    const toast = page.locator('#toast-container > div');
+    await toast.first().waitFor({ state: 'visible' });
+    assert.equal(await toast.count(), 1, '连续卡片通知必须替换前一条，不得堆叠遮挡内容');
+    await page.waitForFunction(() => {
+        const toast = document.querySelector('#toast-container > div');
+        return Number(getComputedStyle(toast).opacity) === 1 && !globalThis.jQuery(toast).is(':animated');
+    });
+    const info = await toast.evaluate(node => {
+        const r = node.getBoundingClientRect();
+        const panel = document.querySelector('[data-shell-main]').getBoundingClientRect();
+        const header = document.querySelector('.vc-chat-header').getBoundingClientRect();
+        const title = node.querySelector('.toast-title');
+        const message = node.querySelector('.toast-message');
+        return {
+            returnedElement: node === window.__t12ToastElement,
+            latest: title.textContent.includes('error'),
+            backdrop: getComputedStyle(node).backdropFilter,
+            withinPanel: r.left >= panel.left && r.right <= panel.right,
+            belowHeader: r.top >= header.bottom + 10,
+            titleLines: title.getBoundingClientRect().height / parseFloat(getComputedStyle(title).lineHeight),
+            messageLines: message.getBoundingClientRect().height / parseFloat(getComputedStyle(message).lineHeight),
+        };
+    });
+    assert.ok(info.returnedElement && info.latest && info.withinPanel && info.belowHeader, `卡片提示必须保留 Toastr 返回值并位于标题栏下的主面板内: ${JSON.stringify(info)}`);
+    assert.match(info.backdrop, /blur\(40px\)/, '卡片提示必须保留 L3 背景模糊');
+    assert.ok(info.titleLines <= 1.1 && info.messageLines <= 2.1, `提示标题最多一行、正文最多两行: ${JSON.stringify(info)}`);
+    await assertControlReachable(page, '#toast-container .toast-close-button', '失败提示关闭按钮', { minWidth: 40, minHeight: 40 });
+    await assertSvgUseConsumer(page, '#toast-container .toast-close-button svg', '失败提示关闭图标');
+    if (screenshotPath) await page.screenshot({ path: screenshotPath });
+    await toast.locator('.toast-message').click();
+    await page.waitForFunction(() => window.__t12ToastClicked && document.querySelectorAll('#toast-container > div').length === 0, undefined, { timeout: 5000 }).catch(async error => {
+        const state = await page.evaluate(() => ({ clicked: window.__t12ToastClicked, count: document.querySelectorAll('#toast-container > div').length, focus: document.activeElement?.className }));
+        throw new Error(`卡片提示点击回调及退出失败: ${JSON.stringify(state)}; ${error.message}`);
+    });
+    await page.evaluate(() => {
+        window.__t12ToastClosed = false;
+        globalThis.toastr.error('T12 默认失败提示', 'T12 失败', { toastClass: 'toastr', onCloseClick: () => { window.__t12ToastClosed = true; } });
+    });
+    const close = page.getByRole('button', { name: '关闭提示', exact: true });
+    await close.waitFor({ state: 'visible' });
+    await page.waitForFunction(() => {
+        const toast = document.querySelector('#toast-container > div');
+        return Number(getComputedStyle(toast).opacity) === 1 && !globalThis.jQuery(toast).is(':animated');
+    });
+    await close.press('Space');
+    await page.waitForFunction(() => window.__t12ToastClosed && document.querySelectorAll('#toast-container > div').length === 0, undefined, { timeout: 5000 }).catch(async error => {
+        const state = await page.evaluate(() => ({ closed: window.__t12ToastClosed, count: document.querySelectorAll('#toast-container > div').length, focus: document.activeElement?.className }));
+        throw new Error(`失败提示空格关闭失败: ${JSON.stringify(state)}; ${error.message}`);
+    });
+    await page.evaluate(() => { delete window.__t12ToastClicked; delete window.__t12ToastElement; delete window.__t12ToastClosed; });
+}
+
+export async function assertConversationPreviewContrast(page, screenshotPath) {
+    const rows = await page.locator('.vc-convo-preview').evaluateAll(nodes => nodes.map(node => {
+        const rect = node.getBoundingClientRect();
+        return { color: getComputedStyle(node).color, x: Math.floor(rect.left - 2), y: Math.floor(rect.top + rect.height / 2), visible: rect.width > 0 && rect.height > 0 && rect.bottom <= innerHeight };
+    }).filter(row => row.visible));
+    assert.ok(rows.length, '必须有可见的会话摘要供对比度检查');
+    const png = PNG.sync.read(await page.screenshot(screenshotPath ? { path: screenshotPath } : {}));
+    const luminance = rgb => rgb.map(value => { const c = value / 255; return c <= .04045 ? c / 12.92 : ((c + .055) / 1.055) ** 2.4; })
+        .reduce((sum, value, index) => sum + value * [.2126, .7152, .0722][index], 0);
+    for (const row of rows) {
+        const foreground = row.color.match(/[\d.]+/g).slice(0, 3).map(Number);
+        const offset = (row.y * png.width + row.x) * 4;
+        const background = [...png.data.subarray(offset, offset + 3)];
+        const values = [luminance(foreground), luminance(background)].sort((a, b) => b - a);
+        const ratio = (values[0] + .05) / (values[1] + .05);
+        assert.ok(ratio >= 4.5, `正常会话摘要须达到 4.5:1（实际背景采样）: ${JSON.stringify({ foreground, background, ratio })}`);
+    }
+}
 
 function parseRgbaAlpha(colorStr) {
     if (!colorStr || colorStr === 'transparent') return 0;
@@ -323,6 +414,24 @@ export async function assertVoiceSwitches(page, label) {
     }
 }
 
+export async function assertVoiceSwitchInteraction(page) {
+    const switches = page.locator('[data-vc-voice-section] [role="switch"][data-voice-field]');
+    let exercised = 0;
+    for (const sw of await switches.all()) {
+        if (await sw.isDisabled()) continue;
+        const field = await sw.getAttribute('data-voice-field');
+        const original = await sw.getAttribute('aria-checked');
+        await sw.click();
+        await page.waitForFunction(({ field, original }) => document.querySelector(`[data-voice-field="${field}"]`)?.getAttribute('aria-checked') !== original, { field, original });
+        await sw.press('Space');
+        await page.waitForFunction(({ field, original }) => document.querySelector(`[data-voice-field="${field}"]`)?.getAttribute('aria-checked') === original, { field, original });
+        const focused = await sw.evaluate(node => node === document.activeElement && getComputedStyle(node).outlineStyle !== 'none');
+        assert.ok(focused, `语音 ${field} 开关必须保留可见键盘焦点`);
+        exercised++;
+    }
+    assert.ok(exercised > 0, '语音交互验收必须包含至少一个已配置、可操作的引擎');
+}
+
 /**
  * 5. 真实分段回复 .mes_text 视觉隐藏、.vc-seg 分段气泡可见且不重复显示。
  */
@@ -475,6 +584,17 @@ export async function assertNarrow390Inbox(page) {
             `11-inbox@390 收件箱筛选分段「${item.text}」scrollIntoView 后仍折行、文本截断或不可达: ${JSON.stringify(item)}`,
         );
     }
+    const radios = page.getByRole('radiogroup', { name: '收件箱筛选', exact: true }).getByRole('radio');
+    await radios.first().click();
+    for (let index = 1; index < await radios.count(); index++) await page.keyboard.press('ArrowRight');
+    await page.waitForFunction(() => document.querySelector('[aria-label="收件箱筛选"] [role="radio"]:last-of-type')?.getAttribute('aria-checked') === 'true');
+    const last = await radios.last().evaluate(node => {
+        const r = node.getBoundingClientRect();
+        const container = node.closest('[role="radiogroup"]').getBoundingClientRect();
+        return { focused: node === document.activeElement, visible: r.left >= container.left - 1 && r.right <= container.right + 1, checked: node.getAttribute('aria-checked') };
+    });
+    assert.ok(last.focused && last.visible && last.checked === 'true', `收件箱末项须由方向键选中并自动滚入可见范围: ${JSON.stringify(last)}`);
+    await radios.first().click();
 }
 
 /**

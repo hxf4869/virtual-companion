@@ -421,7 +421,7 @@
   .vc-convo-preview {
     font-size: var(--vc-fs-footnote);
     line-height: var(--vc-lh-footnote);
-    color: var(--vc-ink-3);
+    color: var(--vc-ink-2);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;

@@ -1,6 +1,30 @@
-# DR2 T12：GitHub 复审入口
+# DR2 T12：视觉复审与 GitHub 历史证据
 
-Owner 将本轮复审交给 ChatGPT Pro 网页版或独立 Astra 会话。源码、报告和原尺寸 PNG 均可从本页在 GitHub 打开。T12 待独立视觉结论，DR2-13 尚未开始。
+## 2026-11-05：二轮复审修复与最终视觉结论
+
+二轮审查确认的窄档角色详情叠字、卡片通知堆叠、会话摘要对比不足已修复。交接确认当前修复候选的 T12 视觉结论为 **PASS**，T13 据此继续。`82c64427` 的二轮结论仍为 **FAIL**。
+
+- 角色页将 L2 玻璃移至独立背景层，消除祖先 `backdrop-filter` 对详情模糊的影响；L2/L3 数值、宽档右列和窄档覆盖布局保持设计约定。[390 浅色](review-3/06-characters-detail-390x844-light.png) · [390 深色](review-3/06-characters-detail-390x844-dark.png) · [1440](review-3/06-characters-detail-1440x900-light.png)。
+- 桌面 Toastr 只保留新实例；原库拒绝重复提示时保留旧实例，返回值和自定义参数继续由原库处理。默认失败提示常驻并提供可键盘关闭的 Lucide 按钮，Helper 的自定义 `toastr` 类也使用同一皮肤。[390 提示](review-3/t12-toast-390-light.png) · [1440 深色提示](review-3/t12-toast-1440-dark.png)。
+- 正常会话摘要改用 `ink-2`，通过实际背景采样的 4.5:1 对比度断言。[浅色](review-3/t12-chat-1440-light.png) · [深色](review-3/t12-chat-1440-dark.png)。
+- 更正上一轮的复杂卡证据缺口：`review-2` 的 1440/1920 浅色原图实际包含完整内容，文件与提交一致；空色块观察未复现。本轮 `nf-cards`、`dr2-mvu-new` 及八张复杂卡图再次确认正文、信任 10 与真实按钮可见，没有因此改卡片渲染逻辑。
+
+本次实际验证：
+
+- `scripts/check.sh`：9/9 PASS（最终生产代码，49s）；`check:desktop` PASS；Vitest 37 文件、141/141 PASS；Impeccable 检测无发现；diff 检查 PASS。
+- 受管 `catalog-admin,dr2-layout,dr2-settings,dr2-pages,dr2-mvu-new,nf-cards`：6/6 PASS。覆盖语音开关点击/Space 与焦点、收件箱末项方向键可达、七步角色向导、记忆纠正删除、陪伴策略、剧情主流程及复杂卡变量链。
+- 通知后续修正后，`dr2-mvu-new`、`nf-cards` 再次 PASS；最终 `catalog-admin + dr2-layout` 2/2 PASS（布局/定向采集 63s），新增去重保留、四类快连发、返回节点、鼠标回调、错误关闭按钮与 Space 关闭断言。原业务断言保留。
+- 采图已等待真实 jQuery 动画结束；曾在淡入帧看到的提示透字未在稳定图中复现。分段流式检查等待真实 SVG 图形就绪后仍执行原图标断言。
+- 本地 `review-3/` 保留 169 张矩阵与 8 张专项图。独立定向审看了受影响的 48 张矩阵和 4 张提示，相关修复视觉通过；最终八张复杂卡重采由主代理再次查看。其余 121 张的逐张审看记录来自前一轮。
+- OCR 代理模式对本轮 6 个代码/测试文件逐项复核，发现的通知去重、目录清理和采图顺序问题均已修正。全分支 `3131d92b...36c1c55` 仅预览：309 个可审文件，未执行全分支审计。建议另按会话/生成、卡片信任与生命周期、共享持久化及原生边界分批审查。
+
+采图可用 `VC_DR2_REVIEW_DIR` 指定新目录，固定文件原位覆盖，不扫删其他 PNG；`VC_DR2_REVIEW_STATE=04-chat-card` 可只重采该组，重新加载已准备的夹具且不覆盖第 169 张。首轮及 `review-2/` 图均保留。
+
+本轮未做真实屏幕阅读器朗读和全分支代码终审。完整 18 项受管门禁归入 T13。T12 合成栈、容器和嵌入服务本机转发已回收。
+
+## 候选 `82c64427` 的历史网页复审入口
+
+以下链接对应已判定 FAIL 的 `82c64427`，包括该轮提交的源码、报告和原尺寸 PNG。
 
 - **代码**：[候选 `82c64427`](https://github.com/hxf4869/virtual-companion/tree/82c6442746531f82e21e547a8344d1ba9fcdfc42) · [首轮 FAIL 后的修复 diff](https://github.com/hxf4869/virtual-companion/compare/bb0d63475d50e1f3bef4be780dfda05762dbb29a...82c6442746531f82e21e547a8344d1ba9fcdfc42) · [完整重建 diff](https://github.com/hxf4869/virtual-companion/compare/3131d92bf08a2f10c93d4bcf99bd4a16e9cbf5c2...82c6442746531f82e21e547a8344d1ba9fcdfc42)。
 - **标准**：[DESIGN.md](../../DESIGN.md) 的明确数值优先，其余及深色模式以[旧实现 `3131d92b`](https://github.com/hxf4869/virtual-companion/tree/3131d92bf08a2f10c93d4bcf99bd4a16e9cbf5c2) 为准；[批准设计](../../docs/superpowers/specs/2026-11-04-desktop-react-rebuild-design.md) §10.2 定义视觉门槛。handoff R2 的 tokens 初稿不作为数值依据。

@@ -14,10 +14,13 @@ import { complexCard } from './lib/complex-card.mjs';
 import { prepareSourceIdentities } from '../server-plugin/virtual-companion/lib/source-identity.js';
 import {
     assertIconButtonConsumer,
+    assertCardToastPresentation,
+    assertConversationPreviewContrast,
     assertSvgUseConsumer,
     assertStorySrOnly,
     assertCharactersDetailLayout,
     assertVoiceSwitches,
+    assertVoiceSwitchInteraction,
     assertSegmentedReply,
     assertNarrow390Diary,
     assertNarrow390Inbox,
@@ -436,13 +439,9 @@ async function captureRebuildReviewScreenshots(
         longEntryComment = '',
     } = {},
 ) {
-    const outDir = path.resolve(process.cwd(), '.review-queue/DR2');
+    const outDir = path.resolve(process.env.VC_DR2_REVIEW_DIR || path.join(process.cwd(), '.review-queue/DR2'));
     fs.mkdirSync(outDir, { recursive: true });
-    for (const entry of fs.readdirSync(outDir)) {
-        if (entry.endsWith('.png')) {
-            fs.rmSync(path.join(outDir, entry), { force: true });
-        }
-    }
+    // The fixed matrix filenames are overwritten in place; preserve unrelated PNGs.
 
     const st = createStClient({
         baseUrl: ctx.w05.stBase,
@@ -1250,7 +1249,16 @@ async function captureRebuildReviewScreenshots(
     ];
 
     try {
-        for (const stState of states) {
+        const selectedState = process.env.VC_DR2_REVIEW_STATE;
+        const captureStates = selectedState ? states.filter(state => state.id === selectedState) : states;
+        assert.ok(captureStates.length, `未知截图状态: ${selectedState}`);
+        if (selectedState) {
+            // Full capture starts with chat-empty's reload. A targeted capture also
+            // needs a fresh query snapshot after the server-side fixtures above.
+            await page.goto(ctx.w05.stBase + '/desktop/', { waitUntil: 'domcontentloaded' });
+            await page.waitForFunction(() => document.documentElement.dataset.vcApp === 'ready');
+        }
+        for (const stState of captureStates) {
             for (const vp of REVIEW_VIEWPORTS) {
                 await page.setViewportSize(vp);
                 for (const theme of ['light', 'dark']) {
@@ -1289,6 +1297,11 @@ async function captureRebuildReviewScreenshots(
                     }
                 }
             }
+        }
+
+        if (selectedState) {
+            await setTheme(page, 'light');
+            return;
         }
 
         // 第 169 张：1440×900 dark + prefers-reduced-motion: reduce + prefers-reduced-transparency: reduce
@@ -1419,6 +1432,26 @@ export async function sceneDr2Layout(ctx) {
                 document.querySelectorAll('#chat > .mes').length > 0,
         );
 
+        // T12 复审回归：真实卡片提示端口、会话预览对比度及窄档详情。
+        for (const theme of ['light', 'dark']) {
+            await page.setViewportSize({ width: 1440, height: 900 });
+            await setTheme(page, theme);
+            await navigatePrimary(page, 'chat');
+            await assertConversationPreviewContrast(page, path.join(ctx.artifactsDir, `t12-chat-1440-${theme}.png`));
+            for (const width of [390, 1440]) {
+                await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+                await settlePage(page);
+                await assertCardToastPresentation(page, path.join(ctx.artifactsDir, `t12-toast-${width}-${theme}.png`));
+            }
+            await navigatePrimary(page, 'characters');
+            await page.locator('.vc-character-card[data-ref]').first().click();
+            await page.setViewportSize({ width: 390, height: 844 });
+            await settlePage(page);
+            await assertCharactersDetailLayout(page, { width: 390, height: 844 });
+            await page.screenshot({ path: path.join(ctx.artifactsDir, `t12-detail-390-${theme}.png`) });
+            await page.locator('.vc-character-detail').getByRole('button', { name: '关闭', exact: true }).click();
+        }
+        await setTheme(page, 'light');
         const destinations = [
             'chat',
             'characters',
@@ -1888,6 +1921,10 @@ export async function sceneDr2Layout(ctx) {
             );
             await page.locator('#send_but').click();
             await page.locator('#mes_stop').waitFor({ state: 'visible' });
+            await page.waitForFunction(() => {
+                const use = document.querySelector('#mes_stop svg use');
+                return use && use.getBBox().width > 0 && use.getBBox().height > 0;
+            });
             await assertIconButtonConsumer(page, '#mes_stop', 'chat-streaming@1440 停止图标按钮');
             await page.waitForFunction(
                 marker => {
@@ -2002,6 +2039,7 @@ export async function sceneDr2Settings(ctx) {
             await openSettingsCategory(page, cat);
             if (cat === 'voice') {
                 await assertVoiceSwitches(page, 'dr2-settings:voice');
+                await assertVoiceSwitchInteraction(page);
                 await assertSvgUseConsumer(
                     page,
                     '.vc-settings-categories [data-category] svg',
