@@ -2,6 +2,8 @@
 // Never writes request or response text, headers, or credentials.
 import http from 'node:http';
 
+export { startEvaluationMeter } from './evaluation-meter.mjs';
+
 function numeric(value) {
     return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
