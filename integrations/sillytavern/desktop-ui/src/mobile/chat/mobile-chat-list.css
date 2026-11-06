@@ -1,0 +1,433 @@
+.vc-mobile-chat-tab {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vc-space-sm);
+  width: 100%;
+  min-width: 0;
+  padding-top: 2px;
+  padding-bottom: var(--vc-space-md);
+  box-sizing: border-box;
+}
+
+/* ── Top Pill Search Bar (DESIGN.md §17.3 & M1-0) ── */
+.vc-mobile-search-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--vc-space-xs);
+  width: 100%;
+  min-height: 44px;
+  padding: 6px 14px;
+  box-sizing: border-box;
+  border-radius: var(--vc-radius-pill);
+  background: var(--vc-card);
+  box-shadow: var(--vc-shadow-rim), var(--vc-shadow-inset-edge);
+  color: var(--vc-ink);
+}
+
+.vc-mobile-search-icon {
+  color: var(--vc-ink-2);
+  flex-shrink: 0;
+}
+
+.vc-mobile-search-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--vc-ink);
+  font-family: var(--vc-font);
+  font-size: var(--vc-fs-subhead);
+  line-height: var(--vc-lh-subhead);
+  padding: 0;
+}
+
+.vc-mobile-search-input::placeholder {
+  color: var(--vc-ink-2);
+}
+
+.vc-mobile-search-input::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.vc-mobile-search-clear {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  min-height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: var(--vc-radius-pill);
+  background: var(--vc-chip);
+  color: var(--vc-ink-2);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+/* ── Conversation Card Rows List (DESIGN.md §17.3: radius 20, gap 12, pad 16) ── */
+.vc-mobile-convo-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  min-width: 0;
+}
+
+.vc-mobile-convo-sliding {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  border-radius: 20px;
+  overflow: hidden;
+  background: transparent;
+}
+
+.vc-mobile-convo-ion-item {
+  --background: transparent;
+  --background-activated: transparent;
+  --background-focused: transparent;
+  --background-hover: transparent;
+  --padding-start: 0px;
+  --padding-end: 0px;
+  --inner-padding-start: 0px;
+  --inner-padding-end: 0px;
+  --min-height: 0px;
+  --border-width: 0px;
+  --inner-border-width: 0px;
+  --ripple-color: transparent;
+  width: 100%;
+  min-width: 0;
+  border-radius: 20px;
+  background: transparent;
+}
+
+.vc-mobile-convo-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-width: 0;
+  min-height: 84px;
+  padding: 16px;
+  box-sizing: border-box;
+  border: none;
+  border-radius: 20px;
+  background: var(--vc-card);
+  box-shadow: var(--vc-shadow-rim), var(--vc-shadow-inset-edge), 0 8px 24px rgba(20, 24, 40, 0.06);
+  color: var(--vc-ink);
+  font-family: var(--vc-font);
+  text-align: left;
+  cursor: pointer;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  transition: transform var(--vc-dur-press) var(--vc-spring), background-color var(--vc-dur-fade) var(--vc-ease-out);
+}
+
+.vc-mobile-convo-card:active {
+  transform: scale(0.985);
+}
+
+.vc-mobile-convo-card[data-active="true"] {
+  background: var(--mob-card-strong, var(--vc-card));
+}
+
+/* ── 52px Avatar with Character Aura (DESIGN.md §17.3) ── */
+.vc-mobile-convo-avatar {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  min-width: 52px;
+  min-height: 52px;
+  border-radius: var(--vc-radius-pill);
+  background: var(--vc-chip);
+  box-shadow:
+    0 0 0 3px rgb(var(--tint, 124, 92, 246) / 0.35),
+    0 8px 24px rgb(var(--tint, 124, 92, 246) / 0.35);
+  color: var(--vc-ink);
+  font-size: var(--vc-fs-headline);
+  font-weight: 600;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.vc-mobile-convo-avatar-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: var(--vc-radius-pill);
+  display: block;
+}
+
+.vc-mobile-convo-avatar-fallback {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(
+    145deg,
+    rgb(var(--tint, 124, 92, 246) / 0.85),
+    rgb(var(--tint, 124, 92, 246))
+  );
+  color: #ffffff;
+  font-size: var(--vc-fs-headline);
+  font-weight: 600;
+  line-height: 1;
+}
+
+/* ── Two-line Conversation Content ── */
+.vc-mobile-convo-body {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 6px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.vc-mobile-convo-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.vc-mobile-convo-title-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.vc-mobile-convo-name {
+  font-size: var(--vc-fs-headline);
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--vc-ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vc-mobile-convo-instance-chip {
+  display: inline-flex;
+  align-items: center;
+  max-width: 120px;
+  padding: 1px 8px;
+  border-radius: var(--vc-radius-pill);
+  background: var(--vc-chip);
+  color: var(--vc-ink-2);
+  font-size: var(--vc-fs-footnote);
+  font-weight: 500;
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.vc-mobile-convo-time {
+  font-size: var(--vc-fs-footnote);
+  font-weight: 400;
+  line-height: 1.35;
+  color: var(--vc-ink-2);
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.vc-mobile-convo-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.vc-mobile-convo-preview {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: var(--vc-fs-subhead);
+  font-weight: 400;
+  line-height: 1.4;
+  color: var(--vc-ink-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vc-mobile-convo-draft-prefix {
+  color: var(--vc-danger);
+  font-weight: 500;
+}
+
+.vc-mobile-convo-voice-preview {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--vc-ink-2);
+}
+
+.vc-mobile-convo-card-preview {
+  color: var(--vc-accent-text);
+  font-weight: 500;
+}
+
+/* ── Unread Badge & Dot (DESIGN.md §17.3) ── */
+.vc-mobile-convo-unread-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  box-sizing: border-box;
+  border-radius: var(--vc-radius-pill);
+  background: var(--vc-accent);
+  color: var(--vc-on-accent);
+  font-size: var(--vc-fs-caption);
+  font-weight: 600;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+
+.vc-mobile-convo-unread-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: var(--vc-radius-pill);
+  background: var(--vc-accent);
+  flex-shrink: 0;
+}
+
+/* ── Left-swipe IonItemOptions (88px width, radius 20px, DESIGN.md §17.3) ── */
+.vc-mobile-convo-options {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+  padding-left: 8px;
+  border: none;
+  background: transparent;
+}
+
+.vc-mobile-swipe-option {
+  --background: var(--vc-fill-2);
+  --color: var(--vc-ink);
+  width: 88px;
+  min-width: 88px;
+  max-width: 88px;
+  border-radius: 20px;
+  font-family: var(--vc-font);
+  font-size: var(--vc-fs-footnote);
+  font-weight: 600;
+  overflow: hidden;
+}
+
+.vc-mobile-swipe-option--pin {
+  --background: var(--vc-fill-2);
+  --color: var(--vc-ink);
+  background: var(--vc-fill-2);
+  color: var(--vc-ink);
+}
+
+.vc-mobile-swipe-option--delete {
+  --background: var(--vc-danger-fill);
+  --color: var(--vc-on-accent);
+  background: var(--vc-danger-fill);
+  color: var(--vc-on-accent);
+}
+
+.vc-mobile-swipe-option-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  width: 100%;
+  height: 100%;
+}
+
+/* ── Empty, Loading Skeleton & Error States ── */
+.vc-mobile-convo-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 40px 20px;
+  border-radius: 20px;
+  background: var(--vc-card);
+  box-shadow: var(--vc-shadow-rim), var(--vc-shadow-inset-edge);
+  color: var(--vc-ink-2);
+  text-align: center;
+}
+
+.vc-mobile-convo-state-text {
+  margin: 0;
+  font-size: var(--vc-fs-subhead);
+  color: var(--vc-ink-2);
+}
+
+.vc-mobile-convo-state-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0 20px;
+  border: none;
+  border-radius: var(--vc-radius-pill);
+  background: var(--vc-accent);
+  color: var(--vc-on-accent);
+  font-family: var(--vc-font);
+  font-size: var(--vc-fs-subhead);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.vc-mobile-convo-skeleton-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 84px;
+  padding: 16px;
+  box-sizing: border-box;
+  border-radius: 20px;
+  background: var(--vc-card);
+}
+
+.vc-mobile-convo-skeleton-avatar {
+  width: 52px;
+  height: 52px;
+  border-radius: var(--vc-radius-pill);
+  background: var(--vc-chip);
+  flex-shrink: 0;
+}
+
+.vc-mobile-convo-skeleton-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1 1 auto;
+}
+
+.vc-mobile-convo-skeleton-line {
+  height: 14px;
+  width: 65%;
+  border-radius: 7px;
+  background: var(--vc-chip);
+}
+
+.vc-mobile-convo-skeleton-line--short {
+  width: 42%;
+}

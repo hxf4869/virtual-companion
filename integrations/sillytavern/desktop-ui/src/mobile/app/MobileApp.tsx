@@ -1,8 +1,9 @@
-import type { ReactNode } from 'react';
+import { useMemo, type ReactNode } from 'react';
 import type { QueryClient } from '@tanstack/react-query';
 import { AppProviders } from '../../app/providers';
 import type { AppClient } from '../../data/client';
 import type { SessionBridge } from '../../runtime/session-bridge';
+import { MobileChatList } from '../chat/MobileChatList';
 import {
     MobileShell,
     type MobileShellSlots,
@@ -50,6 +51,25 @@ export function MobileApp({
             : '') ||
         '你';
 
+    const resolvedSlots = useMemo<MobileShellSlots>(() => {
+        if (slots?.tabs?.chat !== undefined) {
+            return slots;
+        }
+        const readDraft =
+            typeof sessionBridge?.draft?.read === 'function'
+                ? (key: string) => sessionBridge.draft.read(key)
+                : undefined;
+        return {
+            ...slots,
+            tabs: {
+                ...slots?.tabs,
+                chat: ({ navigate }) => (
+                    <MobileChatList onNavigate={navigate} readDraft={readDraft} />
+                ),
+            },
+        };
+    }, [slots, sessionBridge]);
+
     return (
         <AppProviders
             client={client}
@@ -58,7 +78,7 @@ export function MobileApp({
         >
             <MobileShell
                 initialPath={initialPath}
-                slots={slots}
+                slots={resolvedSlots}
                 badges={badges}
                 unreadDots={unreadDots}
                 userName={contextName}

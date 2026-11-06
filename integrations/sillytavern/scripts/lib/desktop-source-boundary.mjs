@@ -235,6 +235,8 @@ const appPackages = {
     'features/tavern/TavernRoute.tsx': ['react'],
     'mobile/app/MobileApp.tsx': ['@tanstack/react-query', 'react'],
     'mobile/app/main.tsx': ['react', 'react-dom/client'],
+    'mobile/chat/MobileChatList.tsx': ['@ionic/react', '@tanstack/react-query', 'react'],
+    'mobile/chat/data/chatTailPrefetch.ts': ['react'],
     'mobile/shell/MobileSettingsSheet.tsx': ['@ionic/react'],
     'mobile/shell/MobileShell.tsx': ['@ionic/react', '@ionic/react-router', '@ionic/react/css/core.css', 'react', 'react-router-dom'],
     'runtime/session-bridge.ts': ['@tanstack/react-query', 'react'],
@@ -271,13 +273,15 @@ function isDesktopShellModuleRel(relPath) {
 }
 
 export function desktopResolvedGraph() {
+    const npmRealDir = fs.existsSync(npmDir) ? fs.realpathSync(npmDir, { encoding: 'utf8' }) : npmDir;
     const ionicComponentsDir = `${path.join(npmDir, '@ionic/core/components')}${path.sep}`;
+    const ionicComponentsRealDir = `${path.join(npmRealDir, '@ionic/core/components')}${path.sep}`;
     return {
         name: 'vc-desktop-resolved-graph',
         enforce: 'pre',
         transform(code, id) {
             const clean = id?.split('?')[0];
-            if (clean?.startsWith(ionicComponentsDir)) {
+            if (clean?.startsWith(ionicComponentsDir) || clean?.startsWith(ionicComponentsRealDir)) {
                 return { code, moduleSideEffects: false };
             }
             return null;
@@ -302,7 +306,7 @@ export function desktopResolvedGraph() {
             const extRelative = toPosix(path.relative(EXTENSION_SRC, resolved));
             const inExtension = resolved.startsWith(`${EXTENSION_SRC}${path.sep}`);
             const inUi = resolved.startsWith(`${desktopUi}${path.sep}`);
-            const inNpm = resolved.startsWith(`${npmDir}${path.sep}`);
+            const inNpm = resolved.startsWith(`${npmDir}${path.sep}`) || resolved.startsWith(`${npmRealDir}${path.sep}`);
             const srcRelative = toPosix(path.relative(desktopSrc, resolved));
             if ((!inExtension && !inUi && !inNpm) || srcRelative.startsWith('bridge/') ||
                 (inExtension && !isWhitelistedExtensionModule(extRelative))) {
