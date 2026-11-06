@@ -1,189 +1,42 @@
-import { useState } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
 import {
   CASE_TITLE,
   CASTABLE,
   CONFIG_MISSING,
-  SESSION_CHANGED,
-  START_FAILED,
-  STORY_CONFLICT,
-  decimalOf,
   initial,
-  storyTurn,
 } from '../../../../extension/vc-model-settings/story-logic.js';
-import { useAppClient } from '../../app/providers';
-import { queryKeys } from '../../data/queryKeys';
-import {
-  buildStoryRunRecord,
-  ensureStoryConversation,
-  mapStoryParticipantWithClient,
-  normalizeStoryView,
-  upsertStoryRunCache,
-  useStoryCompanions,
-  type StoryActorView,
-  type StoryRunRecord,
-} from '../../data/queries/story';
 import { Button } from '../../design/components/Button';
-import { useSessionBridge } from '../../runtime/session-bridge';
+import {
+  CAST_ACTOR_LABELS,
+  WIZARD_STEPS,
+  useStartWizard,
+  type StartWizardSuccess,
+} from './useStory';
 
-export interface StartWizardSuccess {
-  runId: string;
-  branchId: string;
-  worldVersion: number;
-  conversationId: string;
-  chatIdentity: string;
-  run: StoryRunRecord;
-  view: StoryActorView;
-}
+export type { StartWizardSuccess };
 
 export interface StartWizardProps {
   onStarted?: (result: StartWizardSuccess) => void;
-  onConfigure?: () => void;
+  onConfigure: () => void;
   onError?: (error: { message: string; needsModelConfig?: boolean }) => void;
 }
 
-const WIZARD_STEPS = [
-  { step: 1, label: '选择剧目' },
-  { step: 2, label: '同行陪伴' },
-  { step: 3, label: '公开设定' },
-  { step: 4, label: '调查方式' },
-  { step: 5, label: '确认开局' },
-] as const;
-
-const CAST_ACTOR_LABELS: Record<string, string> = {
-  lin: '林岚',
-  zhou: '周澈',
-  su: '苏禾',
-};
-
 export function StartWizard({ onStarted, onConfigure, onError }: StartWizardProps) {
-  const client = useAppClient();
-  const bridge = useSessionBridge();
-  const queryClient = useQueryClient();
-  const companionsQuery = useStoryCompanions(true);
-
-  const [step, setStep] = useState<number>(1);
-  const [selectedCompanionId, setSelectedCompanionId] = useState<string>('');
-  const [selectedCastActor, setSelectedCastActor] = useState<string>('lin');
-  const [busy, setBusy] = useState<boolean>(false);
-  const [errorText, setErrorText] = useState<string>('');
-  const [needsConfig, setNeedsConfig] = useState<boolean>(false);
-
-  const companions = companionsQuery.data ?? [];
-  const selectedCompanion = companions.find(
-    (c) => String(c.relationshipId) === String(selectedCompanionId),
-  );
-
-  const handleStart = async () => {
-    if (busy) return;
-    setBusy(true);
-    setErrorText('');
-    setNeedsConfig(false);
-
-    try {
-      await client.go.captureSessionContext();
-
-      try {
-        const rawPurposes: any = await client.go.fetchModelPurposes();
-        const rows = Array.isArray(rawPurposes)
-          ? rawPurposes
-          : Array.isArray(rawPurposes?.items)
-            ? rawPurposes.items
-            : [];
-        if (rows.length > 0) {
-          const missing = ['STORY_DIRECTOR', 'NPC_DIALOGUE'].some((id) => {
-            const row = rows.find((item: any) => item?.purpose === id);
-            return !row || row.status !== 'READY';
-          });
-          if (missing) {
-            setNeedsConfig(true);
-          }
-        }
-      } catch {
-        // 用途检查异常不阻断开局尝试
-      }
-
-      const conv = await ensureStoryConversation({
-        client,
-        bridge,
-        queryClient,
-      });
-
-      const rawRun: any = await client.go.startStoryRun(conv.conversationId);
-      const runId = decimalOf(rawRun?.runId);
-      const branchId = decimalOf(rawRun?.branchId);
-      const worldVersion =
-        typeof rawRun?.worldVersion === 'number' && Number.isSafeInteger(rawRun.worldVersion)
-          ? rawRun.worldVersion
-          : 0;
-
-      if (!runId || !branchId) {
-        throw new Error('invalid story run');
-      }
-
-      const mapped: Record<string, string> = {};
-      if (selectedCompanionId && CASTABLE.includes(selectedCastActor)) {
-        await mapStoryParticipantWithClient(client, {
-          runId,
-          actorId: selectedCastActor,
-          relationshipId: selectedCompanionId,
-        });
-        mapped[selectedCastActor] = selectedCompanionId;
-      }
-
-      const rawView = await client.go.fetchStoryActorView({
-        runId,
-        branchId,
-        worldVersion,
-      });
-      const view = normalizeStoryView(rawView);
-
-      const runRecord = buildStoryRunRecord(rawRun, conv.conversationId, {
-        runId,
-        branchId,
-        worldVersion,
-        mapped,
-      });
-
-      upsertStoryRunCache(queryClient, runRecord);
-      queryClient.setQueryData(queryKeys.storyView(runId, 'player', branchId, worldVersion), view);
-
-      const turn = storyTurn(
-        { runId, branchId, conversationId: conv.conversationId },
-        { runId, branchId, worldVersion },
-        conv.conversationId,
-      );
-      bridge.story.setRun(
-        turn ?? {
-          runId,
-          branchId,
-          worldVersion,
-          conversationId: conv.conversationId,
-        },
-      );
-
-      onStarted?.({
-        runId,
-        branchId,
-        worldVersion,
-        conversationId: conv.conversationId,
-        chatIdentity: conv.chatIdentity,
-        run: runRecord,
-        view,
-      });
-    } catch (err: any) {
-      const msg =
-        err?.status === 409 && err?.code === 'ACCOUNT_CONTEXT_CHANGED'
-          ? SESSION_CHANGED
-          : err?.status === 409
-            ? STORY_CONFLICT
-            : START_FAILED;
-      setErrorText(msg);
-      onError?.({ message: msg });
-    } finally {
-      setBusy(false);
-    }
-  };
+  const {
+    step,
+    setStep,
+    prevStep,
+    nextStep,
+    selectedCompanionId,
+    setSelectedCompanionId,
+    selectedCastActor,
+    setSelectedCastActor,
+    companions,
+    selectedCompanion,
+    busy,
+    errorText,
+    needsConfig,
+    handleStart,
+  } = useStartWizard({ onStarted, onError });
 
   return (
     <section
@@ -220,14 +73,7 @@ export function StartWizard({ onStarted, onConfigure, onError }: StartWizardProp
       {needsConfig ? (
         <div className="vc-story-config vc-note vc-glass" data-config="missing" role="status">
           <p>{CONFIG_MISSING}</p>
-          <Button
-            variant="gray"
-            data-action="configure"
-            onClick={() => {
-              if (onConfigure) onConfigure();
-              else document.getElementById('vc_models_menu_button')?.click();
-            }}
-          >
+          <Button variant="gray" data-action="configure" onClick={onConfigure}>
             打开模型设置
           </Button>
         </div>
@@ -349,7 +195,7 @@ export function StartWizard({ onStarted, onConfigure, onError }: StartWizardProp
             variant="gray"
             data-action="wizard-prev"
             disabled={busy}
-            onClick={() => setStep((s) => Math.max(1, s - 1))}
+            onClick={prevStep}
           >
             上一步
           </Button>
@@ -360,7 +206,7 @@ export function StartWizard({ onStarted, onConfigure, onError }: StartWizardProp
             variant="filled"
             data-action="wizard-next"
             disabled={busy}
-            onClick={() => setStep((s) => Math.min(5, s + 1))}
+            onClick={nextStep}
           >
             下一步
           </Button>

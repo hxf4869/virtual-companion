@@ -4,6 +4,8 @@ import { render, cleanup, fireEvent, waitFor, act } from '@testing-library/react
 import { AppProviders } from '../../src/app/providers';
 import { Stage } from '../../src/features/story/Stage';
 import { ClueWall } from '../../src/features/story/ClueWall';
+import { isEpilogueDirty } from '../../src/features/story/EpilogueMemories';
+import { useStoryStage } from '../../src/features/story/useStory';
 import { usePreferences } from '../../src/shell/usePreferences';
 import { createStoryTestEnv, createStoryTestView } from './fixtures';
 
@@ -19,6 +21,7 @@ describe('Stage & ClueWall', () => {
   });
 
   it('committing action disables bar until response and ignores late response after rewind', async () => {
+    expect(typeof useStoryStage).toBe('function');
     let resolveLateAction: ((val: any) => void) | null = null;
     const env = createStoryTestEnv({
       hasExistingStoryConversation: true,
@@ -44,6 +47,7 @@ describe('Stage & ClueWall', () => {
           initialView={initialView}
           conversationId="77"
           chatIdentity="f2-story-1"
+          reducedMotion={false}
         />
       </AppProviders>,
     );
@@ -154,6 +158,7 @@ describe('Stage & ClueWall', () => {
           initialView={initialView}
           conversationId="77"
           chatIdentity="f2-story-1"
+          reducedMotion={false}
         />
       </AppProviders>,
     );
@@ -281,6 +286,7 @@ describe('Stage & ClueWall', () => {
           initialView={initialView}
           conversationId="77"
           chatIdentity="f2-story-1"
+          reducedMotion={false}
         />
       </AppProviders>,
     );
@@ -415,9 +421,8 @@ describe('Stage & ClueWall', () => {
       ],
     });
 
-    usePreferences.getState().setReducedMotion(false);
     const { container, rerender } = render(
-      <ClueWall view={viewWithLedger} freshClueName="登记簿" />,
+      <ClueWall view={viewWithLedger} freshClueName="登记簿" reducedMotion={false} />,
     );
 
     const ledgerCard = container.querySelector('[data-clue-name="登记簿"]');
@@ -425,11 +430,8 @@ describe('Stage & ClueWall', () => {
     expect(ledgerCard?.getAttribute('data-flipped')).toBe('true');
     expect(ledgerCard?.classList.contains('is-flipping')).toBe(true);
 
-    // Enable reduced motion -> renders directly in final state without flip animation
-    act(() => {
-      usePreferences.getState().setReducedMotion(true);
-    });
-    rerender(<ClueWall view={viewWithLedger} freshClueName="登记簿" />);
+    // Owner injects reducedMotion=true -> renders directly in final state without flip animation
+    rerender(<ClueWall view={viewWithLedger} freshClueName="登记簿" reducedMotion={true} />);
 
     const reducedCard = container.querySelector('[data-clue-name="登记簿"]');
     expect(reducedCard?.getAttribute('data-flipped')).toBe('true');
@@ -482,6 +484,9 @@ describe('Stage & ClueWall', () => {
       worldVersion: 7,
       stage: 'resolved',
     });
+    const renderLeaveGuard = vi.fn((dirty: boolean) => (
+      <span data-testid="leave-guard" data-dirty={String(dirty)} />
+    ));
 
     const { container, unmount } = render(
       <AppProviders client={env.client} queryClient={env.queryClient} sessionBridge={env.bridge}>
@@ -493,13 +498,21 @@ describe('Stage & ClueWall', () => {
           initialView={initialView}
           conversationId="77"
           chatIdentity="f2-story-1"
+          reducedMotion={false}
+          renderLeaveGuard={renderLeaveGuard}
         />
       </AppProviders>,
     );
 
+    expect(isEpilogueDirty(true, '', '')).toBe(false);
+    expect(renderLeaveGuard).toHaveBeenLastCalledWith(false);
+
     const summaryInput = container.querySelector<HTMLTextAreaElement>('[data-field="summary"]')!;
     const saveBtn = container.querySelector<HTMLButtonElement>('[data-action="save-epilogue"]')!;
     fireEvent.change(summaryInput, { target: { value: '合成共同游玩摘要' } });
+
+    expect(isEpilogueDirty(true, '合成共同游玩摘要', '')).toBe(true);
+    expect(renderLeaveGuard).toHaveBeenLastCalledWith(true);
 
     fireEvent.click(container.querySelector('[data-action="show-companions"]')!);
     await waitFor(() => {
@@ -597,6 +610,7 @@ describe('Stage & ClueWall', () => {
         '已保存共同游玩摘要，请到记忆页确认后才会写入日常记忆。',
       );
     });
+    expect(renderLeaveGuard).toHaveBeenLastCalledWith(false);
 
     const epilogueCalls = env.storyRequests.filter(
       (r) => r.method === 'POST' && r.path === '/api/v1/story/runs/11/epilogue',

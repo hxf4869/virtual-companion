@@ -5,7 +5,6 @@ import {
   evidenceItems,
 } from '../../../../extension/vc-model-settings/story-logic.js';
 import { Icon } from '../../design/components/Icon';
-import { useReducedMotion } from '../../shell/useReducedMotion';
 import { normalizeStoryView, type StoryActorView } from '../../data/queries/story';
 
 export interface ClueCardItem {
@@ -21,6 +20,7 @@ export interface ClueWallProps {
   cards?: ClueCardItem[];
   freshClueName?: string;
   flippedNames?: ReadonlySet<string>;
+  reducedMotion: boolean;
   onReveal?: (name: string) => void;
 }
 
@@ -129,9 +129,9 @@ export function ClueWall({
   cards,
   freshClueName = '',
   flippedNames,
+  reducedMotion,
   onReveal,
 }: ClueWallProps) {
-  const reducedMotion = useReducedMotion();
   const resolvedCards = cards ?? buildCardsFromView(view, freshClueName, flippedNames);
 
   return (

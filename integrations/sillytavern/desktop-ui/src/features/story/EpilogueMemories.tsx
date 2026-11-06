@@ -1,5 +1,7 @@
-import { useRouter } from '@tanstack/react-router';
-import { useLeaveGuard } from '../../shell/useLeaveGuard';
+import type { ReactNode } from 'react';
+import { isEpilogueDirty } from './useStory';
+
+export { isEpilogueDirty };
 
 export interface EpilogueMemoriesProps {
   ended: boolean;
@@ -9,11 +11,7 @@ export interface EpilogueMemoriesProps {
   onSummaryChange: (value: string) => void;
   onSaveEpilogue: (summary: string) => void;
   onDiscardEpilogue: () => void;
-}
-
-function RouterBoundLeaveGuard({ dirty }: { dirty: boolean }) {
-  const guardNode = useLeaveGuard(dirty);
-  return <>{guardNode}</>;
+  renderLeaveGuard?: (dirty: boolean) => ReactNode;
 }
 
 export function EpilogueMemories({
@@ -24,20 +22,15 @@ export function EpilogueMemories({
   onSummaryChange,
   onSaveEpilogue,
   onDiscardEpilogue,
+  renderLeaveGuard,
 }: EpilogueMemoriesProps) {
-  let hasRouter = false;
-  try {
-    hasRouter = Boolean(useRouter({ warn: false } as any));
-  } catch {
-    hasRouter = false;
-  }
-  const isDirty = Boolean(ended && summaryDraft.trim() && !epilogueMessage);
+  const isDirty = isEpilogueDirty(ended, summaryDraft, epilogueMessage);
 
   if (!ended) return null;
 
   return (
     <section className="vc-group vc-story-ending" aria-label="结局">
-      {hasRouter ? <RouterBoundLeaveGuard dirty={isDirty} /> : null}
+      {renderLeaveGuard ? renderLeaveGuard(isDirty) : null}
       <h2>结局</h2>
       {epilogueMessage ? <p className="vc-story-epilogue-note">{epilogueMessage}</p> : null}
       <textarea

@@ -1,9 +1,12 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, cleanup, fireEvent, waitFor } from '@testing-library/react';
+import { render, cleanup, fireEvent, waitFor, act } from '@testing-library/react';
 import { AppProviders } from '../../src/app/providers';
+import { StoryRouteAdapter } from '../../src/app/StoryRouteAdapter';
+import { queryKeys } from '../../src/data/queryKeys';
 import { StoryRoute } from '../../src/features/story/StoryRoute';
-import { createStoryTestEnv } from './fixtures';
+import { useStoryRoute } from '../../src/features/story/useStory';
+import { createStoryTestEnv, createStoryTestView } from './fixtures';
 
 describe('StoryRoute full business flow', () => {
   beforeEach(() => {
@@ -16,15 +19,18 @@ describe('StoryRoute full business flow', () => {
   });
 
   it('shows model configuration prompt when STORY_DIRECTOR or NPC_DIALOGUE is not ready', async () => {
+    expect(typeof useStoryRoute).toBe('function');
+    expect(typeof StoryRouteAdapter).toBe('function');
     const env = createStoryTestEnv({
       purposesReady: false,
       hasExistingStoryConversation: true,
     });
     const onConfigure = vi.fn();
+    const onOpenRun = vi.fn();
 
     const { container, getByText } = render(
       <AppProviders client={env.client} queryClient={env.queryClient} sessionBridge={env.bridge}>
-        <StoryRoute onConfigure={onConfigure} />
+        <StoryRoute reducedMotion={false} onOpenRun={onOpenRun} onConfigure={onConfigure} />
       </AppProviders>,
     );
 
@@ -37,16 +43,19 @@ describe('StoryRoute full business flow', () => {
 
     fireEvent.click(container.querySelector('[data-action="configure"]')!);
     expect(onConfigure).toHaveBeenCalled();
+    expect(onOpenRun).toHaveBeenCalledWith('11');
   });
 
   it('completes start, step action, say projection via bridge.projectStory, companion mapping, accuse, and epilogue save', async () => {
     const env = createStoryTestEnv({
       hasExistingStoryConversation: true,
     });
+    const onOpenRun = vi.fn();
+    const onConfigure = vi.fn();
 
     const { container } = render(
       <AppProviders client={env.client} queryClient={env.queryClient} sessionBridge={env.bridge}>
-        <StoryRoute />
+        <StoryRoute reducedMotion={false} onOpenRun={onOpenRun} onConfigure={onConfigure} />
       </AppProviders>,
     );
 
@@ -56,6 +65,7 @@ describe('StoryRoute full business flow', () => {
     await waitFor(() => {
       expect(container.querySelector('.vc-story-tab')?.getAttribute('data-view')).toBe('stage');
       expect(container.querySelector('.vc-story')?.getAttribute('data-world-version')).toBe('0');
+      expect(onOpenRun).toHaveBeenCalledWith('11');
     });
 
     // Step a1
@@ -112,5 +122,95 @@ describe('StoryRoute full business flow', () => {
         '已保存共同游玩摘要，请到记忆页确认后才会写入日常记忆。',
       );
     });
+  });
+
+  it('enters existing run via onOpenRun(runId) and cancels stale start request on unmount', async () => {
+    const env = createStoryTestEnv({
+      hasExistingStoryConversation: true,
+      initialRun: { runId: '11', branchId: '13', worldVersion: 2 },
+    });
+    const initialView = createStoryTestView({
+      runId: '11',
+      branchId: '13',
+      worldVersion: 2,
+    });
+
+    env.queryClient.setQueryData(queryKeys.storyRuns, [
+      {
+        runId: '11',
+        branchId: '13',
+        worldVersion: 2,
+        conversationId: '77',
+        caseId: 'rainy-inn-v1',
+        title: '雨夜旅馆：失踪的怀表',
+        stage: 'investigation',
+      },
+    ]);
+    env.queryClient.setQueryData(queryKeys.storyView('11', 'player', '13', 2), initialView);
+
+    const onOpenRun = vi.fn();
+    const onConfigure = vi.fn();
+
+    const { container, unmount } = render(
+      <AppProviders client={env.client} queryClient={env.queryClient} sessionBridge={env.bridge}>
+        <StoryRoute reducedMotion={false} onOpenRun={onOpenRun} onConfigure={onConfigure} />
+      </AppProviders>,
+    );
+
+    const enterBtn = container.querySelector('.vc-story-tab [data-action="enter"]')!;
+    expect(enterBtn).toBeTruthy();
+    fireEvent.click(enterBtn);
+
+    await waitFor(() => {
+      expect(container.querySelector('.vc-story-tab')?.getAttribute('data-view')).toBe('stage');
+      expect(onOpenRun).toHaveBeenCalledWith('11');
+    });
+    expect(env.startStoryRun).not.toHaveBeenCalled();
+
+    unmount();
+
+    // Now test stale start request cancelled on unmount
+    let resolveStaleStart: ((val: any) => void) | null = null;
+    const staleEnv = createStoryTestEnv({
+      hasExistingStoryConversation: true,
+    });
+    staleEnv.startStoryRun.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveStaleStart = resolve;
+        }),
+    );
+    const staleOnOpenRun = vi.fn();
+
+    const { container: staleContainer, unmount: unmountStale } = render(
+      <AppProviders
+        client={staleEnv.client}
+        queryClient={staleEnv.queryClient}
+        sessionBridge={staleEnv.bridge}
+      >
+        <StoryRoute reducedMotion={false} onOpenRun={staleOnOpenRun} onConfigure={onConfigure} />
+      </AppProviders>,
+    );
+
+    fireEvent.click(staleContainer.querySelector('.vc-story-tab [data-action="start"]')!);
+    await waitFor(() => {
+      expect(resolveStaleStart).toBeTypeOf('function');
+    });
+
+    unmountStale();
+
+    await act(async () => {
+      resolveStaleStart?.({
+        conversationId: '77',
+        runId: '11',
+        branchId: '13',
+        caseId: 'rainy-inn-v1',
+        worldVersion: 0,
+        stage: 'investigation',
+        participants: [],
+      });
+    });
+
+    expect(staleOnOpenRun).not.toHaveBeenCalled();
   });
 });

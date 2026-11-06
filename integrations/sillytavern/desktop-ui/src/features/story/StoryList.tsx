@@ -19,7 +19,7 @@ export interface StoryListProps {
   errorText?: string;
   onStartOrEnter: () => void;
   onWizardStarted?: (result: StartWizardSuccess) => void;
-  onConfigure?: () => void;
+  onConfigure: () => void;
 }
 
 export function StoryList({
@@ -77,14 +77,7 @@ export function StoryList({
           {configNote ? (
             <div className="vc-story-config vc-note vc-glass" data-config="missing" role="status">
               <p>{configNote}</p>
-              <Button
-                variant="gray"
-                data-action="configure"
-                onClick={() => {
-                  if (onConfigure) onConfigure();
-                  else document.getElementById('vc_models_menu_button')?.click();
-                }}
-              >
+              <Button variant="gray" data-action="configure" onClick={onConfigure}>
                 打开模型设置
               </Button>
             </div>

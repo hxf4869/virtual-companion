@@ -53,6 +53,7 @@ import { AppShell, useShellLayout, type ShellConversationItem } from '../shell/A
 import type { ShellDestination } from '../shell/Sidebar';
 import { useReducedMotion } from '../shell/useReducedMotion';
 import { MemoryRouteAdapter } from './MemoryRouteAdapter';
+import { StoryRouteAdapter } from './StoryRouteAdapter';
 
 export type {
     ChatRouteProps,
@@ -85,18 +86,6 @@ export interface CreateDesktopRouterOptions {
     initialEntry?: string;
     routeOverrides?: DesktopRouteComponents;
     conversations?: readonly ShellConversationItem[];
-}
-
-function DefaultStoryRoute({ runId }: StoryRouteProps) {
-    const navigate = useNavigate();
-    return (
-        <StoryRoute
-            runId={runId}
-            onConfigure={() => {
-                void navigate({ to: '/settings/$category', params: { category: 'model' } });
-            }}
-        />
-    );
 }
 
 function DefaultTavernSettingsRoute({ section }: TavernSettingsRouteProps) {
@@ -302,7 +291,7 @@ export function createDesktopRouter(
     const CharactersComp = overrides.characters ?? CharactersRoute;
     const MemoryComp = overrides.memory ?? MemoryRoute;
     const InboxComp = overrides.inbox ?? InboxRoute;
-    const StoryComp = overrides.story ?? DefaultStoryRoute;
+    const StoryComp = overrides.story ?? StoryRoute;
     const SettingsComp = overrides.settings ?? SettingsRoute;
     const TavernSettingsComp =
         overrides.tavernSettings ?? DefaultTavernSettingsRoute;
@@ -538,7 +527,7 @@ export function createDesktopRouter(
         getParentRoute: () => rootRoute,
         path: '/story',
         component: function StoryIndexPage() {
-            return <StoryComp />;
+            return <StoryRouteAdapter View={StoryComp} />;
         },
     });
 
@@ -547,7 +536,7 @@ export function createDesktopRouter(
         path: '/story/$runId',
         component: function StoryRunPage() {
             const { runId } = useParams({ from: storyRunRoute.id });
-            return <StoryComp runId={runId} />;
+            return <StoryRouteAdapter runId={runId} View={StoryComp} />;
         },
     });
 
