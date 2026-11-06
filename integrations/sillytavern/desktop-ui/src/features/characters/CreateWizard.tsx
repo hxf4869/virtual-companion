@@ -1,258 +1,68 @@
-import { useEffect, useRef, useState } from 'react';
-import { useNavigate } from '@tanstack/react-router';
 import { Dialog } from '../../design/components/Dialog';
 import { Button } from '../../design/components/Button';
 import { Field } from '../../design/components/Field';
 import { TextInput } from '../../design/components/TextInput';
 import { Textarea } from '../../design/components/Textarea';
-import { useSessionBridge } from '../../runtime/session-bridge';
-import {
-    useCreateInstance,
-    useImportCharacter,
-    type CreatedInstanceResult,
-    type ImportedCharacterResult,
-} from '../../data/queries/characters';
+import type { CreatedInstanceResult } from '../../data/queries/characters';
 import {
     GENDERS,
-    RELATION_COPY,
     STYLE_OPTIONS,
-    buildCharacterCard,
-    sanitizeInstanceName,
-} from '../../../../extension/vc-model-settings/instance-logic.js';
+    WIZARD_RELATIONS,
+    useCreateWizardState,
+} from './useCharactersState';
 
 export interface CreateWizardProps {
     open: boolean;
     onOpenChange: (open: boolean) => void;
+    onOpenConversation: (conversationKey: string) => void | Promise<void>;
     onCreated?: (created: CreatedInstanceResult) => void;
 }
 
-const WIZARD_RELATIONS = ['好朋友', '恋人', '倾听者', '家人', '搭档', '前任'] as const;
-const TOTAL_STEPS = 7;
-
-export function CreateWizard({ open, onOpenChange, onCreated }: CreateWizardProps) {
-    const navigate = useNavigate();
-    const bridge = useSessionBridge();
-    const importMutation = useImportCharacter();
-    const createInstanceMutation = useCreateInstance();
-
-    const [step, setStep] = useState(1);
-    const [name, setName] = useState('');
-    const [gender, setGender] = useState<string>('女生');
-    const [relation, setRelation] = useState<string>('好朋友');
-    const [styles, setStyles] = useState<string[]>([
-        '口语短句，偶尔表情',
-        '好奇你的生活',
-    ]);
-    const [customPersonality, setCustomPersonality] = useState('');
-    const [userAddressAs, setUserAddressAs] = useState('');
-    const [scenario, setScenario] = useState('');
-    const [avoidTopicsText, setAvoidTopicsText] = useState('');
-    const [firstMes, setFirstMes] = useState<string>(
-        RELATION_COPY['好朋友']?.first || '',
-    );
-    const [firstMesCustomized, setFirstMesCustomized] = useState(false);
-    const [stepError, setStepError] = useState('');
-    const [submitting, setSubmitting] = useState(false);
-    const [hasImported, setHasImported] = useState(false);
-
-    const mountedRef = useRef(true);
-    const openRef = useRef(open);
-    openRef.current = open;
-    const submitEpochRef = useRef(0);
-    const submitIntentRef = useRef<{
-        chatIdentity: string;
-        imported: ImportedCharacterResult | null;
-        created: CreatedInstanceResult | null;
-    }>({
-        chatIdentity: '',
-        imported: null,
-        created: null,
+export function CreateWizard({
+    open,
+    onOpenChange,
+    onOpenConversation,
+    onCreated,
+}: CreateWizardProps) {
+    const {
+        step,
+        totalSteps,
+        name,
+        setName,
+        gender,
+        setGender,
+        relation,
+        selectRelation,
+        styles,
+        toggleStyle,
+        customPersonality,
+        setCustomPersonality,
+        userAddressAs,
+        setUserAddressAs,
+        scenario,
+        setScenario,
+        avoidTopicsText,
+        setAvoidTopicsText,
+        firstMes,
+        setFirstMes,
+        stepError,
+        busy,
+        hasImported,
+        handleOpenChange,
+        nextStep,
+        prevStep,
+        finish,
+    } = useCreateWizardState({
+        open,
+        onOpenChange,
+        onOpenConversation,
+        onCreated,
     });
-
-    const resetWizard = () => {
-        submitEpochRef.current += 1;
-        submitIntentRef.current = {
-            chatIdentity: '',
-            imported: null,
-            created: null,
-        };
-        setHasImported(false);
-        setStep(1);
-        setName('');
-        setGender('女生');
-        setRelation('好朋友');
-        setStyles(['口语短句，偶尔表情', '好奇你的生活']);
-        setCustomPersonality('');
-        setUserAddressAs('');
-        setScenario('');
-        setAvoidTopicsText('');
-        setFirstMes(RELATION_COPY['好朋友']?.first || '');
-        setFirstMesCustomized(false);
-        setStepError('');
-    };
-
-    useEffect(() => {
-        mountedRef.current = true;
-        return () => {
-            mountedRef.current = false;
-            submitEpochRef.current += 1;
-            submitIntentRef.current = {
-                chatIdentity: '',
-                imported: null,
-                created: null,
-            };
-        };
-    }, []);
-
-    useEffect(() => {
-        if (!open) {
-            resetWizard();
-        }
-    }, [open]);
-
-    const busy = submitting || importMutation.isPending || createInstanceMutation.isPending;
-
-    const handleDialogOpenChange = (nextOpen: boolean) => {
-        if (busy) return;
-        if (!nextOpen) {
-            resetWizard();
-        }
-        onOpenChange(nextOpen);
-    };
-
-    const handleRelationSelect = (nextRel: string) => {
-        setRelation(nextRel);
-        if (!firstMesCustomized) {
-            const copy = (RELATION_COPY as Record<string, { first: string }>)[nextRel];
-            if (copy?.first) {
-                setFirstMes(copy.first);
-            }
-        }
-    };
-
-    const toggleStyle = (option: string) => {
-        setStyles((prev) =>
-            prev.includes(option)
-                ? prev.filter((item) => item !== option)
-                : [...prev, option],
-        );
-    };
-
-    const handleNextStep = () => {
-        if (busy) return;
-        if (step === 1) {
-            const clean = sanitizeInstanceName(name);
-            if (!clean.ok) {
-                setStepError(String(clean.reason || ''));
-                return;
-            }
-        }
-        setStepError('');
-        setStep((prev) => Math.min(TOTAL_STEPS, prev + 1));
-    };
-
-    const handlePrevStep = () => {
-        if (busy || hasImported || step <= 1) return;
-        setStepError('');
-        setStep((prev) => Math.max(1, prev - 1));
-    };
-
-    const handleFinish = async () => {
-        if (busy) return;
-        const clean = sanitizeInstanceName(name);
-        if (!clean.ok) {
-            setStepError(String(clean.reason || ''));
-            setStep(1);
-            return;
-        }
-        const cleanName = String(clean.value || '');
-        const ticket = ++submitEpochRef.current;
-        const isAlive = () =>
-            mountedRef.current && openRef.current && submitEpochRef.current === ticket;
-        if (!submitIntentRef.current.chatIdentity) {
-            submitIntentRef.current.chatIdentity = crypto.randomUUID();
-        }
-        const chatIdentity = submitIntentRef.current.chatIdentity;
-        setSubmitting(true);
-        setStepError('');
-        try {
-            let imported = submitIntentRef.current.imported;
-            if (!imported) {
-                const cardPayload = buildCharacterCard({
-                    name: cleanName,
-                    relation,
-                    gender,
-                    styles,
-                    customPersonality,
-                    scenario,
-                    first_mes: firstMes,
-                    userAddressAs,
-                    avoidTopicsText,
-                });
-                const bytes = new TextEncoder().encode(JSON.stringify(cardPayload));
-                const nextImported = await importMutation.mutateAsync({
-                    name: `${cleanName}.json`,
-                    bytes,
-                });
-                if (!isAlive()) return;
-                imported = nextImported;
-                submitIntentRef.current.imported = nextImported;
-                setHasImported(true);
-            }
-            let created = submitIntentRef.current.created;
-            if (!created) {
-                const nextCreated = await createInstanceMutation.mutateAsync({
-                    characterRef: imported.characterRef,
-                    avatar: imported.avatar,
-                    displayName: cleanName,
-                    chatIdentity,
-                    mode: 'COMPANION',
-                });
-                if (!isAlive()) return;
-                if (!nextCreated.avatar || !nextCreated.file) {
-                    setStepError('聊天没有加载出来，请重试。');
-                    return;
-                }
-                created = nextCreated;
-                submitIntentRef.current.created = nextCreated;
-                submitIntentRef.current.chatIdentity = nextCreated.chatIdentity || chatIdentity;
-            }
-            const openStatus = await bridge.open({
-                avatar: created.avatar,
-                file: created.file,
-            });
-            if (!isAlive()) return;
-            if (openStatus === 'failed') {
-                setStepError('聊天没有加载出来，请重试。');
-                return;
-            }
-            if (openStatus !== 'opened') {
-                return;
-            }
-            onCreated?.(created);
-            resetWizard();
-            onOpenChange(false);
-            if (created.conversationKey) {
-                await navigate({
-                    to: '/chat/$conversationKey',
-                    params: { conversationKey: created.conversationKey },
-                });
-            }
-        } catch (err: any) {
-            if (isAlive()) {
-                setStepError(err?.message || '没有完成，请重试。');
-            }
-        } finally {
-            if (mountedRef.current) {
-                setSubmitting(false);
-            }
-        }
-    };
 
     return (
         <Dialog
             open={open}
-            onOpenChange={handleDialogOpenChange}
+            onOpenChange={handleOpenChange}
             title="新建角色"
             width={560}
             actions={
@@ -262,7 +72,7 @@ export function CreateWizard({ open, onOpenChange, onCreated }: CreateWizardProp
                             type="button"
                             variant="gray"
                             disabled={busy || hasImported}
-                            onClick={handlePrevStep}
+                            onClick={prevStep}
                         >
                             上一步
                         </Button>
@@ -271,17 +81,17 @@ export function CreateWizard({ open, onOpenChange, onCreated }: CreateWizardProp
                             type="button"
                             variant="gray"
                             disabled={busy}
-                            onClick={() => handleDialogOpenChange(false)}
+                            onClick={() => handleOpenChange(false)}
                         >
                             取消
                         </Button>
                     )}
-                    {step < TOTAL_STEPS ? (
+                    {step < totalSteps ? (
                         <Button
                             type="button"
                             variant="filled"
                             disabled={busy}
-                            onClick={handleNextStep}
+                            onClick={nextStep}
                         >
                             下一步
                         </Button>
@@ -291,7 +101,7 @@ export function CreateWizard({ open, onOpenChange, onCreated }: CreateWizardProp
                             variant="filled"
                             pending={busy}
                             disabled={busy}
-                            onClick={() => void handleFinish()}
+                            onClick={() => void finish()}
                         >
                             开始聊天
                         </Button>
@@ -301,7 +111,7 @@ export function CreateWizard({ open, onOpenChange, onCreated }: CreateWizardProp
         >
             <div className="vc-create-wizard-body">
                 <div className="vc-create-wizard-step-indicator">
-                    {step} / {TOTAL_STEPS}
+                    {step} / {totalSteps}
                 </div>
 
                 {stepError ? (
@@ -319,10 +129,7 @@ export function CreateWizard({ open, onOpenChange, onCreated }: CreateWizardProp
                                 maxLength={32}
                                 placeholder="比如：林小夏"
                                 disabled={busy}
-                                onChange={(e) => {
-                                    setName(e.target.value);
-                                    if (stepError) setStepError('');
-                                }}
+                                onChange={(e) => setName(e.target.value)}
                             />
                         </Field>
                         <div className="vc-field">
@@ -364,7 +171,7 @@ export function CreateWizard({ open, onOpenChange, onCreated }: CreateWizardProp
                                     className="vc-create-wizard-chip"
                                     aria-pressed={relation === rel}
                                     disabled={busy}
-                                    onClick={() => handleRelationSelect(rel)}
+                                    onClick={() => selectRelation(rel)}
                                 >
                                     {rel}
                                 </button>
@@ -402,7 +209,9 @@ export function CreateWizard({ open, onOpenChange, onCreated }: CreateWizardProp
                                 rows={3}
                                 value={customPersonality}
                                 disabled={busy}
-                                onChange={(e) => setCustomPersonality(e.target.value)}
+                                onChange={(e) =>
+                                    setCustomPersonality(e.target.value)
+                                }
                             />
                         </Field>
                     </>
@@ -439,7 +248,9 @@ export function CreateWizard({ open, onOpenChange, onCreated }: CreateWizardProp
                             rows={3}
                             value={avoidTopicsText}
                             disabled={busy}
-                            onChange={(e) => setAvoidTopicsText(e.target.value)}
+                            onChange={(e) =>
+                                setAvoidTopicsText(e.target.value)
+                            }
                         />
                     </Field>
                 ) : null}
@@ -451,11 +262,7 @@ export function CreateWizard({ open, onOpenChange, onCreated }: CreateWizardProp
                             rows={4}
                             value={firstMes}
                             disabled={busy || hasImported}
-                            onChange={(e) => {
-                                if (busy || hasImported) return;
-                                setFirstMes(e.target.value);
-                                setFirstMesCustomized(true);
-                            }}
+                            onChange={(e) => setFirstMes(e.target.value)}
                         />
                     </Field>
                 ) : null}

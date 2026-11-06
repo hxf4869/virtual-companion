@@ -1,16 +1,12 @@
 import { useState } from 'react';
 import type { CharacterCardItem } from '../../data/queries/characters';
+import { characterInitial } from './useCharactersState';
 
 export interface CharacterGridProps {
     cards: CharacterCardItem[];
     selectedRef?: string;
     selectedAvatar?: string;
     onSelectCard: (card: CharacterCardItem) => void;
-}
-
-function initialOf(name: string): string {
-    const clean = String(name || '').replace(/[^\p{L}\p{N}]/gu, '');
-    return [...clean][0] || '角';
 }
 
 function CardAvatar({ src, name }: { src: string; name: string }) {
@@ -26,7 +22,7 @@ function CardAvatar({ src, name }: { src: string; name: string }) {
                     onError={() => setFailedSrc(src)}
                 />
             ) : (
-                <span aria-hidden="true">{initialOf(name)}</span>
+                <span aria-hidden="true">{characterInitial(name)}</span>
             )}
         </span>
     );

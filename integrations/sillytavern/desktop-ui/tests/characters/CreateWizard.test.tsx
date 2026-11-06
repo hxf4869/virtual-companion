@@ -9,6 +9,7 @@ import { createSessionBridge } from '../../src/runtime/session-bridge';
 import type { AppClient } from '../../src/data/client';
 import { normalizeConversationKey } from '../../src/data/queries/chat';
 import { CreateWizard } from '../../src/features/characters/CreateWizard';
+import { useCreateWizardState } from '../../src/features/characters/useCharactersState';
 
 describe('CreateWizard (7-step companion creation wizard)', () => {
     beforeEach(() => {
@@ -114,7 +115,13 @@ describe('CreateWizard (7-step companion creation wizard)', () => {
         const router = createDesktopRouter({
             initialEntry: '/characters',
             routeOverrides: {
-                characters: () => <CreateWizard open={true} onOpenChange={() => {}} />,
+                characters: ({ onOpenConversation }) => (
+                    <CreateWizard
+                        open={true}
+                        onOpenChange={() => {}}
+                        onOpenConversation={onOpenConversation}
+                    />
+                ),
             },
         });
 
@@ -273,7 +280,13 @@ describe('CreateWizard (7-step companion creation wizard)', () => {
         const router = createDesktopRouter({
             initialEntry: '/characters',
             routeOverrides: {
-                characters: () => <CreateWizard open={true} onOpenChange={() => {}} />,
+                characters: ({ onOpenConversation }) => (
+                    <CreateWizard
+                        open={true}
+                        onOpenChange={() => {}}
+                        onOpenConversation={onOpenConversation}
+                    />
+                ),
             },
         });
 
@@ -346,5 +359,143 @@ describe('CreateWizard (7-step companion creation wizard)', () => {
         });
         expect(router.state.location.pathname).toBe('/characters');
         expect(await screen.findByRole('alert')).toBeTruthy();
+    });
+
+    it('reuses imported character card, created instance, and chatIdentity across failed retries without duplicate creation', async () => {
+        expect(typeof useCreateWizardState).toBe('function');
+
+        const queryClient = new QueryClient({
+            defaultOptions: { queries: { retry: false, gcTime: Infinity } },
+        });
+
+        let createAttempt = 0;
+        let openAttempt = 0;
+        const seenIdentities: string[] = [];
+
+        const fetchSpy = vi.fn(async () => ({
+            ok: true,
+            status: 200,
+            json: async () => ({ file_name: 'xiaoxia' }),
+        }));
+        vi.stubGlobal('fetch', fetchSpy);
+
+        const reloadCharacterSpy = vi.fn(async () => {});
+        const createConversationSpy = vi.fn(async (input: any) => {
+            createAttempt += 1;
+            seenIdentities.push(String(input.chatIdentity || ''));
+            if (createAttempt === 1) {
+                throw new Error('创建实例暂时失败，请重试。');
+            }
+            return {
+                relationshipId: 'rel-xiaoxia',
+                conversationId: 'conv-xiaoxia',
+                mode: input.mode || 'COMPANION',
+                avatar: 'xiaoxia.png',
+                file: 'chat-xiaoxia-retry',
+                chatIdentity: input.chatIdentity,
+                characterRef: input.characterRef,
+                name: input.displayName,
+            };
+        });
+
+        const client = {
+            identity: { accountId: 'acc-1', userId: 'u-1', sessionId: 's-1' },
+            headers: () => ({ 'X-CSRF-Token': 'test-token' }),
+            post: vi.fn(async () => ({ ok: true })),
+            characters: vi.fn(async () => [
+                {
+                    avatar: 'xiaoxia.png',
+                    name: '林小夏',
+                    description: '朋友介绍',
+                    data: { extensions: { vc_character_ref: 'ref-xiaoxia' } },
+                },
+            ]),
+            recent: vi.fn(async () => []),
+            settings: vi.fn(async () => ({ settings: '{}' })),
+            readChat: vi.fn(async () => []),
+            request: vi.fn(async () => ({})),
+            go: {
+                fetchRelationships: vi.fn(async () => []),
+                fetchNotifications: vi.fn(async () => ({ items: [] })),
+                fetchCompanionState: vi.fn(async () => ({})),
+                fetchFollowUps: vi.fn(async () => []),
+                fetchMemories: vi.fn(async () => ({ items: [] })),
+                storyRequest: vi.fn(async () => ({})),
+            },
+        } as unknown as AppClient;
+
+        const bridge = createSessionBridge(client, {
+            queryClient,
+            prepareRuntime: async () =>
+                ({
+                    activate: async () => true,
+                    reloadCharacter: reloadCharacterSpy,
+                    createConversation: createConversationSpy,
+                    destroy() {},
+                }) as any,
+        });
+
+        const openSpy = vi.spyOn(bridge, 'open').mockImplementation(async () => {
+            openAttempt += 1;
+            return openAttempt === 1 ? 'failed' : 'opened';
+        });
+
+        const onOpenConversation = vi.fn();
+
+        render(
+            <AppProviders client={client} queryClient={queryClient} sessionBridge={bridge}>
+                <CreateWizard
+                    open={true}
+                    onOpenChange={() => {}}
+                    onOpenConversation={onOpenConversation}
+                />
+            </AppProviders>,
+        );
+
+        fireEvent.change(await screen.findByLabelText('她的名字'), {
+            target: { value: '林小夏' },
+        });
+        for (let i = 1; i < 7; i += 1) {
+            fireEvent.click(screen.getByRole('button', { name: '下一步' }));
+        }
+
+        // Attempt 1: import succeeds, createConversation fails
+        fireEvent.click(await screen.findByRole('button', { name: '开始聊天' }));
+        const alert1 = await screen.findByRole('alert');
+        expect(alert1.textContent).toContain('创建实例暂时失败，请重试。');
+        expect(fetchSpy).toHaveBeenCalledTimes(1);
+        expect(createConversationSpy).toHaveBeenCalledTimes(1);
+        expect(openSpy).not.toHaveBeenCalled();
+
+        // Prev step button and first_mes input are locked once card has been imported
+        expect((screen.getByRole('button', { name: '上一步' }) as HTMLButtonElement).disabled).toBe(
+            true,
+        );
+        expect((screen.getByLabelText('第一句话') as HTMLTextAreaElement).disabled).toBe(true);
+
+        // Attempt 2: reuses imported card + same chatIdentity, createConversation succeeds, bridge.open fails
+        fireEvent.click(screen.getByRole('button', { name: '开始聊天' }));
+        await waitFor(() => {
+            expect(createConversationSpy).toHaveBeenCalledTimes(2);
+            expect(openSpy).toHaveBeenCalledTimes(1);
+        });
+        expect(fetchSpy).toHaveBeenCalledTimes(1);
+        expect(seenIdentities).toHaveLength(2);
+        expect(seenIdentities[0]).toBeTruthy();
+        expect(seenIdentities[1]).toBe(seenIdentities[0]);
+        expect((await screen.findByRole('alert')).textContent).toContain(
+            '聊天没有加载出来，请重试。',
+        );
+        expect(onOpenConversation).not.toHaveBeenCalled();
+
+        // Attempt 3: reuses both imported card and created instance, retries bridge.open only -> succeeds
+        fireEvent.click(screen.getByRole('button', { name: '开始聊天' }));
+        const expectedKey = normalizeConversationKey('xiaoxia.png', 'chat-xiaoxia-retry');
+        await waitFor(() => {
+            expect(openSpy).toHaveBeenCalledTimes(2);
+            expect(onOpenConversation).toHaveBeenCalledWith(expectedKey);
+        });
+        expect(fetchSpy).toHaveBeenCalledTimes(1);
+        expect(createConversationSpy).toHaveBeenCalledTimes(2);
     });
 });

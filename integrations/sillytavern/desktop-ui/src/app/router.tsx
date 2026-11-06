@@ -29,6 +29,7 @@ import {
     CharactersRoute,
     type CharactersRouteProps,
 } from '../features/characters/CharactersRoute';
+import { useLeaveGuard } from '../shell/useLeaveGuard';
 import { InboxRoute } from '../features/inbox/InboxRoute';
 import { MemoryRoute } from '../features/memory/MemoryRoute';
 import {
@@ -444,11 +445,52 @@ export function createDesktopRouter(
         },
     });
 
+    function DesktopCharacterLeaveGuard({ dirty }: { dirty: boolean }) {
+        return <>{useLeaveGuard(dirty)}</>;
+    }
+
+    function CharactersRouteAdapter({ avatar }: { avatar?: string }) {
+        const navigate = useNavigate();
+        return (
+            <CharactersComp
+                avatar={avatar}
+                onOpenCharacter={targetAvatar =>
+                    navigate({
+                        to: '/characters/$avatar',
+                        params: { avatar: targetAvatar },
+                    })
+                }
+                onCloseCharacter={() => navigate({ to: '/characters' })}
+                onOpenConversation={conversationKey =>
+                    navigate({
+                        to: '/chat/$conversationKey',
+                        params: { conversationKey },
+                    })
+                }
+                onEditCharacterCard={targetAvatar =>
+                    navigate({
+                        to: '/settings/tavern/$section',
+                        params: { section: 'right-nav-panel' },
+                        search: { character: targetAvatar } as never,
+                    })
+                }
+                onOpenVoiceSettings={relationshipId =>
+                    navigate({
+                        to: '/settings/$category',
+                        params: { category: 'voice' },
+                        search: { relationshipId } as never,
+                    })
+                }
+                renderLeaveGuard={dirty => <DesktopCharacterLeaveGuard dirty={dirty} />}
+            />
+        );
+    }
+
     const charactersIndexRoute = createRoute({
         getParentRoute: () => rootRoute,
         path: '/characters',
         component: function CharactersIndexPage() {
-            return <CharactersComp />;
+            return <CharactersRouteAdapter />;
         },
     });
 
@@ -457,7 +499,7 @@ export function createDesktopRouter(
         path: '/characters/$avatar',
         component: function CharacterDetailPage() {
             const { avatar } = useParams({ from: characterDetailRoute.id });
-            return <CharactersComp avatar={avatar} />;
+            return <CharactersRouteAdapter avatar={avatar} />;
         },
     });
 

@@ -8,6 +8,7 @@ import { createDesktopRouter } from '../../src/app/router';
 import { createSessionBridge } from '../../src/runtime/session-bridge';
 import type { AppClient } from '../../src/data/client';
 import { PersonaEditor } from '../../src/features/characters/PersonaEditor';
+import { usePersonaEditorState } from '../../src/features/characters/useCharactersState';
 
 function createFakeEnv() {
     const queryClient = new QueryClient({
@@ -68,7 +69,7 @@ describe('PersonaEditor (B9 dirty leave guard & atomic 5-field merge save)', () 
             mes_example: '<START>\n{{user}}: 你好\n{{char}}: 嗨',
         };
 
-        function HostRoute() {
+        function HostRoute({ renderLeaveGuard }: { renderLeaveGuard: (dirty: boolean) => React.ReactNode }) {
             return (
                 <PersonaEditor
                     avatar="alice.png"
@@ -76,6 +77,7 @@ describe('PersonaEditor (B9 dirty leave guard & atomic 5-field merge save)', () 
                     characterName="Alice"
                     fields={initialFields}
                     onBack={onBack}
+                    renderLeaveGuard={renderLeaveGuard}
                 />
             );
         }
@@ -156,7 +158,7 @@ describe('PersonaEditor (B9 dirty leave guard & atomic 5-field merge save)', () 
         const router = createDesktopRouter({
             initialEntry: '/characters',
             routeOverrides: {
-                characters: () => (
+                characters: ({ renderLeaveGuard }) => (
                     <PersonaEditor
                         avatar="alice.png"
                         characterRef="ref-alice"
@@ -164,6 +166,7 @@ describe('PersonaEditor (B9 dirty leave guard & atomic 5-field merge save)', () 
                         fields={initialFields}
                         onBack={onBack}
                         onSaved={onSaved}
+                        renderLeaveGuard={renderLeaveGuard}
                     />
                 ),
             },
@@ -205,5 +208,6 @@ describe('PersonaEditor (B9 dirty leave guard & atomic 5-field merge save)', () 
         expect(reloadCharacterSpy).toHaveBeenCalledWith('alice.png');
         expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['characters'] });
         expect(onSaved).toHaveBeenCalledTimes(1);
+        expect(typeof usePersonaEditorState).toBe('function');
     });
 });

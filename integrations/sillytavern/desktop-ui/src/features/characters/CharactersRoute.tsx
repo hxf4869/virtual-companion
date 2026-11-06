@@ -1,83 +1,52 @@
-import { useMemo, useState } from 'react';
-import { useNavigate } from '@tanstack/react-router';
+import type { ReactNode } from 'react';
 import { Button } from '../../design/components/Button';
 import { Icon } from '../../design/components/Icon';
-import {
-    useCharacters,
-    type CharacterCardItem,
-} from '../../data/queries/characters';
 import { CharacterGrid } from './CharacterGrid';
 import { CharacterDetail } from './CharacterDetail';
 import { ImportCharacter } from './ImportCharacter';
 import { CreateWizard } from './CreateWizard';
+import { useCharactersState } from './useCharactersState';
 import './characters.css';
 
 export interface CharactersRouteProps {
     avatar?: string;
+    onOpenCharacter: (avatar: string) => void | Promise<void>;
+    onCloseCharacter: () => void | Promise<void>;
+    onOpenConversation: (conversationKey: string) => void | Promise<void>;
+    onEditCharacterCard: (avatar: string) => void | Promise<void>;
+    onOpenVoiceSettings: (relationshipId: string) => void | Promise<void>;
+    renderLeaveGuard: (dirty: boolean) => ReactNode;
 }
 
-export function CharactersRoute({ avatar }: CharactersRouteProps) {
-    const navigate = useNavigate();
-    const { cards, isLoading, isError, refetch } = useCharacters();
-
-    const [searchQuery, setSearchQuery] = useState('');
-    const [createWizardOpen, setCreateWizardOpen] = useState(false);
-
-    const activeCard = useMemo<CharacterCardItem | null>(() => {
-        const rawTarget = avatar ? String(avatar) : '';
-        if (!rawTarget) return null;
-        let decoded = rawTarget;
-        try {
-            decoded = decodeURIComponent(rawTarget);
-        } catch {
-            decoded = rawTarget;
-        }
-        return (
-            cards.find(
-                (c) =>
-                    (c.avatar && (c.avatar === decoded || c.avatar === rawTarget)) ||
-                    (c.characterRef &&
-                        (c.characterRef === decoded || c.characterRef === rawTarget)),
-            ) ?? null
-        );
-    }, [cards, avatar]);
-
-    const filteredCards = useMemo(() => {
-        const q = searchQuery.trim().toLowerCase();
-        if (!q) return cards;
-        return cards.filter((card) => {
-            if (card.name.toLowerCase().includes(q)) return true;
-            if (card.description.toLowerCase().includes(q)) return true;
-            if (card.worldName.toLowerCase().includes(q)) return true;
-            return card.instances.some((inst) =>
-                inst.label.toLowerCase().includes(q),
-            );
-        });
-    }, [cards, searchQuery]);
-
-    const handleSelectCard = (card: CharacterCardItem) => {
-        const target = card.avatar || card.characterRef;
-        if (!target) return;
-        if (
-            activeCard &&
-            ((card.avatar && card.avatar === activeCard.avatar) ||
-                (card.characterRef && card.characterRef === activeCard.characterRef))
-        ) {
-            return;
-        }
-        void navigate({
-            to: '/characters/$avatar',
-            params: { avatar: target },
-        });
-    };
-
-    const handleCloseDetail = () => {
-        void navigate({ to: '/characters' });
-    };
-
-    const handleDeletedCard = () => {
-        void navigate({ to: '/characters' });
-    };
+export function CharactersRoute({
+    avatar,
+    onOpenCharacter,
+    onCloseCharacter,
+    onOpenConversation,
+    onEditCharacterCard,
+    onOpenVoiceSettings,
+    renderLeaveGuard,
+}: CharactersRouteProps) {
+    const {
+        cards,
+        activeCard,
+        filteredCards,
+        searchQuery,
+        setSearchQuery,
+        createWizardOpen,
+        setCreateWizardOpen,
+        isLoading,
+        isError,
+        refetch,
+        selectCard,
+        openImportedCard,
+        closeDetail,
+        handleDeletedCard,
+    } = useCharactersState({
+        avatar,
+        onOpenCharacter,
+        onCloseCharacter,
+    });
 
     return (
         <section
@@ -89,17 +58,7 @@ export function CharactersRoute({ avatar }: CharactersRouteProps) {
                 <header className="vc-characters-header">
                     <h1>角色</h1>
                     <div className="vc-characters-header-actions">
-                        <ImportCharacter
-                            onImported={(imported) => {
-                                const target = imported.avatar || imported.characterRef;
-                                if (target) {
-                                    void navigate({
-                                        to: '/characters/$avatar',
-                                        params: { avatar: target },
-                                    });
-                                }
-                            }}
-                        />
+                        <ImportCharacter onImported={openImportedCard} />
                         <Button
                             type="button"
                             variant="filled"
@@ -161,7 +120,7 @@ export function CharactersRoute({ avatar }: CharactersRouteProps) {
                         cards={filteredCards}
                         selectedRef={activeCard?.characterRef}
                         selectedAvatar={activeCard?.avatar}
-                        onSelectCard={handleSelectCard}
+                        onSelectCard={selectCard}
                     />
                 )}
             </div>
@@ -170,14 +129,19 @@ export function CharactersRoute({ avatar }: CharactersRouteProps) {
                 <CharacterDetail
                     key={activeCard.characterRef || activeCard.avatar}
                     card={activeCard}
-                    onClose={handleCloseDetail}
+                    onClose={closeDetail}
                     onDeleted={handleDeletedCard}
+                    onOpenConversation={onOpenConversation}
+                    onEditCharacterCard={onEditCharacterCard}
+                    onOpenVoiceSettings={onOpenVoiceSettings}
+                    renderLeaveGuard={renderLeaveGuard}
                 />
             ) : null}
 
             <CreateWizard
                 open={createWizardOpen}
                 onOpenChange={setCreateWizardOpen}
+                onOpenConversation={onOpenConversation}
             />
         </section>
     );

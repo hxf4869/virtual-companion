@@ -1,124 +1,64 @@
-import { useEffect, useRef, useState } from 'react';
-import { useNavigate } from '@tanstack/react-router';
+import type { ReactNode } from 'react';
 import { AlertDialog } from '../../design/components/AlertDialog';
 import { Button } from '../../design/components/Button';
 import { Icon } from '../../design/components/Icon';
 import { toast } from '../../design/components/Toast';
-import { useSessionBridge } from '../../runtime/session-bridge';
-import {
-    useDeleteCharacter,
-    type CharacterCardItem,
-    type CharacterInstanceItem,
-} from '../../data/queries/characters';
+import type { CharacterCardItem } from '../../data/queries/characters';
 import { PersonaEditor } from './PersonaEditor';
 import { InstanceDialog } from './InstanceDialog';
+import {
+    characterInitial,
+    useCharacterDetailState,
+} from './useCharactersState';
 
 export interface CharacterDetailProps {
     card: CharacterCardItem;
     onClose: () => void;
-    onDeleted?: (card: CharacterCardItem) => void;
+    onDeleted: (card: CharacterCardItem) => void;
+    onOpenConversation: (conversationKey: string) => void | Promise<void>;
+    onEditCharacterCard: (avatar: string) => void | Promise<void>;
+    onOpenVoiceSettings: (relationshipId: string) => void | Promise<void>;
+    renderLeaveGuard: (dirty: boolean) => ReactNode;
 }
 
-function initialOf(name: string): string {
-    const clean = String(name || '').replace(/[^\p{L}\p{N}]/gu, '');
-    return [...clean][0] || '角';
-}
-
-export function CharacterDetail({ card, onClose, onDeleted }: CharacterDetailProps) {
-    const navigate = useNavigate();
-    const bridge = useSessionBridge();
-    const deleteMutation = useDeleteCharacter();
-
-    const [editingPersona, setEditingPersona] = useState(false);
-    const [descExpanded, setDescExpanded] = useState(false);
-    const [failedAvatarSrc, setFailedAvatarSrc] = useState('');
-    const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-    const [deleteError, setDeleteError] = useState('');
-    const mountedRef = useRef(true);
-    const openingRef = useRef(false);
-    const openRequestRef = useRef(0);
-
-    useEffect(() => {
-        mountedRef.current = true;
-        return () => {
-            mountedRef.current = false;
-            openRequestRef.current += 1;
-            openingRef.current = false;
-        };
-    }, []);
-    const [instanceDialogState, setInstanceDialogState] = useState<{
-        open: boolean;
-        mode: 'create' | 'rename';
-        initialName: string;
-        relationship: Record<string, any> | null;
-    }>({
-        open: false,
-        mode: 'create',
-        initialName: '',
-        relationship: null,
+export function CharacterDetail({
+    card,
+    onClose,
+    onDeleted,
+    onOpenConversation,
+    onEditCharacterCard,
+    onOpenVoiceSettings,
+    renderLeaveGuard,
+}: CharacterDetailProps) {
+    const {
+        editingPersona,
+        setEditingPersona,
+        descExpanded,
+        setDescExpanded,
+        showAvatarImg,
+        markAvatarFailed,
+        deleteDialogOpen,
+        setDeleteDialogOpen,
+        handleDeleteDialogOpenChange,
+        deleteError,
+        deletePending,
+        confirmDelete,
+        instanceDialogState,
+        openCreateInstanceDialog,
+        openRenameInstanceDialog,
+        setInstanceDialogOpen,
+        openInstance,
+        editCharacterCard,
+        openVoiceSettings,
+    } = useCharacterDetailState({
+        card,
+        onDeleted,
+        onOpenConversation,
+        onEditCharacterCard,
+        onOpenVoiceSettings,
+        onOpenInstanceError: (message) =>
+            toast.show({ title: message, kind: 'error' }),
     });
-
-    useEffect(() => {
-        setEditingPersona(false);
-        setDescExpanded(false);
-        setDeleteDialogOpen(false);
-        setDeleteError('');
-        openRequestRef.current += 1;
-        openingRef.current = false;
-    }, [card.characterRef, card.avatar]);
-
-    const showAvatarImg = Boolean(
-        card.avatarUrl && failedAvatarSrc !== card.avatarUrl,
-    );
-
-    const handleOpenInstance = async (inst: CharacterInstanceItem) => {
-        if (openingRef.current) return;
-        openingRef.current = true;
-        const requestId = ++openRequestRef.current;
-        try {
-            const status =
-                card.avatar && inst.file
-                    ? await bridge.open({ avatar: card.avatar, file: inst.file })
-                    : await bridge.open({
-                          avatar: card.avatar,
-                          relationshipId: inst.relationshipId,
-                          chatIdentity: inst.chatIdentity || undefined,
-                      });
-            if (!mountedRef.current || requestId !== openRequestRef.current) return;
-            const conversationKey = bridge.getSnapshot().key || inst.conversationKey;
-            if (status === 'opened' && conversationKey) {
-                await navigate({
-                    to: '/chat/$conversationKey',
-                    params: { conversationKey },
-                });
-            } else if (status === 'failed') {
-                toast.show({ title: '聊天没有加载出来，请重试。', kind: 'error' });
-            }
-        } catch {
-            if (mountedRef.current && requestId === openRequestRef.current) {
-                toast.show({ title: '聊天没有加载出来，请重试。', kind: 'error' });
-            }
-        } finally {
-            if (requestId === openRequestRef.current) {
-                openingRef.current = false;
-            }
-        }
-    };
-
-    const handleConfirmDelete = async () => {
-        if (deleteMutation.isPending) return;
-        setDeleteError('');
-        try {
-            await deleteMutation.mutateAsync({
-                avatar: card.avatar,
-                deleteChats: true,
-            });
-            setDeleteDialogOpen(false);
-            onDeleted?.(card);
-        } catch (err: any) {
-            setDeleteError(err?.message || '删除角色失败，请重试。');
-        }
-    };
 
     if (editingPersona) {
         return (
@@ -131,6 +71,7 @@ export function CharacterDetail({ card, onClose, onDeleted }: CharacterDetailPro
                     onBack={() => setEditingPersona(false)}
                     onClose={onClose}
                     onSaved={() => setEditingPersona(false)}
+                    renderLeaveGuard={renderLeaveGuard}
                 />
             </aside>
         );
@@ -156,10 +97,12 @@ export function CharacterDetail({ card, onClose, onDeleted }: CharacterDetailPro
                         <img
                             src={card.avatarUrl}
                             alt=""
-                            onError={() => setFailedAvatarSrc(card.avatarUrl)}
+                            onError={markAvatarFailed}
                         />
                     ) : (
-                        <span aria-hidden="true">{initialOf(card.name)}</span>
+                        <span aria-hidden="true">
+                            {characterInitial(card.name)}
+                        </span>
                     )}
                 </span>
                 <h2>{card.name}</h2>
@@ -186,14 +129,7 @@ export function CharacterDetail({ card, onClose, onDeleted }: CharacterDetailPro
                     <Button
                         type="button"
                         variant="filled"
-                        onClick={() =>
-                            setInstanceDialogState({
-                                open: true,
-                                mode: 'create',
-                                initialName: card.name,
-                                relationship: null,
-                            })
-                        }
+                        onClick={openCreateInstanceDialog}
                     >
                         <Icon name="plus" size={16} />
                         <span>新建实例</span>
@@ -209,20 +145,14 @@ export function CharacterDetail({ card, onClose, onDeleted }: CharacterDetailPro
                         type="button"
                         variant="gray"
                         data-action="edit-card"
-                        onClick={() => {
-                            void navigate({
-                                to: '/settings/tavern/$section',
-                                params: { section: 'right-nav-panel' },
-                                search: { character: card.avatar } as never,
-                            });
-                        }}
+                        onClick={editCharacterCard}
                     >
                         角色卡设置
                     </Button>
                     <Button
                         type="button"
                         variant="danger-soft"
-                        disabled={deleteMutation.isPending}
+                        disabled={deletePending}
                         onClick={() => setDeleteDialogOpen(true)}
                     >
                         删除角色
@@ -246,7 +176,7 @@ export function CharacterDetail({ card, onClose, onDeleted }: CharacterDetailPro
                                 <button
                                     type="button"
                                     className="vc-character-instance-open"
-                                    onClick={() => void handleOpenInstance(inst)}
+                                    onClick={() => void openInstance(inst)}
                                 >
                                     <span className="vc-character-instance-name">
                                         {inst.label}
@@ -261,16 +191,7 @@ export function CharacterDetail({ card, onClose, onDeleted }: CharacterDetailPro
                                     type="button"
                                     variant="text"
                                     onClick={() =>
-                                        setInstanceDialogState({
-                                            open: true,
-                                            mode: 'rename',
-                                            initialName: inst.name,
-                                            relationship: inst.rawRelationship ?? {
-                                                relationshipId: inst.relationshipId,
-                                                characterRef: card.characterRef,
-                                                companionName: inst.name,
-                                            },
-                                        })
+                                        openRenameInstanceDialog(inst)
                                     }
                                 >
                                     改名
@@ -278,15 +199,7 @@ export function CharacterDetail({ card, onClose, onDeleted }: CharacterDetailPro
                                 <Button
                                     type="button"
                                     variant="text"
-                                    onClick={() => {
-                                        void navigate({
-                                            to: '/settings/$category',
-                                            params: { category: 'voice' },
-                                            search: {
-                                                relationshipId: inst.relationshipId,
-                                            } as never,
-                                        });
-                                    }}
+                                    onClick={() => openVoiceSettings(inst)}
                                 >
                                     声音
                                 </Button>
@@ -302,9 +215,7 @@ export function CharacterDetail({ card, onClose, onDeleted }: CharacterDetailPro
 
             <InstanceDialog
                 open={instanceDialogState.open}
-                onOpenChange={(open) =>
-                    setInstanceDialogState((prev) => ({ ...prev, open }))
-                }
+                onOpenChange={setInstanceDialogOpen}
                 mode={instanceDialogState.mode}
                 characterRef={card.characterRef}
                 avatar={card.avatar}
@@ -314,18 +225,14 @@ export function CharacterDetail({ card, onClose, onDeleted }: CharacterDetailPro
 
             <AlertDialog
                 open={deleteDialogOpen}
-                onOpenChange={(nextOpen) => {
-                    if (!deleteMutation.isPending) {
-                        setDeleteDialogOpen(nextOpen);
-                    }
-                }}
+                onOpenChange={handleDeleteDialogOpenChange}
                 title="删除角色？"
                 description="删除后该角色卡将从列表中移除。"
                 cancelLabel="取消"
                 confirmLabel="确认删除"
                 danger
-                pending={deleteMutation.isPending}
-                onConfirm={() => void handleConfirmDelete()}
+                pending={deletePending}
+                onConfirm={() => void confirmDelete()}
             />
         </aside>
     );

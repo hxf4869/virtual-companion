@@ -1,22 +1,17 @@
-import { useEffect, useState } from 'react';
-import { useForm } from 'react-hook-form';
-import { z } from 'zod';
+import type { ReactNode } from 'react';
 import { AlertDialog } from '../../design/components/AlertDialog';
 import { Button } from '../../design/components/Button';
 import { Field } from '../../design/components/Field';
 import { Textarea } from '../../design/components/Textarea';
-import { useLeaveGuard } from '../../shell/useLeaveGuard';
-import { useSavePersona, type PersonaFields } from '../../data/queries/characters';
+import type { PersonaFields } from '../../data/queries/characters';
+import {
+    PERSONA_FIELD_ROWS,
+    personaSchema,
+    usePersonaEditorState,
+    type PersonaFormValues,
+} from './useCharactersState';
 
-export const personaSchema = z.object({
-    description: z.string(),
-    personality: z.string(),
-    scenario: z.string(),
-    first_mes: z.string(),
-    mes_example: z.string(),
-});
-
-export type PersonaFormValues = z.infer<typeof personaSchema>;
+export { personaSchema, type PersonaFormValues };
 
 export interface PersonaEditorProps {
     avatar: string;
@@ -26,19 +21,8 @@ export interface PersonaEditorProps {
     onBack: () => void;
     onClose?: () => void;
     onSaved?: (fields: PersonaFields) => void;
+    renderLeaveGuard: (dirty: boolean) => ReactNode;
 }
-
-const PERSONA_FIELD_ROWS: ReadonlyArray<{
-    key: keyof PersonaFields;
-    label: string;
-    rows: number;
-}> = [
-    { key: 'description', label: '介绍', rows: 5 },
-    { key: 'personality', label: '性格', rows: 4 },
-    { key: 'scenario', label: '情景', rows: 3 },
-    { key: 'first_mes', label: '开场', rows: 3 },
-    { key: 'mes_example', label: '例句', rows: 5 },
-];
 
 export function PersonaEditor({
     avatar,
@@ -47,88 +31,40 @@ export function PersonaEditor({
     onBack,
     onClose,
     onSaved,
+    renderLeaveGuard,
 }: PersonaEditorProps) {
-    const saveMutation = useSavePersona();
-    const [baseline, setBaseline] = useState<PersonaFields>(() => ({ ...fields }));
-    const [discardDialogOpen, setDiscardDialogOpen] = useState(false);
-    const [saveError, setSaveError] = useState('');
-
-    const form = useForm<PersonaFormValues>({
-        defaultValues: { ...fields },
-    });
-
-    useEffect(() => {
-        setBaseline({ ...fields });
-        form.reset({ ...fields });
-    }, [
+    const {
+        form,
+        isDirty,
+        isSaving,
+        saveError,
+        discardDialogOpen,
+        setDiscardDialogOpen,
+        requestBack,
+        confirmDiscard,
+        submit,
+    } = usePersonaEditorState({
         avatar,
         characterRef,
-        fields.description,
-        fields.personality,
-        fields.scenario,
-        fields.first_mes,
-        fields.mes_example,
-        form,
-    ]);
-
-    const values = form.watch();
-    const isDirty =
-        values.description !== baseline.description ||
-        values.personality !== baseline.personality ||
-        values.scenario !== baseline.scenario ||
-        values.first_mes !== baseline.first_mes ||
-        values.mes_example !== baseline.mes_example;
-
-    const leaveGuardNode = useLeaveGuard(isDirty);
-
-    const handleBackClick = () => {
-        if (saveMutation.isPending) return;
-        if (isDirty) {
-            setDiscardDialogOpen(true);
-            return;
-        }
-        onBack();
-    };
-
-    const handleConfirmDiscard = () => {
-        setDiscardDialogOpen(false);
-        form.reset({ ...baseline });
-        onBack();
-    };
-
-    const onSubmit = form.handleSubmit(async (rawValues) => {
-        if (saveMutation.isPending) return;
-        const parsed = personaSchema.safeParse(rawValues);
-        if (!parsed.success) {
-            setSaveError('请检查输入内容。');
-            return;
-        }
-        setSaveError('');
-        try {
-            const saved = await saveMutation.mutateAsync({
-                avatar,
-                fields: parsed.data,
-            });
-            setBaseline({ ...saved });
-            form.reset({ ...saved });
-            onSaved?.(saved);
-        } catch (err: any) {
-            setSaveError(err?.message || '没有完成，请重试。');
-        }
+        fields,
+        onBack,
+        onSaved,
     });
+
+    const leaveGuardNode = renderLeaveGuard(isDirty);
 
     return (
         <form
             className="vc-persona-editor"
             data-character-ref={characterRef}
-            onSubmit={(e) => void onSubmit(e)}
+            onSubmit={(e) => void submit(e)}
         >
             <div className="vc-persona-editor-bar">
                 <Button
                     type="button"
                     variant="text"
-                    disabled={saveMutation.isPending}
-                    onClick={handleBackClick}
+                    disabled={isSaving}
+                    onClick={requestBack}
                 >
                     返回
                 </Button>
@@ -138,7 +74,7 @@ export function PersonaEditor({
                         <Button
                             type="button"
                             variant="text"
-                            disabled={saveMutation.isPending}
+                            disabled={isSaving}
                             onClick={onClose}
                         >
                             关闭
@@ -147,8 +83,8 @@ export function PersonaEditor({
                     <Button
                         type="submit"
                         variant="filled"
-                        pending={saveMutation.isPending}
-                        disabled={saveMutation.isPending}
+                        pending={isSaving}
+                        disabled={isSaving}
                     >
                         保存
                     </Button>
@@ -167,7 +103,7 @@ export function PersonaEditor({
                         <Textarea
                             id={`vc-persona-${key}`}
                             rows={rows}
-                            disabled={saveMutation.isPending}
+                            disabled={isSaving}
                             {...form.register(key)}
                         />
                     </Field>
@@ -182,7 +118,7 @@ export function PersonaEditor({
                 cancelLabel="继续编辑"
                 confirmLabel="放弃"
                 danger
-                onConfirm={handleConfirmDiscard}
+                onConfirm={confirmDiscard}
             />
 
             {leaveGuardNode}

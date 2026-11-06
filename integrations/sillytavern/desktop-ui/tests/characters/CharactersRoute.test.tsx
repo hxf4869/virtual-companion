@@ -1,4 +1,6 @@
 import React from 'react';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, act, cleanup } from '@testing-library/react';
 import { RouterProvider } from '@tanstack/react-router';
@@ -8,6 +10,11 @@ import { createDesktopRouter } from '../../src/app/router';
 import { createSessionBridge } from '../../src/runtime/session-bridge';
 import type { AppClient } from '../../src/data/client';
 import { CharactersRoute } from '../../src/features/characters/CharactersRoute';
+import {
+    filterCharacterCards,
+    findCharacterCard,
+    useCharactersState,
+} from '../../src/features/characters/useCharactersState';
 
 describe('CharactersRoute (B15 delete character, instance creation & rename)', () => {
     beforeEach(() => {
@@ -57,6 +64,15 @@ describe('CharactersRoute (B15 delete character, instance creation & rename)', (
                     extensions: { vc_character_ref: 'ref-bob' },
                 },
             },
+            {
+                avatar: 'carol.png',
+                name: 'Carol',
+                description: 'Carol character description',
+                data: {
+                    description: 'Carol character description',
+                    extensions: { vc_character_ref: 'ref-carol' },
+                },
+            },
         ];
 
         let currentRelationships = [
@@ -90,6 +106,14 @@ describe('CharactersRoute (B15 delete character, instance creation & rename)', (
 
         let holdOpenResolve: (() => void) | null = null;
         let holdNextOpen = false;
+        let delayPostDeleteRefetch = false;
+        const pendingRefetchResolvers: Array<() => void> = [];
+        const flushDelayedRefetches = () => {
+            const resolvers = pendingRefetchResolvers.splice(0);
+            for (const resolve of resolvers) {
+                resolve();
+            }
+        };
         const deleteCharacterSpy = vi.fn(async (avatar: string, _deleteChats: boolean) => {
             currentCards = currentCards.filter((c) => c.avatar !== avatar);
             if (avatar === 'alice.png') {
@@ -103,7 +127,14 @@ describe('CharactersRoute (B15 delete character, instance creation & rename)', (
             identity: { accountId: 'acc-1', userId: 'u-1', sessionId: 's-1' },
             headers: () => ({ 'Content-Type': 'application/json' }),
             characters: vi.fn(async () => structuredClone(currentCards)),
-            recent: vi.fn(async () => structuredClone(currentRecent)),
+            recent: vi.fn(async () => {
+                if (delayPostDeleteRefetch) {
+                    await new Promise<void>((resolve) => {
+                        pendingRefetchResolvers.push(resolve);
+                    });
+                }
+                return structuredClone(currentRecent);
+            }),
             settings: vi.fn(async () => ({ settings: '{}' })),
             readChat: vi.fn(async () => [
                 {
@@ -121,7 +152,14 @@ describe('CharactersRoute (B15 delete character, instance creation & rename)', (
             post: vi.fn(async () => ({ ok: true })),
             request: vi.fn(async () => ({})),
             go: {
-                fetchRelationships: vi.fn(async () => structuredClone(currentRelationships)),
+                fetchRelationships: vi.fn(async () => {
+                    if (delayPostDeleteRefetch) {
+                        await new Promise<void>((resolve) => {
+                            pendingRefetchResolvers.push(resolve);
+                        });
+                    }
+                    return structuredClone(currentRelationships);
+                }),
                 fetchNotifications: vi.fn(async () => ({ items: [] })),
                 fetchCompanionState: vi.fn(async () => ({})),
                 fetchFollowUps: vi.fn(async () => []),
@@ -195,6 +233,7 @@ describe('CharactersRoute (B15 delete character, instance creation & rename)', (
         // Click Alice card to open CharacterDetail
         fireEvent.click(container.querySelector('.vc-character-card[data-avatar="alice.png"]')!);
         await waitFor(() => {
+            expect(router.state.location.pathname).toBe('/characters/alice.png');
             expect(container.querySelector('.vc-character-instance-name')?.textContent).toBe('Alice 日常');
         });
 
@@ -204,6 +243,10 @@ describe('CharactersRoute (B15 delete character, instance creation & rename)', (
         await waitFor(() => {
             expect(holdOpenResolve).toBeTypeOf('function');
         });
+
+        // Delay relationships/recentChats refetch so characters query finishes first and unmounts CharacterDetail
+        delayPostDeleteRefetch = true;
+        pendingRefetchResolvers.length = 0;
 
         // Trigger Delete Character in CharacterDetail and confirm in AlertDialog
         fireEvent.click(screen.getByRole('button', { name: '删除角色' }));
@@ -216,37 +259,123 @@ describe('CharactersRoute (B15 delete character, instance creation & rename)', (
         const inFlightResult = await inFlightOpenPromise;
         expect(inFlightResult).toBe('superseded');
 
+        // characters query resolves first -> Alice card & CharacterDetail unmount while relationships/recent are still pending
         await waitFor(() => {
             expect(deleteCharacterSpy).toHaveBeenCalledWith('alice.png', expect.any(Boolean));
+            expect(container.querySelector('.vc-character-card[data-avatar="alice.png"]')).toBeNull();
+            expect(container.querySelector('.vc-character-detail')).toBeNull();
+            expect(pendingRefetchResolvers.length).toBeGreaterThan(0);
+        });
+
+        // Now release delayed relationships/recentChats refetch
+        await act(async () => {
+            delayPostDeleteRefetch = false;
+            flushDelayedRefetches();
+        });
+
+        await waitFor(() => {
             expect(bridge.getSnapshot().key).toBe('');
             expect(bridge.getSnapshot().status).toBe('empty');
             expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['characters'] });
             expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['relationships'] });
             expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['recentChats'] });
+            expect(container.querySelector('.vc-character-card[data-avatar="bob.png"]')).toBeTruthy();
+            expect(router.state.location.pathname).toBe('/characters');
         });
 
-        // Alice card should be removed from the refreshed grid while Bob remains
+        // Verify that if user switches to another character or leaves to another page during delete, completion does not close the new target or pull user back
+        fireEvent.click(container.querySelector('.vc-character-card[data-avatar="bob.png"]')!);
         await waitFor(() => {
-            expect(container.querySelector('.vc-character-card[data-avatar="alice.png"]')).toBeNull();
-            expect(container.querySelector('.vc-character-card[data-avatar="bob.png"]')).toBeTruthy();
+            expect(router.state.location.pathname).toBe('/characters/bob.png');
+            expect(container.querySelector('.vc-character-detail')).toBeTruthy();
         });
+
+        delayPostDeleteRefetch = true;
+        pendingRefetchResolvers.length = 0;
+        fireEvent.click(screen.getByRole('button', { name: '删除角色' }));
+        expect(await screen.findByText('删除角色？')).toBeTruthy();
+        fireEvent.click(screen.getByRole('button', { name: '确认删除' }));
+
+        await waitFor(() => {
+            expect(deleteCharacterSpy).toHaveBeenCalledWith('bob.png', expect.any(Boolean));
+            expect(pendingRefetchResolvers.length).toBeGreaterThan(0);
+        });
+
+        // User switches to Carol while Bob's delete refetch is still pending -> stays on /characters/carol.png
+        fireEvent.click(container.querySelector('.vc-character-card[data-avatar="carol.png"]')!);
+        await waitFor(() => {
+            expect(router.state.location.pathname).toBe('/characters/carol.png');
+            expect(container.querySelector('.vc-character-poster h2')?.textContent).toBe('Carol');
+        });
+
+        await act(async () => {
+            delayPostDeleteRefetch = false;
+            flushDelayedRefetches();
+            await Promise.resolve();
+        });
+        expect(router.state.location.pathname).toBe('/characters/carol.png');
+        expect(container.querySelector('.vc-character-poster h2')?.textContent).toBe('Carol');
+
+        // User starts deleting Carol and actively navigates to /memory before Carol's delete refetch finishes
+        delayPostDeleteRefetch = true;
+        pendingRefetchResolvers.length = 0;
+        fireEvent.click(screen.getByRole('button', { name: '删除角色' }));
+        expect(await screen.findByText('删除角色？')).toBeTruthy();
+        fireEvent.click(screen.getByRole('button', { name: '确认删除' }));
+
+        await waitFor(() => {
+            expect(deleteCharacterSpy).toHaveBeenCalledWith('carol.png', expect.any(Boolean));
+            expect(pendingRefetchResolvers.length).toBeGreaterThan(0);
+        });
+
+        await act(async () => {
+            await router.navigate({ to: '/memory' });
+        });
+        expect(router.state.location.pathname).toBe('/memory');
+
+        await act(async () => {
+            delayPostDeleteRefetch = false;
+            flushDelayedRefetches();
+            await Promise.resolve();
+        });
+        expect(router.state.location.pathname).toBe('/memory');
     });
 
-    it('validates instance name (1-32 chars, no control chars) and creates a new instance via bridge.createConversation', async () => {
+    it('validates instance name (1-32 chars, no control chars) and creates a new instance via bridge.createConversation with fresh chatIdentity on retry after transient F2 failure', async () => {
         const queryClient = new QueryClient({
             defaultOptions: { queries: { retry: false, gcTime: Infinity } },
         });
 
-        const createConversationSpy = vi.fn(async (input: any) => ({
-            relationshipId: '202',
-            conversationId: 'conv-202',
-            mode: input.mode || 'COMPANION',
-            avatar: 'alice.png',
-            file: 'chat-alice-new',
-            chatIdentity: input.chatIdentity || 'chat-alice-new',
-            characterRef: input.characterRef,
-            name: input.displayName,
-        }));
+        const blockedIdentities = new Set<string>();
+        const seenIdentities: string[] = [];
+        let createAttempts = 0;
+
+        const createConversationSpy = vi.fn(async (input: any) => {
+            createAttempts += 1;
+            const id = String(input.chatIdentity || '');
+            seenIdentities.push(id);
+            if (blockedIdentities.has(id)) {
+                throw Object.assign(new Error('VC_STALE_SOURCE'), {
+                    code: 'VC_STALE_SOURCE',
+                });
+            }
+            if (createAttempts === 1) {
+                if (id) blockedIdentities.add(id);
+                throw Object.assign(new Error('保存聊天尚未确认，请重试。'), {
+                    code: 'VC_SAVE_UNCONFIRMED',
+                });
+            }
+            return {
+                relationshipId: '202',
+                conversationId: 'conv-202',
+                mode: input.mode || 'COMPANION',
+                avatar: 'alice.png',
+                file: 'chat-alice-new',
+                chatIdentity: id || 'chat-alice-new',
+                characterRef: input.characterRef,
+                name: input.displayName,
+            };
+        });
 
         const client = {
             identity: { accountId: 'acc-1', userId: 'u-1', sessionId: 's-1' },
@@ -331,19 +460,32 @@ describe('CharactersRoute (B15 delete character, instance creation & rename)', (
         expect(await screen.findByText('实例名称最多 32 个字。')).toBeTruthy();
         expect(createConversationSpy).not.toHaveBeenCalled();
 
-        // Valid name -> calls bridge.createConversation
+        // Valid name -> first attempt fails transiently with VC_SAVE_UNCONFIRMED and blocks first chatIdentity
         fireEvent.change(nameInput, { target: { value: 'Alice 树洞' } });
         fireEvent.click(screen.getByRole('button', { name: '保存' }));
 
+        expect(await screen.findByText('保存聊天尚未确认，请重试。')).toBeTruthy();
+        expect(createConversationSpy).toHaveBeenCalledTimes(1);
+        expect(seenIdentities[0]).toBeTruthy();
+
+        // Retry in same open dialog -> must generate a fresh chatIdentity (not hit VC_STALE_SOURCE) and close dialog
+        fireEvent.click(screen.getByRole('button', { name: '保存' }));
+
         await waitFor(() => {
-            expect(createConversationSpy).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    characterRef: 'ref-alice',
-                    displayName: 'Alice 树洞',
-                    mode: 'COMPANION',
-                }),
-            );
+            expect(createConversationSpy).toHaveBeenCalledTimes(2);
+            expect(screen.queryByLabelText('实例名称')).toBeNull();
         });
+        expect(seenIdentities).toHaveLength(2);
+        expect(seenIdentities[1]).toBeTruthy();
+        expect(seenIdentities[1]).not.toBe(seenIdentities[0]);
+        expect(createConversationSpy).toHaveBeenLastCalledWith(
+            expect.objectContaining({
+                characterRef: 'ref-alice',
+                displayName: 'Alice 树洞',
+                chatIdentity: seenIdentities[1],
+                mode: 'COMPANION',
+            }),
+        );
     });
 
     it('matches instances by recent.chat_metadata.vc_binding.relationshipId using file_id/file_name (not array index or F2 chatIdentity) and does not borrow another instance file when unbound', async () => {
@@ -671,6 +813,218 @@ describe('CharactersRoute (B15 delete character, instance creation & rename)', (
 
         await waitFor(() => {
             expect(container.querySelector('.vc-character-poster h2')?.textContent).toBe('Bob');
+        });
+    });
+
+    it('filters characters by search query, opens/closes detail, and preserves navigation params for card settings, voice settings, and conversation key without router imports in features/characters', async () => {
+        const charactersFeatureDir = resolve(__dirname, '../../src/features/characters');
+        for (const file of [
+            'CharactersRoute.tsx',
+            'CharacterDetail.tsx',
+            'CreateWizard.tsx',
+            'PersonaEditor.tsx',
+            'useCharactersState.ts',
+        ]) {
+            const source = readFileSync(resolve(charactersFeatureDir, file), 'utf8');
+            expect(source).not.toMatch(/@tanstack\/react-router/);
+            expect(source).not.toMatch(/shell\/useLeaveGuard/);
+        }
+        const hookSource = readFileSync(
+            resolve(charactersFeatureDir, 'useCharactersState.ts'),
+            'utf8',
+        );
+        expect(hookSource).not.toMatch(/\b(document|window|HTMLElement)\b/);
+        expect(hookSource).not.toMatch(/\.css['"]|Toast/);
+        expect(typeof filterCharacterCards).toBe('function');
+        expect(typeof findCharacterCard).toBe('function');
+        expect(typeof useCharactersState).toBe('function');
+
+        const queryClient = new QueryClient({
+            defaultOptions: { queries: { retry: false, gcTime: Infinity } },
+        });
+
+        const client = {
+            identity: { accountId: 'acc-1', userId: 'u-1', sessionId: 's-1' },
+            headers: () => ({ 'Content-Type': 'application/json' }),
+            characters: vi.fn(async () => [
+                {
+                    avatar: 'alice.png',
+                    name: 'Alice',
+                    description: '喜欢摄影与街角咖啡馆',
+                    data: {
+                        description: '喜欢摄影与街角咖啡馆',
+                        character_book: { name: '海滨小镇设定集' },
+                        extensions: { vc_character_ref: 'ref-alice' },
+                    },
+                },
+                {
+                    avatar: 'bob.png',
+                    name: 'Bob',
+                    description: '深夜电台主持人',
+                    data: {
+                        description: '深夜电台主持人',
+                        character_book: { name: '城市夜航' },
+                        extensions: { vc_character_ref: 'ref-bob' },
+                    },
+                },
+            ]),
+            recent: vi.fn(async () => [
+                {
+                    avatar: 'alice.png',
+                    file_id: 'chat-alice-main',
+                    file_name: 'chat-alice-main.jsonl',
+                    mes: '晚安',
+                    last_mes: 1762254000000,
+                    chat_metadata: {
+                        vc_binding: {
+                            relationshipId: '101',
+                            characterRef: 'ref-alice',
+                            conversationId: 'conv-101',
+                            mode: 'COMPANION',
+                        },
+                        vc_f2: { id: 'f2-alice-101', revision: 1 },
+                    },
+                },
+            ]),
+            settings: vi.fn(async () => ({ settings: '{}' })),
+            readChat: vi.fn(async () => [
+                {
+                    chat_metadata: {
+                        integrity: 'int-101',
+                        vc_f2: { id: 'f2-alice-101', revision: 1 },
+                        vc_binding: {
+                            relationshipId: '101',
+                            conversationId: 'conv-101',
+                            mode: 'COMPANION',
+                        },
+                    },
+                },
+            ]),
+            post: vi.fn(async () => ({ ok: true })),
+            request: vi.fn(async () => ({})),
+            go: {
+                fetchRelationships: vi.fn(async () => [
+                    {
+                        relationshipId: '101',
+                        characterRef: 'ref-alice',
+                        personaRef: 'st-character',
+                        companionName: '小夏专属',
+                        lastChatAt: '2026-11-04T11:00:00Z',
+                    },
+                ]),
+                fetchNotifications: vi.fn(async () => ({ items: [] })),
+                fetchCompanionState: vi.fn(async () => ({})),
+                fetchFollowUps: vi.fn(async () => []),
+                fetchMemories: vi.fn(async () => ({ items: [] })),
+                storyRequest: vi.fn(async () => ({})),
+            },
+        } as unknown as AppClient;
+
+        const bridge = createSessionBridge(client, {
+            queryClient,
+            prepareRuntime: async () =>
+                ({
+                    activate: async () => true,
+                    reloadCharacter: vi.fn(async () => {}),
+                    destroy() {},
+                }) as any,
+        });
+
+        let capturedTavernSection = '';
+        let capturedVoiceProps: { category?: string; relationshipId?: string } = {};
+
+        const router = createDesktopRouter({
+            initialEntry: '/characters',
+            routeOverrides: {
+                characters: CharactersRoute,
+                tavernSettings: ({ section }) => {
+                    capturedTavernSection = section;
+                    return <div data-testid="tavern-target">{section}</div>;
+                },
+                settings: (props) => {
+                    capturedVoiceProps = props;
+                    return (
+                        <div data-testid="voice-target">
+                            {props.category}:{props.relationshipId || ''}
+                        </div>
+                    );
+                },
+            },
+        });
+
+        const { container } = render(
+            <AppProviders client={client} queryClient={queryClient} sessionBridge={bridge}>
+                <RouterProvider router={router} />
+            </AppProviders>,
+        );
+
+        await act(async () => {
+            await router.navigate({ to: '/characters' });
+        });
+
+        await waitFor(() => {
+            expect(container.querySelector('.vc-character-card[data-avatar="alice.png"]')).toBeTruthy();
+            expect(container.querySelector('.vc-character-card[data-avatar="bob.png"]')).toBeTruthy();
+        });
+
+        // Search by worldName / instance label / description
+        const searchInput = screen.getByRole('searchbox', { name: '搜索角色' });
+        fireEvent.change(searchInput, { target: { value: '城市夜航' } });
+        expect(container.querySelector('.vc-character-card[data-avatar="alice.png"]')).toBeNull();
+        expect(container.querySelector('.vc-character-card[data-avatar="bob.png"]')).toBeTruthy();
+
+        fireEvent.change(searchInput, { target: { value: '小夏专属' } });
+        expect(container.querySelector('.vc-character-card[data-avatar="alice.png"]')).toBeTruthy();
+        expect(container.querySelector('.vc-character-card[data-avatar="bob.png"]')).toBeNull();
+
+        fireEvent.change(searchInput, { target: { value: '' } });
+        expect(container.querySelector('.vc-character-card[data-avatar="alice.png"]')).toBeTruthy();
+        expect(container.querySelector('.vc-character-card[data-avatar="bob.png"]')).toBeTruthy();
+
+        // Select Alice -> opens /characters/alice.png; closing returns to /characters
+        fireEvent.click(container.querySelector('.vc-character-card[data-avatar="alice.png"]')!);
+        await waitFor(() => {
+            expect(router.state.location.pathname).toBe('/characters/alice.png');
+            expect(container.querySelector('.vc-character-detail')).toBeTruthy();
+        });
+
+        fireEvent.click(screen.getByRole('button', { name: '关闭' }));
+        await waitFor(() => {
+            expect(router.state.location.pathname).toBe('/characters');
+            expect(container.querySelector('.vc-character-detail')).toBeNull();
+        });
+
+        // Reopen Alice and click "角色卡设置" -> navigates with avatar in search.character
+        fireEvent.click(container.querySelector('.vc-character-card[data-avatar="alice.png"]')!);
+        await waitFor(() => {
+            expect(container.querySelector('[data-action="edit-card"]')).toBeTruthy();
+        });
+        fireEvent.click(container.querySelector('[data-action="edit-card"]')!);
+
+        await waitFor(() => {
+            expect(router.state.location.pathname).toBe('/settings/tavern/right-nav-panel');
+            expect(capturedTavernSection).toBe('right-nav-panel');
+            expect((router.state.location.search as Record<string, unknown>)?.character).toBe(
+                'alice.png',
+            );
+        });
+
+        // Return to Alice detail and click "声音" -> navigates with relationshipId in search
+        await act(async () => {
+            await router.navigate({
+                to: '/characters/$avatar',
+                params: { avatar: 'alice.png' },
+            });
+        });
+        const voiceBtn = await screen.findByRole('button', { name: '声音' });
+        fireEvent.click(voiceBtn);
+
+        await waitFor(() => {
+            expect(router.state.location.pathname).toBe('/settings/voice');
+            expect(capturedVoiceProps).toEqual({
+                category: 'voice',
+                relationshipId: '101',
+            });
         });
     });
 });
