@@ -1279,3 +1279,127 @@ Use case: ui-mockup. Edit target: the supplied actual desktop app narrow-window 
 ```text
 Use case: ui-mockup. Edit target: the supplied actual desktop app narrow-window screenshot (dark), 390x844 logical. Preserve its existing layout, left VERTICAL icon rail, glass panel sizes, colors, fonts, compact synthetic conversation rows, all existing icons, search header, and current desktop appearance. Add only one 44px-high compact action row INSIDE the main panel immediately beneath the 会话 header: small line phone icon, blue text EXACTLY "打开手机版", small right arrow; modest translucent glass background consistent with desktop, margins12. Move conversation rows down just enough for this row, preserve their compact density, truncate names as in reference. Do not turn this into mobile UI; no bottom tabbar, no large anime avatars, no page-wide hero button, no new title, no OS status bar or device frame. Keep original aspect and content; use original source synthetic data. This is an entry-control design candidate, not a redesign.
 ```
+
+
+## 2026-11-06 · 按 Claude REVIEW 重出（5页 / 10张，待复审）
+
+本轮使用内建 imagegen。先生成浅色，再以浅色输出作为编辑目标生成深色；深色保持相同版式与文案。旧图保留作审核历史，不作为本轮当前候选。
+
+### story-rollback · 浅色
+
+输出：`images/story-rollback/A-light-v2.png`
+
+编辑输入（只沿用材质，按要求替换内容）：`images/story-rollback/A-light.png`
+
+```text
+Use case: ui-mockup. Produce ONE high fidelity flat mobile app screen, portrait, edge-to-edge, no phone hardware, no perspective, no side-by-side panels, no watermark. This is a replacement design image for Virtual Companion, reviewed by Claude. LIGHT mode. Match the attached screen's established soft aurora, translucent white glass, system/PingFang typography, delicate separators and large touch controls; follow the corrected content below, not the rejected illustration or old layout. Logical phone width390, full-screen portrait. Secondary header centered, a single left circular glass back control44, no bottom tab bar on this secondary page. Ink #1d1d1f, secondary #6e6e73, only action blue #0071e3, normal body17, balanced readable spacing16, row radius20. Boolean settings use iOS switches, never checkboxes. No extra explanatory subtitles or invented features. No character portraits or decorative photos. Status bar9:41 and bottom safe area included. Make all Chinese text clean and readable.
+PRIMARY CORRECTION: Story rollback must show revision nodes of the actual case “雨夜旅馆：失踪的怀表”, not companion daily life. Story background is PALE BLUE AND TEAL AURORA ONLY, no pink. Retain the old composition of stacked revision cards above an open bottom confirmation sheet, but remove every portrait and replace all story content.
+Header title “回档”. Small case context “雨夜旅馆：失踪的怀表”. Three clean text-only revision cards: “版本 12 · 当前” / “发现钥匙借用记录” / “11月6日 14:32”; “版本 8” / “找到走廊便笺” / “11月6日 14:18”; “版本 3” / “进入旅馆” / “11月6日 14:02”. Version8 selected with a subtle blue outline, no thumbnails, no portraits, no movies or walks.
+Bottom confirmation sheet has a subtle grabber, title “回到版本 8？”, one sentence “将从此版本创建新分支，原进度保留。” and two aligned large buttons “取消” (glass) and “回档” (action blue). Keep every control in safe areas. This screen shows the open confirmation state. Do not add a close X.
+```
+
+### tavern-worldinfo-list · 浅色
+
+输出：`images/tavern-worldinfo-list/A-light.png`
+
+编辑输入（只沿用材质，按要求替换内容）：`images/tavern-worldinfo/A-light.png`
+
+```text
+Use case: ui-mockup. Produce ONE high fidelity flat mobile app screen, portrait, edge-to-edge, no phone hardware, no perspective, no side-by-side panels, no watermark. This is a replacement design image for Virtual Companion, reviewed by Claude. LIGHT mode. Match the attached screen's established soft aurora, translucent white glass, system/PingFang typography, delicate separators and large touch controls; follow the corrected content below, not the rejected illustration or old layout. Logical phone width390, full-screen portrait. Secondary header centered, a single left circular glass back control44, no bottom tab bar on this secondary page. Ink #1d1d1f, secondary #6e6e73, only action blue #0071e3, normal body17, balanced readable spacing16, row radius20. Boolean settings use iOS switches, never checkboxes. No extra explanatory subtitles or invented features. No character portraits or decorative photos. Status bar9:41 and bottom safe area included. Make all Chinese text clean and readable.
+PRIMARY CORRECTION: Create the WORLDBOOK LIST PAGE ONLY, not an editor mixed into it. Header is exactly “世界书”, left back, right compact glass “新建”. Completely remove the old top scenic image; worldbooks have NO IMAGE. No avatars.
+Below header: one full-width worldbook selector row with a30px teal book icon block, text “雨夜旅馆世界书”, down-chevron. Then a clean stack of entry rows, each tappable to detail, with title, keywords in smaller grey text, and an enabled switch. Rows: “钥匙借用记录” / “关键词：钥匙、账册” (on); “旅馆前台” / “关键词：旅馆、登记” (on); “大厅时钟” / “关键词：时钟、午夜” (off); “走廊便笺” / “关键词：便笺、走廊” (on).
+Show ONLY the third row partially swiped left, exposing one red trailing delete action width88 with trash icon and “删除”. The other rows have no delete or edit buttons. All enable switches are switches, not checks. Tap-entry navigation is conveyed by a small chevron, do not explain it in prose. No content textarea, no save button, no footer action, no scenic or human images. Keep sparse lower breathing room.
+```
+
+### tavern-worldinfo-entry · 浅色
+
+输出：`images/tavern-worldinfo-entry/A-light.png`
+
+编辑输入（只沿用材质，按要求替换内容）：`images/tavern-worldinfo/A-light.png`
+
+```text
+Use case: ui-mockup. Produce ONE high fidelity flat mobile app screen, portrait, edge-to-edge, no phone hardware, no perspective, no side-by-side panels, no watermark. This is a replacement design image for Virtual Companion, reviewed by Claude. LIGHT mode. Match the attached screen's established soft aurora, translucent white glass, system/PingFang typography, delicate separators and large touch controls; follow the corrected content below, not the rejected illustration or old layout. Logical phone width390, full-screen portrait. Secondary header centered, a single left circular glass back control44, no bottom tab bar on this secondary page. Ink #1d1d1f, secondary #6e6e73, only action blue #0071e3, normal body17, balanced readable spacing16, row radius20. Boolean settings use iOS switches, never checkboxes. No extra explanatory subtitles or invented features. No character portraits or decorative photos. Status bar9:41 and bottom safe area included. Make all Chinese text clean and readable.
+PRIMARY CORRECTION: Create the WORLDBOOK ENTRY DETAIL PAGE ONLY, separate from the list page. Header exactly “世界书”, single left back, right “保存” in action blue. Remove the old scenic image and all worldbook list controls; no avatar/photo.
+A compact grouped form has label “条目名” and text field “钥匙借用记录”; next row “启用” with ON iOS switch; next “关键词” with editable small neutral chips “钥匙” and “账册”. Below, a roomy content editor panel with label “内容”, a compact glass link/button “全屏编辑 ↗” at top right, and natural-language sample text:
+“旅馆前台保存着一本钥匙借用账册。
+午夜之后，管家的签名出现在最后一行。
+记录中的房间号被人轻轻划去。”
+Show this as readable multiline editor content, not a photograph or illustrated card. No other fields, no made-up model settings or statistics. No bottom blue CTA. Save remains at the header. The content area takes the remaining middle screen naturally, with generous lower safe area.
+```
+
+### memory-diary · 浅色
+
+输出：`images/memory-diary/A-light-v2.png`
+
+编辑输入（只沿用材质，按要求替换内容）：`images/memory-diary/A-light.png`
+
+```text
+Use case: ui-mockup. Produce ONE high fidelity flat mobile app screen, portrait, edge-to-edge, no phone hardware, no perspective, no side-by-side panels, no watermark. This is a replacement design image for Virtual Companion, reviewed by Claude. LIGHT mode. Match the attached screen's established soft aurora, translucent white glass, system/PingFang typography, delicate separators and large touch controls; follow the corrected content below, not the rejected illustration or old layout. Logical phone width390, full-screen portrait. Secondary header centered, a single left circular glass back control44, no bottom tab bar on this secondary page. Ink #1d1d1f, secondary #6e6e73, only action blue #0071e3, normal body17, balanced readable spacing16, row radius20. Boolean settings use iOS switches, never checkboxes. No extra explanatory subtitles or invented features. No character portraits or decorative photos. Status bar9:41 and bottom safe area included. Make all Chinese text clean and readable.
+PRIMARY CORRECTION: Diary data has only a short body (at most300 Chinese characters), today's mood vibe, and0–3 short moment tags (at most8 characters each). REMOVE THE LARGE PORTRAIT and any photo entirely, including the selector avatar. Do not invent an entry title or a second essay field.
+Header “日记”, single left back, right glass ellipsis. Below it a simple context selector capsule “小满 · 日常” with small down-chevron but no portrait. Preserve the month selector with left/right arrows and “2026年11月”. Preserve a date strip “3  4  5  6  7”; selected6 is a white glass sliding pill with blue text, NOT solid blue.
+The diary reading card: “11月6日” as date heading, a small mood capsule “心情 · 平静”, then one body:
+“今天把书架重新整理了一遍。翻到那本旧诗集时，想起了我们上次聊过的一句话。窗外下着小雨，我泡了一杯热茶，慢慢读完剩下的几页。雨停以后，心里也安静了。”
+Then exactly3 small moment chips “整理书架” “旧诗集” “热茶”, no explanatory sentence or extra content card. At the lower area retain one setting row “手写体” with an OFF switch. Keep same established aurora and glass style, no imagery anywhere.
+```
+
+### card-fullscreen · 浅色
+
+输出：`images/card-fullscreen/A-light-v2.png`
+
+编辑输入（只沿用材质，按要求替换内容）：`images/card-fullscreen/A-light.png`
+
+```text
+Use case: ui-mockup. Produce ONE high fidelity flat mobile app screen, portrait, edge-to-edge, no phone hardware, no perspective, no side-by-side panels, no watermark. This is a replacement design image for Virtual Companion, reviewed by Claude. LIGHT mode. Match the attached screen's established soft aurora, translucent white glass, system/PingFang typography, delicate separators and large touch controls; follow the corrected content below, not the rejected illustration or old layout. Logical phone width390, full-screen portrait. Secondary header centered, a single left circular glass back control44, no bottom tab bar on this secondary page. Ink #1d1d1f, secondary #6e6e73, only action blue #0071e3, normal body17, balanced readable spacing16, row radius20. Boolean settings use iOS switches, never checkboxes. No extra explanatory subtitles or invented features. No character portraits or decorative photos. Status bar9:41 and bottom safe area included. Make all Chinese text clean and readable.
+PRIMARY CORRECTION: Design ONLY THE APP'S FULLSCREEN CARD FRAME. The role card's inner HTML is authored by the card and is NOT part of this app's design system. Header has EXACTLY ONE navigation control: left back arrow44; centered card name “蓝窗书店”; RIGHT SIDE EMPTY, NO CLOSE X. No tabs, composer, app action bar, character profile, large image, or extra app-level button.
+Below the header, a small neutral annotation says exactly “卡片自行渲染”. The rest is a large safe-area-respecting content viewport containing ONE obviously illustrative generic HTML status card. Keep the inner illustrative HTML simple and visually separate: dark charcoal rectangle, heading “HTML 状态栏示意”, two plain rows “信任 10” and “场景 书店”, one plain button inside the HTML card “查看当前状态”. No people or scenery, no app-designed mood/activity/profile content. Remaining viewport can be empty. The inner HTML is just a static illustration for the mockup; do not add app-specific fields or controls around it. This same inner dark HTML illustration must stay identical in the later dark-theme version; only outer app chrome changes.
+```
+
+### story-rollback · 深色（浅色图编辑）
+
+输出：`images/story-rollback/A-dark-v2.png`
+
+编辑目标：`images/story-rollback/A-light-v2.png`
+
+```text
+Use case: ui-mockup, theme-only edit. Edit the provided LIGHT mobile UI screen into its matching DARK theme. Preserve the exact canvas dimensions/aspect ratio, ALL positions, sizes, spacing, Chinese text verbatim, line breaks, hierarchy, row order, selected states, icons, sheet height, borders, and scroll position. Do not redesign or add/remove any control. Only change outer APP theme colors: deep graphite #111113 background with muted soft aurora, translucent dark glass panels, thin low-opacity white borders, primary text #f5f5f7, secondary #a1a1a6, blue actions #2997ff; system status icons become white. Keep active controls active and inactive ones inactive. No portraits, scenery, tab bar or close X. For this STORY screen aurora uses blue and teal only, no pink. Preserve all 3 revision cards and the open confirmation sheet exactly.
+```
+
+### tavern-worldinfo-list · 深色（浅色图编辑）
+
+输出：`images/tavern-worldinfo-list/A-dark.png`
+
+编辑目标：`images/tavern-worldinfo-list/A-light.png`
+
+```text
+Use case: ui-mockup, theme-only edit. Edit the provided LIGHT mobile UI screen into its matching DARK theme. Preserve the exact canvas dimensions/aspect ratio, ALL positions, sizes, spacing, Chinese text verbatim, line breaks, hierarchy, row order, selected states, icons, sheet height, borders, and scroll position. Do not redesign or add/remove any control. Only change outer APP theme colors: deep graphite #111113 background with muted soft aurora, translucent dark glass panels, thin low-opacity white borders, primary text #f5f5f7, secondary #a1a1a6, blue actions #2997ff; system status icons become white. Keep active controls active and inactive ones inactive. No portraits, scenery, tab bar or close X. Preserve all form/list content exactly; the worldbook list's third row remains swiped open with red delete action, where present.
+```
+
+### tavern-worldinfo-entry · 深色（浅色图编辑）
+
+输出：`images/tavern-worldinfo-entry/A-dark.png`
+
+编辑目标：`images/tavern-worldinfo-entry/A-light.png`
+
+```text
+Use case: ui-mockup, theme-only edit. Edit the provided LIGHT mobile UI screen into its matching DARK theme. Preserve the exact canvas dimensions/aspect ratio, ALL positions, sizes, spacing, Chinese text verbatim, line breaks, hierarchy, row order, selected states, icons, sheet height, borders, and scroll position. Do not redesign or add/remove any control. Only change outer APP theme colors: deep graphite #111113 background with muted soft aurora, translucent dark glass panels, thin low-opacity white borders, primary text #f5f5f7, secondary #a1a1a6, blue actions #2997ff; system status icons become white. Keep active controls active and inactive ones inactive. No portraits, scenery, tab bar or close X. Preserve all form/list content exactly; the worldbook list's third row remains swiped open with red delete action, where present.
+```
+
+### memory-diary · 深色（浅色图编辑）
+
+输出：`images/memory-diary/A-dark-v2.png`
+
+编辑目标：`images/memory-diary/A-light-v2.png`
+
+```text
+Use case: ui-mockup, theme-only edit. Edit the provided LIGHT mobile UI screen into its matching DARK theme. Preserve the exact canvas dimensions/aspect ratio, ALL positions, sizes, spacing, Chinese text verbatim, line breaks, hierarchy, row order, selected states, icons, sheet height, borders, and scroll position. Do not redesign or add/remove any control. Only change outer APP theme colors: deep graphite #111113 background with muted soft aurora, translucent dark glass panels, thin low-opacity white borders, primary text #f5f5f7, secondary #a1a1a6, blue actions #2997ff; system status icons become white. Keep active controls active and inactive ones inactive. No portraits, scenery, tab bar or close X. Preserve one short diary body, mood chip, three moment chips, date strip with translucent selected date 6 and blue text (never solid blue), and OFF handwriting switch exactly.
+```
+
+### card-fullscreen · 深色（浅色图编辑）
+
+输出：`images/card-fullscreen/A-dark-v2.png`
+
+编辑目标：`images/card-fullscreen/A-light-v2.png`
+
+```text
+Use case: ui-mockup, theme-only edit. Edit the provided LIGHT mobile UI screen into its matching DARK theme. Preserve the exact canvas dimensions/aspect ratio, ALL positions, sizes, spacing, Chinese text verbatim, line breaks, hierarchy, row order, selected states, icons, sheet height, borders, and scroll position. Do not redesign or add/remove any control. Only change outer APP theme colors: deep graphite #111113 background with muted soft aurora, translucent dark glass panels, thin low-opacity white borders, primary text #f5f5f7, secondary #a1a1a6, blue actions #2997ff; system status icons become white. Keep active controls active and inactive ones inactive. No portraits, scenery, tab bar or close X. CRITICAL: Preserve the inner dark HTML illustration rectangle, its original black/gray/blue colors, all inner text and button EXACTLY UNCHANGED. It is card-authored content and must not respond to app theme. Change only the background/chrome outside it, including app header and annotation.
+```
