@@ -5,13 +5,16 @@ package postgres
 import (
 	"context"
 	"errors"
-	"github.com/hxf4869/virtual-companion/internal/stsource"
-	"github.com/jackc/pgx/v5"
+	"fmt"
 	"testing"
 	"time"
+
+	"github.com/hxf4869/virtual-companion/internal/stsource"
+	"github.com/jackc/pgx/v5"
 )
 
-func TestMemoryCoreCallAccountingAndReplay(t *testing.T) {
+func memoryCoreCallFixture(t *testing.T) (*Store, STBinding, JobClaim) {
+	t.Helper()
 	s := resetCatalogFixtures(t)
 	ctx := context.Background()
 	t.Cleanup(func() { s.UseSTSourceReader(nil); s.UseCipher(nil) })
@@ -32,7 +35,8 @@ func TestMemoryCoreCallAccountingAndReplay(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if _, err := s.ResolveSTBinding(ctx, 1, STBindingInput{ChatIdentity: sourceChat, CharacterRef: "synthetic-memorycore", Mode: "COMPANION"}); err != nil {
+	binding, err := s.ResolveSTBinding(ctx, 1, STBindingInput{ChatIdentity: sourceChat, CharacterRef: "synthetic-memorycore", Mode: "COMPANION"})
+	if err != nil {
 		t.Fatal(err)
 	}
 	snapshot := stsource.Snapshot{ChatIdentity: sourceChat, State: "PRESENT", Revision: 1, Location: "chats/source/one.jsonl", Messages: []stsource.Message{{MessageID: sourceMessage, CandidateID: sourceCandidate, Revision: 1, Role: "user", Text: "合成记忆", Eligible: true, Settled: true}}}
@@ -46,7 +50,12 @@ func TestMemoryCoreCallAccountingAndReplay(t *testing.T) {
 	if err != nil || len(jobs) != 1 {
 		t.Fatalf("claim %v %v", jobs, err)
 	}
-	job := jobs[0]
+	return s, binding, jobs[0]
+}
+
+func TestMemoryCoreCallAccountingAndReplay(t *testing.T) {
+	s, _, job := memoryCoreCallFixture(t)
+	ctx := context.Background()
 	in := MemoryCoreCall{Owner: 1, Job: job.JobID, Source: job.RefID, ClaimToken: job.Token, ClaimFence: job.Fence, OperationID: "synthetic-op", Stage: "l1-extraction", CallSequence: 1, ProviderID: "prov-a", SupplierName: "Synthetic", ModelID: "model-a", InputTokens: 100, OutputTokens: 64}
 	first, err := s.PrepareMemoryCoreCall(ctx, in)
 	if err != nil || first.AttemptID <= 0 {
@@ -103,5 +112,81 @@ func TestMemoryCoreCallAccountingAndReplay(t *testing.T) {
 	denied, err := s.PrepareMemoryCoreCall(ctx, in)
 	if err != nil || denied.Decision != "CLAIM_LOST" {
 		t.Fatalf("stale fence %+v %v", denied, err)
+	}
+}
+
+func TestForgetMemoryWhilePreparingMemoryCoreCall(t *testing.T) {
+	s, binding, job := memoryCoreCallFixture(t)
+	memory := addSTMemory(t, binding, "合成记忆", refForChat(t, sourceChat))
+
+	runCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	done := make(chan struct{})
+	var attemptID int64
+	var attemptNo int
+	var decision string
+	var prepareErr error
+	var forgotten bool
+	forgetErr := s.WithOwner(runCtx, 1, func(ctx context.Context, tx pgx.Tx) error {
+		// Pause forget at its first lock until preparation reaches that same
+		// owner barrier, then let the production function cancel the claimed job.
+		if _, err := tx.Exec(ctx, `SELECT vc.memory_write_barrier(1)`); err != nil {
+			return err
+		}
+		ownerPID := int32(tx.Conn().PgConn().PID())
+		t.Cleanup(func() {
+			cancel()
+			<-done
+		})
+		go func() {
+			defer close(done)
+			// Call the production SQL function directly to preserve SQLSTATE.
+			prepareErr = s.WithOwner(runCtx, 1, func(ctx context.Context, tx pgx.Tx) error {
+				return tx.QueryRow(ctx, `
+					SELECT out_attempt_id,out_attempt_no,out_decision
+					FROM vc.go_prepare_memorycore_call(1,$1,$2,$3,$4,'synthetic-op','l1-extraction',1,'prov-a','Synthetic','model-a')
+				`, job.JobID, job.RefID, job.Token, job.Fence).Scan(&attemptID, &attemptNo, &decision)
+			})
+		}()
+
+		poll := time.NewTicker(10 * time.Millisecond)
+		defer poll.Stop()
+		for {
+			var waiting bool
+			err := s.pool.QueryRow(ctx, `
+				SELECT EXISTS (
+				    SELECT 1 FROM pg_locks held
+				    JOIN pg_locks waiter USING (locktype, database, classid, objid, objsubid)
+				    WHERE held.pid=$1 AND held.locktype='advisory' AND held.granted AND NOT waiter.granted
+				)`, ownerPID).Scan(&waiting)
+			if err != nil {
+				return fmt.Errorf("observe owner barrier wait: %w", err)
+			}
+			if waiting {
+				break
+			}
+			select {
+			case <-done:
+				return fmt.Errorf("preparation ended before waiting for owner barrier (decision %q, error %v)", decision, prepareErr)
+			case <-ctx.Done():
+				return fmt.Errorf("wait for preparation at owner barrier: %w", ctx.Err())
+			case <-poll.C:
+			}
+		}
+		return tx.QueryRow(ctx, `SELECT vc.memory_forget_begin(1,$1)`, memory.ID).Scan(&forgotten)
+	})
+	if forgetErr != nil || !forgotten {
+		t.Fatalf("forget returned %t: %v", forgotten, forgetErr)
+	}
+	select {
+	case <-done:
+	case <-runCtx.Done():
+		t.Fatalf("wait for preparation after forget: %v", runCtx.Err())
+	}
+	if prepareErr != nil || decision != "CLAIM_LOST" || attemptID != 0 || attemptNo != 0 {
+		t.Fatalf("preparation after forget returned decision %q, attempt ID %d, number %d: %v", decision, attemptID, attemptNo, prepareErr)
+	}
+	if status, _ := workStatus(t, job.JobID); status != "CANCELLED" {
+		t.Fatalf("forgotten source's work item has status %q", status)
 	}
 }
