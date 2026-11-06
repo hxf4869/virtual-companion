@@ -278,10 +278,10 @@ describe('desktop and mobile app entries', () => {
         );
         await waitFor(() => {
             expect(document.documentElement.dataset.vcApp).toBe('ready');
+            expect(container.querySelector('[data-vc-mobile-app]')).toBeTruthy();
+            expect(screen.getByTestId('mobile-boot-probe').textContent).toBe('idle');
         });
         expect(document.documentElement.dataset.vcDevice).toBe('mobile');
-        expect(container.querySelector('[data-vc-mobile-app]')).toBeTruthy();
-        expect(screen.getByTestId('mobile-boot-probe').textContent).toBe('idle');
         expect(capturedBridge?.getSnapshot().runtime).toBe('idle');
         expect(settingsSpy).not.toHaveBeenCalled();
         expect(charactersSpy).not.toHaveBeenCalled();
@@ -450,22 +450,23 @@ describe('desktop and mobile app entries', () => {
 
             await waitFor(() => {
                 expect(document.documentElement.dataset.vcApp).toBe('ready');
+                expect(container.querySelector('[data-vc-app="booting"]')).toBeNull();
+                expect(charactersSpy).toHaveBeenCalledTimes(1);
+                expect(settingsSpy).toHaveBeenCalled();
             });
 
             // Before AppConsentGate or any route/MessageList mounts, desktop AppProviders
             // has already started runtime prewarm in the background.
             expect(container.querySelector('#vc-shell')).toBeNull();
-            expect(charactersSpy).toHaveBeenCalledTimes(1);
-            expect(settingsSpy).toHaveBeenCalled();
             expect(document.documentElement.dataset.vcRuntime).toBeUndefined();
 
             releaseConsents();
             await waitFor(() => {
                 expect(screen.getByTestId('desktop-custom-chat')).toBeTruthy();
+                expect(container.querySelector('#vc-shell')).toBeTruthy();
             });
 
             // Desktop shell and custom chat route are interactive while runtime is still preparing.
-            expect(container.querySelector('#vc-shell')).toBeTruthy();
             expect(capturedBridge?.getSnapshot().runtime).toBe('preparing');
             expect(document.documentElement.dataset.vcRuntime).toBeUndefined();
 
