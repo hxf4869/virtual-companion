@@ -1,0 +1,818 @@
+html[data-vc-device="mobile"],
+html[data-vc-device="mobile"][data-vc-theme="light"] {
+    color-scheme: light;
+    --vc-canvas: #eef0f6;
+    --vc-aurora-alpha: 0.45;
+    --vc-card: rgba(255, 255, 255, 0.72);
+    --vc-ink: #1d1d1f;
+    --vc-ink-2: #6e6e73;
+    --vc-ink-3: #aeaeb2;
+    --vc-bubble-user: var(--vc-accent);
+    --vc-bubble-char: rgba(255, 255, 255, 0.72);
+    --vc-chip: rgba(0, 0, 0, 0.05);
+    --vc-call-accept: #30b350;
+    --vc-scene-dim: 1;
+    --vc-fs-large-title: calc(34px * var(--fontScale, 1));
+    --vc-fs-tab: calc(11px * var(--fontScale, 1));
+    --vc-touch: 44px;
+
+    /* Mobile internal helper variables */
+    --mob-card: rgba(255, 255, 255, 0.72);
+    --mob-card-strong: rgba(255, 255, 255, 0.84);
+    --mob-chip: rgba(0, 0, 0, 0.05);
+    --mob-tabbar-bg: rgba(255, 255, 255, 0.68);
+    --mob-tab-lens: rgba(255, 255, 255, 0.88);
+    --mob-tab-lens-shadow: 0 2px 10px rgba(20, 24, 40, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+    --mob-sheet-bg: rgba(242, 243, 248, 0.88);
+    --mob-seg-track: rgba(118, 118, 128, 0.12);
+    --mob-seg-thumb: rgba(255, 255, 255, 0.96);
+    --mob-glass-blur: blur(var(--vc-blur-1)) saturate(180%);
+    --mob-sheet-blur: blur(var(--vc-blur-2)) saturate(180%);
+    --mob-large-title: calc(34px * var(--fontScale, 1));
+    --mob-tabbar-offset: calc(80px + var(--ion-safe-area-bottom, env(safe-area-inset-bottom, 0px)));
+
+    /* Map Ionic tokens to VC semantic tokens */
+    --ion-font-family: var(--vc-font);
+    --ion-background-color: transparent;
+    --ion-text-color: var(--vc-ink);
+    --ion-color-primary: var(--vc-accent);
+    --ion-color-danger: var(--vc-danger);
+    --ion-color-success: var(--vc-success);
+    --ion-color-warning: var(--vc-warning);
+    --ion-toolbar-background: transparent;
+    --ion-toolbar-color: var(--vc-ink);
+    --ion-tab-bar-background: transparent;
+    --ion-tab-bar-border-color: transparent;
+    --ion-item-background: transparent;
+    --ion-item-border-color: var(--vc-separator);
+    --ion-card-background: var(--mob-card);
+    --ion-border-color: var(--vc-separator);
+    --ion-safe-area-top: env(safe-area-inset-top, 0px);
+    --ion-safe-area-right: env(safe-area-inset-right, 0px);
+    --ion-safe-area-bottom: env(safe-area-inset-bottom, 0px);
+    --ion-safe-area-left: env(safe-area-inset-left, 0px);
+  }
+
+  html[data-vc-device="mobile"][data-vc-theme="dark"] {
+    color-scheme: dark;
+    --vc-canvas: #07070a;
+    --vc-aurora-alpha: 0.60;
+    --vc-card: rgba(28, 28, 30, 0.72);
+    --vc-ink: #f5f5f7;
+    --vc-ink-2: #b2b2b7;
+    --vc-ink-3: #636366;
+    --vc-bubble-user: var(--vc-accent);
+    --vc-bubble-char: rgba(255, 255, 255, 0.10);
+    --vc-chip: rgba(255, 255, 255, 0.08);
+    --vc-call-accept: #30d158;
+    --vc-scene-dim: 0.55;
+
+    --mob-card: rgba(28, 28, 30, 0.72);
+    --mob-card-strong: rgba(38, 38, 44, 0.86);
+    --mob-chip: rgba(255, 255, 255, 0.08);
+    --mob-tabbar-bg: rgba(24, 24, 28, 0.72);
+    --mob-tab-lens: rgba(255, 255, 255, 0.14);
+    --mob-tab-lens-shadow: 0 2px 12px rgba(0, 0, 0, 0.36), inset 0 1px 0 rgba(255, 255, 255, 0.14);
+    --mob-sheet-bg: rgba(20, 20, 24, 0.90);
+    --mob-seg-track: rgba(255, 255, 255, 0.08);
+    --mob-seg-thumb: rgba(255, 255, 255, 0.22);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    html[data-vc-device="mobile"]:not([data-vc-theme="light"]) {
+      color-scheme: dark;
+      --vc-canvas: #07070a;
+      --vc-aurora-alpha: 0.60;
+      --vc-card: rgba(28, 28, 30, 0.72);
+      --vc-ink: #f5f5f7;
+      --vc-ink-2: #b2b2b7;
+      --vc-ink-3: #636366;
+      --vc-bubble-user: var(--vc-accent);
+      --vc-bubble-char: rgba(255, 255, 255, 0.10);
+      --vc-chip: rgba(255, 255, 255, 0.08);
+      --vc-call-accept: #30d158;
+      --vc-scene-dim: 0.55;
+
+      --mob-card: rgba(28, 28, 30, 0.72);
+      --mob-card-strong: rgba(38, 38, 44, 0.86);
+      --mob-chip: rgba(255, 255, 255, 0.08);
+      --mob-tabbar-bg: rgba(24, 24, 28, 0.72);
+      --mob-tab-lens: rgba(255, 255, 255, 0.14);
+      --mob-tab-lens-shadow: 0 2px 12px rgba(0, 0, 0, 0.36), inset 0 1px 0 rgba(255, 255, 255, 0.14);
+      --mob-sheet-bg: rgba(20, 20, 24, 0.90);
+      --mob-seg-track: rgba(255, 255, 255, 0.08);
+      --mob-seg-thumb: rgba(255, 255, 255, 0.22);
+    }
+  }
+
+  /* Story tab deep blue-cyan aurora scene (DESIGN.md §17.3) */
+  .vc-mobile-app[data-vc-mobile-scene="story"] {
+    --vc-canvas: #eaf3f9;
+    --vc-aurora-alpha: 0.52;
+  }
+
+  html[data-vc-device="mobile"][data-vc-theme="dark"] .vc-mobile-app[data-vc-mobile-scene="story"] {
+    --vc-canvas: #050d16;
+    --vc-aurora-alpha: 0.68;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    html[data-vc-device="mobile"]:not([data-vc-theme="light"]) .vc-mobile-app[data-vc-mobile-scene="story"] {
+      --vc-canvas: #050d16;
+      --vc-aurora-alpha: 0.68;
+    }
+  }
+
+  /* Glass degradation (DESIGN.md §17.12) */
+  @media (prefers-reduced-transparency: reduce) {
+    html[data-vc-device="mobile"],
+    html[data-vc-device="mobile"][data-vc-theme="light"],
+    html[data-vc-device="mobile"][data-vc-theme="dark"],
+    html[data-vc-device="mobile"]:not([data-vc-theme="light"]) {
+      --mob-glass-blur: none;
+      --mob-sheet-blur: none;
+      --mob-card: var(--vc-glass-opaque);
+      --mob-card-strong: var(--vc-glass-opaque);
+      --mob-tabbar-bg: var(--vc-glass-opaque);
+      --mob-sheet-bg: var(--vc-glass-opaque);
+      --vc-aurora-alpha: var(--vc-aurora-reduced-alpha);
+    }
+  }
+
+  html[data-vc-device="mobile"][data-vc-low-perf="true"] {
+    --mob-glass-blur: none;
+    --mob-sheet-blur: none;
+    --mob-card: var(--vc-glass-opaque);
+    --mob-card-strong: var(--vc-glass-opaque);
+    --mob-tabbar-bg: var(--vc-glass-opaque);
+    --mob-sheet-bg: var(--vc-glass-opaque);
+    --vc-aurora-alpha: var(--vc-aurora-reduced-alpha);
+  }
+
+  html[data-vc-device="mobile"],
+  html[data-vc-device="mobile"] body,
+  html[data-vc-device="mobile"] #vc-app-root {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    min-height: 100dvh;
+    background-color: var(--vc-canvas);
+    color: var(--vc-ink);
+    font-family: var(--vc-font);
+    -webkit-font-smoothing: antialiased;
+    overscroll-behavior-y: none;
+  }
+
+  .vc-mobile-app {
+    position: relative;
+    width: 100%;
+    min-height: 100dvh;
+    height: 100dvh;
+    overflow: hidden;
+    background-color: var(--vc-canvas);
+    color: var(--vc-ink);
+    transition: background-color var(--vc-dur-standard) var(--vc-ease-out);
+  }
+
+  .vc-mobile-app .ion-page,
+  .vc-mobile-page {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    height: 100%;
+    min-height: 100dvh;
+    background: transparent;
+    color: var(--vc-ink);
+    z-index: var(--vc-z-content);
+  }
+
+  .vc-mobile-shell-frame {
+    position: relative;
+    z-index: var(--vc-z-content);
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    height: 100%;
+    min-height: 100dvh;
+  }
+
+  /* ── Primary Large Title Header (DESIGN.md §17.3: 34/700 left, 44px avatar right) ── */
+  .vc-mobile-primary-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--vc-space-sm);
+    padding-top: calc(12px + var(--ion-safe-area-top, env(safe-area-inset-top, 0px)));
+    padding-right: calc(var(--vc-page-pad) + var(--ion-safe-area-right, env(safe-area-inset-right, 0px)));
+    padding-bottom: 10px;
+    padding-left: calc(var(--vc-page-pad) + var(--ion-safe-area-left, env(safe-area-inset-left, 0px)));
+    flex-shrink: 0;
+  }
+
+  .vc-mobile-large-title {
+    margin: 0;
+    font-size: var(--mob-large-title);
+    font-weight: 700;
+    line-height: 1.2;
+    letter-spacing: -0.02em;
+    color: var(--vc-ink);
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .vc-mobile-header-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--vc-space-xs);
+    flex-shrink: 0;
+  }
+
+  .vc-mobile-glass-circle-btn,
+  .vc-mobile-avatar-trigger {
+    --color: var(--vc-ink);
+    --background: transparent;
+    --min-width: 44px;
+    --min-height: 44px;
+    --border-radius: var(--vc-radius-pill);
+    --icon-margin-start: 0;
+    --icon-margin-end: 0;
+    --icon-font-size: 20px;
+    --padding-start: 0;
+    --padding-end: 0;
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    min-height: 44px;
+    padding: 0;
+    border: none;
+    border-radius: var(--vc-radius-pill);
+    background: var(--mob-card);
+    backdrop-filter: var(--mob-glass-blur);
+    -webkit-backdrop-filter: var(--mob-glass-blur);
+    box-shadow: var(--vc-shadow-rim), var(--vc-shadow-inset-edge), 0 4px 14px rgba(0, 0, 0, 0.06);
+    color: var(--vc-ink);
+    cursor: pointer;
+    flex-shrink: 0;
+    overflow: hidden;
+    transition: transform var(--vc-dur-press) var(--vc-spring), background-color var(--vc-dur-fade) var(--vc-ease-out);
+  }
+
+  .vc-mobile-glass-circle-btn:active,
+  .vc-mobile-avatar-trigger:active {
+    transform: scale(0.95);
+  }
+
+  .vc-mobile-avatar-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: var(--vc-radius-pill);
+    display: block;
+  }
+
+  .vc-mobile-avatar-fallback {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: var(--vc-radius-pill);
+    background: linear-gradient(145deg, color-mix(in srgb, var(--vc-accent) 82%, #ffffff), var(--vc-accent));
+    color: var(--vc-on-accent);
+    font-size: var(--vc-fs-subhead);
+    font-weight: 600;
+    line-height: 1;
+    user-select: none;
+  }
+
+  /* ── Secondary Page Header (DESIGN.md §17.3: left 44px glass back, 17/600 center title) ── */
+  .vc-mobile-secondary-header {
+    display: grid;
+    grid-template-columns: 44px minmax(0, 1fr) 44px;
+    align-items: center;
+    gap: var(--vc-space-xs);
+    padding-top: calc(8px + var(--ion-safe-area-top, env(safe-area-inset-top, 0px)));
+    padding-right: calc(var(--vc-page-pad) + var(--ion-safe-area-right, env(safe-area-inset-right, 0px)));
+    padding-bottom: 8px;
+    padding-left: calc(var(--vc-page-pad) + var(--ion-safe-area-left, env(safe-area-inset-left, 0px)));
+    flex-shrink: 0;
+  }
+
+  .vc-mobile-secondary-title {
+    margin: 0;
+    font-size: var(--vc-fs-headline);
+    font-weight: 600;
+    line-height: var(--vc-lh-headline);
+    color: var(--vc-ink);
+    text-align: center;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .vc-mobile-secondary-right {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  /* ── Page Host Slot Container ── */
+  .vc-mobile-slot-container {
+    flex: 1 1 auto;
+    min-height: 0;
+    width: 100%;
+    overflow-y: auto;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+    padding-right: calc(var(--vc-page-pad) + var(--ion-safe-area-right, env(safe-area-inset-right, 0px)));
+    padding-bottom: var(--mob-tabbar-offset);
+    padding-left: calc(var(--vc-page-pad) + var(--ion-safe-area-left, env(safe-area-inset-left, 0px)));
+    box-sizing: border-box;
+  }
+
+  .vc-mobile-slot-container--secondary {
+    padding-bottom: calc(16px + var(--ion-safe-area-bottom, env(safe-area-inset-bottom, 0px)));
+  }
+
+  .vc-mobile-injected-children {
+    position: relative;
+    z-index: var(--vc-z-content);
+  }
+
+  /* ── Floating Glass Capsule TabBar (DESIGN.md §17.3: outer h=64, l/r=16+safe, b=8+safe) ── */
+  .vc-mobile-tabbar {
+    position: fixed;
+    left: calc(16px + var(--ion-safe-area-left, env(safe-area-inset-left, 0px)));
+    right: calc(16px + var(--ion-safe-area-right, env(safe-area-inset-right, 0px)));
+    bottom: calc(8px + var(--ion-safe-area-bottom, env(safe-area-inset-bottom, 0px)));
+    height: 56px;
+    min-height: 56px;
+    padding: 4px;
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    align-items: center;
+    gap: 2px;
+    border-radius: var(--vc-radius-pill);
+    border: none;
+    background: var(--mob-tabbar-bg);
+    backdrop-filter: var(--mob-glass-blur);
+    -webkit-backdrop-filter: var(--mob-glass-blur);
+    box-shadow: var(--vc-shadow-rim-overlay);
+    z-index: var(--vc-z-shell);
+    transition: opacity var(--vc-dur-quick) var(--vc-ease-out), transform var(--vc-dur-quick) var(--vc-spring);
+  }
+
+  .vc-mobile-tabbar[hidden],
+  .vc-mobile-tabbar[data-hidden="true"] {
+    display: none;
+  }
+
+  .vc-mobile-tab-button {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    width: 100%;
+    height: 56px;
+    min-width: 44px;
+    min-height: 44px;
+    padding: 4px 2px;
+    box-sizing: border-box;
+    border: none;
+    border-radius: var(--vc-radius-pill);
+    background: transparent;
+    color: var(--vc-ink-2);
+    font-family: var(--vc-font);
+    cursor: pointer;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    transition: color var(--vc-dur-fade) var(--vc-ease-out), background-color var(--vc-dur-quick) var(--vc-spring);
+  }
+
+  .vc-mobile-tab-button[data-active="true"],
+  .vc-mobile-tab-button.tab-selected {
+    background: var(--mob-tab-lens);
+    box-shadow: var(--mob-tab-lens-shadow);
+    color: var(--vc-accent-text);
+  }
+
+  .vc-mobile-tab-icon-wrap {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 24px;
+    flex-shrink: 0;
+  }
+
+  .vc-mobile-tab-label {
+    font-size: var(--vc-fs-tab);
+    font-weight: 500;
+    line-height: var(--vc-lh-tab);
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .vc-mobile-tab-button[data-active="true"] .vc-mobile-tab-label,
+  .vc-mobile-tab-button.tab-selected .vc-mobile-tab-label {
+    font-weight: 600;
+  }
+
+  /* Tab badge & unread dot independent of main layout flow */
+  .vc-mobile-tab-badge {
+    position: absolute;
+    top: -4px;
+    right: -10px;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 4px;
+    box-sizing: border-box;
+    border-radius: var(--vc-radius-pill);
+    background: var(--vc-danger-fill);
+    color: var(--vc-on-accent);
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 16px;
+    text-align: center;
+    pointer-events: none;
+  }
+
+  .vc-mobile-tab-dot {
+    position: absolute;
+    top: -1px;
+    right: -3px;
+    width: 8px;
+    height: 8px;
+    border-radius: var(--vc-radius-pill);
+    background: var(--vc-accent);
+    pointer-events: none;
+  }
+
+  /* ── Settings Large Sheet (DESIGN.md §9, §16.7, §17.3 & M13-0) ── */
+  .vc-mobile-settings-modal {
+    --border-radius: var(--vc-radius-sheet) var(--vc-radius-sheet) 0 0;
+    --background: transparent;
+    --box-shadow: var(--vc-shadow-overlay);
+  }
+
+  .vc-mobile-settings-sheet {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    height: 100%;
+    max-height: 100dvh;
+    border-radius: var(--vc-radius-sheet) var(--vc-radius-sheet) 0 0;
+    background: var(--mob-sheet-bg);
+    backdrop-filter: var(--mob-sheet-blur);
+    -webkit-backdrop-filter: var(--mob-sheet-blur);
+    box-shadow: var(--vc-shadow-rim-overlay);
+    color: var(--vc-ink);
+    overflow: hidden;
+  }
+
+  .vc-mobile-sheet-grabber-row {
+    display: flex;
+    justify-content: center;
+    padding-top: 8px;
+    padding-bottom: 2px;
+    flex-shrink: 0;
+  }
+
+  .vc-mobile-sheet-grabber {
+    width: 36px;
+    height: 5px;
+    border-radius: var(--vc-radius-pill);
+    background: var(--vc-ink-3);
+    opacity: 0.45;
+  }
+
+  .vc-mobile-sheet-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--vc-space-sm);
+    padding-top: 4px;
+    padding-right: calc(var(--vc-page-pad) + var(--ion-safe-area-right, env(safe-area-inset-right, 0px)));
+    padding-bottom: 10px;
+    padding-left: calc(var(--vc-page-pad) + var(--ion-safe-area-left, env(safe-area-inset-left, 0px)));
+    flex-shrink: 0;
+  }
+
+  .vc-mobile-sheet-title {
+    margin: 0;
+    font-size: var(--vc-fs-title-2);
+    font-weight: 700;
+    line-height: 1.25;
+    color: var(--vc-ink);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .vc-mobile-sheet-nav-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    min-width: 44px;
+    min-height: 44px;
+    padding: 0 4px;
+    border: none;
+    border-radius: var(--vc-radius-pill);
+    background: transparent;
+    color: var(--vc-accent-text);
+    font-family: var(--vc-font);
+    font-size: var(--vc-fs-headline);
+    font-weight: 500;
+    cursor: pointer;
+  }
+
+  .vc-mobile-sheet-nav-btn--done {
+    justify-content: flex-end;
+  }
+
+  .vc-mobile-sheet-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+    padding-top: 4px;
+    padding-right: calc(var(--vc-page-pad) + var(--ion-safe-area-right, env(safe-area-inset-right, 0px)));
+    padding-bottom: calc(28px + var(--ion-safe-area-bottom, env(safe-area-inset-bottom, 0px)));
+    padding-left: calc(var(--vc-page-pad) + var(--ion-safe-area-left, env(safe-area-inset-left, 0px)));
+    display: flex;
+    flex-direction: column;
+    gap: var(--vc-space-md);
+  }
+
+  .vc-mobile-settings-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .vc-mobile-settings-group-header {
+    padding: 0 12px;
+    font-size: var(--vc-fs-footnote);
+    font-weight: 500;
+    line-height: var(--vc-lh-footnote);
+    color: var(--vc-ink-2);
+  }
+
+  .vc-mobile-settings-card {
+    display: flex;
+    flex-direction: column;
+    border-radius: var(--vc-radius-md);
+    background: var(--mob-card);
+    backdrop-filter: var(--mob-glass-blur);
+    -webkit-backdrop-filter: var(--mob-glass-blur);
+    box-shadow: var(--vc-shadow-rim), var(--vc-shadow-inset-edge);
+    overflow: hidden;
+  }
+
+  /* Account top card in Settings sheet (M13-0) */
+  .vc-mobile-account-row {
+    display: flex;
+    align-items: center;
+    gap: var(--vc-space-sm);
+    width: 100%;
+    min-height: 68px;
+    padding: 12px 14px;
+    box-sizing: border-box;
+    border: none;
+    background: transparent;
+    color: var(--vc-ink);
+    font-family: var(--vc-font);
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .vc-mobile-account-row:disabled,
+  .vc-mobile-account-row[aria-disabled="true"] {
+    cursor: default;
+  }
+
+  .vc-mobile-account-avatar {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 48px;
+    height: 48px;
+    border-radius: var(--vc-radius-pill);
+    background: linear-gradient(145deg, color-mix(in srgb, var(--vc-accent) 82%, #ffffff), var(--vc-accent));
+    color: var(--vc-on-accent);
+    font-size: var(--vc-fs-headline);
+    font-weight: 600;
+    flex-shrink: 0;
+    overflow: hidden;
+  }
+
+  .vc-mobile-account-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+    flex: 1 1 auto;
+  }
+
+  .vc-mobile-account-name {
+    font-size: var(--vc-fs-headline);
+    font-weight: 600;
+    line-height: var(--vc-lh-headline);
+    color: var(--vc-ink);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .vc-mobile-account-sub {
+    font-size: var(--vc-fs-footnote);
+    color: var(--vc-ink-2);
+    line-height: var(--vc-lh-footnote);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* Theme Mode Segmented Radio Control row inside Settings sheet */
+  .vc-mobile-theme-row {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px 14px;
+    box-shadow: var(--vc-shadow-divider-top);
+  }
+
+  .vc-mobile-theme-row-label {
+    font-size: var(--vc-fs-subhead);
+    font-weight: 500;
+    color: var(--vc-ink);
+  }
+
+  .vc-mobile-theme-segment {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 4px;
+    padding: 3px;
+    border-radius: var(--vc-radius-pill);
+    background: var(--mob-seg-track);
+  }
+
+  .vc-mobile-theme-option {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: var(--vc-touch);
+    padding: 6px 10px;
+    box-sizing: border-box;
+    border: none;
+    border-radius: var(--vc-radius-pill);
+    background: transparent;
+    color: var(--vc-ink-2);
+    font-family: var(--vc-font);
+    font-size: var(--vc-fs-footnote);
+    font-weight: 500;
+    text-align: center;
+    cursor: pointer;
+    user-select: none;
+    transition: background-color var(--vc-dur-fade) var(--vc-ease-out), color var(--vc-dur-fade) var(--vc-ease-out);
+  }
+
+  .vc-mobile-theme-radio-input {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: 0;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .vc-mobile-theme-option[data-active="true"] {
+    background: var(--mob-seg-thumb);
+    color: var(--vc-ink);
+    font-weight: 600;
+    box-shadow: var(--vc-shadow-segment);
+  }
+
+  .vc-mobile-theme-option:focus-within {
+    outline: 2px solid var(--vc-accent);
+    outline-offset: 1px;
+  }
+
+  /* Settings list rows with 30px colored icon tiles (DESIGN.md §17.3 & M13-0) */
+  .vc-mobile-settings-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    min-height: 50px;
+    padding: 10px 14px;
+    box-sizing: border-box;
+    border: none;
+    background: transparent;
+    color: var(--vc-ink);
+    font-family: var(--vc-font);
+    text-align: left;
+    cursor: pointer;
+    transition: background-color var(--vc-dur-fade) var(--vc-ease-out);
+  }
+
+  .vc-mobile-settings-row + .vc-mobile-settings-row {
+    box-shadow: var(--vc-shadow-divider-top);
+  }
+
+  .vc-mobile-settings-row:disabled,
+  .vc-mobile-settings-row[aria-disabled="true"] {
+    cursor: default;
+    opacity: 0.56;
+  }
+
+  .vc-mobile-settings-tile {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    border-radius: var(--vc-radius-tile);
+    color: #ffffff;
+    flex-shrink: 0;
+  }
+
+  .vc-mobile-settings-tile[data-tile="blue"] { background-color: var(--vc-tile-blue); }
+  .vc-mobile-settings-tile[data-tile="indigo"] { background-color: var(--vc-tile-indigo); }
+  .vc-mobile-settings-tile[data-tile="purple"] { background-color: var(--vc-tile-purple); }
+  .vc-mobile-settings-tile[data-tile="teal"] { background-color: var(--vc-tile-teal); }
+  .vc-mobile-settings-tile[data-tile="orange"] { background-color: var(--vc-tile-orange); }
+  .vc-mobile-settings-tile[data-tile="green"] { background-color: var(--vc-tile-green); }
+  .vc-mobile-settings-tile[data-tile="cyan"] { background-color: var(--vc-tile-cyan); }
+  .vc-mobile-settings-tile[data-tile="pink"] { background-color: var(--vc-tile-pink); }
+  .vc-mobile-settings-tile[data-tile="red"] { background-color: var(--vc-tile-red); }
+  .vc-mobile-settings-tile[data-tile="gray"] { background-color: var(--vc-tile-gray); }
+
+  .vc-mobile-settings-row-text {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    min-width: 0;
+    flex: 1 1 auto;
+  }
+
+  .vc-mobile-settings-row-title {
+    font-size: var(--vc-fs-body);
+    font-weight: 500;
+    line-height: var(--vc-lh-body);
+    color: var(--vc-ink);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .vc-mobile-settings-chevron {
+    color: var(--vc-ink-3);
+    flex-shrink: 0;
+  }
+
+  /* ── Landscape Adaptation ── */
+  @media (orientation: landscape) and (max-height: 500px) {
+    .vc-mobile-primary-header {
+      padding-top: calc(6px + var(--ion-safe-area-top, env(safe-area-inset-top, 0px)));
+      padding-bottom: 6px;
+    }
+  }
+
+  /* Reduced motion transitions */
+  html[data-vc-reduced-motion="true"] .vc-mobile-app,
+  html[data-vc-reduced-motion="true"] .vc-mobile-tabbar,
+  html[data-vc-reduced-motion="true"] .vc-mobile-tab-button,
+  html[data-vc-reduced-motion="true"] .vc-mobile-glass-circle-btn,
+  html[data-vc-reduced-motion="true"] .vc-mobile-avatar-trigger {
+    transition-duration: var(--vc-dur-reduced);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .vc-mobile-app,
+    .vc-mobile-tabbar,
+    .vc-mobile-tab-button,
+    .vc-mobile-glass-circle-btn,
+    .vc-mobile-avatar-trigger {
+      transition-duration: var(--vc-dur-reduced);
+    }
+  }

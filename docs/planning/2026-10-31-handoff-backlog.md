@@ -483,7 +483,7 @@ Owner 选择 React，要求保留现有正常 UI、优先复用成熟开源组�
 | --- | --- | --- | --- |
 | MB2-0 | P1 | 修订 DESIGN.md 第 17 节；出图、Claude 审核、Owner 选图 | 文档一致性、`.review-queue/MB2-0/` 图与 `PICKS.md` |
 | MB2-1 | P1 | Spike：性能基线、组件选型（Ionic vs 无样式组合）、安卓与 iOS 壳可行性 | 计划第 3.6 节严格档指标、第 3.9 节评估、App 验证项与插件许可 |
-| MB2-2 | P1 | 迁移 `mb-mobile` 后端与契约：MDL-2（V285）、角色来电（V284） | 迁移重排编号、Go 集成、RLS、受管 `hl-proactive` / `voice-chat` |
+| MB2-2 | P1 | 迁移 `mb-mobile` 后端与契约：MDL-2（V284）、角色来电（V285） | 迁移重排编号、Go 集成、RLS、受管 `hl-proactive` / `voice-chat` |
 | MB2-3 | P1 | 手机入口构建与 `/m/` 同源托管 | host-auth 单测、两端构建、电脑端不回归 |
 | MB2-4 | P1 | 共享业务逻辑抽取（电脑端零行为变化） | 电脑端 Vitest、离线全量、受影响受管场景 |
 | MB2-5 | P0 | 手机壳、导航、主题与背景 | `mb2-shell`、`mb2-layout` |
@@ -499,9 +499,11 @@ Owner 选择 React，要求保留现有正常 UI、优先复用成熟开源组�
 | MB2-15 | P1 | 全量验收、视觉终审与合并准备 | Mac 参考环境整组、性能预算、截图终审 |
 | MB2-DB1 | P1 | 记忆遗忘与 MemoryCore 调用预留的锁顺序修复（Owner 2026-11-06 追加授权） | 隔离库双事务回归、Go store/http、RLS、dr2-pages |
 
-- **[问] MB2-0（2026-11-06）**：74 张浅深候选已交付至 `.review-queue/MB2-0/images/`，完整提示词与候选索引见同目录上级 `PROMPTS.md` / `NOTES.md`。等待 Claude 填写 `REVIEW.md`，再由 Owner 填写 `PICKS.md`；未选图的页面暂停实现。
+- **[问] MB2-0（2026-11-06，后续已回填）**：审图分支 `review/mb2-0-images@69e3096f` 含84张候选与11张Spike同视口对比，完整提示词/索引随分支交付。Claude首次REVIEW已完成，随后按意见重出10张图；等待重出后复审及Owner确认PICKS，未选图页面暂停实现。
 
 - **[问] MB2-1（2026-11-06）**：[报告](2026-11-06-mb2-spike-report.md)已交付并固定停止。严格档与Android Doze持续流未通过，iOS部分系统能力及真机仍有未完成项；B样板有EJS宿主契约/Toast遮挡缺陷，A仅作有条件优先候选。请Owner确认后续组件验证方向、性能门槛及Android锁屏后暂停/回前台继续是否可接受，并确认远程Capacitor入口与iOS分享/通知边界；在确认前不启动MB2-2及之后条目。
   - **答（Owner 2026-11-06）**：采用 Ionic React；严格档保留，历史 300 ms 以预取与缓存在 MB2-6 验收；安卓 Doze 接受暂停 + 回前台继续并提供可选电池优化豁免；`server.url` 加载远程 `/m/` 且原生桥只对顶层文档可用（计划第 3.7、3.9 节）。可继续 MB2-2–MB2-4；需新图的页面等 MB2-0 选图。
 
 - MB2-DB1（Owner 2026-11-06 授权）：MB2-4 受管 dr2-pages 中记忆删除返回 503；静态检查发现 memory_forget_begin 先 owner barrier 后 work_item，而 go_prepare_memorycore_call 先 work_item 后 owner barrier。先在隔离库确认，再只统一现有锁顺序、增加一个顺延迁移和直接并发回归；不改外部接口、生产数据或引入新机制。修复并通过相关验证后继续受阻的 MB2-4 页面验收。
+
+- **[问] MB2-5 / MB2-11（2026-11-06）**：锁定 `@ionic/react-router@9.0.10` 的 `IonReactRouter` 使用 React Router `BrowserRouter`，公开 `useIonRouter` 没有 SPA 导航 blocker；`react-router@6.30.4` 的 `useBlocker` 要求 data router，`IonModal.canDismiss` 只保护模态关闭，不能阻止浏览器路由返回。真实手机表单接入前须确定公开支持的离开保护方案；不采用手写历史栈或 `popstate` 补偿。本轮 Owner 限定的标签栏、大标题、页面栈、设置大 sheet 与极光背景仍可独立交付，尚无手机表单消费者，离开保护验收保持未完成，不用仅供测试的 dirty/save 接口代替。
