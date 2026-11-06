@@ -302,7 +302,7 @@ W03 集成收口的受管链路：ST 前台生成经 server plugin 桥接 Go 后
 
 桌面 HTML 卡片和 EJS 的执行权限来自当前角色或预设的 Helper 脚本启用名单，并受对应扩展开关约束。普通模型或导入内容中的 HTML/EJS 不自动取得执行权限；全局脚本启用只控制全局脚本。卡片实例销毁或切换会话后，旧回调不能写入新会话。消息与变量变更统一经 Session/F2/CAS 提交，MVU 的重新处理与重演在变量写回、刷新及异步渲染回调完成后各保存一次。
 
-手机源码仍在 `mb-mobile`，联合候选为 `ff2af0c0`（含 `993fb625` 地址适配及原生后台F2冲突处理）；本分支不合入该分支的手机业务或 Go 变更。联合受管验收在手机工作树运行既有 `npm --prefix mobile run build:h5`，将生成的 `server-plugin/virtual-companion/mobile-dist/` 复制到当前插件同路径，再运行原 `assemble-managed` / `accept-managed`。产物固定覆盖一份、忽略不提交；缺少 H5 时 `/m/` 明确返回 503，不能拿桌面根页充当手机引擎。联合发布须带该新版 H5，本轮未进行生产镜像构建或部署。
+手机源码仍在 `mb-mobile`，联合候选为 `ff2af0c0`（含 `993fb625` 地址适配及原生后台F2冲突处理）；本分支不合入该分支的手机业务或 Go 变更。联合受管验收在手机工作树运行既有 `npm --prefix mobile run build:h5`，将生成的 `server-plugin/virtual-companion/mobile-dist/` 复制到当前插件同路径，再运行原 `assemble-managed` / `accept-managed`。产物固定覆盖一份、忽略不提交；缺少 H5 时 `/m/` 明确返回 503，不能拿桌面根页充当手机引擎。2026-11-06 Owner 决定桌面先行合并、手机重构后单独发布：过渡期手机直接使用桌面窄窗版，手机发布时再携带新版 H5。本轮未进行生产镜像构建或部署。
 
 ## 浏览器验收（scripts/accept.mjs）
 

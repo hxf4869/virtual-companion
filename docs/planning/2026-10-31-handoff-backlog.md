@@ -452,10 +452,11 @@ Owner 选择 React，要求保留现有正常 UI、优先复用成熟开源组�
 | DR2-13 | P1 | 旧代码收尾、同提交全量验证与清单回填 | 标准检查、Vitest、T11 整组、README 和本次临时资源回收 |
 | DR2-14 | P1 | **已完成（2026-11-06）**：锁定源码统一、内容与请求边界、数据/实例归属、Helper 与 Slash 收敛 | `41ae25f2`；统一 bundle/HTTP ESM/Node、替代算法删除、MVU 单次保存、真实生产差分与 F2/CAS/隔离/清理全部验收；详见计划 Task 14 的 R0–R6 |
 | DR2-15 | P1 | 常用 Tavern Helper 接口批 1–3 | MVU/EJS、世界书、消息写入、宏与显式不支持接口 |
+| DR2-16 | P1 | 分支审计修复与合并准备（2026-11-06 新增：Owner 要求审计全分支并决定桌面先行合并） | 审计发现的提醒/日记/收藏/弹窗/跳转缺陷修复；已到期的跟进集成测试修复；同一提交 `check.sh` 全量与 T11 受管整组 |
 
 ### 后续独立事项（DR2-14 已完成）
 
-- 合并与部署前需和 `mb-mobile` 一起验收和发布，在 [Dockerfile.st](../../ops/deploy/v2/Dockerfile.st) 增加 `mobile-dist` 构建，确认 `/m/` 可访问并连接 `/native/`。
+- 2026-11-06 Owner 决定桌面先行合并 main，不再等待 `mb-mobile`；手机端重构后单独发布。过渡期手机直接使用桌面窄窗版，`/m/` 在手机产物接入前返回 503，`/native/` 保留。手机发布时再在 [Dockerfile.st](../../ops/deploy/v2/Dockerfile.st) 增加 `mobile-dist` 构建，并确认 `/m/` 可访问、能连接 `/native/`。
 - DR2-14 的 Helper 编译与六类补充修复于 2026-11-05 获 Owner 批准，已于 2026-11-06 在 `41ae25f2` 完成 R0–R6。仓库检查、1175 项离线、148 项 Vitest、类型/双构建、原生桥与 5 项真实受管场景全部通过；本轮临时资源已清理。未引入新的合并或发布授权。
 - DR2-15 留下的 Helper 接口目前没有已知卡片消费者。调用时抛出 `VC_HELPER_UNSUPPORTED:<name>`。下表对应当前源码中的显式不支持项。[桌面 Helper 运行入口](../../integrations/sillytavern/extension/vc-model-settings/desktop/standalone/cards/index.js)
 - MB 完成后评估清理 `/native/` 中 uni-app 已接管的旧手机外壳，例如标签栏、会话列表与手机页面栈。先确认 uni-app 切进 ST 视图时旧外壳不会露出，返回及原生卡片路径仍可用。

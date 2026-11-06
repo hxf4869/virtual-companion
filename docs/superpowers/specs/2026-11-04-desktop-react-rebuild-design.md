@@ -64,8 +64,8 @@ Claude 审计 `codex/desktop-independent-frontend` 后确认根因是结构性�
 - 许可：V2 依赖 PolyForm Noncommercial 的 Tavern Helper，只供 Owner 本人非商业使用；新依赖须在
   `scripts/checks/license-inventory.yaml` 登记并通过 `check_licenses.py`；打包依赖许可由 `build-desktop.mjs` 自托管。
 - 语音：TTS/ASR 只经 Go 后端；浏览器不直连。
-- 部署：本项目不授权部署；合并 `main` 与生产部署需 Owner 另行决定（且须与 `mb-mobile` 联合发布，
-  并补镜像中的 `mobile-dist` 构建步骤，见第 10 节）。
+- 部署：本项目不授权部署；合并 `main` 与生产部署需 Owner 另行决定。2026-11-06 Owner 决定桌面先行合并，
+  不再与 `mb-mobile` 联合发布；过渡期手机直接使用桌面窄窗版，手机重构后单独发布并补镜像中的 `mobile-dist` 构建（见第 10 节）。
 - 存储与清理：受管验收的容器、卷、临时目录按 OP-11 规则在任务结束前回收。
 
 ## 4. 目标架构

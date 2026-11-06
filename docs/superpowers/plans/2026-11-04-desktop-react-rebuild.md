@@ -11,6 +11,8 @@
 
 **Tech Stack:** React 19.3、TypeScript 5.9、Vite 8、Base UI 1.9、TanStack Query 5 / Router 1、react-hook-form + zod、zustand 5、cmdk、emoji-mart、wavesurfer.js 8、yet-another-react-lightbox、@dnd-kit、@monaco-editor/react、Vitest + Testing Library。
 
+**合并决策（2026-11-06 Owner）：** 桌面先行合并 main，手机重构后单独发布；合并前门槛与进度见 TODO「DR2-16」。
+
 **Spec:** `docs/superpowers/specs/2026-11-04-desktop-react-rebuild-design.md`（每个任务开始前读第 2、4、6、9、10 节）
 
 ## 0. 执行方式（调度者用；Owner 自行让 Gemini 执行时照此）
@@ -522,6 +524,8 @@ export function useChatSnapshot(bridge: SessionBridge): ChatSnapshot;
 
 ### Task 15: Tavern Helper 接口补齐（与 T14 串行，同一写入 owner）
 
+**状态：已完成（2026-11-04，提交 `0fc100ad`、`b26b0a23`、`2785ac5e`，回填 `f6f64ddf`）。** 验收记录见 TODO「DR2-15」。
+
 原生 ST 下复杂卡可用的 Helper 接口，独立桌面缺 106 个顶层 API、1 个 `_bind`（`_registerMacroLike`）、15 个 `builtin.*`。这是相对原生宿主的回退，按"引擎行为不变"补回；**按卡片实际使用频率分批**，每个函数行为对照上游 `JS-Slash-Runner/src/function/<模块>.ts` 同名实现。
 
 **Files:** Modify `desktop/standalone/cards/{index.js,helper-worldbook.js,helper-message.js,helper-preset.js,helper-script.js,helper-util.js,helper-host.js,ejs-host.js}`、`engine/helper-types.js`；Create `cards/helper-character.js`、`cards/helper-persona.js`、`cards/helper-slash.js`、`cards/helper-inject.js`、`cards/helper-regex.js`；Test `integrations/sillytavern/tests/desktop-helper-api.test.mjs`。
@@ -531,6 +535,6 @@ export function useChatSnapshot(bridge: SessionBridge): ChatSnapshot;
 - **批 3 · 常见复杂卡高频**：世界书旧名包装 7 个（`setLorebookEntries`、`createLorebookEntries`、`createLorebookEntry`、`deleteLorebookEntries`、`deleteLorebookEntry`、`replaceLorebookEntries`、`updateLorebookEntriesWith`，包装现有 `*WorldbookEntries`）、`createLorebook`/`deleteLorebook`；消息增删 `createChatMessages`、`deleteChatMessages`、`rotateChatMessages`（经 `SessionBridge` 的 mutation 路径与 F2 保存）；`injectPrompts`/`uninjectPrompts`（复用 `helper-computation.js` 的注入逻辑）；只读 `getCharData`、`getCharAvatarPath`、`getCurrentCharacterName`、`getCurrentPersonaName`、`getPersonaAvatarPath`、`getChatHistoryBrief`、`getChatHistoryDetail`；`formatAsTavernRegexedString`、`formatAsDisplayedMessage`、`retrieveDisplayedMessage`、`refreshOneMessage`；`getTavernRegexes`、`isCharacterTavernRegexesEnabled`；`builtin.{uuidv4,copyText,renderMarkdown,parseRegexFromString,duringGenerating}`。
 - **不做（记入 backlog 末尾，标注"无已知卡片消费者"）**：`audio.*`（13）、`extension.*`（9）、`file.*`（3）、`import_raw.*`（5）、`updateTavernHelper`、`updateFrontendVersion`、角色 / 人设 / 预设的创建与删除类写接口、其余 `builtin.*`（`promptManager`、`reloadEditor*`、`renderPromptManager*` 等依赖原生面板）。调用未实现函数时抛 `Error('VC_HELPER_UNSUPPORTED:<name>')`，并在控制台给出函数名，不静默。
 
-- [ ] **Step 1: 写失败测试** —— `desktop-helper-api.test.mjs`：`exports all batch 1–3 names on TavernHelper and iframe window`（逐名断言 `typeof === 'function'` 或对象）；`setLorebookSettings round-trips world_info_settings`；`triggerSlash '/setvar key=a 1' updates chat variable`；`createChatMessages appends and persists via F2 save once`；`unsupported helper throws VC_HELPER_UNSUPPORTED with name`；`internal _ helpers are not on public TavernHelper`。
-- [ ] **Step 2: 运行确认失败** → **Step 3: 按批实现**（每批后跑本测试与 `nf-cards`）→ **Step 4: 验证** 离线单测 `# fail 0`、受管 `--filter nf-cards,dr2-mvu-new`。
-- [ ] **Step 5: 提交** —— `git commit -m "feat(DR2-15): 补齐复杂卡常用 Tavern Helper 接口"`
+- [x] **Step 1: 写失败测试** —— `desktop-helper-api.test.mjs`：`exports all batch 1–3 names on TavernHelper and iframe window`（逐名断言 `typeof === 'function'` 或对象）；`setLorebookSettings round-trips world_info_settings`；`triggerSlash '/setvar key=a 1' updates chat variable`；`createChatMessages appends and persists via F2 save once`；`unsupported helper throws VC_HELPER_UNSUPPORTED with name`；`internal _ helpers are not on public TavernHelper`。
+- [x] **Step 2: 运行确认失败** → **Step 3: 按批实现**（每批后跑本测试与 `nf-cards`）→ **Step 4: 验证** 离线单测 `# fail 0`、受管 `--filter nf-cards,dr2-mvu-new`。
+- [x] **Step 5: 提交** —— `git commit -m "feat(DR2-15): 补齐复杂卡常用 Tavern Helper 接口"`
