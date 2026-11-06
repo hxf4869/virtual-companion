@@ -241,6 +241,8 @@ func operation(path string) string {
 		return "age_verification"
 	case "/api/v1/relationships":
 		return "relationships"
+	case "/api/v1/chats":
+		return "stored_chats"
 	case "/api/v1/conversations":
 		return "conversations"
 	case "/api/v1/conversations/wipe-preview":
@@ -318,6 +320,19 @@ func operation(path string) string {
 	case "/api/v1/voice/asr":
 		return "voice_asr"
 	default:
+		if chatPath, ok := strings.CutPrefix(path, "/api/v1/chats/"); ok {
+			parts := strings.Split(chatPath, "/")
+			switch {
+			case len(parts) == 1:
+				return "stored_chat"
+			case len(parts) == 2 && parts[1] == "messages":
+				return "stored_chat_messages"
+			case len(parts) == 3 && parts[1] == "messages":
+				return "stored_chat_message"
+			case len(parts) == 2 && parts[1] == "changes":
+				return "stored_chat_changes"
+			}
+		}
 		if strings.HasPrefix(path, "/api/v1/voice-clips/") {
 			if strings.HasSuffix(path, "/audio") {
 				return "voice_audio"

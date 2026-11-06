@@ -179,6 +179,7 @@ type Core struct {
 
 func (s *Server) registerCore() {
 	s.registerVoice()
+	s.registerStoredChatReads()
 	s.mux.HandleFunc("POST /api/v1/service/memorycore/llm", s.handleMemoryCoreLLM)
 	s.mux.HandleFunc("GET /api/v1/admin/embedding-config", s.handleGetEmbeddingConfig)
 	s.mux.HandleFunc("PUT /api/v1/admin/embedding-config", s.handleSaveEmbeddingConfig)
@@ -310,6 +311,10 @@ func (s *Server) registerCore() {
 }
 
 func (s *Server) corePrincipal(w http.ResponseWriter, r *http.Request, write bool) *auth.Principal {
+	return s.corePrincipalWithUnavailableCode(w, r, write, "INVALID_REQUEST")
+}
+
+func (s *Server) corePrincipalWithUnavailableCode(w http.ResponseWriter, r *http.Request, write bool, unavailableCode string) *auth.Principal {
 	if write {
 		s.metrics.ObserveCoreWrite()
 		if !auth.AllowOrigin(r.Header.Get("Origin"), s.cfg.HTTP.AllowedOrigins) {
@@ -332,7 +337,7 @@ func (s *Server) corePrincipal(w http.ResponseWriter, r *http.Request, write boo
 	}
 	p, err := s.core.Sessions.Lookup(r.Context(), token)
 	if err != nil {
-		s.writeAPIError(w, http.StatusServiceUnavailable, "INVALID_REQUEST", "temporarily unavailable")
+		s.writeAPIError(w, http.StatusServiceUnavailable, unavailableCode, "temporarily unavailable")
 		return nil
 	}
 	if p == nil || p.AccountID <= 0 {

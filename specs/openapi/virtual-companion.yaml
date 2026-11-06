@@ -7977,8 +7977,7 @@ paths:
     get:
       operationId: listStoredChats
       summary: List chat summaries by descending update keyset
-      description: 'SX-2 frozen contract only; not implemented. DEFER in specs/catalog/go-v1-api-scope.yaml until
-        SX-3–SX-6 implement and validate it. Owner/RLS scoped cookieAuth; expected account/session headers are preconditions,
+      description: 'SX-4 implemented and validated; KEEP in specs/catalog/go-v1-api-scope.yaml. Owner/RLS scoped cookieAuth; expected account/session headers are preconditions,
         never authorization. State-changing requests use existing CSRF and exact Origin checks. Sort by (updatedAt
         DESC, chatId DESC). cursor is an exclusive opaque tuple bound to owner/filter/expiry, not a snapshot. No body
         scans. Concurrent updates may move rows between pages: deduplicate by chatId and refresh the head. authorityEpoch
@@ -8093,8 +8092,7 @@ paths:
     get:
       operationId: getStoredChat
       summary: Read full chat header, metadata and versions
-      description: SX-2 frozen contract only; not implemented. DEFER in specs/catalog/go-v1-api-scope.yaml until
-        SX-3–SX-6 implement and validate it. Owner/RLS scoped cookieAuth; expected account/session headers are preconditions,
+      description: SX-4 implemented and validated; KEEP in specs/catalog/go-v1-api-scope.yaml. Owner/RLS scoped cookieAuth; expected account/session headers are preconditions,
         never authorization. State-changing requests use existing CSRF and exact Origin checks. Current state only;
         protected binding/source fields remain server-owned.
       security:
@@ -8180,8 +8178,7 @@ paths:
     get:
       operationId: listStoredMessages
       summary: Read current message history with before/after keysets
-      description: 'SX-2 frozen contract only; not implemented. DEFER in specs/catalog/go-v1-api-scope.yaml until
-        SX-3–SX-6 implement and validate it. Owner/RLS scoped cookieAuth; expected account/session headers are preconditions,
+      description: 'SX-4 implemented and validated; KEEP in specs/catalog/go-v1-api-scope.yaml. Owner/RLS scoped cookieAuth; expected account/session headers are preconditions,
         never authorization. State-changing requests use existing CSRF and exact Origin checks. Same direction semantics
         as existing listMessages: no before/after returns the LAST limit messages; before returns the nearest strictly
         older page, after returns the nearest strictly later page. Rows ALWAYS ascend in display order; before/after
@@ -8318,8 +8315,7 @@ paths:
     get:
       operationId: getStoredMessage
       summary: Read one full message by stable ID
-      description: SX-2 frozen contract only; not implemented. DEFER in specs/catalog/go-v1-api-scope.yaml until
-        SX-3–SX-6 implement and validate it. Owner/RLS scoped cookieAuth; expected account/session headers are preconditions,
+      description: SX-4 implemented and validated; KEEP in specs/catalog/go-v1-api-scope.yaml. Owner/RLS scoped cookieAuth; expected account/session headers are preconditions,
         never authorization. State-changing requests use existing CSRF and exact Origin checks. Always view=full with
         all candidates, variables and unknown fields; independent of current page. A deleted message never returns
         retained body data.
@@ -8514,8 +8510,7 @@ paths:
     get:
       operationId: listStoredChatChanges
       summary: Catch up complete chat transactions by revision
-      description: SX-2 frozen contract only; not implemented. DEFER in specs/catalog/go-v1-api-scope.yaml until
-        SX-3–SX-6 implement and validate it. Owner/RLS scoped cookieAuth; expected account/session headers are preconditions,
+      description: SX-4 implemented and validated; KEEP in specs/catalog/go-v1-api-scope.yaml. Owner/RLS scoped cookieAuth; expected account/session headers are preconditions,
         never authorization. State-changing requests use existing CSRF and exact Origin checks. Use the chatRevision
         from an initial current page as afterRevision, then follow throughRevision until caught up. Read changed IDs
         in full and remove deleted IDs; order changes invalidate cursor order. Responses do not retain old message

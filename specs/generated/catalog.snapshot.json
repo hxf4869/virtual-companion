@@ -1202,8 +1202,8 @@
         "adr": "docs/decisions/0007-go-companion-runtime.md",
         "catalogId": "go-v1-api-scope",
         "counts": {
-          "DEFER": 28,
-          "KEEP": 125,
+          "DEFER": 23,
+          "KEEP": 130,
           "RETIRE": 42,
           "SIMPLIFY": 5
         },
@@ -3103,11 +3103,15 @@
           },
           {
             "currentH5Callers": [],
-            "decision": "DEFER",
+            "decision": "KEEP",
+            "keepBecause": [
+              "owner-instruction",
+              "core-outcome"
+            ],
             "method": "GET",
             "operationId": "listStoredChats",
             "path": "/api/v1/chats",
-            "replacementOrImpact": "SX-2 / ADR-0013: frozen planned contract only, NOT implemented or routed. SX-3–SX-6 must implement and validate before promoting this operation to KEEP; DEFER records implementation deferral, not rejection of the approved ST-exit direction."
+            "replacementOrImpact": "SX-4: implemented owner-scoped Go chat reads with authenticated current-state keysets, full-message projections and changes reconciliation. Message q searches selected-candidate text across the full encrypted chat. ST authority remains unchanged until the separately authorized SX-8 cutover."
           },
           {
             "currentH5Callers": [],
@@ -3119,11 +3123,15 @@
           },
           {
             "currentH5Callers": [],
-            "decision": "DEFER",
+            "decision": "KEEP",
+            "keepBecause": [
+              "owner-instruction",
+              "core-outcome"
+            ],
             "method": "GET",
             "operationId": "getStoredChat",
             "path": "/api/v1/chats/{chatId}",
-            "replacementOrImpact": "SX-2 / ADR-0013: frozen planned contract only, NOT implemented or routed. SX-3–SX-6 must implement and validate before promoting this operation to KEEP; DEFER records implementation deferral, not rejection of the approved ST-exit direction."
+            "replacementOrImpact": "SX-4: implemented owner-scoped Go chat reads with authenticated current-state keysets, full-message projections and changes reconciliation. Message q searches selected-candidate text across the full encrypted chat. ST authority remains unchanged until the separately authorized SX-8 cutover."
           },
           {
             "currentH5Callers": [],
@@ -3135,11 +3143,15 @@
           },
           {
             "currentH5Callers": [],
-            "decision": "DEFER",
+            "decision": "KEEP",
+            "keepBecause": [
+              "owner-instruction",
+              "core-outcome"
+            ],
             "method": "GET",
             "operationId": "listStoredMessages",
             "path": "/api/v1/chats/{chatId}/messages",
-            "replacementOrImpact": "SX-2 / ADR-0013: frozen planned contract only, NOT implemented or routed. SX-3–SX-6 must implement and validate before promoting this operation to KEEP; DEFER records implementation deferral, not rejection of the approved ST-exit direction."
+            "replacementOrImpact": "SX-4: implemented owner-scoped Go chat reads with authenticated current-state keysets, full-message projections and changes reconciliation. Message q searches selected-candidate text across the full encrypted chat. ST authority remains unchanged until the separately authorized SX-8 cutover."
           },
           {
             "currentH5Callers": [],
@@ -3151,11 +3163,15 @@
           },
           {
             "currentH5Callers": [],
-            "decision": "DEFER",
+            "decision": "KEEP",
+            "keepBecause": [
+              "owner-instruction",
+              "core-outcome"
+            ],
             "method": "GET",
             "operationId": "getStoredMessage",
             "path": "/api/v1/chats/{chatId}/messages/{messageId}",
-            "replacementOrImpact": "SX-2 / ADR-0013: frozen planned contract only, NOT implemented or routed. SX-3–SX-6 must implement and validate before promoting this operation to KEEP; DEFER records implementation deferral, not rejection of the approved ST-exit direction."
+            "replacementOrImpact": "SX-4: implemented owner-scoped Go chat reads with authenticated current-state keysets, full-message projections and changes reconciliation. Message q searches selected-candidate text across the full encrypted chat. ST authority remains unchanged until the separately authorized SX-8 cutover."
           },
           {
             "currentH5Callers": [],
@@ -3183,11 +3199,15 @@
           },
           {
             "currentH5Callers": [],
-            "decision": "DEFER",
+            "decision": "KEEP",
+            "keepBecause": [
+              "owner-instruction",
+              "core-outcome"
+            ],
             "method": "GET",
             "operationId": "listStoredChatChanges",
             "path": "/api/v1/chats/{chatId}/changes",
-            "replacementOrImpact": "SX-2 / ADR-0013: frozen planned contract only, NOT implemented or routed. SX-3–SX-6 must implement and validate before promoting this operation to KEEP; DEFER records implementation deferral, not rejection of the approved ST-exit direction."
+            "replacementOrImpact": "SX-4: implemented owner-scoped Go chat reads with authenticated current-state keysets, full-message projections and changes reconciliation. Message q searches selected-candidate text across the full encrypted chat. ST authority remains unchanged until the separately authorized SX-8 cutover."
           },
           {
             "currentH5Callers": [],
@@ -3264,7 +3284,7 @@
           }
         ]
       },
-      "sha256": "0c9f27ffe2d9696c36eab0d556fd691b0e73da0d9e2f31fc07e16d9536ef599d"
+      "sha256": "5041e856fab9b8c1d84d993ac778308d9f52d915195c9543c0fe3e86f9425051"
     },
     "memory-candidate-statuses.yaml": {
       "document": {

@@ -7423,12 +7423,11 @@ paths:
     get:
       operationId: listStoredChats
       summary: List chat summaries by descending update keyset
-      description: 'SX-2 frozen contract only; not implemented. DEFER in specs/catalog/go-v1-api-scope.yaml until SX-3–SX-6
-        implement and validate it. Owner/RLS scoped cookieAuth; expected account/session headers are preconditions, never
-        authorization. State-changing requests use existing CSRF and exact Origin checks. Sort by (updatedAt DESC, chatId
-        DESC). cursor is an exclusive opaque tuple bound to owner/filter/expiry, not a snapshot. No body scans. Concurrent
-        updates may move rows between pages: deduplicate by chatId and refresh the head. authorityEpoch is always returned,
-        including for an empty account, for first create/import.'
+      description: 'SX-4 implemented and validated; KEEP in specs/catalog/go-v1-api-scope.yaml. Owner/RLS scoped cookieAuth;
+        expected account/session headers are preconditions, never authorization. State-changing requests use existing CSRF
+        and exact Origin checks. Sort by (updatedAt DESC, chatId DESC). cursor is an exclusive opaque tuple bound to owner/filter/expiry,
+        not a snapshot. No body scans. Concurrent updates may move rows between pages: deduplicate by chatId and refresh the
+        head. authorityEpoch is always returned, including for an empty account, for first create/import.'
       security:
       - cookieAuth: []
       parameters:
@@ -7539,10 +7538,9 @@ paths:
     get:
       operationId: getStoredChat
       summary: Read full chat header, metadata and versions
-      description: SX-2 frozen contract only; not implemented. DEFER in specs/catalog/go-v1-api-scope.yaml until SX-3–SX-6
-        implement and validate it. Owner/RLS scoped cookieAuth; expected account/session headers are preconditions, never
-        authorization. State-changing requests use existing CSRF and exact Origin checks. Current state only; protected binding/source
-        fields remain server-owned.
+      description: SX-4 implemented and validated; KEEP in specs/catalog/go-v1-api-scope.yaml. Owner/RLS scoped cookieAuth;
+        expected account/session headers are preconditions, never authorization. State-changing requests use existing CSRF
+        and exact Origin checks. Current state only; protected binding/source fields remain server-owned.
       security:
       - cookieAuth: []
       parameters:
@@ -7625,21 +7623,21 @@ paths:
     get:
       operationId: listStoredMessages
       summary: Read current message history with before/after keysets
-      description: 'SX-2 frozen contract only; not implemented. DEFER in specs/catalog/go-v1-api-scope.yaml until SX-3–SX-6
-        implement and validate it. Owner/RLS scoped cookieAuth; expected account/session headers are preconditions, never
-        authorization. State-changing requests use existing CSRF and exact Origin checks. Same direction semantics as existing
-        listMessages: no before/after returns the LAST limit messages; before returns the nearest strictly older page, after
-        returns the nearest strictly later page. Rows ALWAYS ascend in display order; before/after are mutually exclusive
-        (400). Cursors bind owner, chatId, authorityEpoch, orderRevision, view, boundary and 15-minute expiry. Ordinary tail
-        append/edit/delete does not invalidate orderRevision; reorder/explicit insertion does and old cursors return 410 CHAT_CURSOR_EXPIRED.
-        No snapshotRevision or historical reads. Track chatRevision with changes for concurrent edits/deletes/appends. anchorMessageId
-        is a fresh current read ending at and including that stable message, with up to limit-1 older messages; mutually exclusive
-        with before/after. Deleted/foreign anchor is 404; clients then reopen the tail. include=chat returns full header/metadata
-        and domain versions from the SAME read for one-request first opening. Empty chats return an empty page, not a header-as-message.
-        Owner-approved SX-4 extension (2026-11-07): q searches current selected-candidate text across the entire chat, using
-        a trimmed, Unicode case-insensitive substring. Cursors bind the normalized query; paging, anchor and hasOlder/hasNewer
-        use that same filtered set. A nonmatching anchor returns 404. Search never filters only the already-loaded client
-        page, and does not search deselected candidates.'
+      description: 'SX-4 implemented and validated; KEEP in specs/catalog/go-v1-api-scope.yaml. Owner/RLS scoped cookieAuth;
+        expected account/session headers are preconditions, never authorization. State-changing requests use existing CSRF
+        and exact Origin checks. Same direction semantics as existing listMessages: no before/after returns the LAST limit
+        messages; before returns the nearest strictly older page, after returns the nearest strictly later page. Rows ALWAYS
+        ascend in display order; before/after are mutually exclusive (400). Cursors bind owner, chatId, authorityEpoch, orderRevision,
+        view, boundary and 15-minute expiry. Ordinary tail append/edit/delete does not invalidate orderRevision; reorder/explicit
+        insertion does and old cursors return 410 CHAT_CURSOR_EXPIRED. No snapshotRevision or historical reads. Track chatRevision
+        with changes for concurrent edits/deletes/appends. anchorMessageId is a fresh current read ending at and including
+        that stable message, with up to limit-1 older messages; mutually exclusive with before/after. Deleted/foreign anchor
+        is 404; clients then reopen the tail. include=chat returns full header/metadata and domain versions from the SAME
+        read for one-request first opening. Empty chats return an empty page, not a header-as-message. Owner-approved SX-4
+        extension (2026-11-07): q searches current selected-candidate text across the entire chat, using a trimmed, Unicode
+        case-insensitive substring. Cursors bind the normalized query; paging, anchor and hasOlder/hasNewer use that same
+        filtered set. A nonmatching anchor returns 404. Search never filters only the already-loaded client page, and does
+        not search deselected candidates.'
       security:
       - cookieAuth: []
       parameters:
@@ -7762,10 +7760,10 @@ paths:
     get:
       operationId: getStoredMessage
       summary: Read one full message by stable ID
-      description: SX-2 frozen contract only; not implemented. DEFER in specs/catalog/go-v1-api-scope.yaml until SX-3–SX-6
-        implement and validate it. Owner/RLS scoped cookieAuth; expected account/session headers are preconditions, never
-        authorization. State-changing requests use existing CSRF and exact Origin checks. Always view=full with all candidates,
-        variables and unknown fields; independent of current page. A deleted message never returns retained body data.
+      description: SX-4 implemented and validated; KEEP in specs/catalog/go-v1-api-scope.yaml. Owner/RLS scoped cookieAuth;
+        expected account/session headers are preconditions, never authorization. State-changing requests use existing CSRF
+        and exact Origin checks. Always view=full with all candidates, variables and unknown fields; independent of current
+        page. A deleted message never returns retained body data.
       security:
       - cookieAuth: []
       parameters:
@@ -7956,13 +7954,13 @@ paths:
     get:
       operationId: listStoredChatChanges
       summary: Catch up complete chat transactions by revision
-      description: SX-2 frozen contract only; not implemented. DEFER in specs/catalog/go-v1-api-scope.yaml until SX-3–SX-6
-        implement and validate it. Owner/RLS scoped cookieAuth; expected account/session headers are preconditions, never
-        authorization. State-changing requests use existing CSRF and exact Origin checks. Use the chatRevision from an initial
-        current page as afterRevision, then follow throughRevision until caught up. Read changed IDs in full and remove deleted
-        IDs; order changes invalidate cursor order. Responses do not retain old message bodies. Future afterRevision is 400
-        INVALID_REQUEST. Events survive 7 days. A full-history script baseline is runnable only after reconciliation with
-        current revisions; retry/rebuild if reorder or concurrent writes prevent a coherent baseline.
+      description: SX-4 implemented and validated; KEEP in specs/catalog/go-v1-api-scope.yaml. Owner/RLS scoped cookieAuth;
+        expected account/session headers are preconditions, never authorization. State-changing requests use existing CSRF
+        and exact Origin checks. Use the chatRevision from an initial current page as afterRevision, then follow throughRevision
+        until caught up. Read changed IDs in full and remove deleted IDs; order changes invalidate cursor order. Responses
+        do not retain old message bodies. Future afterRevision is 400 INVALID_REQUEST. Events survive 7 days. A full-history
+        script baseline is runnable only after reconciliation with current revisions; retry/rebuild if reorder or concurrent
+        writes prevent a coherent baseline.
       security:
       - cookieAuth: []
       parameters:
