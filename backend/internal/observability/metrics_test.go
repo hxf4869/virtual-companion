@@ -2,6 +2,7 @@ package observability
 
 import (
 	"bytes"
+	"math"
 	"strings"
 	"testing"
 	"time"
@@ -13,7 +14,7 @@ func TestProcessSnapshotAndPrometheus(t *testing.T) {
 	if snap.Goroutines < 1 {
 		t.Fatalf("goroutines %d", snap.Goroutines)
 	}
-	if snap.CPUSeconds < 0 {
+	if snap.CPUSeconds < 0 || math.IsNaN(snap.CPUSeconds) || math.IsInf(snap.CPUSeconds, 0) {
 		t.Fatalf("cpu %f", snap.CPUSeconds)
 	}
 	reg := NewRegistry()

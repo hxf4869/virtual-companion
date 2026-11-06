@@ -10,7 +10,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 )
 
@@ -349,11 +348,7 @@ func SnapshotProcess() ProcessSnapshot {
 		HeapAllocBytes: ms.HeapAlloc,
 		OpenFDs:        -1,
 	}
-	var ru syscall.Rusage
-	if err := syscall.Getrusage(syscall.RUSAGE_SELF, &ru); err == nil {
-		snap.CPUSeconds = float64(ru.Utime.Sec) + float64(ru.Utime.Usec)/1e6 +
-			float64(ru.Stime.Sec) + float64(ru.Stime.Usec)/1e6
-	}
+	snap.CPUSeconds = processCPUSeconds()
 	if rss := currentRSSBytes(); rss > 0 {
 		snap.RSSBytes = rss
 	}
