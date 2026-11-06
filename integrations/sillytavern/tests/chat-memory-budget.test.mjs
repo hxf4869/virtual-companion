@@ -105,3 +105,17 @@ test('invalid usage trips future admissions and preserves full bound; corrupt jo
     await fs.writeFile(config.file, JSON.stringify(raw));
     await assert.rejects(() => createRoundBudget(config), /JOURNAL_INVALID/);
 }));
+
+test('sealing preserves the round lock through final artifact writes; missing resume never resets a journal', async () => fixture(async config => {
+    await assert.rejects(() => createRoundBudget({ ...config, requireExisting: true }), /RESUME_MISSING/);
+    const budget = await createRoundBudget(config);
+    await budget.reserve({ route: 0, outputCap: 5 });
+    await budget.seal();
+    assert.equal(budget.snapshot().unknown, 1);
+    await assert.rejects(() => budget.reserve({ route: 0, outputCap: 5 }), /BUDGET_CLOSED/);
+    await assert.rejects(() => createRoundBudget(config), /BUDGET_LOCKED/);
+    await budget.close();
+    const resumed = await createRoundBudget({ ...config, requireExisting: true });
+    assert.equal(resumed.snapshot().committedMicroCny, 20);
+    await resumed.close();
+}));

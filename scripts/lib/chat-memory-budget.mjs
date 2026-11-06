@@ -125,7 +125,7 @@ function validateJournal(ledger, config) {
 }
 
 export async function createRoundBudget({ file, round, profiles, mode = 'cny', capMicroCny = MAX_MICRO_CNY,
-    maxCalls = 6000, ownerTokenOnly = false } = {}) {
+    maxCalls = 6000, ownerTokenOnly = false, requireExisting = false } = {}) {
     if (!['cny', 'tokens'].includes(mode) || (mode === 'tokens' && ownerTokenOnly !== true)
         || !/^round-[a-z0-9-]{1,80}$/.test(round || '') || !integer(maxCalls, 1) || maxCalls > 10000
         || !integer(capMicroCny, 1) || capMicroCny > MAX_MICRO_CNY
@@ -146,6 +146,7 @@ export async function createRoundBudget({ file, round, profiles, mode = 'cny', c
         }
         catch (error) {
             if (error.code !== 'ENOENT') throw new Error('BUDGET_JOURNAL_INVALID');
+            if (requireExisting) throw new Error('BUDGET_RESUME_MISSING');
             ledger = { owner: OWNER, schemaVersion: 1, config, denied: 0, tripped: false, calls: [] };
         }
         validateJournal(ledger, config);
@@ -154,6 +155,7 @@ export async function createRoundBudget({ file, round, profiles, mode = 'cny', c
     } catch (error) { await release(); throw error; }
 
     let closed = false, journalFailed = false, queue = Promise.resolve();
+    let sealPromise, released = false;
     const transaction = action => {
         const next = queue.then(async () => {
             if (closed || journalFailed) throw new Error('BUDGET_CLOSED');
@@ -171,6 +173,15 @@ export async function createRoundBudget({ file, round, profiles, mode = 'cny', c
     const get = id => {
         if (!integer(id, 1) || !ledger.calls[id - 1] || ledger.calls[id - 1].id !== id) throw new Error('BUDGET_CALL_INVALID');
         return ledger.calls[id - 1];
+    };
+    const seal = () => {
+        if (!sealPromise) sealPromise = (async () => {
+            await queue;
+            closed = true;
+            for (const call of ledger.calls) if (call.state === 'HELD') { call.state = 'UNKNOWN'; call.reason = 'CLOSED'; }
+            if (!journalFailed) await save();
+        })();
+        return sealPromise;
     };
     return {
         reserve: ({ route, outputCap }) => transaction(async () => {
@@ -224,14 +235,7 @@ export async function createRoundBudget({ file, round, profiles, mode = 'cny', c
                 feeStatus: mode === 'cny' ? 'priced-upper-bound' : 'unpriced-owner-authorized',
                 warning80: mode === 'cny' && committed() >= 80_000_000 };
         },
-        async close() {
-            await queue;
-            if (closed) return;
-            closed = true;
-            try {
-                for (const call of ledger.calls) if (call.state === 'HELD') { call.state = 'UNKNOWN'; call.reason = 'CLOSED'; }
-                if (!journalFailed) await save();
-            } finally { await release(); }
-        },
+        seal,
+        async close() { try { await seal(); } finally { if (!released) { released = true; await release(); } } },
     };
 }

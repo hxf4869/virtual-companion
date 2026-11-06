@@ -563,6 +563,32 @@ attempt 账本。该场景使用明确的保守验收估算费率（输入 0.01�
 
 记忆规则 / 召回改动先跑仓库根 `node scripts/eval-memory.mjs`（RQ-3）。它复用锁定补丁构建，运行真实 L1 提取、提交和 SQLite / FTS / cosine 门控；LLM 输出与向量为固定合成 fixture，无外部模型调用，不评估模型本身的语义质量。五类合成数据与基线位于 `scripts/fixtures/memory-eval*.json`，按类别及既有通过用例拒绝退步，已由 ST 离线测试纳入 `check.sh`。临时库 / 派生模块成功、失败或中断均清理，不累积报告。`--record-baseline` 只用于明确接受新基线时，须审阅差异，不能用来掩盖退步。
 
+CM-3 的 core 真实评测使用同一入口的显式模式，沿用本机用途配置引用，不读取 `config.txt` 或旧凭据文件：
+
+```bash
+node scripts/eval-memory.mjs --mode dataset --seed 20261106
+node scripts/eval-memory.mjs --mode real --config-ref local-catalog --round round-cm3-baseline-20261107 --budget-mode tokens --owner-token-only
+```
+
+最后一条仅用于 Owner 已明确授权的本次 token 模式；费用未知，不代表 ¥100 上限通过。常规 CNY 模式先用
+`--mode preflight --quote-file <报价文件>` 核验价格，默认缺价拒绝发包。真实评测固定 7 类各 20 题、800 条消息，
+含 300 条陪伴模式用户来源及 100 条剧情隔离来源；所有合格来源均经原提取队列。查询按正常发送中的
+`settled:false` 状态保存，保持可召回读取而不触发提取，答案不保存；
+评审使用第三个合成账号，不把答案或评审文本存为新记忆。
+
+栈由现有 Compose 配置启动独立数据库、卷、账号及本地模型实例；只复用只读模型文件。最终召回排序观察
+仅插入可丢弃的构建副本，位于来源核验之后、token 裁剪之前；报告另计原始检索、裁剪后集合与最终出站覆盖。
+遗忘 begin 观察暂缓指定记录的引擎清理，核对最终请求时仍为 PENDING 后释放，cleanup 时延从释放到 DONE 计算。
+近期历史可见、在途提取迟到及人工评审校准未覆盖时单独标注，不用记忆槽的结果代替。
+每类首题另跑 memory-off 与 gold-evidence 两个 7 题诊断对照，均关闭产品记忆注入；gold 只含该题允许的事实，
+最终出站核对其确实保留。对照的回答、评审与 token 都纳入同轮账本，分母和成绩单列，不混入 core 的产品指标。
+
+数值与事实 ID 报告写入 `.local/chat-memory-quality/<round>/`，不持久化对话正文、provider 地址或凭据。
+保留上限见 `scripts/lib/chat-memory-artifacts.mjs`；退出清理本轮容器、卷、镜像和临时目录，保留共享模型。
+失败后加 `--resume` 会在**原预算账本**上从头重放全部数据和题目，不恢复上次数据快照或题目进度；不得改
+seed、variant 或配置，历史尝试与调用计量保留。比较候选时用相同数据和配置，并传 `--baseline <summary.json>`。
+提取失败、超时、预算停止和评审失败仍保留在计划分母；报告区分执行覆盖与质量门槛，不把首次失败基线报成通过。
+
 篇幅效果可在本机运行 `node scripts/reply-length-stats.mjs <chat.jsonl或目录>`（仓库根，RQ-9）。按新回复保存的实际 `extra.vc_reply_length_tier` 输出各档数量、最小 / 最大 / 平均与 P50 / P90 字符数；Unicode 字符含标点、去空白和语音 / 表情控制标记。历史无档位记录单列，不猜测。目录只读最多 30 个 JSONL，每文件上限 2 MiB；只输出统计，不创建报告或记录正文。
 
 ## 语音后端（VO-2）

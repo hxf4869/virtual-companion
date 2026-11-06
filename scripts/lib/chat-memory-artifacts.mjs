@@ -35,13 +35,25 @@ async function ownedRounds(root) {
     return rounds.sort((a, b) => a.marker.createdAt - b.marker.createdAt);
 }
 
-export async function createRoundArtifacts(root, { round, now = Date.now() } = {}) {
+export async function createRoundArtifacts(root, { round, now = Date.now(), resume = false } = {}) {
     if (!/^round-[a-z0-9-]{1,80}$/.test(round || '')) throw new Error('ARTIFACT_ROUND_INVALID');
     await fs.mkdir(root, { recursive: true, mode: 0o700 });
     if ((await fs.lstat(root)).isSymbolicLink()) throw new Error('ARTIFACT_SYMLINK');
     await fs.chmod(root, 0o700);
-    try { await fs.lstat(path.join(root, round)); throw new Error('ARTIFACT_ROUND_EXISTS'); }
-    catch (error) { if (error.code !== 'ENOENT') throw error; }
+    const dir = path.join(root, round);
+    let marker;
+    try {
+        if (!(await fs.lstat(dir)).isDirectory()) throw new Error('ARTIFACT_PATH_INVALID');
+        if (!resume) throw new Error('ARTIFACT_ROUND_EXISTS');
+        if ((await fs.lstat(path.join(dir, '.owner.json'))).isSymbolicLink()) throw new Error('ARTIFACT_SYMLINK');
+        marker = JSON.parse(await fs.readFile(path.join(dir, '.owner.json'), 'utf8'));
+        if (marker.owner !== MARKER || !Number.isSafeInteger(marker.createdAt)) throw new Error('ARTIFACT_OWNER_INVALID');
+        if (await treeSize(dir) > ROUND_BYTES) throw new Error('ARTIFACT_ROUND_CAPACITY');
+    } catch (error) {
+        if (error.code !== 'ENOENT') throw error;
+        if (resume) throw new Error('ARTIFACT_RESUME_MISSING');
+    }
+    if (!resume) {
     let rounds = await ownedRounds(root);
     const evict = async row => { await fs.rm(row.dir, { recursive: true }); rounds = rounds.filter(item => item !== row); };
     for (const row of [...rounds]) if (row.marker.closed && now - row.marker.createdAt > MAX_AGE_MS) await evict(row);
@@ -50,15 +62,23 @@ export async function createRoundArtifacts(root, { round, now = Date.now() } = {
         if (!old) throw new Error('ARTIFACT_CAPACITY');
         await evict(old);
     }
-    const dir = path.join(root, round);
     await fs.mkdir(dir, { mode: 0o700 }); // Never reset an existing round / budget.
-    const marker = { owner: MARKER, createdAt: now, closed: false };
+    marker = { owner: MARKER, createdAt: now, closed: false };
     await fs.writeFile(path.join(dir, '.owner.json'), JSON.stringify(marker), { mode: 0o600, flag: 'wx' });
+    } else {
+        // The real runner acquires its existing budget lock before resuming.
+        marker.closed = false;
+        await fs.writeFile(path.join(dir, '.owner.json'), JSON.stringify(marker), { mode: 0o600 });
+        for (const name of FILES) await fs.rm(path.join(dir, name + '.tmp'), { force: true });
+    }
     const write = async (name, content) => {
         if (!FILES.has(name)) throw new Error('ARTIFACT_NAME_INVALID');
         const text = typeof content === 'string' ? content : JSON.stringify(content, null, 2) + '\n';
-        if ((await treeSize(dir)) + Buffer.byteLength(text) > ROUND_BYTES) throw new Error('ARTIFACT_ROUND_CAPACITY');
         const target = path.join(dir, name);
+        let previous = 0;
+        try { const stat = await fs.lstat(target); if (!stat.isFile()) throw new Error('ARTIFACT_PATH_INVALID'); previous = stat.size; }
+        catch (error) { if (error.code !== 'ENOENT') throw error; }
+        if ((await treeSize(dir)) - previous + Buffer.byteLength(text) > ROUND_BYTES) throw new Error('ARTIFACT_ROUND_CAPACITY');
         await fs.writeFile(target + '.tmp', text, { mode: 0o600, flag: 'wx' });
         await fs.rename(target + '.tmp', target);
     };

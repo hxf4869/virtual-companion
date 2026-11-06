@@ -8,6 +8,7 @@ export const METRICS = Object.freeze([
     'recall_ms', 'memory_recheck_ms', 'source_ready_ms', 'l1_ready_ms', 'profile_ready_ms',
     'query_embedding_ms', 'retrieval_ms', 'rerank_ms', 'summary_gate_ms',
     'repetition_3gram', 'rewrite_extra_ms', 'send_outcome', 'open_outcome',
+    'pipeline_first_body_ms', 'pipeline_complete_ms', 'cleanup_ms',
     'scope_leaks', 'forgotten_leaks',
 ]);
 export const OUTCOMES = Object.freeze([
