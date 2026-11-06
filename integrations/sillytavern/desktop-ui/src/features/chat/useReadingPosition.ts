@@ -349,7 +349,7 @@ export function useReadingPosition({
         (mesid: number, { highlight = true }: { highlight?: boolean } = {}): boolean => {
             const chat = chatRef.current;
             const mes = getById(mesid);
-            if (!chat || !mes) return false;
+            if (!chat || !mes || chat.closest('[hidden]')) return false;
             openTokenRef.current = null;
             releaseHold();
             stateRef.current = 'detached';

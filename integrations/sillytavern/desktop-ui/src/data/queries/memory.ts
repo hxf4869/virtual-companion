@@ -387,18 +387,53 @@ export function useDiaryEntry(entryId: string | null): UseQueryResult<DiaryEntry
   });
 }
 
-export function useFavorites(relId: string | null): UseQueryResult<FavoriteItem[], Error> {
+export interface FavoritePage {
+  items: FavoriteItem[];
+  nextCursor: string | null;
+}
+
+export function useFavorites(
+  relId: string | null,
+): UseInfiniteQueryResult<FavoriteItem[], Error> {
   const client = useAppClient();
-  return useQuery({
+  return useInfiniteQuery<
+    FavoritePage,
+    Error,
+    FavoriteItem[],
+    ReturnType<typeof queryKeys.favorites>,
+    string
+  >({
     queryKey: queryKeys.favorites(relId ?? ''),
     enabled: Boolean(relId),
-    queryFn: async () => {
-      if (!relId) return [];
-      const res = (await client.go.listFavorites(relId, { limit: 50 })) as
-        | FavoriteItem[]
-        | { items?: FavoriteItem[] };
-      if (Array.isArray(res)) return res;
-      return Array.isArray(res?.items) ? res.items : [];
+    initialPageParam: '',
+    queryFn: async ({ pageParam }) => {
+      if (!relId) return { items: [], nextCursor: null };
+      const res = (await client.go.listFavorites(relId, {
+        limit: 50,
+        ...(pageParam ? { after: pageParam } : {}),
+      })) as FavoriteItem[] | { items?: FavoriteItem[]; nextCursor?: string | null };
+      if (Array.isArray(res)) {
+        return { items: res, nextCursor: null };
+      }
+      return {
+        items: Array.isArray(res?.items) ? res.items : [],
+        nextCursor: res?.nextCursor ? String(res.nextCursor) : null,
+      };
+    },
+    getNextPageParam: (lastPage) => (lastPage?.nextCursor ? lastPage.nextCursor : undefined),
+    select: (data: InfiniteData<FavoritePage>): FavoriteItem[] => {
+      const allItems = data.pages.flatMap((page) => (Array.isArray(page?.items) ? page.items : []));
+      const seenIds = new Set<string>();
+      const uniqueItems: FavoriteItem[] = [];
+      for (const item of allItems) {
+        const key = String(item?.favoriteId ?? item?.id ?? '');
+        if (key) {
+          if (seenIds.has(key)) continue;
+          seenIds.add(key);
+        }
+        uniqueItems.push(item);
+      }
+      return uniqueItems;
     },
   });
 }

@@ -147,23 +147,31 @@ function ChatRouteInner({
         if (ui.sendSequence > 0) readingRef.current?.notifySent();
     }, [ui.sendSequence]);
 
+    const wasChatRouteRef = useRef(isChatRoute);
+
     useEffect(() => {
+        const leftChatRoute = wasChatRouteRef.current && !isChatRoute;
+        wasChatRouteRef.current = isChatRoute;
         const request = ui.messageJump;
         if (!request) return;
-        if (!isChatRoute || request.key !== activeKey) {
+        if (leftChatRoute || request.key !== bridge.getSnapshot().key) {
             ui.completeMessageJump(request);
             return;
         }
-        if (status !== 'ready') return;
+        if (!isChatRoute || request.key !== activeKey || status !== 'ready') return;
         if (!ui.historyAll) {
             ui.setHistoryAll(true);
+            return;
+        }
+        if (jumpToMessage(request.floor)) {
+            ui.completeMessageJump(request);
             return;
         }
         const frame = requestAnimationFrame(() => {
             if (jumpToMessage(request.floor)) ui.completeMessageJump(request);
         });
         return () => cancelAnimationFrame(frame);
-    }, [ui.messageJump, ui.completeMessageJump, ui.historyAll, activeKey, status, isChatRoute, jumpToMessage]);
+    }, [ui.messageJump, ui.completeMessageJump, ui.historyAll, activeKey, status, isChatRoute, jumpToMessage, bridge]);
 
     const conversationsRef = useRef(conversations);
     conversationsRef.current = conversations;

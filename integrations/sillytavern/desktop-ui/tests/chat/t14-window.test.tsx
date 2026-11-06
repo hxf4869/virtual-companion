@@ -301,4 +301,47 @@ describe('t14-window: MessageList / SessionBridge firstDisplayedMessageId real w
             globalThis.fetch = prevFetch;
         }
     });
+
+    it('settles pending callPopup and choosePersona promises on destroy() idempotently and resolves calls on a dead bridge immediately', async () => {
+        const env = createTestChatEnv({
+            conversations: [{ key: '["alice.png","chat-1"]', avatar: 'alice.png', file: 'chat-1', title: 'Alice' }],
+            chatsByKey: { '["alice.png","chat-1"]': buildTestRecords(1) },
+        });
+        await env.bridge.open('["alice.png","chat-1"]');
+
+        const confirmPromise = env.bridge.getContext().callPopup('确认？', 2);
+        const stalePopupSnap = env.bridge.getSnapshot().popupRequest;
+        expect(stalePopupSnap?.type).toBe(2);
+
+        // Superseding popup settles previous pending popup with its cancel value (0)
+        const inputPromise = env.callGenericPopup('输入内容', 3, 'init');
+        await expect(confirmPromise).resolves.toBe(0);
+
+        const pendingPopupSnap = env.bridge.getSnapshot().popupRequest;
+        expect(pendingPopupSnap?.type).toBe(3);
+
+        const personaPromise = env.choosePersona([
+            { avatar: 'p1.png', name: 'Persona 1', description: '' },
+        ]);
+        const pendingPersonaSnap = env.bridge.getSnapshot().personaChoice;
+        expect(pendingPersonaSnap?.options).toHaveLength(1);
+
+        env.bridge.destroy();
+        env.bridge.destroy();
+
+        await expect(inputPromise).resolves.toBeNull();
+        await expect(personaPromise).resolves.toBe('');
+        expect(env.bridge.getSnapshot().popupRequest).toBeNull();
+        expect(env.bridge.getSnapshot().personaChoice).toBeNull();
+
+        // Late resolution callbacks are no-ops
+        stalePopupSnap?.resolve(1);
+        pendingPopupSnap?.resolve('late');
+        pendingPersonaSnap?.resolve('p1.png');
+
+        // Calls on a dead bridge resolve immediately with cancel values
+        await expect(env.callGenericPopup('dead confirm', 2)).resolves.toBe(0);
+        await expect(env.bridge.getContext().callPopup('dead input', 3, 'x')).resolves.toBeNull();
+        await expect(env.choosePersona([{ avatar: 'p2.png', name: 'P2', description: '' }])).resolves.toBe('');
+    });
 });

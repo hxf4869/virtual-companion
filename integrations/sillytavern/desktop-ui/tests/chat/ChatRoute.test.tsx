@@ -1641,4 +1641,124 @@ describe('ChatRoute streaming isolation, B5 open lifecycle, and B13 VoiceBubble 
         env.bridge.destroy();
         env.queryClient.clear();
     });
+
+    it('settles pending callGenericPopup and choosePersona promises idempotently on destroy() and resolves subsequent calls on a dead bridge immediately with cancel values', async () => {
+        const keyA = '["alice.png","chat-a"]';
+        const env = createTestChatEnv({
+            conversations: [
+                { key: keyA, avatar: 'alice.png', file: 'chat-a', title: 'Alice', preview: 'Hi', updatedAt: 1 },
+            ],
+            chatsByKey: {
+                [keyA]: [{ name: 'Alice', mes: 'Hello', is_user: false }],
+            },
+        });
+
+        await env.bridge.open(keyA);
+        expect(env.callGenericPopup).toBeTypeOf('function');
+        expect(env.choosePersona).toBeTypeOf('function');
+
+        // 1) Pending type-2 popup and pending personaChoice when destroy() runs
+        const pendingConfirm = env.callGenericPopup!('Confirm action?', 2);
+        const pendingPersona = env.choosePersona!([
+            { avatar: 'user-a.png', name: 'Persona A' },
+            { avatar: 'user-b.png', name: 'Persona B' },
+        ]);
+
+        expect(env.bridge.getSnapshot().popupRequest?.type).toBe(2);
+        expect(env.bridge.getSnapshot().personaChoice?.options).toHaveLength(2);
+
+        const capturedPopup = env.bridge.getSnapshot().popupRequest!;
+        const capturedPersona = env.bridge.getSnapshot().personaChoice!;
+
+        env.bridge.destroy();
+        // Calling destroy() and stale resolve handlers again must be idempotent
+        env.bridge.destroy();
+        capturedPopup.resolve(1);
+        capturedPersona.resolve('user-a.png');
+        env.bridge.resolvePopup(1);
+        env.bridge.resolvePersonaChoice('user-b.png');
+
+        expect(env.bridge.getSnapshot().popupRequest).toBeNull();
+        expect(env.bridge.getSnapshot().personaChoice).toBeNull();
+        expect(await pendingConfirm).toBe(0);
+        expect(await pendingPersona).toBe('');
+
+        // Subsequent calls on a dead bridge resolve immediately with cancel values
+        expect(await env.callGenericPopup!('Dead confirm', 1)).toBe(0);
+        expect(await env.callGenericPopup!('Dead input', 3, 'initial')).toBeNull();
+        expect(await env.choosePersona!([{ avatar: 'user-a.png', name: 'Persona A' }])).toBe('');
+        expect(env.bridge.getSnapshot().popupRequest).toBeNull();
+        expect(env.bridge.getSnapshot().personaChoice).toBeNull();
+
+        // 2) Pending type-3 (input) popup resolves to null on destroy()
+        const env2 = createTestChatEnv({
+            conversations: [
+                { key: keyA, avatar: 'alice.png', file: 'chat-a', title: 'Alice', preview: 'Hi', updatedAt: 1 },
+            ],
+            chatsByKey: {
+                [keyA]: [{ name: 'Alice', mes: 'Hello', is_user: false }],
+            },
+        });
+        await env2.bridge.open(keyA);
+        const pendingInput = env2.callGenericPopup!('Enter name:', 3, 'default');
+        expect(env2.bridge.getSnapshot().popupRequest?.type).toBe(3);
+        env2.bridge.destroy();
+        expect(await pendingInput).toBeNull();
+
+        env.queryClient.clear();
+        env2.queryClient.clear();
+    });
+
+    it('closes the reminder dialog when submitted with a custom preset and empty customDueAt (!remindAt)', async () => {
+        const keyA = '["alice.png","chat-a"]';
+        const env = createTestChatEnv({
+            conversations: [
+                { key: keyA, avatar: 'alice.png', file: 'chat-a', title: 'Alice', preview: 'Hi', updatedAt: 1 },
+            ],
+            chatsByKey: {
+                [keyA]: [{ name: 'Alice', mes: 'Remember to call me', is_user: false }],
+            },
+        });
+
+        await env.bridge.open(keyA);
+        const router = createDesktopRouter('/chat');
+        const { container } = render(
+            <AppProviders
+                client={env.client}
+                queryClient={env.queryClient}
+                sessionBridge={env.bridge}
+            >
+                <RouterProvider router={router} />
+            </AppProviders>,
+        );
+        await act(async () => {
+            await router.load();
+        });
+
+        const moreBtn = await screen.findByRole('button', { name: '消息操作' });
+        fireEvent.click(moreBtn);
+
+        const remindItem = await screen.findByRole('menuitem', { name: '稍后提醒' });
+        fireEvent.click(remindItem);
+
+        const dialog = await screen.findByRole('dialog');
+        expect(dialog).toBeTruthy();
+
+        const dtInput = dialog.querySelector('input[type="datetime-local"]') as HTMLInputElement;
+        expect(dtInput).toBeTruthy();
+
+        // Switch presetId to 'custom' then clear customDueAt so remindAt evaluates to null
+        fireEvent.change(dtInput, { target: { value: '2026-11-10T10:00' } });
+        fireEvent.change(dtInput, { target: { value: '' } });
+
+        const saveBtn = screen.getByRole('button', { name: '保存' });
+        fireEvent.click(saveBtn);
+
+        await waitFor(() => {
+            expect(screen.queryByRole('dialog')).toBeNull();
+        });
+
+        env.bridge.destroy();
+        env.queryClient.clear();
+    });
 });

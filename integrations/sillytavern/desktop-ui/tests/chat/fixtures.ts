@@ -253,6 +253,8 @@ export function createTestChatEnv(options: CreateTestChatEnvOptions = {}) {
     } as unknown as AppClient;
 
     let sessionRef: any = null;
+    let runtimeCallGenericPopup: ((content: any, type?: number, initial?: string) => Promise<number | string | null>) | null = null;
+    let runtimeChoosePersona: ((options: any[], opts?: { signal?: AbortSignal }) => Promise<string>) | null = null;
     let prepareRuntimeCalls = 0;
     const runtimeSpies = {
         createConversation: vi.fn(),
@@ -280,12 +282,17 @@ export function createTestChatEnv(options: CreateTestChatEnvOptions = {}) {
             client: rtClient,
             context,
             choosePersona,
+            callGenericPopup,
             onChange,
             onTakeDraft,
             onRestoreDraft,
             onConflict,
         }: any) => {
             prepareRuntimeCalls += 1;
+            runtimeCallGenericPopup = callGenericPopup;
+            runtimeChoosePersona = choosePersona;
+            context.callGenericPopup = callGenericPopup;
+            context.callPopup = callGenericPopup;
             if (options.beforePrepareRuntime) {
                 await options.beforePrepareRuntime();
             }
@@ -547,6 +554,12 @@ export function createTestChatEnv(options: CreateTestChatEnvOptions = {}) {
         },
         get session() {
             return sessionRef;
+        },
+        get callGenericPopup() {
+            return runtimeCallGenericPopup;
+        },
+        get choosePersona() {
+            return runtimeChoosePersona;
         },
         get streamController() {
             return streamController;

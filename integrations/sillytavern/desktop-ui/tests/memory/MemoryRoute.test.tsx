@@ -551,4 +551,101 @@ describe('MemoryRoute', () => {
       expect(screen.getByText('下次给你带桂花拿铁')).toBeTruthy();
     });
   });
+
+  it('paginates favorites with after=<nextCursor> and keeps delete-favorite invalidation working', async () => {
+    const deletedIds = new Set<string>();
+    const listFavorites = vi.fn(
+      async (_relId: string, params: { limit?: number; after?: string } = {}) => {
+        if (params.after === 'fav-cursor-2') {
+          return {
+            items: [
+              {
+                favoriteId: 'fav-2',
+                relationshipId: '11',
+                chatFile: 'chat-a.jsonl',
+                role: 'character',
+                speakerName: '阿梨',
+                messageAt: '2026-11-02T10:30:00Z',
+                body: '第二页收藏：海边日落',
+              },
+            ].filter((item) => !deletedIds.has(item.favoriteId)),
+            nextCursor: '',
+          };
+        }
+        return {
+          items: [
+            {
+              favoriteId: 'fav-1',
+              relationshipId: '11',
+              chatFile: 'chat-a.jsonl',
+              role: 'character',
+              speakerName: '阿梨',
+              messageAt: '2026-11-01T10:30:00Z',
+              body: '第一页收藏：桂花拿铁',
+            },
+          ].filter((item) => !deletedIds.has(item.favoriteId)),
+          nextCursor: 'fav-cursor-2',
+        };
+      },
+    );
+    const deleteFavorite = vi.fn(async (id: string) => {
+      deletedIds.add(id);
+    });
+
+    const { client } = createMemoryTestClient({
+      listFavorites,
+      deleteFavorite,
+    });
+
+    const router = createDesktopRouter({
+      routeOverrides: {
+        memory: () => <MemoryRoute />,
+      },
+    });
+
+    render(
+      <AppProviders client={client} queryClient={createQueryClient()}>
+        <RouterProvider router={router} />
+      </AppProviders>,
+    );
+
+    await act(async () => {
+      await router.navigate({ to: '/memory' });
+    });
+
+    await waitFor(() => {
+      expect(screen.getAllByText('喜欢桂花拿铁').length).toBeGreaterThan(0);
+    });
+
+    fireEvent.click(screen.getByRole('tab', { name: '收藏' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('第一页收藏：桂花拿铁')).toBeTruthy();
+    });
+    expect(listFavorites).toHaveBeenCalledWith('11', { limit: 50 });
+    expect(screen.queryByText('第二页收藏：海边日落')).toBeNull();
+
+    const loadMoreBtn = await screen.findByRole('button', { name: '加载更多' });
+    fireEvent.click(loadMoreBtn);
+
+    await waitFor(() => {
+      expect(listFavorites).toHaveBeenCalledWith('11', {
+        limit: 50,
+        after: 'fav-cursor-2',
+      });
+      expect(screen.getByText('第二页收藏：海边日落')).toBeTruthy();
+    });
+    expect(screen.getByText('第一页收藏：桂花拿铁')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '加载更多' })).toBeNull();
+
+    // Delete first favorite and verify invalidation refreshes the list
+    const removeButtons = screen.getAllByRole('button', { name: '移除收藏' });
+    fireEvent.click(removeButtons[0]);
+
+    await waitFor(() => {
+      expect(deleteFavorite).toHaveBeenCalledWith('fav-1');
+      expect(screen.queryByText('第一页收藏：桂花拿铁')).toBeNull();
+    });
+    expect(screen.getByText('第二页收藏：海边日落')).toBeTruthy();
+  });
 });

@@ -207,12 +207,16 @@ export function MessageList({
             return;
         }
         const preset = REMIND_PRESETS.find((p: any) => p.id === parsed.data.presetId);
+        const customDate = parsed.data.customDueAt ? new Date(parsed.data.customDueAt) : null;
         const remindAt = preset
             ? computeRemindDueAt(preset)
-            : parsed.data.customDueAt
-              ? rfc3339(new Date(parsed.data.customDueAt))
+            : customDate && !Number.isNaN(customDate.getTime())
+              ? rfc3339(customDate)
               : null;
-        if (!remindAt) return;
+        if (!remindAt) {
+            setReminding(null);
+            return;
+        }
         try {
             await createReminder(targetRelationshipId, {
                 text: parsed.data.topic.trim(),

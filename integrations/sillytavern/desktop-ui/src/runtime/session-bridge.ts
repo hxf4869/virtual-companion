@@ -541,13 +541,31 @@ export function createSessionBridge(
         type = 1,
         initial = '',
     ): Promise<number | string | null> {
+        const popupType = (type === 2 || type === 3 ? type : 1) as 1 | 2 | 3;
+        const cancelValue = popupType === 3 ? null : 0;
+        if (dead) {
+            return Promise.resolve(cancelValue);
+        }
         return new Promise(resolve => {
             const id = ++popupSeq;
             const textContent =
                 typeof content === 'string'
                     ? content.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()
                     : String(content?.textContent ?? content ?? '').trim();
-            const popupType = (type === 2 || type === 3 ? type : 1) as 1 | 2 | 3;
+            let settled = false;
+            const finish = (result: number | string | null) => {
+                if (settled) return;
+                settled = true;
+                if (snapshot.popupRequest?.id === id) {
+                    snapshot = { ...snapshot, popupRequest: null };
+                    emit();
+                }
+                resolve(result);
+            };
+            if (snapshot.popupRequest) {
+                const prev = snapshot.popupRequest;
+                prev.resolve(prev.type === 3 ? null : 0);
+            }
             snapshot = {
                 ...snapshot,
                 popupRequest: {
@@ -555,13 +573,7 @@ export function createSessionBridge(
                     type: popupType,
                     content: textContent,
                     initial: String(initial ?? ''),
-                    resolve(result) {
-                        if (snapshot.popupRequest?.id === id) {
-                            snapshot = { ...snapshot, popupRequest: null };
-                            emit();
-                        }
-                        resolve(result);
-                    },
+                    resolve: finish,
                 },
             };
             emit();
@@ -572,9 +584,15 @@ export function createSessionBridge(
         personaOptions: PersonaChoiceOption[],
         { signal }: { signal?: AbortSignal } = {},
     ): Promise<string> {
+        if (dead || signal?.aborted) {
+            return Promise.resolve('');
+        }
         return new Promise(resolve => {
             const id = ++personaSeq;
+            let settled = false;
             const finish = (avatar: string) => {
+                if (settled) return;
+                settled = true;
                 signal?.removeEventListener('abort', onAbort);
                 if (snapshot.personaChoice?.id === id) {
                     snapshot = { ...snapshot, personaChoice: null };
@@ -584,6 +602,9 @@ export function createSessionBridge(
             };
             const onAbort = () => finish('');
             signal?.addEventListener('abort', onAbort, { once: true });
+            if (snapshot.personaChoice) {
+                snapshot.personaChoice.resolve('');
+            }
             snapshot = {
                 ...snapshot,
                 personaChoice: {
@@ -595,6 +616,9 @@ export function createSessionBridge(
             emit();
         });
     }
+
+    context.callGenericPopup = callGenericPopup;
+    context.callPopup = callGenericPopup;
 
     function ensureRuntime(): Promise<any> {
         if (dead) return Promise.resolve(null);
@@ -1682,6 +1706,17 @@ export function createSessionBridge(
         },
         destroy() {
             dead = true;
+            const pendingPopup = snapshot.popupRequest;
+            const pendingPersona = snapshot.personaChoice;
+            if (pendingPopup || pendingPersona) {
+                snapshot = {
+                    ...snapshot,
+                    popupRequest: null,
+                    personaChoice: null,
+                };
+            }
+            pendingPopup?.resolve(pendingPopup.type === 3 ? null : 0);
+            pendingPersona?.resolve('');
             runtimeAbort?.abort();
             runtimeAbort = null;
             pendingConfiguration.length = 0;

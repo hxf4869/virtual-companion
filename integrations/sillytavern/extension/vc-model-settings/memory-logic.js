@@ -313,51 +313,6 @@ export function reminderWhen(iso, now = new Date()) {
     return `${date.getMonth() + 1}月${date.getDate()}日 ${clock}`;
 }
 
-export function createFavoritesPage({ onChange = () => {} } = {}) {
-    const state = { segment: 'favorites', favorites: [], nextCursor: '', reminders: [], loading: false, error: '', relationshipId: '' };
-    let run = 0;
-    const settle = (ticket) => { if (ticket === run) { state.loading = false; onChange(state); } };
-    return {
-        state,
-        async load(relationshipId = state.relationshipId) {
-            state.relationshipId = String(relationshipId || '');
-            const ticket = ++run;
-            if (!state.relationshipId) { Object.assign(state, { favorites: [], reminders: [], nextCursor: '' }); onChange(state); return; }
-            state.loading = true; state.error = ''; onChange(state);
-            try {
-                const [page, reminders] = await Promise.all([api.listFavorites(state.relationshipId, { limit: 30 }), api.listReminders(state.relationshipId)]);
-                if (ticket !== run) return;
-                state.favorites = page?.items || []; state.nextCursor = page?.nextCursor || '';
-                state.reminders = Array.isArray(reminders) ? reminders : (reminders?.items || []);
-            } catch { if (ticket === run) state.error = '没有完成，请重试。'; }
-            finally { settle(ticket); }
-        },
-        async more() {
-            if (!state.nextCursor || state.loading) return;
-            const ticket = ++run;
-            state.loading = true; onChange(state);
-            try {
-                const page = await api.listFavorites(state.relationshipId, { after: state.nextCursor, limit: 30 });
-                if (ticket !== run) return;
-                state.favorites = [...state.favorites, ...(page?.items || [])]; state.nextCursor = page?.nextCursor || '';
-            } catch { if (ticket === run) state.error = '没有完成，请重试。'; }
-            finally { settle(ticket); }
-        },
-        setSegment(segment) { state.segment = segment === 'reminders' ? 'reminders' : 'favorites'; onChange(state); },
-        async removeFavorite(id) {
-            await api.deleteFavorite(id);
-            state.favorites = state.favorites.filter((item) => item.favoriteId !== String(id));
-            onChange(state);
-        },
-        async cancelReminder(id) {
-            await api.deleteReminder(id);
-            state.reminders = state.reminders.filter((item) => item.reminderId !== String(id));
-            onChange(state);
-        },
-        reset() { run++; Object.assign(state, { segment: 'favorites', favorites: [], nextCursor: '', reminders: [], loading: false, error: '' }); },
-    };
-}
-
 // ---------- From memory-page.js ----------
 
 export const lifecycleLabels = { ACTIVE: '生效中', SUPERSEDED: '已被替代', FORGETTING: '清理中', FORGOTTEN: '已遗忘' };
