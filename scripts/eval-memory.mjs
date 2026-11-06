@@ -88,9 +88,22 @@ export async function evaluateMemory() {
 }
 
 async function main(){
+    const arg = (name, fallback) => process.argv.includes(name) ? process.argv[process.argv.indexOf(name) + 1] : fallback;
+    const mode = arg('--mode', 'offline');
+    if (mode === 'preflight') {
+        const { preflightEvaluation } = await import('./lib/chat-memory-evaluation.mjs');
+        const report = await preflightEvaluation({ round: arg('--round', ''), configRef: arg('--config-ref', ''),
+            mode: arg('--budget-mode', 'cny'), ownerTokenOnly: process.argv.includes('--owner-token-only'),
+            quoteFile: arg('--quote-file', undefined), root: arg('--output', undefined), maxCalls: Number(arg('--max-calls', '6000')) });
+        console.log(JSON.stringify(report)); return;
+    }
+    if (mode !== 'offline') throw new Error('EVALUATION_MODE_INVALID');
     const report=await evaluateMemory();
     if(process.argv.includes('--record-baseline'))await fs.writeFile(baselineFile,JSON.stringify(report,null,2)+'\n');
     const baseline=JSON.parse(await fs.readFile(baselineFile,'utf8'));const regressions=compareBaseline(report,baseline);
     console.log(JSON.stringify({...report,regressions}));if(regressions.length)process.exitCode=1;
 }
-if(process.argv[1] && path.resolve(process.argv[1])===fileURLToPath(import.meta.url))main().catch(()=>{console.error('MEMORY_EVAL_FAILED');process.exitCode=1;});
+if(process.argv[1] && path.resolve(process.argv[1])===fileURLToPath(import.meta.url))main().catch(error=>{
+    console.error(['CONFIG_NOT_READY','BUDGET_STOP','BUDGET_LOCKED','BUDGET_SNAPSHOT_MISMATCH','EVALUATION_MODE_INVALID'].includes(error.message)
+        ? error.message : 'MEMORY_EVAL_FAILED'); process.exitCode=1;
+});

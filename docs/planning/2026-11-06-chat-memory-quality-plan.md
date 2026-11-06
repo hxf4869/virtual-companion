@@ -208,6 +208,10 @@ provider继续通过现有管理接口与用途解析配置：提取绑定 `MEMO
 
 ### 3.4 ¥100 硬上限：计价、预留和熔断
 
+CM-2 已提供 `node scripts/eval-memory.mjs --mode preflight --config-ref local-catalog --round round-<name>`：只读本机现有用途绑定与私有解密配置，不读业务对话、不发模型请求。默认 CNY 模式缺价格拒绝；`--quote-file` 可引用含 provider/profile、真实单价、日期、其他收费界限及 reasoning 计费输出上限声明的报价文件。Owner 本轮授权的 token 模式需同时显式传 `--budget-mode tokens --owner-token-only`，不声明 CNY 上限通过。
+
+`createRoundBudget` 以整数微元预留并 fsync，恢复时把在途项保留为 UNKNOWN，固定 round/模型/报价/额度，禁止通过续跑清零或换快照；损坏账本拒绝打开。`startEvaluationMeter` 只给隔离调用者本机 URL 和随机本地能力凭据，真实上游凭据只在出口进程内；当前验证协议为 OpenAI Chat Completions 文本/函数工具，其他协议明确拒绝。出站观察以预留 ID 对齐账本，不按返回次序关联。SSE 逐块转发，缺 usage / 断流 / 结算失败不释放上界；响应原始 cost 字段不冒充 CNY。
+
 静态 `specs/catalog/model-purposes.yaml` 定义用途，未提供本轮provider/model的数值价格。尤其 `specs/catalog/model-ledger-price-statuses.yaml:4` 与 [B/store/postgres/model_usage.go:95](../../backend/internal/store/postgres/model_usage.go#L95) 明确：缺价格/非USD时可以发请求，fee为null。它与 `model-purposes.yaml:17` 的“缺价格不调用”说明存在口径差异。**本轮不改契约，也不能把现有月度账本当作评测硬上限。** 评测入口应更严格：价格、币种或计费token上界未知就不发真实调用。
 
 复用 [S/lib/real-model-meter.mjs:58](../../integrations/sillytavern/scripts/lib/real-model-meter.mjs#L58) 的短命本机meter作为所有本轮付费请求的共同出口，不新增常驻服务；补齐流式转发与原子预算。旧实现 `:63` 按已完成calls.length挡请求，`:91` 先读完整响应，既存在并发在途超支窗口，也会破坏TTFT测量。新模式必须**调用前先预留**，逐chunk转发并只在内存解析usage；不能用该旧缓冲代理测用户首字。
