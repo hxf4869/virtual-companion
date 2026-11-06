@@ -49,6 +49,7 @@ type World struct {
 	DueFollowUp     bool
 	Topic           string
 	TopicRef        string
+	CallAvailable   bool
 	RecentTurns     string
 	RecentProactive string
 	CharName        string

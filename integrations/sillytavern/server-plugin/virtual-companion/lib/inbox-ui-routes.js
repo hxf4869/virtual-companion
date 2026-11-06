@@ -11,6 +11,7 @@ export const INBOX_UI_ROUTES = [
     { method: 'POST', path: new RegExp(`^/api/v1/follow-ups/${ID}/cancel$`), where: 'W15 取消跟进' },
     { method: 'GET', path: /^\/api\/v1\/inbox$/, where: 'W15 inbox 列表' },
     { method: 'POST', path: new RegExp(`^/api/v1/inbox/${EVENT}/read$`), where: 'W15 应用已读' },
+    { method: 'POST', path: new RegExp(`^/api/v1/inbox/${EVENT}/call$`), where: 'W15 inbox · MB-9 前台接听与拒绝' },
     { method: 'GET', path: /^\/api\/v1\/notification-channels$/, where: 'W15 读取邮箱与飞书渠道' },
     { method: 'PUT', path: /^\/api\/v1\/notification-channels$/, where: 'W15 保存邮箱与飞书渠道' },
     { method: 'GET', path: /^\/api\/v1\/notification-deliveries$/, where: 'W15 投递状态' },

@@ -6,11 +6,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/hxf4869/virtual-companion/internal/proactive"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/hxf4869/virtual-companion/internal/proactive"
 	"github.com/hxf4869/virtual-companion/internal/stsource"
 	"github.com/jackc/pgx/v5"
 )
@@ -72,7 +72,7 @@ func TestOpenTopicSourceMustRemainValidThroughDelivery(t *testing.T) {
 	}
 	snapshots[sourceChat].Revision++
 	snapshots[sourceChat].Messages[0].Eligible = false
-	if _, delivered, err := testEnv.store.DeliverDueProactive(ctx, 1, b.RelationshipID, plan.SendAt, FollowUpGenerationFinish{}, nil); err != nil || delivered {
+	if _, delivered, err := testEnv.store.DeliverDueProactive(ctx, 1, b.RelationshipID, plan.SendAt, FollowUpGenerationFinish{}, nil, false); err != nil || delivered {
 		t.Fatalf("invalidated topic delivered=%v err=%v", delivered, err)
 	}
 	var status string

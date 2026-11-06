@@ -289,7 +289,7 @@ func (s *Store) InsertProactiveWorkItem(ctx context.Context, owner, relationship
 }
 
 func (s *Store) SaveProactivePlan(ctx context.Context, owner, relationshipID int64, plan proactive.Plan, body string, at time.Time) error {
-	if plan.Trigger.Kind == proactive.KindContinue {
+	if plan.Trigger.Kind == proactive.KindContinue || plan.Trigger.Kind == proactive.KindCall {
 		if err := s.reconcileOpenTopic(ctx, owner, relationshipID); err != nil {
 			return err
 		}
@@ -301,7 +301,7 @@ func (s *Store) SaveProactivePlan(ctx context.Context, owner, relationshipID int
 }
 
 func saveProactivePlanTx(ctx context.Context, tx pgx.Tx, owner, relationshipID int64, plan proactive.Plan, body string, at time.Time) error {
-	if plan.Trigger.Kind == proactive.KindContinue {
+	if plan.Trigger.Kind == proactive.KindContinue || plan.Trigger.Kind == proactive.KindCall {
 		ref, _, err := openTopicTx(ctx, tx, owner, relationshipID)
 		if err != nil {
 			return err
@@ -324,7 +324,7 @@ func saveProactivePlanTx(ctx context.Context, tx pgx.Tx, owner, relationshipID i
 	} else if err != nil {
 		return err
 	}
-	selected := rand.Float64() < rates[voice.ProactiveScene(plan.Trigger.Key)]
+	selected := plan.Trigger.Kind == proactive.KindCall || rand.Float64() < rates[voice.ProactiveScene(plan.Trigger.Key)]
 	if _, err := tx.Exec(ctx, `SELECT vc.select_proactive_voice($1,$2,$3)`, owner, messageID, selected); err != nil {
 		return err
 	}
@@ -372,7 +372,7 @@ func (s *Store) ListProactiveVoiceCandidates(ctx context.Context, owner, relatio
 
 // DeliverDueProactive files the earliest due READY body. accept is the safety
 // review; a false result cancels that body and the pass continues.
-func (s *Store) DeliverDueProactive(ctx context.Context, owner, relationshipID int64, now time.Time, snapshot FollowUpGenerationFinish, accept func(string) bool) (string, bool, error) {
+func (s *Store) DeliverDueProactive(ctx context.Context, owner, relationshipID int64, now time.Time, snapshot FollowUpGenerationFinish, accept func(string) bool, allowCall bool) (string, bool, error) {
 	var eventID string
 	var delivered bool
 	if err := s.reconcileOpenTopic(ctx, owner, relationshipID); err != nil {
@@ -414,7 +414,10 @@ func (s *Store) DeliverDueProactive(ctx context.Context, owner, relationshipID i
 				armed = *row.armed
 			}
 			ok, reason := proactive.Delivery(now, row.planned, affect.LastUserAt, armed, row.reminder)
-			if row.kind == proactive.KindContinue {
+			if row.kind == proactive.KindCall && ok && !allowCall {
+				ok, reason = false, proactive.ReasonCancelled
+			}
+			if row.kind == proactive.KindContinue || row.kind == proactive.KindCall {
 				ref, _, err := openTopicTx(ctx, tx, owner, relationshipID)
 				if err != nil {
 					return err
@@ -485,6 +488,11 @@ func (s *Store) DeliverDueProactive(ctx context.Context, owner, relationshipID i
 			if _, err := tx.Exec(ctx, `SELECT vc.finish_proactive_message($1,$2,'INBOX',$3,$4,$5)`,
 				owner, row.id, now, followID, filed); err != nil {
 				return err
+			}
+			if row.kind == proactive.KindCall {
+				if _, err := tx.Exec(ctx, `SELECT vc.arm_inbox_call($1,$2)`, owner, filed); err != nil {
+					return err
+				}
 			}
 			if _, err := tx.Exec(ctx, `SELECT vc.note_proactive_sent($1,$2,$3)`, owner, relationshipID, now); err != nil {
 				return err

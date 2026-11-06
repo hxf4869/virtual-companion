@@ -41,6 +41,12 @@ type InboxEvent struct {
 	ReadAt          *time.Time
 	Persisted       bool
 	Voice           *voice.Attachment
+	Call            *InboxCall
+}
+
+type InboxCall struct {
+	State     string    `json:"state"`
+	ExpiresAt time.Time `json:"expiresAt"`
 }
 
 // InboxClaim is the short save lease. It is not a session.
@@ -54,7 +60,10 @@ SELECT id, event_id, relationship_id, conversation_id, branch, source_revision,
        intent, body, st_delivered, st_message_id, st_message_revision,
        link_status, read_at,
        (SELECT jsonb_build_object('clipId',v.id::text,'status',v.status,'durationMs',v.duration_ms)
-        FROM vc.voice_clip v WHERE v.owner_user_id=vc.inbox_event.owner_user_id AND v.id=vc.inbox_event.voice_clip_id AND v.status='ready')
+        FROM vc.voice_clip v WHERE v.owner_user_id=vc.inbox_event.owner_user_id AND v.id=vc.inbox_event.voice_clip_id AND v.status='ready'),
+       CASE WHEN call_state IS NOT NULL THEN jsonb_build_object(
+         'state',CASE WHEN call_state='RINGING' AND call_expires_at<=clock_timestamp() THEN 'MISSED' ELSE call_state END,
+         'expiresAt',call_expires_at) END
   FROM vc.inbox_event`
 
 type inboxScanner interface {
@@ -71,10 +80,11 @@ func scanInbox(row inboxScanner) (InboxEvent, error) {
 	var sourceRevision, messageRevision pgtype.Int8
 	var readAt pgtype.Timestamptz
 	var attachment []byte
+	var call []byte
 	err := row.Scan(
 		&out.ID, &out.EventID, &out.RelationshipID, &out.ConversationID,
 		&branch, &sourceRevision, &out.Intent, &body, &out.STDelivered,
-		&messageID, &messageRevision, &out.LinkStatus, &readAt, &attachment)
+		&messageID, &messageRevision, &out.LinkStatus, &readAt, &attachment, &call)
 	if err != nil {
 		return InboxEvent{}, err
 	}
@@ -90,7 +100,35 @@ func scanInbox(row inboxScanner) (InboxEvent, error) {
 			return InboxEvent{}, err
 		}
 	}
+	if len(call) > 0 {
+		if err := json.Unmarshal(call, &out.Call); err != nil {
+			return InboxEvent{}, err
+		}
+	}
 	return out, nil
+}
+
+func (s *Store) RespondInboxCall(ctx context.Context, owner int64, eventID, action, requestID string) (InboxEvent, bool, error) {
+	if !validInboxEventID(eventID) {
+		return InboxEvent{}, false, ErrNotFound
+	}
+	var out InboxEvent
+	var applied bool
+	err := s.WithOwner(ctx, owner, func(ctx context.Context, tx pgx.Tx) error {
+		if err := tx.QueryRow(ctx, `SELECT vc.respond_inbox_call($1,$2,$3,$4::text::uuid)`, owner, eventID, action, requestID).Scan(&applied); err != nil {
+			return err
+		}
+		row, ok, err := getInboxTx(ctx, tx, owner, eventID)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return ErrNotFound
+		}
+		out = row
+		return nil
+	})
+	return out, applied, mapInboxErr(err)
 }
 
 func getInboxTx(ctx context.Context, tx pgx.Tx, owner int64, eventID string) (InboxEvent, bool, error) {

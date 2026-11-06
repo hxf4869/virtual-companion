@@ -61,7 +61,7 @@ func AfterJudgment(w World, raw string) Plan {
 	}
 	chosen := pool[pickWeighted(pool, w.rand)]
 	topicRef := ""
-	if chosen.Kind == KindContinue {
+	if chosen.Kind == KindContinue || chosen.Kind == KindCall {
 		topicRef = w.TopicRef
 	}
 	sendAt := Slot(w.Now, w.loc(), decision.Timing, w.rand, w.Policy.QuietStart, w.Policy.QuietEnd)
@@ -96,6 +96,8 @@ func eligible(w World, item Trigger) bool {
 		return socialGap(w, item)
 	case "continue_topic":
 		return strings.TrimSpace(w.Topic) != "" && socialGap(w, item)
+	case "call":
+		return w.CallAvailable && strings.TrimSpace(w.Topic) != "" && socialGap(w, item)
 	case "share_day":
 		return socialGap(w, item)
 	case "care":

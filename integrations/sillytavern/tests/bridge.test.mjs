@@ -205,6 +205,7 @@ test('管理桥：并入聊天、主动陪伴与剧情路由；claim/ack 与账�
             { method: 'GET', url: '/api/v1/relationships/11/follow-ups' },
             { method: 'POST', url: '/api/v1/follow-ups/11/cancel' },
             { method: 'POST', url: '/api/v1/inbox/evt-1/read' },
+            { method: 'POST', url: '/api/v1/inbox/evt-1/call' },
             { method: 'GET', url: '/api/v1/notification-channels' },
             { method: 'PUT', url: '/api/v1/notification-channels' },
             { method: 'GET', url: '/api/v1/notification-deliveries' },
@@ -232,6 +233,7 @@ test('管理桥：并入聊天、主动陪伴与剧情路由；claim/ack 与账�
         }
         const deniedBefore = upstream.length;
         for (const c of [
+            { method: 'GET', url: '/api/v1/inbox/evt-1/call' },
             { method: 'POST', url: '/api/v1/inbox/evt-1/claim' },
             { method: 'POST', url: '/api/v1/inbox/evt-1/ack' },
             { method: 'GET', url: '/api/v1/story/runs/11/actors/lin/view' },

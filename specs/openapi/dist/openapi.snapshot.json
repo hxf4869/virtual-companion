@@ -93,6 +93,7 @@
     "claimInboxEvent",
     "ackInboxEvent",
     "markInboxEventRead",
+    "respondInboxCall",
     "listNotificationChannels",
     "putNotificationChannel",
     "listNotificationDeliveries",
@@ -187,6 +188,6 @@
   ],
   "source": {
     "path": "specs/openapi/virtual-companion.yaml",
-    "sha256": "a490543d2840e27a0b350966c38a31ae363287eb241e92572d25506e9f1f2063"
+    "sha256": "42b8211f452d4bc783e4ed5f75b997f5e69746e1a71f885b4909522044f76110"
   }
 }

@@ -172,6 +172,8 @@ func (s *Service) Create(ctx context.Context, owner, relationshipID int64, in Cr
 
 func ProactiveScene(trigger string) string {
 	switch trigger {
+	case "call":
+		return "call"
 	case "morning", "good_morning":
 		return "morning"
 	case "night", "good_night":
@@ -183,6 +185,42 @@ func ProactiveScene(trigger string) string {
 	default:
 		return "default"
 	}
+}
+
+// Calls use the same chat voice as their foreground replies and voicemail.
+func (s *Service) CallAvailable(ctx context.Context, owner, relationshipID int64) (bool, error) {
+	if restoregate.Closed(s.gate) {
+		return false, nil
+	}
+	engines, err := s.Engines(ctx, owner)
+	if err != nil {
+		return false, err
+	}
+	if !engines.ASR.Enabled || !engines.ASR.Healthy {
+		return false, nil
+	}
+	rel, err := s.store.GetVoiceRelationship(ctx, owner, relationshipID)
+	if err != nil {
+		return false, err
+	}
+	if !rel.ProactiveVoice || rel.VoiceFrequency != nil && *rel.VoiceFrequency == "OFF" {
+		return false, nil
+	}
+	if rel.VoiceFrequency == nil {
+		settings, err := s.Settings(ctx, owner)
+		if err != nil {
+			return false, err
+		}
+		if settings.VoiceFrequency == "OFF" {
+			return false, nil
+		}
+	}
+	for _, engine := range engines.TTS {
+		if engine.Engine == Kokoro && engine.Enabled && engine.Configured && engine.Healthy {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func (s *Service) PrepareProactive(ctx context.Context, owner, relationshipID int64, in CreateRequest, trigger string, sendAt, now time.Time) (Clip, error) {
@@ -225,6 +263,9 @@ func (s *Service) create(ctx context.Context, owner, relationshipID int64, in Cr
 	if rel.VoiceFrequency != nil && *rel.VoiceFrequency == "OFF" || in.Purpose == "proactive" && !rel.ProactiveVoice {
 		return Clip{}, ErrUnavailable
 	}
+	if scene == "call" && rel.VoiceFrequency == nil && settings.VoiceFrequency == "OFF" {
+		return Clip{}, ErrUnavailable
+	}
 	engine := Kokoro
 	voiceID := "zf_001"
 	if rel.Gender == "MALE" {
@@ -233,7 +274,7 @@ func (s *Service) create(ctx context.Context, owner, relationshipID int64, in Cr
 	if rel.KokoroVoice != nil {
 		voiceID = *rel.KokoroVoice
 	}
-	if in.Purpose == "proactive" {
+	if in.Purpose == "proactive" && scene != "call" {
 		engine = CosyVoice
 		voiceID = "default"
 		if rel.CosyVoice != nil {
@@ -255,7 +296,7 @@ func (s *Service) create(ctx context.Context, owner, relationshipID int64, in Cr
 			}
 		}
 	}
-	if in.Purpose == "proactive" {
+	if in.Purpose == "proactive" && scene != "call" {
 		if rel.ProactiveEngine != nil && *rel.ProactiveEngine == CosyVoice {
 			engine, voiceID = CosyVoice, "default"
 			if rel.CosyVoice != nil {

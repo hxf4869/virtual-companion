@@ -57,11 +57,25 @@ func (l *Loop) runProactive(ctx context.Context, store *postgres.Store, owner, r
 	if now.IsZero() {
 		now = time.Now()
 	}
+	deliveryContext, err := store.LoadProactiveContext(ctx, owner, relationshipID, now)
+	if err != nil {
+		return postgres.ProactiveRunResult{}, err
+	}
+	callAvailable := false
+	if l.voice != nil && deliveryContext.World.Policy.Mode == proactive.ModeCloseFriend && strings.TrimSpace(deliveryContext.World.Topic) != "" {
+		callAvailable, err = l.voice.CallAvailable(ctx, owner, relationshipID)
+		if err != nil {
+			l.proactiveLog("PROACTIVE_CALL_CAPABILITY")
+		}
+	}
+	callWorld := deliveryContext.World
+	callWorld.HasReady = false
+	allowCall := callAvailable && proactive.Block(callWorld) == ""
 	l.prepareProactiveVoices(ctx, store, owner, relationshipID, now)
 	eventID, delivered, err := store.DeliverDueProactive(ctx, owner, relationshipID, now, postgres.FollowUpGenerationFinish{}, func(body string) bool {
 		_, _, kept := reviewGreeting(safety.New(), body)
 		return kept != nil
-	})
+	}, allowCall)
 	if errors.Is(err, postgres.ErrProactiveNoConversation) {
 		return postgres.ProactiveRunResult{Outcome: proactive.OutcomeGated, Reason: "NO_CONVERSATION"}, nil
 	}
@@ -71,7 +85,7 @@ func (l *Loop) runProactive(ctx context.Context, store *postgres.Store, owner, r
 	if filed, err := l.deliverDueReminder(ctx, store, owner, relationshipID, now); err != nil {
 		return postgres.ProactiveRunResult{}, err
 	} else if filed && !delivered {
-		if id, ok, err := store.DeliverDueProactive(ctx, owner, relationshipID, now, postgres.FollowUpGenerationFinish{}, nil); err != nil {
+		if id, ok, err := store.DeliverDueProactive(ctx, owner, relationshipID, now, postgres.FollowUpGenerationFinish{}, nil, allowCall); err != nil {
 			return postgres.ProactiveRunResult{}, err
 		} else if ok {
 			eventID, delivered = id, true
@@ -94,6 +108,7 @@ func (l *Loop) runProactive(ctx context.Context, store *postgres.Store, owner, r
 		return postgres.ProactiveRunResult{Outcome: proactive.OutcomeGated, Reason: "THROTTLED"}, nil
 	}
 	loaded.World.Rand = rand.IntN
+	loaded.World.CallAvailable = callAvailable
 	plan := proactive.Judge(loaded.World)
 	if plan.Outcome != proactive.OutcomeJudge {
 		return preferInbox(postgres.ProactiveRunResult{Outcome: plan.Outcome, Reason: plan.Reason}), nil

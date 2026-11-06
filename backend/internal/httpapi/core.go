@@ -302,6 +302,7 @@ func (s *Server) registerCore() {
 	s.mux.HandleFunc("POST /api/v1/inbox/{eventId}/claim", s.handleClaimInbox)
 	s.mux.HandleFunc("POST /api/v1/inbox/{eventId}/ack", s.handleAckInbox)
 	s.mux.HandleFunc("POST /api/v1/inbox/{eventId}/read", s.handleMarkInboxRead)
+	s.mux.HandleFunc("POST /api/v1/inbox/{eventId}/call", s.handleRespondInboxCall)
 	s.mux.HandleFunc("GET /api/v1/notification-channels", s.handleListNotificationChannels)
 	s.mux.HandleFunc("PUT /api/v1/notification-channels", s.handlePutNotificationChannel)
 	s.mux.HandleFunc("GET /api/v1/notification-deliveries", s.handleListNotificationDeliveries)

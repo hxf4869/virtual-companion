@@ -3602,6 +3602,65 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/inbox/{eventId}/call:
+    post:
+      operationId: respondInboxCall
+      summary: Answer or decline one foreground incoming call
+      description: Owner-scoped response to a ringing inbox call. requestId is generated once for the user action and reused
+        on retry. The same request and action return applied=true; another client or an expired call returns the current event
+        with applied=false. An accepted response records in-app read. SillyTavern delivery and channel outcomes are independent.
+        Calls use the existing proactive gates and safety review. Requires Origin and CSRF validation and matching expected
+        account and session headers. Foreign, absent, non-call or removed events are NOT_FOUND_OR_FORBIDDEN.
+      security:
+      - cookieAuth: []
+      parameters:
+      - $ref: '#/components/parameters/InboxEventId'
+      - $ref: '#/components/parameters/StoryCSRF'
+      - $ref: '#/components/parameters/StoryExpectedAccount'
+      - $ref: '#/components/parameters/StoryExpectedSession'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InboxCallReplyRequest'
+      responses:
+        '200':
+          description: Current call event and whether this action owns the disposition
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InboxCallReplyResponse'
+        '400':
+          description: Invalid action or request identifier
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: Origin, CSRF or password-change gate rejected the request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Resource absent, not owned, removed or not a call
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          description: Expected account or session does not match the authenticated context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
   /api/v1/notification-channels:
     get:
       operationId: listNotificationChannels
@@ -9806,6 +9865,8 @@ components:
           $ref: '#/components/schemas/InboxIntent'
         voice:
           $ref: '#/components/schemas/VoiceAttachment'
+        call:
+          $ref: '#/components/schemas/InboxCall'
         body:
           type:
           - string
@@ -9838,6 +9899,52 @@ components:
         read:
           type: boolean
           description: In-app read. Independent of stDelivered and linkStatus.
+    InboxCall:
+      type: object
+      additionalProperties: false
+      description: Present only for proactive calls. The ring window is 30 seconds; clients stop ringing at expiresAt even
+        if an older response said RINGING. An unanswered call becomes MISSED; its existing voice attachment is the voicemail,
+        with text retained on synthesis failure. Existing inbox notification channels apply to the same event.
+      required:
+      - state
+      - expiresAt
+      properties:
+        state:
+          type: string
+          enum:
+          - RINGING
+          - ANSWERED
+          - DECLINED
+          - MISSED
+        expiresAt:
+          type: string
+          format: date-time
+    InboxCallReplyRequest:
+      type: object
+      additionalProperties: false
+      required:
+      - action
+      - requestId
+      properties:
+        action:
+          type: string
+          enum:
+          - ANSWER
+          - DECLINE
+        requestId:
+          type: string
+          format: uuid
+    InboxCallReplyResponse:
+      type: object
+      additionalProperties: false
+      required:
+      - event
+      - applied
+      properties:
+        event:
+          $ref: '#/components/schemas/InboxEvent'
+        applied:
+          type: boolean
     InboxClaimRequest:
       type: object
       additionalProperties: false

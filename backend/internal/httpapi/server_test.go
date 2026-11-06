@@ -99,6 +99,7 @@ func TestOperationClassifiesGenerationRoutesBeforeConversationRoutes(t *testing.
 		"/api/v1/inbox/ev-1/claim":                     "inbox_claim",
 		"/api/v1/inbox/ev-1/ack":                       "inbox_ack",
 		"/api/v1/inbox/ev-1/read":                      "inbox_read",
+		"/api/v1/inbox/ev-1/call":                      "inbox_call",
 		"/api/v1/notification-channels":                "notification_channels",
 		"/api/v1/notification-deliveries":              "notification_deliveries",
 	}
