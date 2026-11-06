@@ -13,7 +13,7 @@ import {
     useSearch,
     type RouterHistory,
 } from '@tanstack/react-router';
-import { useConversationsQuery } from '../data/queries/chat';
+import { useConversationsQuery, type ConversationRow } from '../data/queries/chat';
 import { IconButton } from '../design/components/IconButton';
 import { ChatCharacterPanel } from '../features/chat/ChatCharacterPanel';
 import {
@@ -43,6 +43,7 @@ import { TavernRoute } from '../features/tavern/TavernRoute';
 import { useChatSnapshot } from '../runtime/session-bridge';
 import { AppShell, useShellLayout, type ShellConversationItem } from '../shell/AppShell';
 import type { ShellDestination } from '../shell/Sidebar';
+import { useReducedMotion } from '../shell/useReducedMotion';
 
 export type { ChatRouteProps, CharactersRouteProps, StoryRouteProps, SettingsRouteProps };
 
@@ -141,6 +142,54 @@ function resolveShellStateFromPath(pathname: string): {
         settingsActive: false,
         conversationKey: parts[1] ? decodeURIComponent(parts[1]) : null,
     };
+}
+
+function DesktopConversationList({
+    rows,
+    activeKey,
+    onSelectConversation,
+}: {
+    rows: readonly ConversationRow[];
+    activeKey: string | null;
+    onSelectConversation: (row: ConversationRow) => void;
+}) {
+    const { chrome, setConversationListOpen, openQuickSwitch } = useShellLayout();
+    const isCompactOrNarrow = chrome === 'compact' || chrome === 'narrow';
+
+    return (
+        <ConversationList
+            rows={rows}
+            activeKey={activeKey}
+            onOpenQuickSwitch={openQuickSwitch}
+            onSelectConversation={row => {
+                if (isCompactOrNarrow) {
+                    setConversationListOpen(false);
+                }
+                onSelectConversation(row);
+            }}
+        />
+    );
+}
+
+function DesktopCharacterPanel({
+    onOpenVoice,
+    onOpenMemory,
+    onOpenCharacters,
+}: {
+    onOpenVoice: (relationshipId: string) => void;
+    onOpenMemory: () => void;
+    onOpenCharacters: () => void;
+}) {
+    const { setCharacterPanelOpen } = useShellLayout();
+
+    return (
+        <ChatCharacterPanel
+            onClose={() => setCharacterPanelOpen(false)}
+            onOpenVoice={onOpenVoice}
+            onOpenMemory={onOpenMemory}
+            onOpenCharacters={onOpenCharacters}
+        />
+    );
 }
 
 function DesktopChatHeader({
@@ -245,6 +294,7 @@ export function createDesktopRouter(
     function RootShellComponent() {
         const pathname = useRouterState({ select: s => s.location.pathname });
         const navigate = useNavigate();
+        const reducedMotion = useReducedMotion();
         const activeSnapshotKey = useChatSnapshot(s => s.key);
         const activeCharName = useChatSnapshot(s => s.characterName);
         const activeCharAvatar = useChatSnapshot(s => s.avatar);
@@ -252,6 +302,7 @@ export function createDesktopRouter(
         const { rows: queriedConversations } = useConversationsQuery();
 
         const shellState = useMemo(() => resolveShellStateFromPath(pathname), [pathname]);
+        const isChatRoute = pathname.startsWith('/chat');
         const effectiveConversationKey =
             shellState.conversationKey ?? (activeSnapshotKey || null);
 
@@ -280,6 +331,18 @@ export function createDesktopRouter(
             void navigate({ to: '/memory' });
         };
 
+        const handleOpenVoice = (relationshipId: string) => {
+            void navigate({
+                to: '/settings/$category',
+                params: { category: 'voice' },
+                search: { relationshipId },
+            });
+        };
+
+        const handleOpenCharacters = () => {
+            void navigate({ to: '/characters' });
+        };
+
         return (
             <ChatUiProvider>
                 <AppShell
@@ -291,7 +354,7 @@ export function createDesktopRouter(
                     activeCharacterAvatar={activeCharAvatarUrl}
                     conversations={mergedConversations}
                     conversationListSlot={
-                        <ConversationList
+                        <DesktopConversationList
                             rows={queriedConversations}
                             activeKey={effectiveConversationKey}
                             onSelectConversation={row => {
@@ -309,13 +372,21 @@ export function createDesktopRouter(
                             onOpenMemory={handleOpenMemory}
                         />
                     }
-                    characterPanel={<ChatCharacterPanel />}
+                    characterPanel={
+                        <DesktopCharacterPanel
+                            onOpenVoice={handleOpenVoice}
+                            onOpenMemory={handleOpenMemory}
+                            onOpenCharacters={handleOpenCharacters}
+                        />
+                    }
                     composer={<ChatComposerSlot />}
                     persistentChatSlot={
                         CustomChatComp ? undefined : (
                             <ChatRoute
                                 conversationKey={shellState.conversationKey ?? undefined}
                                 hideComposer
+                                active={isChatRoute}
+                                reducedMotion={reducedMotion}
                                 onOpenSettings={() => {
                                     void navigate({
                                         to: '/settings/$category',
@@ -358,7 +429,7 @@ export function createDesktopRouter(
         getParentRoute: () => rootRoute,
         path: '/chat',
         component: function ChatIndexPage() {
-            return CustomChatComp ? <CustomChatComp /> : null;
+            return CustomChatComp ? <CustomChatComp active /> : null;
         },
     });
 
@@ -368,7 +439,7 @@ export function createDesktopRouter(
         component: function ChatConversationPage() {
             const { conversationKey } = useParams({ from: chatConversationRoute.id });
             return CustomChatComp ? (
-                <CustomChatComp conversationKey={conversationKey} />
+                <CustomChatComp conversationKey={conversationKey} active />
             ) : null;
         },
     });

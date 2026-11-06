@@ -15,7 +15,6 @@ import {
     writeVoiceRate,
 } from '../../../../extension/vc-model-settings/voice-logic.js';
 import { Icon } from '../../design/components/Icon';
-import { useReducedMotion } from '../../shell/useReducedMotion';
 
 export interface VoicePlayerLike {
     isCurrent?: (id: string | undefined) => boolean;
@@ -45,6 +44,7 @@ export interface VoiceBubbleProps {
     text?: string;
     player?: VoicePlayerLike;
     onPlayed?: () => void;
+    reducedMotion?: boolean;
 }
 
 function isClipActivelyPlaying(
@@ -76,6 +76,7 @@ export function VoiceBubble({
     text = '',
     player = defaultVoicePlayer,
     onPlayed,
+    reducedMotion = false,
 }: VoiceBubbleProps) {
     const isInput = Boolean(input);
     const clipId = voice?.clipId;
@@ -95,7 +96,6 @@ export function VoiceBubble({
         () => voiceText(voice?.transcript ?? text),
         [voice?.transcript, text],
     );
-    const reducedMotion = useReducedMotion();
 
     // B13: Read initial playing state from global/injected voicePlayer on mount
     const [playing, setPlaying] = useState<boolean>(() =>

@@ -2,25 +2,23 @@ import { Avatar } from '../../design/components/Avatar';
 import { IconButton } from '../../design/components/IconButton';
 import { type ConversationRow } from '../../data/queries/chat';
 import { useChatSnapshot, useSessionBridge } from '../../runtime/session-bridge';
-import { useShellLayout } from '../../shell/AppShell';
 
 export interface ConversationListProps {
     rows: readonly ConversationRow[];
     activeKey: string | null;
     onSelectConversation: (row: ConversationRow) => void;
+    onOpenQuickSwitch?: () => void;
 }
 
 export function ConversationList({
     rows,
     activeKey,
     onSelectConversation,
+    onOpenQuickSwitch,
 }: ConversationListProps) {
     const bridge = useSessionBridge();
-    const { chrome, setConversationListOpen, openQuickSwitch } = useShellLayout();
     // Subscribe to bridge so draft updates re-render draft previews
     useChatSnapshot(() => bridge.draft.read(activeKey ?? ''));
-
-    const isCompactOrNarrow = chrome === 'compact' || chrome === 'narrow';
 
     return (
         <>
@@ -34,7 +32,7 @@ export function ConversationList({
                     data-quick-switch-trigger=""
                     aria-label="搜索会话 (⌘K)"
                     title="搜索会话 (⌘K)"
-                    onClick={openQuickSwitch}
+                    onClick={onOpenQuickSwitch}
                 />
             </header>
             <div className="vc-convo-items">
@@ -54,9 +52,6 @@ export function ConversationList({
                             data-conversation-key={item.key}
                             data-relationship-id={item.relationshipId || undefined}
                             onClick={() => {
-                                if (isCompactOrNarrow) {
-                                    setConversationListOpen(false);
-                                }
                                 onSelectConversation(item);
                             }}
                         >

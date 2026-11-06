@@ -1,17 +1,11 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { useForm } from 'react-hook-form';
 import Lightbox from 'yet-another-react-lightbox';
 import Zoom from 'yet-another-react-lightbox/plugins/zoom';
 import 'yet-another-react-lightbox/styles.css';
-import { z } from 'zod';
-import { createReminder } from '../../../../extension/vc-model-settings/api.js';
 import {
     COPY,
     REMIND_PRESETS,
-    computeRemindDueAt,
     dateLabel,
-    remindSeed,
-    rfc3339,
     posKey,
     readKey,
     readStoredNumber,
@@ -20,38 +14,43 @@ import { AlertDialog } from '../../design/components/AlertDialog';
 import { Dialog } from '../../design/components/Dialog';
 import { toast } from '../../design/components/Toast';
 import { usePortalContainer } from '../../design/portal-host';
-import { useChatSnapshot, useSessionBridge } from '../../runtime/session-bridge';
 import type { ComposerQuote } from './Composer';
 import { ConflictSheet } from './ConflictSheet';
 import { EmojiPicker } from './EmojiPicker';
 import { MessageItem } from './MessageItem';
+import {
+    editMessageSchema,
+    remindMessageSchema,
+    resolveMessageActionTarget,
+    useMessageActions,
+    type EditMessageFormValues,
+    type MessageActionTarget,
+    type MessageTextTarget,
+    type RemindMessageFormValues,
+    type UseMessageActionsOptions,
+} from './useMessageActions';
 import { useReadingPosition, type ReadingPositionController } from './useReadingPosition';
 
+export {
+    editMessageSchema,
+    remindMessageSchema,
+    resolveMessageActionTarget,
+    useMessageActions,
+    type EditMessageFormValues,
+    type MessageActionTarget,
+    type MessageTextTarget,
+    type RemindMessageFormValues,
+    type UseMessageActionsOptions,
+};
+
 const PAGE_SIZE = 80;
-
-export const editMessageSchema = z.object({
-    text: z.string().refine(val => val.trim().length > 0, {
-        message: '请输入消息内容',
-    }),
-});
-
-export type EditMessageFormValues = z.infer<typeof editMessageSchema>;
-
-export const remindMessageSchema = z.object({
-    topic: z.string().refine(val => val.trim().length > 0, {
-        message: '请输入提醒内容',
-    }),
-    presetId: z.string().min(1),
-    customDueAt: z.string(),
-});
-
-export type RemindMessageFormValues = z.infer<typeof remindMessageSchema>;
 
 export interface MessageListProps {
     historyAll: boolean;
     onQuote: (info: ComposerQuote) => void;
     onOpenSettings?: () => void;
     onReadingPosition?: (controller: ReadingPositionController | null) => void;
+    reducedMotion?: boolean;
 }
 
 export function MessageList({
@@ -59,66 +58,67 @@ export function MessageList({
     onQuote,
     onOpenSettings,
     onReadingPosition,
+    reducedMotion = false,
 }: MessageListProps) {
-    const bridge = useSessionBridge();
-    const activeKey = useChatSnapshot(s => s.key);
-    const status = useChatSnapshot(s => s.status);
-    const messages = useChatSnapshot(s => s.messages);
-    const busy = useChatSnapshot(s => s.busy);
-    const notice = useChatSnapshot(s => s.notice);
-    const error = useChatSnapshot(s => s.error);
-    const conflict = useChatSnapshot(s => s.conflict);
-    const catalogBlocked = useChatSnapshot(s => s.catalogBlocked);
-    const settingsRequired = useChatSnapshot(s => s.settingsRequired);
-    const popupRequest = useChatSnapshot(s => s.popupRequest);
-    const personaChoice = useChatSnapshot(s => s.personaChoice);
+    const {
+        bridge,
+        activeKey,
+        status,
+        messages,
+        busy,
+        notice,
+        error,
+        settingsRequired,
+        popupRequest,
+        personaChoice,
+        editing,
+        setEditing,
+        editForm,
+        openEditDialog,
+        submitEdit,
+        removing,
+        setRemoving,
+        openRemoveDialog,
+        confirmRemove,
+        reminding,
+        setReminding,
+        remindForm,
+        remindPresetId,
+        remindCustomDueAt,
+        openRemindDialog,
+        submitRemind,
+        reactionTarget,
+        setReactionTarget,
+        openReactionTarget,
+        selectReaction,
+        popupInput,
+        setPopupInput,
+        confirmPopup,
+        cancelPopup,
+        selectPersonaChoice,
+        cancelPersonaChoice,
+        canRetryNotice,
+    } = useMessageActions({
+        onRemindSuccess: () => {
+            toast.show({ title: COPY.reminded || '已记下提醒', kind: 'success' });
+        },
+        onRemindError: () => {
+            toast.show({ title: COPY.actionFailed || '没有完成，请重试。', kind: 'error' });
+        },
+    });
     const portalContainer = usePortalContainer();
 
     const chatRef = useRef<HTMLDivElement | null>(null);
     const cardActionsRef = useRef<HTMLDivElement | null>(null);
 
-    const [editing, setEditing] = useState<{
-        key: string;
-        messageKey: string;
-        text: string;
-    } | null>(null);
-    const [removing, setRemoving] = useState<{
-        key: string;
-        messageKey: string;
-        anchor: HTMLElement | null;
-    } | null>(null);
-    const [reminding, setReminding] = useState<{
-        key: string;
-        messageKey: string;
-        text: string;
-    } | null>(null);
     const [lightbox, setLightbox] = useState<{ url: string; alt: string } | null>(null);
-    const [reactionTarget, setReactionTarget] = useState<{
-        key: string;
-        messageKey: string;
-        anchor: HTMLElement | null;
-    } | null>(null);
-    const [popupInput, setPopupInput] = useState('');
-
-    const editForm = useForm<EditMessageFormValues>({
-        defaultValues: { text: '' },
-    });
-
-    const remindForm = useForm<RemindMessageFormValues>({
-        defaultValues: {
-            topic: '',
-            presetId: REMIND_PRESETS[0]?.id || 'tonight',
-            customDueAt: '',
-        },
-    });
-    const remindPresetId = remindForm.watch('presetId');
-    const remindCustomDueAt = remindForm.watch('customDueAt');
+    const [reactionAnchor, setReactionAnchor] = useState<HTMLElement | null>(null);
 
     useEffect(() => {
-        if (popupRequest) {
-            setPopupInput(popupRequest.initial || '');
+        if (!reactionTarget) {
+            setReactionAnchor(null);
         }
-    }, [popupRequest]);
+    }, [reactionTarget]);
 
     useEffect(() => {
         const node = cardActionsRef.current;
@@ -132,6 +132,7 @@ export function MessageList({
         status,
         busy,
         messages,
+        reducedMotion,
     });
     const {
         latestShown,
@@ -147,105 +148,37 @@ export function MessageList({
         return () => onReadingPosition?.(null);
     }, [onReadingPosition, reading.jumpToMessage, reading.notifySent]);
 
-    const resolveActionTarget = (target: { key: string; messageKey: string } | null) => {
-        if (!target || !target.key || !target.messageKey) return null;
-        const snapshot = bridge.getSnapshot();
-        if (snapshot.status !== 'ready' || snapshot.key !== target.key) {
-            return null;
-        }
-        const index = snapshot.messages.findIndex(msg => msg.key === target.messageKey);
-        if (index < 0) return null;
-        return { snapshot, index };
-    };
-
-    const openEditDialog = (index: number, currentText: string) => {
-        const messageKey = messages[index]?.key;
-        if (!activeKey || !messageKey) return;
-        editForm.reset({ text: currentText });
-        setEditing({ key: activeKey, messageKey, text: currentText });
-    };
-
-    const submitEdit = editForm.handleSubmit(async values => {
-        if (!editing) return;
-        const parsed = editMessageSchema.safeParse(values);
-        if (!parsed.success) {
-            editForm.setError('text', {
-                type: 'zod',
-                message: parsed.error.issues[0]?.message || '请输入消息内容',
-            });
-            return;
-        }
-        const resolved = resolveActionTarget(editing);
-        const nextText = parsed.data.text;
-        setEditing(null);
-        if (!resolved) return;
-        await bridge.edit(resolved.index, nextText);
-    });
-
-    const openRemindDialog = (index: number, text: string) => {
-        const messageKey = messages[index]?.key;
-        if (!activeKey || !messageKey) return;
-        remindForm.reset({
-            topic: remindSeed(text),
-            presetId: REMIND_PRESETS[0]?.id || 'tonight',
-            customDueAt: '',
-        });
-        setReminding({ key: activeKey, messageKey, text });
-    };
-
-    const submitRemind = remindForm.handleSubmit(async values => {
-        if (!reminding) return;
-        const resolved = resolveActionTarget(reminding);
-        const targetRelationshipId = resolved?.snapshot.relationshipId;
-        if (!resolved || !targetRelationshipId) {
-            setReminding(null);
-            return;
-        }
-        const parsed = remindMessageSchema.safeParse(values);
-        if (!parsed.success) {
-            setReminding(null);
-            return;
-        }
-        const preset = REMIND_PRESETS.find((p: any) => p.id === parsed.data.presetId);
-        const customDate = parsed.data.customDueAt ? new Date(parsed.data.customDueAt) : null;
-        const remindAt = preset
-            ? computeRemindDueAt(preset)
-            : customDate && !Number.isNaN(customDate.getTime())
-              ? rfc3339(customDate)
-              : null;
-        if (!remindAt) {
-            setReminding(null);
-            return;
-        }
-        try {
-            await createReminder(targetRelationshipId, {
-                text: parsed.data.topic.trim(),
-                remindAt,
-            });
-            setReminding(null);
-            toast.show({ title: COPY.reminded || '已记下提醒', kind: 'success' });
-        } catch {
-            toast.show({ title: COPY.actionFailed || '没有完成，请重试。', kind: 'error' });
-        }
-    });
-
     // Keep the opening boundary stable as replies arrive or earlier rows are deleted.
     const initialPage = useRef({ key: '', ready: false, firstKey: '' });
-    if (initialPage.current.key !== activeKey || (!initialPage.current.ready && (messages.length > 0 || status === 'ready'))) {
+    if (
+        initialPage.current.key !== activeKey ||
+        (!initialPage.current.ready && (messages.length > 0 || status === 'ready'))
+    ) {
         const storageId = bridge.draft.storageId(activeKey);
         const savedPosition = readStoredNumber(posKey(storageId));
         const savedRead = readStoredNumber(readKey(storageId));
         const restoreFloor = savedPosition ?? (savedRead === null ? null : savedRead + 1);
-        const pageCount = restoreFloor === null ? 1 : Math.max(1, Math.ceil((messages.length - restoreFloor) / PAGE_SIZE));
+        const pageCount =
+            restoreFloor === null
+                ? 1
+                : Math.max(1, Math.ceil((messages.length - restoreFloor) / PAGE_SIZE));
         initialPage.current = {
             key: activeKey,
             ready: messages.length > 0 || status === 'ready',
             firstKey: messages[Math.max(0, messages.length - pageCount * PAGE_SIZE)]?.key ?? '',
         };
     }
-    const [pageStart, setPageStart] = useState<{ opening: typeof initialPage.current; firstKey: string } | null>(null);
-    const firstKey = pageStart?.opening === initialPage.current ? pageStart.firstKey : initialPage.current.firstKey;
-    const hiddenCount = historyAll ? 0 : Math.max(0, messages.findIndex(message => message.key === firstKey));
+    const [pageStart, setPageStart] = useState<{
+        opening: typeof initialPage.current;
+        firstKey: string;
+    } | null>(null);
+    const firstKey =
+        pageStart?.opening === initialPage.current
+            ? pageStart.firstKey
+            : initialPage.current.firstKey;
+    const hiddenCount = historyAll
+        ? 0
+        : Math.max(0, messages.findIndex(message => message.key === firstKey));
     const visibleMessages = useMemo(
         () => (hiddenCount > 0 ? messages.slice(hiddenCount) : messages),
         [messages, hiddenCount],
@@ -286,14 +219,6 @@ export function MessageList({
         return idx >= 0 ? idx : 0;
     }, [lightbox, lightboxSlides]);
 
-    const canRetryNotice =
-        Boolean(notice) &&
-        !busy &&
-        !conflict &&
-        !catalogBlocked &&
-        !settingsRequired &&
-        notice !== '已停止';
-
     return (
         <div className="vc-chat-stage">
             <div
@@ -331,7 +256,9 @@ export function MessageList({
                                         capturePrependAnchor();
                                         setPageStart({
                                             opening: initialPage.current,
-                                            firstKey: messages[Math.max(0, hiddenCount - PAGE_SIZE)]?.key ?? '',
+                                            firstKey:
+                                                messages[Math.max(0, hiddenCount - PAGE_SIZE)]?.key ??
+                                                '',
                                         });
                                     }}
                                 >
@@ -359,22 +286,16 @@ export function MessageList({
                                         index={absIndex}
                                         totalCount={messages.length}
                                         prevMessage={prevMsg}
+                                        reducedMotion={reducedMotion}
                                         onQuote={onQuote}
                                         onEdit={openEditDialog}
-                                        onRemove={(idx, anchor) => {
-                                            const messageKey = messages[idx]?.key;
-                                            if (!activeKey || !messageKey) return;
-                                            setRemoving({ key: activeKey, messageKey, anchor });
+                                        onRemove={idx => {
+                                            openRemoveDialog(idx);
                                         }}
                                         onRemind={openRemindDialog}
                                         onOpenReactionPicker={(idx, anchor) => {
-                                            const messageKey = messages[idx]?.key;
-                                            if (!activeKey || !messageKey) return;
-                                            setReactionTarget({
-                                                key: activeKey,
-                                                messageKey,
-                                                anchor,
-                                            });
+                                            setReactionAnchor(anchor);
+                                            openReactionTarget(idx);
                                         }}
                                         onOpenLightbox={(url, alt) => setLightbox({ url, alt })}
                                     />
@@ -502,13 +423,7 @@ export function MessageList({
                 confirmLabel={COPY.remove || '删除'}
                 cancelLabel="取消"
                 danger
-                onConfirm={async () => {
-                    if (!removing) return;
-                    const resolved = resolveActionTarget(removing);
-                    setRemoving(null);
-                    if (!resolved) return;
-                    await bridge.remove(resolved.index);
-                }}
+                onConfirm={() => void confirmRemove()}
             />
 
             <Dialog
@@ -612,17 +527,17 @@ export function MessageList({
 
             <EmojiPicker
                 mode="react"
-                anchor={reactionTarget?.anchor ?? null}
+                anchor={reactionAnchor}
                 open={reactionTarget !== null}
                 onOpenChange={open => {
-                    if (!open) setReactionTarget(null);
+                    if (!open) {
+                        setReactionAnchor(null);
+                        setReactionTarget(null);
+                    }
                 }}
                 onSelectReaction={emoji => {
-                    const resolved = resolveActionTarget(reactionTarget);
-                    setReactionTarget(null);
-                    if (resolved) {
-                        void bridge.react(resolved.index, emoji);
-                    }
+                    setReactionAnchor(null);
+                    selectReaction(emoji);
                 }}
             />
 
@@ -631,7 +546,7 @@ export function MessageList({
                 open={popupRequest !== null}
                 onOpenChange={open => {
                     if (!open && popupRequest) {
-                        bridge.resolvePopup(popupRequest.type === 3 ? null : 0);
+                        cancelPopup();
                     }
                 }}
                 title="提示"
@@ -643,9 +558,7 @@ export function MessageList({
                             <button
                                 type="button"
                                 className="vc-btn vc-btn--secondary"
-                                onClick={() =>
-                                    bridge.resolvePopup(popupRequest?.type === 3 ? null : 0)
-                                }
+                                onClick={cancelPopup}
                             >
                                 取消
                             </button>
@@ -653,11 +566,7 @@ export function MessageList({
                         <button
                             type="button"
                             className="vc-btn vc-btn--primary vc-sheet-done"
-                            onClick={() =>
-                                bridge.resolvePopup(
-                                    popupRequest?.type === 3 ? popupInput : 1,
-                                )
-                            }
+                            onClick={confirmPopup}
                         >
                             确定
                         </button>
@@ -682,7 +591,7 @@ export function MessageList({
                 open={personaChoice !== null}
                 onOpenChange={open => {
                     if (!open && personaChoice) {
-                        bridge.resolvePersonaChoice('');
+                        cancelPersonaChoice();
                     }
                 }}
                 title="选择这个人要见到的人设"
@@ -695,7 +604,7 @@ export function MessageList({
                             key={option.avatar}
                             type="button"
                             className="vc-btn vc-btn--secondary vc-persona-choice-item"
-                            onClick={() => bridge.resolvePersonaChoice(option.avatar)}
+                            onClick={() => selectPersonaChoice(option.avatar)}
                         >
                             <span>{option.name || option.avatar}</span>
                             {option.description ? <small>{option.description}</small> : null}

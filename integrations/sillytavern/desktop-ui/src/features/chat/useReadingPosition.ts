@@ -26,7 +26,6 @@ import {
     unreadInfo,
     writeStoredNumber,
 } from '../../../../extension/vc-model-settings/chat-logic.js';
-import { useReducedMotion } from '../../shell/useReducedMotion';
 import type { ChatMessage } from '../../runtime/session-bridge';
 
 export interface ReadingPositionOptions {
@@ -36,6 +35,7 @@ export interface ReadingPositionOptions {
     busy: boolean;
     messages: readonly ChatMessage[];
     autoFollow?: boolean;
+    reducedMotion?: boolean;
 }
 
 export interface ReadingPositionController {
@@ -73,8 +73,8 @@ export function useReadingPosition({
     busy,
     messages,
     autoFollow = true,
+    reducedMotion = false,
 }: ReadingPositionOptions): ReadingPositionController {
-    const reducedMotion = useReducedMotion();
     const reducedRef = useRef(reducedMotion);
     reducedRef.current = reducedMotion;
 

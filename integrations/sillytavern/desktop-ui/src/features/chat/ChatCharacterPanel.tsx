@@ -1,7 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from '@tanstack/react-router';
 import { z } from 'zod';
 import { recalledItems } from '../../../../extension/vc-model-settings/chat-logic.js';
 import { useAppClient } from '../../app/providers';
@@ -19,7 +18,6 @@ import { Dialog } from '../../design/components/Dialog';
 import { IconButton } from '../../design/components/IconButton';
 import { toast } from '../../design/components/Toast';
 import { useChatSnapshot } from '../../runtime/session-bridge';
-import { useShellLayout } from '../../shell/AppShell';
 
 const correctMemorySchema = z.object({
     summary: z.string().refine(val => val.trim().length > 0, {
@@ -29,11 +27,21 @@ const correctMemorySchema = z.object({
 
 type CorrectMemoryFormValues = z.infer<typeof correctMemorySchema>;
 
-export function ChatCharacterPanel() {
+export interface ChatCharacterPanelProps {
+    onClose?: () => void;
+    onOpenVoice?: (relationshipId: string) => void;
+    onOpenMemory?: () => void;
+    onOpenCharacters?: () => void;
+}
+
+export function ChatCharacterPanel({
+    onClose,
+    onOpenVoice,
+    onOpenMemory,
+    onOpenCharacters,
+}: ChatCharacterPanelProps = {}) {
     const client = useAppClient();
     const queryClient = useQueryClient();
-    const navigate = useNavigate();
-    const { setCharacterPanelOpen } = useShellLayout();
 
     const relationshipId = useChatSnapshot(s => s.relationshipId);
     const characterName = useChatSnapshot(s => s.characterName);
@@ -167,7 +175,7 @@ export function ChatCharacterPanel() {
                 iconSize={18}
                 className="vc-icon-btn vc-desk-character-close"
                 aria-label="关闭角色面板"
-                onClick={() => setCharacterPanelOpen(false)}
+                onClick={onClose}
             />
 
             <div className="vc-desk-character-identity">
@@ -195,11 +203,7 @@ export function ChatCharacterPanel() {
                             disabled={!relationshipId}
                             onClick={() => {
                                 if (!relationshipId) return;
-                                void navigate({
-                                    to: '/settings/$category',
-                                    params: { category: 'voice' },
-                                    search: { relationshipId: String(relationshipId) },
-                                });
+                                onOpenVoice?.(String(relationshipId));
                             }}
                         />
                         <span>声音</span>
@@ -211,9 +215,7 @@ export function ChatCharacterPanel() {
                             iconSize={20}
                             className="vc-icon-btn vc-circle"
                             aria-label="记忆"
-                            onClick={() => {
-                                void navigate({ to: '/memory' });
-                            }}
+                            onClick={onOpenMemory}
                         />
                         <span>记忆</span>
                     </div>
@@ -224,9 +226,7 @@ export function ChatCharacterPanel() {
                             iconSize={20}
                             className="vc-icon-btn vc-circle"
                             aria-label="设置"
-                            onClick={() => {
-                                void navigate({ to: '/characters' });
-                            }}
+                            onClick={onOpenCharacters}
                         />
                         <span>设置</span>
                     </div>

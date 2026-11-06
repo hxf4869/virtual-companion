@@ -1672,7 +1672,8 @@ N-00～N-08（对应评审发现 F-01～F-08）为在途修复，逐项状态与
 - [x] MB2-2a（2026-11-06）：迁移 MDL-2 成功信封解析、思考深度与工具预算，迁移按当前序列为 V284；Mac 开发库核对停在 V282，未执行旧手机 V283/V284，未改开发库。PASS：仓库约束/Go 全单测、Go store/http 集成、RLS 全组、桌面 Vitest 155 项、Node 离线 1187 项；受管 catalog-admin、hl-proactive、voice-chat、w11-tool-meter。W11 与 e2e-chat 合跑受前序预期失败账本影响，已在新隔离库单场景全断言通过，未削弱断言。原生账本/工具探针/超时出站已独立复核通过。提交：本条目 feat(MB2-2a) 提交；未调用真实模型、未部署。
 - [x] MB2-2b（2026-11-06）：迁移来电主动触发、语音留言、收件箱 call 状态和响应接口；旧手机来电源 c642dcf8，迁移重编号 V285（总数 206）。同 UUID/同动作幂等，30 秒过期保留未接留言，owner/会话/CSRF 与 ST ACK 边界独立；按 ADR-0011/0012 保留 main 的邮箱/飞书 D2 与桌面普通提醒，未迁入旧分支会丢兜底的 call 排除。PASS：6 个 Go 影响包、Go store/http 集成、RLS、quick、Node bridge 21 项、受管 catalog-admin/hl-proactive/voice-chat/w11-tool-meter 四组、独立契约复核。受管首次因 worktree 未构建 bundle NOT_RUN，构建后四组全过。提交：本条目 feat(MB2-2b)；未改开发库、未部署。手机来电 UI 与 call 字段解析由 MB2-9/12 接入，不新增当前无消费者的前端 mutation。
 - [x] MB2-3（2026-11-06）：增加手机空壳入口与 /m/ 同源鉴权托管，session-bridge 运行模块动态导入，首屏 JS/CSS gzip 静态依赖图预算门禁；空壳不加载引擎。PASS：check.sh 全量（52s）、桌面 Vitest、host-auth/导入边界/预算坏输入测试及独立契约审计。手机空壳 JS 104,566 B、CSS 4,812 B，低于 300,000/60,000 B；后续受管发现桌面预热时机回归，已由桌面入口显式 eagerRuntime 恢复，手机保持 idle，并让 gate 识别 Vite 动态准备模块；目标 35 项与预算坏输入 8 项、双端构建、nf-desktop 复验 PASS；不代表已实现手机页面的性能。提交：本条目 feat(MB2-3) 提交；未合并 main、未部署。
-- [ ] MB2-4：chat、characters 抽取候选验收中，其余功能区待实施。
+- [ ] MB2-4：按功能区分批推进；chat 已交付，characters、memory、inbox、story、settings、tavern 候选整合/验收中。
+- [x] MB2-4-chat（2026-11-06）：抽取草稿/发送、稳定消息动作与聊天状态；导航、壳层状态和减弱动态由桌面注入，原 DOM/classes/原生独立组件路径保留。PASS：桌面 Vitest 163 项、Node 离线 1189 项、受管 dr2-layout（9 宽度与往返）/nf-chat/nf-operations；nf-desktop 的 MB2-3 预热问题在 0be25328 修复后复验 PASS。独立逻辑复核与7对截图抽样 PASS，169张候选与说明见 .review-queue/MB2-4-chat；时间戳/极光采样差异有说明，不宣称像素相同。提交：本条目 refactor(MB2-4-chat)。
 - [ ] MB2-5：仅实施 MB-1 已选图覆盖的壳层；等待共享层完成。
 - [ ] MB2-6–MB2-15：本轮未开始。[ADR-0012](docs/decisions/0012-mobile-react-shared-engine.md) 已获 Owner 批准（2026-11-06，React + Capacitor，安卓与 iOS 同时）；后续条目与验收见 [Backlog L](docs/planning/2026-10-31-handoff-backlog.md) L 节。
 

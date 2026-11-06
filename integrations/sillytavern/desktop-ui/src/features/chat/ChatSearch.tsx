@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { spanOf, textMatches } from '../../../../extension/vc-model-settings/chat-logic.js';
 import { Icon } from '../../design/components/Icon';
 import { IconButton } from '../../design/components/IconButton';
-import { useReducedMotion } from '../../shell/useReducedMotion';
 
 export interface ChatSearchProps {
     open: boolean;
@@ -12,6 +11,7 @@ export interface ChatSearchProps {
     onEnsureAllHistory?: () => Promise<void> | void;
     onJumpToMessage?: (mesid: number) => boolean;
     toggleButtonRef?: React.RefObject<HTMLButtonElement | null>;
+    reducedMotion?: boolean;
 }
 
 interface SearchMatch {
@@ -84,8 +84,8 @@ export function ChatSearch({
     onEnsureAllHistory,
     onJumpToMessage,
     toggleButtonRef,
+    reducedMotion = false,
 }: ChatSearchProps) {
-    const reducedMotion = useReducedMotion();
     const [query, setQuery] = useState('');
     const [matchTotal, setMatchTotal] = useState(0);
     const [currentIdx, setCurrentIdx] = useState(-1);

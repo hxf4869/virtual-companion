@@ -32,6 +32,7 @@ export interface MessageItemProps {
     onOpenLightbox: (url: string, alt: string) => void;
     highlighted?: boolean;
     searchMatch?: { current: boolean } | null;
+    reducedMotion?: boolean;
 }
 
 export function MessageItem({
@@ -47,6 +48,7 @@ export function MessageItem({
     onOpenLightbox,
     highlighted,
     searchMatch,
+    reducedMotion = false,
 }: MessageItemProps) {
     const bridge = useSessionBridge();
     const busy = useChatSnapshot(s => s.busy);
@@ -272,6 +274,7 @@ export function MessageItem({
                             voice={voice}
                             input={voiceInput}
                             text={message.mes}
+                            reducedMotion={reducedMotion}
                             onPlayed={() => bridge.markVoicePlayed(index)}
                         />
                     ) : voice?.status === 'failed' ? (
