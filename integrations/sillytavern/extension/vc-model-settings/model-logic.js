@@ -72,9 +72,10 @@ export const CAPABILITY_FIELDS = [
 ];
 
 // 推理等级内部值与后端 V140 约束一致：^[a-z0-9_-]{1,32}$（小写）。
-// 预设三档之外的服务端合法值必须保留展示与回传，不静默丢弃。
-export const REASONING_LEVELS = ['low', 'medium', 'high'];
-export const REASONING_LEVEL_LABELS = { low: '低', medium: '中', high: '高' };
+// 预设五档之外的服务端合法值必须保留展示与回传，不静默丢弃。
+export const REASONING_LEVELS = ['none', 'low', 'medium', 'high', 'max'];
+export const REASONING_LEVEL_LABELS = { none: '不思考', low: '低', medium: '中', high: '高', max: '最高' };
+const DEEPSEEK_NO_MEDIUM_MODELS = new Set(['deepseek-v4-pro', 'deepseek-flash', 'deepseek-v4.1-flash-1017']);
 const REASONING_LEVEL_RE = /^[a-z0-9_-]{1,32}$/;
 
 export function isLegalReasoningLevel(value) {
@@ -85,9 +86,15 @@ export function reasoningLevelLabel(value) {
     return REASONING_LEVEL_LABELS[value] ?? String(value);
 }
 
+export function reasoningLevelPresets(model) {
+    const bare = String(model?.modelId || '').trim().split('/').at(-1).toLowerCase();
+    return DEEPSEEK_NO_MEDIUM_MODELS.has(bare) ? REASONING_LEVELS.filter((lv) => lv !== 'medium') : REASONING_LEVELS;
+}
+
 // 预设档之外、已保存的合法等级（页面只读保留）。
-export function extraReasoningLevels(levels) {
-    return (Array.isArray(levels) ? levels : []).filter((v) => isLegalReasoningLevel(v) && !REASONING_LEVELS.includes(v));
+export function extraReasoningLevels(levels, presets = REASONING_LEVELS) {
+    const presetList = Array.isArray(presets) ? presets : reasoningLevelPresets(presets);
+    return (Array.isArray(levels) ? levels : []).filter((v) => isLegalReasoningLevel(v) && !presetList.includes(v));
 }
 
 // 用途绑定（契约固定 6 条）。EMBEDDING 暂只能空引用待配置。

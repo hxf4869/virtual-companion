@@ -17,9 +17,14 @@ type chatRequest struct {
 	Temperature     *float64       `json:"temperature,omitempty"`
 	TopP            *float64       `json:"top_p,omitempty"`
 	ReasoningEffort *string        `json:"reasoning_effort,omitempty"`
+	Thinking        *thinkingMode  `json:"thinking,omitempty"`
 	Messages        []chatMessage  `json:"messages"`
 	Stream          bool           `json:"stream"`
 	StreamOptions   *streamOptions `json:"stream_options,omitempty"`
+}
+
+type thinkingMode struct {
+	Type string `json:"type"`
 }
 
 type chatMessage struct {
@@ -111,6 +116,14 @@ func encodeRequest(cfg Config, req companion.ModelRequest) ([]byte, error) {
 	}
 	if cfg.OmitTemperature {
 		body.Temperature = nil
+	}
+	modelID := strings.ToLower(cfg.Model[strings.LastIndex(cfg.Model, "/")+1:])
+	if cfg.ReasoningEffort != nil && (modelID == "deepseek-v4-pro" || modelID == "deepseek-flash" || modelID == "deepseek-v4.1-flash-1017") {
+		body.Thinking = &thinkingMode{Type: "enabled"}
+		if *cfg.ReasoningEffort == "none" {
+			body.Thinking.Type = "disabled"
+			body.ReasoningEffort = nil
+		}
 	}
 	for _, m := range req.Messages {
 		body.Messages = append(body.Messages, chatMessage{
@@ -230,7 +243,7 @@ func decodeStreamChunk(data string) (content []uint16, contentPresent bool, fini
 		}
 		return nil, false, "", &u, nil
 	}
-	if len(payload.Choices) != 1 || hasUsage {
+	if len(payload.Choices) != 1 {
 		return nil, false, "", nil, errMalformed
 	}
 	choice := payload.Choices[0]
@@ -250,6 +263,16 @@ func decodeStreamChunk(data string) (content []uint16, contentPresent bool, fini
 		if err != nil {
 			return nil, false, "", nil, err
 		}
+	}
+	if hasUsage {
+		u, uerr := mapUsage(payload.Usage)
+		if uerr != nil {
+			return nil, false, "", nil, uerr
+		}
+		if reason == "" {
+			return units, present, reason, nil, nil
+		}
+		return units, present, reason, &u, nil
 	}
 	return units, present, reason, nil, nil
 }

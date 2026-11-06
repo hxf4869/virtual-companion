@@ -882,8 +882,8 @@ export function mountModelSettings({ onBudgetChange } = {}) {
                 errors: errors.models.get(m.profileKey) ?? {}, ledger: { status: ledger, copy: logic.ledgerPriceCopy(ledger) },
                 shared: (m.boundPurposes ?? []).map(purpose => logic.purposeMeta(purpose).label).join('、'),
                 contextMissing: logic.contextWindowMissing(m), advancedOpen: state.advancedOpen, onAdvancedChange: open => { state.advancedOpen = open; },
-                reasoning: logic.REASONING_LEVELS.map(id => ({ id, label: logic.reasoningLevelLabel(id) })),
-                extraReasoning: logic.extraReasoningLevels(m.reasoningLevels),
+                reasoning: logic.reasoningLevelPresets(m).map(id => ({ id, label: logic.reasoningLevelLabel(id) })),
+                extraReasoning: logic.extraReasoningLevels(m.reasoningLevels, logic.reasoningLevelPresets(m)),
                 capabilities: logic.CAPABILITY_FIELDS.map(field => ({ id: field.key, label: field.label, value: m.capabilities[field.key] ?? 'UNKNOWN' })),
                 capabilityStates: logic.CAPABILITY_STATES.map(id => ({ id, label: logic.CAPABILITY_STATE_LABELS[id] })),
                 currencies: logic.CURRENCIES.map(id => ({ id, label: logic.CURRENCY_LABELS[id] })), pricingLabel: logic.formatPricing(m.pricing),
@@ -1019,11 +1019,12 @@ export function mountModelSettings({ onBudgetChange } = {}) {
             }
             if (path === 'reasoningLevels') {
                 // 预设档按勾选重建；已保存的额外合法等级始终保留，不静默丢弃。
-                const extras = logic.extraReasoningLevels(model.reasoningLevels);
-                const selected = new Set(model.reasoningLevels.filter((lv) => logic.REASONING_LEVELS.includes(lv)));
+                const presets = logic.reasoningLevelPresets(model);
+                const extras = logic.extraReasoningLevels(model.reasoningLevels, presets);
+                const selected = new Set(model.reasoningLevels.filter((lv) => presets.includes(lv)));
                 if (el.checked) selected.add(el.value);
                 else selected.delete(el.value);
-                model.reasoningLevels = [...logic.REASONING_LEVELS.filter((lv) => selected.has(lv)), ...extras];
+                model.reasoningLevels = [...presets.filter((lv) => selected.has(lv)), ...extras];
                 if (model.generationParams.reasoningEffort && !model.reasoningLevels.includes(model.generationParams.reasoningEffort)) {
                     model.generationParams.reasoningEffort = '';
                 }

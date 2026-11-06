@@ -177,7 +177,7 @@ func parseToolProbe(protocol string, body []byte) (ToolProbeResult, error) {
 }
 
 func parseChatToolProbe(body []byte) (ToolProbeResult, error) {
-	var payload struct {
+	type chatProbePayload struct {
 		Choices []struct {
 			Message struct {
 				ToolCalls []struct {
@@ -196,9 +196,24 @@ func parseChatToolProbe(body []byte) (ToolProbeResult, error) {
 			} `json:"prompt_tokens_details"`
 		} `json:"usage"`
 	}
+	var wire struct {
+		chatProbePayload
+		Success json.RawMessage `json:"success"`
+		Data    json.RawMessage `json:"data"`
+	}
 	out := ToolProbeResult{}
-	if err := json.Unmarshal(body, &payload); err != nil {
+	if err := json.Unmarshal(body, &wire); err != nil {
 		return out, &ToolProbeError{Code: ToolProbeCodeMalformed}
+	}
+	payload := wire.chatProbePayload
+	if wire.Success != nil || wire.Data != nil {
+		if string(wire.Success) != "true" || wire.Choices != nil {
+			return out, &ToolProbeError{Code: ToolProbeCodeMalformed}
+		}
+		payload = chatProbePayload{}
+		if err := json.Unmarshal(wire.Data, &payload); err != nil || payload.Choices == nil {
+			return out, &ToolProbeError{Code: ToolProbeCodeMalformed}
+		}
 	}
 	if payload.Usage != nil {
 		out.HasUsage = true

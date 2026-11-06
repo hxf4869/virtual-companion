@@ -7,6 +7,7 @@ import { BridgeError } from './errors.js';
 import { reserveModelUsage, settleModelUsage, cancelModelUsage } from './go-client.js';
 import { log } from './log.js';
 import { absorbStreamAbort } from './stream-abort.js';
+import { unwrapChatCompletion } from './chat-completions.js';
 
 const REFUSAL = {
     NO_PRICE: '当前模型没有单价，本次生成未发送',
@@ -69,9 +70,10 @@ export function readUsageTokens(usage) {
 /** 顶层 usage，或 {success,data} 信封内的 usage。没有用量对象时返回 undefined。 */
 export function readProviderUsage(json) {
     if (!json || typeof json !== 'object') return undefined;
+    if ('success' in json && json.success !== true) return undefined;
     const direct = readUsageTokens(json.usage);
     if (direct) return direct;
-    if (json.data && typeof json.data === 'object') return readUsageTokens(json.data.usage);
+    if (json.success === true && json.data && typeof json.data === 'object') return readUsageTokens(json.data.usage);
     return undefined;
 }
 
@@ -183,7 +185,7 @@ export function settleArmedResponse(response, url, request) {
     if (!response) return;
     const armed = takeRequestHold(request, url);
     if (!armed) return;
-    scheduleSettle(armed, response);
+    scheduleSettle(armed, response, request?.vcManaged?.protocol);
 }
 
 /** 原生 fetch 抛错，或预留成功后在发出前就抛错时，按 UNKNOWN 取消这一请求的武装。地址不一致则不动。 */
@@ -215,7 +217,7 @@ async function cancelQuiet(armed, disposition) {
     } catch { /* 重试耗尽后的错误码已记日志，不回写成上游正文 */ }
 }
 
-function scheduleSettle(armed, response) {
+function scheduleSettle(armed, response, protocol) {
     let clone = null;
     try {
         clone = response.clone();
@@ -229,7 +231,7 @@ function scheduleSettle(armed, response) {
             }
             const usage = contentType.includes('text/event-stream')
                 ? await readSseUsage(clone)
-                : await readJsonUsage(clone);
+                : await readJsonUsage(clone, protocol);
             if (!usage) {
                 await cancelQuiet(armed, 'UNKNOWN');
                 return;
@@ -249,13 +251,13 @@ function scheduleSettle(armed, response) {
     })();
 }
 
-async function readJsonUsage(response) {
+async function readJsonUsage(response, protocol) {
     const text = await response.text();
-    try {
-        return readProviderUsage(JSON.parse(text));
-    } catch {
-        return undefined;
+    const json = JSON.parse(text);
+    if (protocol === 'OPENAI_CHAT_COMPLETIONS') {
+        return readUsageTokens(unwrapChatCompletion(json)?.usage);
     }
+    return readProviderUsage(json);
 }
 
 async function readSseUsage(response) {

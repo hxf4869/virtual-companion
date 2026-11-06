@@ -29,6 +29,7 @@ import {
     isLegalReasoningLevel,
     extraReasoningLevels,
     reasoningLevelLabel,
+    reasoningLevelPresets,
     CAPABILITY_FIELDS,
     TOOL_CALLS_UNVERIFIED_NOTE,
     TOOL_CALLS_VERIFY_ACTION,
@@ -218,15 +219,23 @@ test('清除密钥必须停用；新供应商无密钥只能停用草稿', () =>
 
 // ---------- 推理等级（V140 小写约束） ----------
 
-test('推理等级内部值为小写，V140 合法性校验', () => {
-    assert.deepEqual(REASONING_LEVELS, ['low', 'medium', 'high']);
+test('推理等级内部值为小写，V140 合法性校验与 DeepSeek 预设过滤', () => {
+    assert.deepEqual(REASONING_LEVELS, ['none', 'low', 'medium', 'high', 'max']);
     assert.equal(isLegalReasoningLevel('low'), true);
     assert.equal(isLegalReasoningLevel('minimal'), true);
     assert.equal(isLegalReasoningLevel('LOW'), false);
     assert.equal(isLegalReasoningLevel('a'.repeat(33)), false);
     assert.equal(isLegalReasoningLevel('has space'), false);
+    assert.equal(reasoningLevelLabel('none'), '不思考');
     assert.equal(reasoningLevelLabel('low'), '低');
+    assert.equal(reasoningLevelLabel('medium'), '中');
+    assert.equal(reasoningLevelLabel('high'), '高');
+    assert.equal(reasoningLevelLabel('max'), '最高');
     assert.equal(reasoningLevelLabel('minimal'), 'minimal');
+    assert.deepEqual(reasoningLevelPresets({ modelId: 'deepseek-v4-pro' }), ['none', 'low', 'high', 'max']);
+    assert.deepEqual(reasoningLevelPresets({ modelId: 'deepseek-flash' }), ['none', 'low', 'high', 'max']);
+    assert.deepEqual(reasoningLevelPresets({ modelId: 'relay/deepseek-v4.1-flash-1017' }), ['none', 'low', 'high', 'max']);
+    assert.deepEqual(reasoningLevelPresets({ modelId: 'deepseek-chat' }), REASONING_LEVELS);
 });
 
 test('服务端额外合法等级被保留，不静默丢弃', () => {
@@ -236,6 +245,10 @@ test('服务端额外合法等级被保留，不静默丢弃', () => {
     });
     assert.deepEqual(draft.reasoningLevels, ['low', 'minimal']);
     assert.deepEqual(extraReasoningLevels(draft.reasoningLevels), ['minimal']);
+    assert.deepEqual(
+        extraReasoningLevels(['low', 'medium', 'minimal'], reasoningLevelPresets({ modelId: 'deepseek-v4-pro' })),
+        ['medium', 'minimal'],
+    );
     draft.editedSubs.add('reasoningLevels');
     const put = buildProviderPut(providerDraftWithModels([draft]));
     assert.deepEqual(put.models[0].reasoningLevels, ['low', 'minimal']);
@@ -470,6 +483,49 @@ test('模型页呈现空供应商、停用徽章、缺密钥、未知能力、�
         ...extra,
     });
     try {
+        const fs = await import('node:fs');
+        if (!fs.existsSync(new URL('../extension/vc-model-settings/desktop/build/index.js', import.meta.url))) {
+            const { registerHooks } = await import('node:module');
+            const ts = (await import('typescript')).default;
+            const bridgeEntry = new URL('../desktop-ui/src/bridge/index.tsx', import.meta.url).href;
+            registerHooks({
+                resolve(specifier, context, nextResolve) {
+                    if (specifier.endsWith('/desktop/build/index.js')) {
+                        return { url: bridgeEntry, shortCircuit: true };
+                    }
+                    if (context.parentURL?.includes('/desktop-ui/src/') && specifier.startsWith('.')) {
+                        const base = new URL(specifier, context.parentURL);
+                        for (const cand of [
+                            base.href,
+                            `${base.href}.tsx`,
+                            `${base.href}.ts`,
+                            base.href.replace(/\.js$/, '.tsx'),
+                            base.href.replace(/\.js$/, '.ts'),
+                        ]) {
+                            if (fs.existsSync(new URL(cand))) {
+                                return { url: cand, shortCircuit: true };
+                            }
+                        }
+                    }
+                    return nextResolve(specifier, context);
+                },
+                load(url, context, nextLoad) {
+                    if (url.endsWith('.tsx') || url.endsWith('.ts')) {
+                        const source = fs.readFileSync(new URL(url), 'utf8');
+                        const { outputText } = ts.transpileModule(source, {
+                            fileName: url,
+                            compilerOptions: {
+                                module: ts.ModuleKind.ESNext,
+                                target: ts.ScriptTarget.ES2022,
+                                jsx: ts.JsxEmit.ReactJSX,
+                            },
+                        });
+                        return { format: 'module', source: outputText, shortCircuit: true };
+                    }
+                    return nextLoad(url, context);
+                },
+            });
+        }
         const { mountModelSettings } = await import('../extension/vc-model-settings/page.js');
         const page = mountModelSettings();
         const overlay = page.root.querySelector('.vcms-overlay');
@@ -510,6 +566,29 @@ test('模型页呈现空供应商、停用徽章、缺密钥、未知能力、�
         await ready(() => page._state.phase === 'ready' && page._state.providers.length === 0);
         assert.match(overlay.innerHTML, /还没有供应商/);
         assert.match(overlay.innerHTML, /新建供应商，选择一种接口协议并填写 Base URL 与密钥，再添加模型配置。/);
+
+        providers = [provider({
+            models: [{
+                profileKey: 'ds-pro',
+                modelId: 'relay/deepseek-v4-pro',
+                displayName: 'DeepSeek V4 Pro',
+                contextWindowTokens: 128000,
+                maxOutputTokens: 8192,
+                state: 'ENABLED',
+                capabilities: { toolCalls: 'DECLARED' },
+                reasoningLevels: ['none', 'high', 'medium', 'minimal'],
+                generationParams: { reasoningEffort: 'high' },
+            }],
+        })];
+        page._state.phase = 'idle';
+        page.open();
+        await ready(() => page._state.phase === 'ready' && page._state.draft?.models?.[0]?.profileKey === 'ds-pro');
+        const presetInputs = Array.from(overlay.querySelectorAll('input[data-bind="model.reasoningLevels"]'));
+        assert.deepEqual(presetInputs.map((el) => el.value), ['none', 'low', 'high', 'max']);
+        const highCheckbox = overlay.querySelector('input[data-bind="model.reasoningLevels"][value="high"]');
+        highCheckbox.click();
+        assert.deepEqual(page._state.draft.models[0].reasoningLevels, ['none', 'medium', 'minimal']);
+        assert.equal(page._state.draft.models[0].generationParams.reasoningEffort, '');
     } finally {
         globalThis.fetch = previousFetch;
     }

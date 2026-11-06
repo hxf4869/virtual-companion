@@ -249,13 +249,19 @@ export async function sceneE2eChat(ctx) {
     const since = (await ctx.fixtureHttp.captures({})).at(-1)?.seq ?? 0;
 
     // 非流式
-    const nonStream = await ctx.st.generate({
-        chat_completion_source: 'custom', model: 'vc03m-chat', custom_url: snap.marker,
-        messages: [{ role: 'user', content: '你好，受管验收' }],
-        max_tokens: 512, stream: false,
-    });
+    await ctx.fixtureHttp.setOverride('vc03m-chat', { chatEnvelope: true });
+    let nonStream;
+    try {
+        nonStream = await ctx.st.generate({
+            chat_completion_source: 'custom', model: 'vc03m-chat', custom_url: snap.marker,
+            messages: [{ role: 'user', content: '你好，受管验收' }],
+            max_tokens: 512, stream: false,
+        });
+    } finally {
+        await ctx.fixtureHttp.setOverride('vc03m-chat', null);
+    }
     if (nonStream.status !== 200 || nonStream.json?.choices?.[0]?.message?.role !== 'assistant') {
-        throw new Error(`Chat 非流式生成失败：HTTP ${nonStream.status} ${String(nonStream.text).slice(0, 200)}`);
+        throw new Error(`Chat 非流式成功信封未返回标准回复：HTTP ${nonStream.status}`);
     }
     const capNon = await readFixtureCapture(ctx, { protocol: 'chat', since });
     if (capNon.finalUrl !== '/v1/chat/completions' || capNon.auth.scheme !== 'bearer' || capNon.auth.matched !== true) {
@@ -871,8 +877,10 @@ export async function sceneW11ToolMeter(ctx) {
         { name: 'anthropic', providerId: 'vc03m-claude', profileKey: 'chat', modelId: 'vc03m-chat', source: 'claude' },
     ];
     for (const round of rounds) {
+        const since = (await ctx.fixtureHttp.captures({})).at(-1)?.seq ?? 0;
         await ctx.fixtureHttp.setOverride(round.modelId, {
             tool: { name: 'query_scheduled_follow_ups', argumentsPieces: ['{}'] },
+            ...(round.name === 'chat' ? { chatEnvelope: true, reasoning: { text: 'synthetic-tool-reasoning' } } : {}),
             stopAfterToolResult: true,
             text: '已根据工具结果回复。',
         });
@@ -896,7 +904,12 @@ export async function sceneW11ToolMeter(ctx) {
             const generated = await ctx.st.generate(body);
             const content = generated.json?.choices?.[0]?.message?.content ?? '';
             if (generated.status !== 200 || !String(content).includes('已根据工具结果回复。')) {
-                throw new Error(`${round.name} 工具回合失败：HTTP ${generated.status} ${String(generated.text).slice(0, 240)}`);
+                throw new Error(`${round.name} 工具回合失败：HTTP ${generated.status}`);
+            }
+            if (round.name === 'chat') {
+                const captures = await ctx.fixtureHttp.captures({ protocol: 'chat', since });
+                const continued = captures.at(-1)?.body?.messages?.find(m => Array.isArray(m.tool_calls) && m.tool_calls.length);
+                if (continued?.reasoning_content !== 'synthetic-tool-reasoning') throw new Error('Chat 工具续接丢失同轮 reasoning_content');
             }
         } finally {
             await ctx.fixtureHttp.setOverride(round.modelId, null);

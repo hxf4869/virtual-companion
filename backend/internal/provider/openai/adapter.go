@@ -316,14 +316,11 @@ func (a *Adapter) consumeStream(
 		if err != nil {
 			return false, err
 		}
-		if usage != nil {
-			if state.finish == "" {
-				return false, errMalformed
-			}
-			state.usage = usage
-			return true, nil
-		}
 		if state.finish != "" {
+			if usage != nil && !present && finish == "" {
+				state.usage = usage
+				return true, nil
+			}
 			return false, errMalformed
 		}
 		if present {
@@ -350,6 +347,14 @@ func (a *Adapter) consumeStream(
 				return false, errMalformed
 			}
 			state.finish = finish
+		}
+		// 一些兼容服务在正文帧也附累计用量；只采用结束帧的最终值。
+		if usage != nil {
+			if state.finish != "" {
+				state.usage = usage
+			} else if !present {
+				return false, errMalformed
+			}
 		}
 		return true, nil
 	})

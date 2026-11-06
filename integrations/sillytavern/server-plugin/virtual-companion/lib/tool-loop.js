@@ -12,10 +12,9 @@ import { buildResponsesRequest, extractRoundFromOutput, applyToolOutputs } from 
 import { isStorySession } from './story-guard.js';
 import { log } from './log.js';
 import { absorbStreamAbort } from './stream-abort.js';
+import { applyChatReasoning, unwrapChatCompletion } from './chat-completions.js';
 
 export const MAX_TOOL_STEPS = 8;
-export const MAX_TOOL_TIMEOUT_MS = 120_000;
-export const MAX_TOOL_TOKENS = 8192;
 export const COMPANION_TOOL_NAMES = new Set(['query_scheduled_follow_ups', 'manage_reminder']);
 
 const OWNER_FIELDS = new Set(['relationshipId', 'ownerAccountId', 'ownerId', 'ownerUserId', 'accountId', 'userId']);
@@ -248,7 +247,7 @@ function extractCalls(protocol, json) {
             ? call.function.arguments
             : JSON.stringify(call.function?.arguments ?? {}),
     }));
-    return { text: textOf(message.content), calls };
+    return { text: textOf(message.content), calls, reasoningContent: message.reasoning_content };
 }
 
 function providerBody(protocol, body, messages, model, outputCap) {
@@ -279,6 +278,7 @@ function providerBody(protocol, body, messages, model, outputCap) {
     if (body.top_p != null && body.top_p !== '') outbound.top_p = body.top_p;
     if (body.reasoning_effort != null && body.reasoning_effort !== '') outbound.reasoning_effort = body.reasoning_effort;
     if (body.tool_choice != null) outbound.tool_choice = body.tool_choice;
+    applyChatReasoning(outbound, model);
     return outbound;
 }
 
@@ -385,10 +385,9 @@ export async function runBoundedToolLoop({ config, request, response, body, reso
     const protocol = resolved.provider.protocol;
     const model = resolved.model;
     const outputCap = resolveOutputTokens(requestedOutput(body), model.maxOutputTokens);
-    const tokenLimit = Math.min(MAX_TOOL_TOKENS, Math.max(1, Math.trunc(Number(outputCap))));
-    const turnMs = Math.min(MAX_TOOL_TIMEOUT_MS, Math.max(1, Number(config.timeoutMs) || 1));
+    const totalTokenLimit = Math.max(1, Math.trunc(Number(outputCap)));
+    const turnMs = Math.max(1, Number(config.timeoutMs) || 1);
     const deadline = now() + turnMs;
-    const remainingMs = () => Math.max(1, deadline - now());
     const chatIdentity = readChatIdentity(body);
     const sessionAuth = sessionPieces(request);
     const modelRevision = `provider:${resolved.provider.revision};binding:${resolved.bindingRevision}`.slice(0, 128);
@@ -404,20 +403,24 @@ export async function runBoundedToolLoop({ config, request, response, body, reso
         return true;
     };
     const client = bindClientAbort(request);
-    const stepSignal = () => AbortSignal.any([client.signal, AbortSignal.timeout(remainingMs())]);
-    const stopped = async (reservation, disposition) => {
-        await cancelQuiet(config, reservation, disposition);
-        throw new BridgeError(504, 'VC_UPSTREAM_TIMEOUT', '上游模型服务响应超时');
+    const timeoutError = () => new BridgeError(504, 'VC_UPSTREAM_TIMEOUT', '上游模型服务响应超时');
+    const remainingMs = () => {
+        const remaining = deadline - now();
+        if (client.gone() || remaining <= 0) throw timeoutError();
+        return remaining;
     };
+    const stepSignal = () => AbortSignal.any([client.signal, AbortSignal.timeout(remainingMs())]);
 
     try {
     while (sends < MAX_TOOL_STEPS) {
-        if (client.gone()) await stopped(null, 'NOT_SENT');
-        if (sends > 0 && completionSum + tokenLimit > MAX_TOOL_TOKENS) return stop(TOKEN_STOP);
+        remainingMs();
+        const tokenLimit = totalTokenLimit - completionSum;
+        if (tokenLimit < 1) return stop(TOKEN_STOP);
         const outbound = providerBody(protocol, body, messages, model, tokenLimit);
         await refreshMemorySlot({ config, request, response, finalBody: outbound, signal: stepSignal() });
         const budget = checkContextBudget({ model, finalBody: outbound, outputTokens: tokenLimit, counter });
         const purpose = sends === 0 ? 'FOREGROUND_CHAT' : 'TOOL_TURN';
+        remainingMs();
         const reserved = await reserveSend(config, {
             ownerAccountId: session.accountId,
             purpose,
@@ -430,8 +433,8 @@ export async function runBoundedToolLoop({ config, request, response, body, reso
         const reservation = reserved?.reservationId
             ? { reservationId: reserved.reservationId, ownerAccountId: session.accountId }
             : null;
-        if (client.gone()) await stopped(reservation, 'NOT_SENT');
         let upstream;
+        let sent = false;
         try {
             const headers = { 'Content-Type': 'application/json', Accept: 'application/json' };
             if (protocol === 'ANTHROPIC_MESSAGES') {
@@ -440,17 +443,21 @@ export async function runBoundedToolLoop({ config, request, response, body, reso
             } else {
                 headers.Authorization = `Bearer ${resolved.provider.credential}`;
             }
-            upstream = await fetchImpl(finalRequestUrl(protocol, resolved.provider), {
+            const url = finalRequestUrl(protocol, resolved.provider);
+            const outboundJson = JSON.stringify(outbound);
+            const signal = stepSignal();
+            sent = true;
+            upstream = await fetchImpl(url, {
                 method: 'POST',
                 headers,
-                body: JSON.stringify(outbound),
-                signal: stepSignal(),
+                body: outboundJson,
+                signal,
             });
             absorbStreamAbort(upstream?.body);
         } catch (error) {
-            await cancelQuiet(config, reservation, 'UNKNOWN');
+            await cancelQuiet(config, reservation, sent ? 'UNKNOWN' : 'NOT_SENT');
             if (error instanceof BridgeError) throw error;
-            if (isAbort(error)) throw new BridgeError(504, 'VC_UPSTREAM_TIMEOUT', '上游模型服务响应超时');
+            if (isAbort(error)) throw timeoutError();
             throw error;
         }
         if (!upstream.ok) {
@@ -462,6 +469,13 @@ export async function runBoundedToolLoop({ config, request, response, body, reso
         try {
             json = await upstream.json();
         } catch { /* 没有可解析的用量 */ }
+        if (protocol === 'OPENAI_CHAT_COMPLETIONS') {
+            try { json = unwrapChatCompletion(json); }
+            catch (error) {
+                await cancelQuiet(config, reservation, 'UNKNOWN');
+                throw error;
+            }
+        }
         const usage = readUsageTokens(json?.usage);
         if (!json || !usage) {
             await cancelQuiet(config, reservation, 'UNKNOWN');
@@ -522,7 +536,6 @@ export async function runBoundedToolLoop({ config, request, response, body, reso
         const executeJob = async (job) => {
             const parsed = await executeSessionTool(config, {
                 ...sessionAuth,
-                signal: stepSignal(),
                 payload: {
                     chatIdentity,
                     idempotencyKey: `${chatIdentity}:${turnId}:${job.step}`,
@@ -534,6 +547,7 @@ export async function runBoundedToolLoop({ config, request, response, body, reso
                     timeoutMs: turnMs,
                     tokenLimit,
                 },
+                signal: stepSignal(),
             });
             let row = null;
             try {
@@ -559,7 +573,7 @@ export async function runBoundedToolLoop({ config, request, response, body, reso
             await Promise.all(jobs.filter((job) => job.done).map((job) => job.done));
         } catch (error) {
             if (error instanceof BridgeError) throw error;
-            if (isAbort(error)) throw new BridgeError(504, 'VC_UPSTREAM_TIMEOUT', '上游模型服务响应超时');
+            if (isAbort(error)) throw timeoutError();
             throw new BridgeError(502, 'VC_TOOL_EXECUTE_FAILED', '工具执行失败，已停止继续请求模型');
         }
         if (jobs.some((job) => job.skipped)) return stop(STEP_STOP);
@@ -567,6 +581,7 @@ export async function runBoundedToolLoop({ config, request, response, body, reso
         messages.push({
             role: 'assistant',
             content: extracted.text || '',
+            ...(typeof extracted.reasoningContent === 'string' ? { reasoning_content: extracted.reasoningContent } : {}),
             tool_calls: extracted.calls.map((call) => ({
                 id: call.id,
                 type: 'function',

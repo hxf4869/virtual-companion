@@ -32,6 +32,7 @@ test('供应商信封里的 usage 可结算，且不带回正文', () => {
         { inputTokens: 10, outputTokens: 2, cachedInputTokens: 8 },
     );
     assert.equal(readProviderUsage({ success: true, data: { choices: [] } }), undefined);
+    assert.equal(readProviderUsage({ success: false, data: { usage: { prompt_tokens: 1, completion_tokens: 2 } } }), undefined);
     const packed = JSON.stringify(readProviderUsage({
         success: true,
         data: { usage: { prompt_tokens: 1, completion_tokens: 0 }, choices: [{ message: { content: 'secret-body' } }] },
@@ -171,6 +172,42 @@ test('Claude SSE 与非流式 JSON 的用量都能结算，正文不入账', asy
             { inputTokens: 20, outputTokens: 4, cachedInputTokens: 10 },
         );
         assert.equal(jsonHit.body.includes('secret-json'), false);
+    } finally {
+        uninstallUsageFetch();
+        await ledger.close();
+    }
+});
+
+test('原生 Chat JSON 使用正文所在信封的用量，无效信封按 UNKNOWN 取消', async () => {
+    const ledger = await listenLedger();
+    const expectedUrl = 'http://127.0.0.1:9/v1/chat/completions';
+    const usage = { prompt_tokens: 10, completion_tokens: 2 };
+    const choices = [{ message: { content: 'synthetic-envelope-text' } }];
+    const cases = [
+        { id: '41', body: { success: true, usage: { prompt_tokens: 99, completion_tokens: 99 }, data: { choices, usage } } },
+        { id: '42', body: { success: true, data: { usage } } },
+        { id: '43', body: { success: false, data: { choices, usage } } },
+    ];
+    installUsageFetch();
+    try {
+        for (const { id, body } of cases) {
+            const request = { vcManaged: { protocol: 'OPENAI_CHAT_COMPLETIONS' } };
+            await armUsageHold({ reservationId: id, ownerAccountId: '1', expectedUrl, config: ledger.config, request });
+            settleArmedResponse(Response.json(body), expectedUrl, request);
+        }
+        const deadline = Date.now() + 2000;
+        while (ledger.hits.length < cases.length && Date.now() < deadline) {
+            await new Promise((resolve) => setTimeout(resolve, 20));
+        }
+        assert.equal(ledger.hits.length, cases.length);
+        const settled = ledger.hits.find(({ path }) => path.endsWith('/41/settle'));
+        assert.ok(settled);
+        assert.deepEqual(JSON.parse(settled.body), { ownerAccountId: '1', inputTokens: 10, outputTokens: 2 });
+        for (const id of ['42', '43']) {
+            const cancelled = ledger.hits.find(({ path }) => path.endsWith(`/${id}/cancel`));
+            assert.ok(cancelled, `预留 ${id} 必须取消`);
+            assert.equal(JSON.parse(cancelled.body).disposition, 'UNKNOWN');
+        }
     } finally {
         uninstallUsageFetch();
         await ledger.close();

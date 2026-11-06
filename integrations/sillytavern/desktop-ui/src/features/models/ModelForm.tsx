@@ -1,6 +1,7 @@
 import { Fragment } from 'react';
 import { Icon } from '../../components/Icon';
 import { Action, Input, Select, FieldError, type ModelEvents } from './fields';
+import { extraReasoningLevels, reasoningLevelLabel, reasoningLevelPresets } from '../../../../extension/vc-model-settings/model-logic.js';
 
 type FieldValue = string | number;
 interface ModelDraft {
@@ -31,6 +32,15 @@ export function ModelForm({ desktop, sprite, model: m, errors, ledger, shared, c
     const field = desktop ? 'vc-desk-field' : 'vcms-field';
     const grid = desktop ? 'vcms-desktop-grid' : 'vcms-grid2';
     const err = (name: string) => <FieldError name={name} errors={errors} />;
+    const presets = reasoningLevelPresets(m);
+    const reasoningPresets = presets.map((id: string) => ({
+        id,
+        label: reasoning.find(row => row.id === id)?.label ?? reasoningLevelLabel(id),
+    }));
+    const extraLevels = Array.from(new Set([
+        ...(extraReasoningLevels(m.reasoningLevels, presets) as string[]),
+        ...extraReasoning.filter(lv => !presets.includes(lv)),
+    ]));
     const profileField = <div className={field}>
         <label htmlFor="vcms-m-profile">配置标识</label>
         <Input events={events} id="vcms-m-profile" type="text" className="vcms-mono" value={m.profileKey}
@@ -57,16 +67,16 @@ export function ModelForm({ desktop, sprite, model: m, errors, ledger, shared, c
             <summary>{desktop ? <><Icon sprite={sprite} name="chevron-right" size={16} />高级设置</> : '高级设置（推理 · 参数 · 能力 · 计价）'}</summary>
             <div className="vcms-advanced-body">
                 <h4 className="vcms-subsection-title">推理</h4>
-                <div className={field}><span className="vcms-field-label">声明可用推理等级</span>
+                <div className={field}><span className="vcms-field-label">可用思考档位</span>
                     <div className="vcms-checks">
-                        {reasoning.map(lv => <label className="vcms-check" key={lv.id}><Input events={events} type="checkbox" bind="model.reasoningLevels" value={lv.id} checked={m.reasoningLevels.includes(lv.id)} />{lv.label}</label>)}
-                        {extraReasoning.map(lv => <label className="vcms-check" key={lv} title="已保存的等级，继续保留"><input type="checkbox" checked disabled readOnly />{lv}</label>)}
+                        {reasoningPresets.map(lv => <label className="vcms-check" key={lv.id}><Input events={events} type="checkbox" bind="model.reasoningLevels" value={lv.id} checked={m.reasoningLevels.includes(lv.id)} />{lv.label}</label>)}
+                        {extraLevels.map(lv => <label className="vcms-check" key={lv} title="已保存的等级，继续保留"><input type="checkbox" checked disabled readOnly />{lv}</label>)}
                     </div>
                     <p className="vcms-muted">等级按当前协议映射为对应参数；未知映射保持待配置，不硬发统一字段。</p>
                 </div>
-                <div className={field}><label htmlFor="vcms-m-effort">默认推理等级</label>
+                <div className={field}><label htmlFor="vcms-m-effort">思考深度</label>
                     <Select events={events} id="vcms-m-effort" bind="model.generationParams.reasoningEffort" value={m.generationParams.reasoningEffort}>
-                        <option value="">未设置</option>{m.reasoningLevels.map(lv => <option key={lv} value={lv}>{reasoning.find(row => row.id === lv)?.label ?? lv}</option>)}
+                        <option value="">模型默认</option>{m.reasoningLevels.map(lv => <option key={lv} value={lv}>{reasoning.find(row => row.id === lv)?.label ?? reasoningLevelLabel(lv)}</option>)}
                     </Select>{err('reasoningEffort')}
                 </div>
                 <h4 className="vcms-subsection-title">生成参数</h4>

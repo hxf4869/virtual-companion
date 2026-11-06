@@ -24,6 +24,10 @@ func TestProbeToolCallsAcceptsThreeProtocolsAndRejectsABadCall(t *testing.T) {
 			body: `{"note":"` + marker + `","choices":[{"message":{"tool_calls":[{"function":{"name":"get_current_weather","arguments":"{\"city\":\"北京\"}"}}]}}],"usage":{"prompt_tokens":4,"completion_tokens":5,"prompt_tokens_details":{"cached_tokens":1}}}`,
 		},
 		{
+			protocol: "OPENAI_CHAT_COMPLETIONS", path: "/v1/chat/completions", header: "Authorization",
+			body: `{"success":true,"usage":{"prompt_tokens":99,"completion_tokens":99},"data":{"choices":[{"message":{"tool_calls":[{"function":{"name":"get_current_weather","arguments":"{\"city\":\"北京\"}"}}]}}],"usage":{"prompt_tokens":4,"completion_tokens":5,"prompt_tokens_details":{"cached_tokens":1}}}}`,
+		},
+		{
 			protocol: "OPENAI_RESPONSES", path: "/v1/responses", header: "Authorization",
 			body: `{"note":"` + marker + `","output":[{"type":"function_call","name":"get_current_weather","arguments":"{\"city\":\"上海\"}"}],"usage":{"input_tokens":6,"output_tokens":7}}`,
 		},
@@ -51,6 +55,10 @@ func TestProbeToolCallsAcceptsThreeProtocolsAndRejectsABadCall(t *testing.T) {
 			})
 			if err != nil || !result.HasUsage || !result.Sent || result.InputTokens == 0 || result.OutputTokens == 0 {
 				t.Fatalf("probe %+v err=%v", result, err)
+			}
+			if tc.protocol == "OPENAI_CHAT_COMPLETIONS" && (result.InputTokens != 4 || result.OutputTokens != 5 ||
+				result.CachedInputTokens == nil || *result.CachedInputTokens != 1) {
+				t.Fatalf("chat usage %+v", result)
 			}
 			if tc.protocol == "ANTHROPIC_MESSAGES" {
 				if header != "probe-secret" || result.CachedInputTokens == nil || *result.CachedInputTokens != 2 ||
@@ -90,6 +98,25 @@ func TestProbeToolCallsAcceptsThreeProtocolsAndRejectsABadCall(t *testing.T) {
 	if probe == nil || probe.Code != ToolProbeCodeMismatch || !result.HasUsage || !result.Sent ||
 		strings.Contains(err.Error(), marker) || strings.Contains(err.Error(), "北京") {
 		t.Fatalf("mismatch %+v err=%v", result, err)
+	}
+}
+
+func TestParseChatToolProbeRejectsInvalidEnvelopes(t *testing.T) {
+	t.Parallel()
+	const call = `"choices":[{"message":{"tool_calls":[{"function":{"name":"get_current_weather","arguments":"{\"city\":\"x\"}"}}]}}],"usage":{"prompt_tokens":4,"completion_tokens":5}`
+	cases := map[string]string{
+		"failed":          `{"success":false,` + call + `,"data":{` + call + `}}`,
+		"conflicting":     `{"success":true,` + call + `,"data":{` + call + `}}`,
+		"missing choices": `{"success":true,"data":{"usage":{"prompt_tokens":4,"completion_tokens":5}}}`,
+	}
+	for name, body := range cases {
+		t.Run(name, func(t *testing.T) {
+			got, err := parseChatToolProbe([]byte(body))
+			probe, _ := err.(*ToolProbeError)
+			if probe == nil || probe.Code != ToolProbeCodeMalformed || got.HasUsage {
+				t.Fatalf("invalid envelope accepted: usage=%t code=%v", got.HasUsage, err)
+			}
+		})
 	}
 }
 

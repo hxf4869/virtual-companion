@@ -1669,7 +1669,12 @@ N-00～N-08（对应评审发现 F-01～F-08）为在途修复，逐项状态与
 
 - [ ] MB2-0（2026-11-06）：规范修订与 74 张候选图已交付；ADR-0011 标明替代范围，DESIGN §17 改为共享 React 手机界面并补全屏卡片、酒馆布局、双栏与玻璃降级，既有数值保留。本机调度按 Owner 更正直接后台调用 agy，每个会话加 `/boost`。图与完整提示词见 [.review-queue/MB2-0/NOTES.md](.review-queue/MB2-0/NOTES.md)，不提交 Git。文档与文件完整性检查 PASS；Claude `REVIEW.md` 与 Owner `PICKS.md` 为 NOT_RUN，未代选，条目暂不勾选。
 - [x] MB2-1（2026-11-06）：[Spike报告](docs/planning/2026-11-06-mb2-spike-report.md)已交付，固定暂停等待Owner确认。Chromium两案各5冷+5热、Android/iOS各冷/热单轮已测；构建与组件检查PASS，严格档性能FAIL（原生8轮历史均>300ms；A滚动/转场、iOS A冷首屏等未达标），Android Doze持续流FAIL（最长约25分16秒无帧）。A卡片同实例往返/MVU定向复验PASS；B卡片宿主契约与Toast遮挡FAIL；真机、系统字体全矩阵、纯引擎净堆NOT_RUN。条件推荐优先继续验证Ionic，未选定或放宽预算。原始数据、源码归档与截图见 [.review-queue/MB2-1/NOTES.md](.review-queue/MB2-1/NOTES.md)。测试设备与临时私钥/缓存已回收；通用SDK保留。报告/进度文档在本提交中交付，不含Spike产品代码。 Owner 2026-11-06 确认：采用 Ionic（A），其掉帧为 MB2-5/6 门槛；历史可见保持 300 ms，MB2-6 以预取与缓存验收；安卓锁屏休眠接受暂停 + 回前台继续，并提供可选“不受电池优化限制”；壳以 `server.url` 加载远程 `/m/`，原生桥只对顶层文档可用；候选图提交审图分支供 Claude 审核。
-- [ ] MB2-2–MB2-15：本轮未开始。[ADR-0012](docs/decisions/0012-mobile-react-shared-engine.md) 已获 Owner 批准（2026-11-06，React + Capacitor，安卓与 iOS 同时）；后续条目与验收见 [Backlog L](docs/planning/2026-10-31-handoff-backlog.md) L 节。
+- [x] MB2-2a（2026-11-06）：迁移 MDL-2 成功信封解析、思考深度与工具预算，迁移按当前序列为 V284；Mac 开发库核对停在 V282，未执行旧手机 V283/V284，未改开发库。PASS：仓库约束/Go 全单测、Go store/http 集成、RLS 全组、桌面 Vitest 155 项、Node 离线 1187 项；受管 catalog-admin、hl-proactive、voice-chat、w11-tool-meter。W11 与 e2e-chat 合跑受前序预期失败账本影响，已在新隔离库单场景全断言通过，未削弱断言。原生账本/工具探针/超时出站已独立复核通过。提交：本条目 feat(MB2-2a) 提交；未调用真实模型、未部署。
+- [ ] MB2-2b：来电后端待迁移（接 MB2-2a，预期下一迁移 V285）。
+- [ ] MB2-3：构建托管候选已通过验证，待集成。
+- [ ] MB2-4：chat、characters 抽取候选验收中，其余功能区待实施。
+- [ ] MB2-5：仅实施 MB-1 已选图覆盖的壳层；等待共享层完成。
+- [ ] MB2-6–MB2-15：本轮未开始。[ADR-0012](docs/decisions/0012-mobile-react-shared-engine.md) 已获 Owner 批准（2026-11-06，React + Capacitor，安卓与 iOS 同时）；后续条目与验收见 [Backlog L](docs/planning/2026-10-31-handoff-backlog.md) L 节。
 
 ### NF 电脑端前端替换（2026-11-03）
 

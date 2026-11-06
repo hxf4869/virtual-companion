@@ -204,6 +204,7 @@ async function withStack(options, run) {
                     contextWindowTokens: 8192, maxOutputTokens: 1024,
                     capabilities: options.capabilities ?? { toolCalls: 'VERIFIED' },
                     reasoningLevels: [], generationParams: {}, pricing: null,
+                    ...options.model,
                 },
             }));
         }
@@ -227,6 +228,7 @@ async function withStack(options, run) {
         const settle = url.pathname.match(/^\/api\/v1\/service\/model-usage\/reservations\/([^/]+)\/settle$/);
         if (req.method === 'POST' && settle) {
             state.settles.push({ id: settle[1], body });
+            options.onSettle?.();
             const idempotent = state.settles.filter((row) => row.id === settle[1]).length > 1;
             res.writeHead(200, { 'Content-Type': 'application/json' });
             return res.end(JSON.stringify({
@@ -272,6 +274,7 @@ async function withStack(options, run) {
         config: { goBaseUrl: `http://127.0.0.1:${go.port}`, serviceToken: 'T'.repeat(40), timeoutMs: options.timeoutMs ?? 5000 },
         continuationStore: new ToolContinuationStore(),
         counter,
+        now: options.now,
     });
     try {
         await run({ bridge, state, providerPort: provider.port });
@@ -334,8 +337,73 @@ test('固定 provider 的工具调用：出站结果等于 Go 执行体与执行
         assert.equal(state.reserves[0].estimatedOutputTokens, 512);
         assert.notEqual(state.reserves[0].estimatedOutputTokens, 13);
         assert.equal(state.reserves[1].purpose, 'TOOL_TURN');
-        assert.equal(state.reserves[1].estimatedOutputTokens, 512);
+        assert.equal(state.reserves[1].estimatedOutputTokens, 499);
         assert.equal(state.settles.length, 2);
+    });
+});
+
+test('Chat 成功信封保持正文、工具结果与同轮 reasoning_content', async () => {
+    const tool = chatTool('query_scheduled_follow_ups', '{}', 'call-envelope');
+    tool.choices[0].message.reasoning_content = 'synthetic-tool-reasoning';
+    await withStack({
+        protocol: 'OPENAI_CHAT_COMPLETIONS',
+        scripts: [{ success: true, data: tool }, { success: true, data: chatText('已查到。') }],
+    }, async ({ bridge, state }) => {
+        const res = mockRes();
+        await bridge.interceptGenerate(mockReq(requestBody('OPENAI_CHAT_COMPLETIONS')), res);
+        assert.equal(res.statusCode, 200);
+        assert.equal(JSON.parse(res.body()).choices[0].message.content, '已查到。');
+        assert.equal(state.executes.length, 1);
+        const continued = state.providerReqs[1].messages.find(m => m.role === 'assistant');
+        assert.equal(continued.reasoning_content, 'synthetic-tool-reasoning');
+        assert.deepEqual(JSON.parse(toolOutputs('OPENAI_CHAT_COMPLETIONS', state.providerReqs[1])[0]), state.executionsByKey.values().next().value);
+        assert.equal(state.settles.length, 2);
+    });
+});
+
+test('失败信封不采用其中的用量或工具调用', async () => {
+    await withStack({ protocol: 'OPENAI_CHAT_COMPLETIONS', scripts: [{ success: false, data: chatTool('manage_reminder', '{}', 'failed') }] }, async ({ bridge, state }) => {
+        const res = mockRes();
+        await bridge.interceptGenerate(mockReq(requestBody('OPENAI_CHAT_COMPLETIONS')), res);
+        assert.equal(res.statusCode, 502);
+        assert.equal(JSON.parse(res.body()).error.code, 'VC_UPSTREAM_ERROR');
+        assert.equal(state.executes.length, 0);
+        assert.equal(state.settles.length, 0);
+        assert.equal(state.cancels.length, 1);
+    });
+});
+
+test('256K 工具预算扣除实际输出，超时沿用部署的五分钟', async () => {
+    const tool = chatTool('query_scheduled_follow_ups', '{}', 'large-budget');
+    tool.usage.completion_tokens = 10_000;
+    tool.usage.total_tokens = tool.usage.prompt_tokens + 10_000;
+    await withStack({
+        protocol: 'OPENAI_CHAT_COMPLETIONS', timeoutMs: 300_000,
+        model: { contextWindowTokens: 1_000_000, maxOutputTokens: 262_144 },
+        scripts: [tool, chatText('已完成。')],
+    }, async ({ bridge, state }) => {
+        const res = mockRes();
+        await bridge.interceptGenerate(mockReq(requestBody('OPENAI_CHAT_COMPLETIONS', { max_tokens: 262_144 })), res);
+        assert.equal(res.statusCode, 200);
+        assert.equal(JSON.parse(res.body()).choices[0].message.content, '已完成。');
+        assert.deepEqual(state.providerReqs.map(r => r.max_tokens), [262_144, 252_144]);
+        assert.deepEqual(state.reserves.map(r => r.estimatedOutputTokens), [262_144, 252_144]);
+        assert.equal(state.executes[0].body.timeoutMs, 300_000);
+        assert.equal(state.executes[0].body.tokenLimit, 262_144);
+    });
+});
+
+for (const effort of ['none', 'low', 'max']) test(`DeepSeek Chat 思考配置 ${effort} 传到真实出站体`, async () => {
+    await withStack({
+        protocol: 'OPENAI_CHAT_COMPLETIONS',
+        model: { modelId: 'deepseek-v4-pro', reasoningLevels: ['none', 'low', 'high', 'max'], generationParams: { reasoningEffort: effort } },
+        scripts: [chatText('合成回复')],
+    }, async ({ bridge, state }) => {
+        const res = mockRes();
+        await bridge.interceptGenerate(mockReq(requestBody('OPENAI_CHAT_COMPLETIONS', { model: 'deepseek-v4-pro' })), res);
+        assert.equal(res.statusCode, 200);
+        assert.deepEqual(state.providerReqs[0].thinking, { type: effort === 'none' ? 'disabled' : 'enabled' });
+        assert.equal(state.providerReqs[0].reasoning_effort, effort === 'none' ? undefined : effort);
     });
 });
 
@@ -439,6 +507,49 @@ test('预留被拒时上游请求数为 0，并给出可见原因', async () => 
     });
 });
 
+test('预留返回时工具回合已到截止，不出站并按 NOT_SENT 释放', async () => {
+    let now = 0;
+    await withStack({
+        protocol: 'OPENAI_CHAT_COMPLETIONS',
+        now: () => now,
+        holdReserve: () => { now = 5000; },
+        scripts: [chatText('合成回复')],
+    }, async ({ bridge, state }) => {
+        const res = mockRes();
+        await bridge.interceptGenerate(mockReq(requestBody('OPENAI_CHAT_COMPLETIONS')), res);
+        assert.equal(res.statusCode, 504);
+        assert.equal(state.reserves.length, 1);
+        assert.equal(state.providerReqs.length, 0);
+        assert.equal(state.settles.length, 0);
+        assert.equal(state.cancels.length, 1);
+        assert.equal(state.cancels[0].body.disposition, 'NOT_SENT');
+    });
+});
+
+test('已发送的请求照常结算，结算跨过截止后不发提醒工具', async (t) => {
+    let now = 0;
+    let toolSends = 0;
+    const originalFetch = globalThis.fetch;
+    t.mock.method(globalThis, 'fetch', (url, init) => {
+        if (new URL(url).pathname === '/api/v1/st/tools/execute') toolSends += 1;
+        return originalFetch(url, init);
+    });
+    await withStack({
+        protocol: 'OPENAI_CHAT_COMPLETIONS',
+        now: () => now,
+        onSettle: () => { now = 5000; },
+        scripts: [chatTool('manage_reminder', '{"action":"create","text":"synthetic","remindAt":"2027-01-01T00:00:00Z"}', 'late-reminder')],
+    }, async ({ bridge, state }) => {
+        const res = mockRes();
+        await bridge.interceptGenerate(mockReq(requestBody('OPENAI_CHAT_COMPLETIONS')), res);
+        assert.equal(toolSends, 0);
+        assert.equal(res.statusCode, 504);
+        assert.equal(state.settles.length, 1);
+        assert.equal(state.executes.length, 0);
+        assert.equal(state.cancels.length, 0);
+    });
+});
+
 test('上游超时标 UNKNOWN，不按 0 token 结算', async () => {
     await withStack({
         protocol: 'OPENAI_CHAT_COMPLETIONS',
@@ -476,7 +587,7 @@ test('三协议各一次工具后续轮：预留与结算各一次，缓存输�
             assert.equal(foreground.length, 1, protocol);
             assert.equal(turns.length, 1, protocol);
             assert.equal(foreground[0].estimatedOutputTokens, 512, protocol);
-            assert.equal(turns[0].estimatedOutputTokens, 512, protocol);
+            assert.equal(turns[0].estimatedOutputTokens, 499, protocol);
             assert.equal(state.settles.length, 2, protocol);
             assert.deepEqual(state.settles.map((row) => row.id), ['1', '2'], protocol);
             assert.deepEqual(state.settles.map((row) => row.body.inputTokens), protocol === 'ANTHROPIC_MESSAGES' ? [31, 40] : [21, 30], protocol);

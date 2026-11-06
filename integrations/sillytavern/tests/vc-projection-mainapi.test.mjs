@@ -156,6 +156,29 @@ test('资格缺失（无绑定）：不动 #main_api', async () => {
     assert.deepEqual(els['#main_api'].triggers, []);
 });
 
+test('思考深度投影：custom 模型显式投影 none/max，切换或清空后回退到 auto，不残留旧档位', async () => {
+    resetDom();
+    const cat = catalog('OPENAI_CHAT_COMPLETIONS');
+    cat.providers[0].models[0].generationParams.reasoningEffort = 'none';
+    const host = makeHost({ purposes: cat.purposes, providers: cat.providers });
+    const oai = host.getContext().chatCompletionSettings;
+    const controller = createProjectionController(host);
+    await controller.init();
+    assert.equal(oai.reasoning_effort, 'none', 'none 不属原生六档，直写活引用');
+    assert.equal(els['#openai_reasoning_effort'].value, '', '不触发原生 select');
+
+    cat.providers[0].models[0].generationParams.reasoningEffort = 'max';
+    await controller.refresh();
+    assert.equal(oai.reasoning_effort, 'max');
+    assert.equal(els['#openai_reasoning_effort'].value, 'max');
+
+    delete cat.providers[0].models[0].generationParams.reasoningEffort;
+    els['#openai_reasoning_effort'].value = 'auto';
+    await controller.refresh();
+    assert.equal(els['#openai_reasoning_effort'].value, 'auto');
+    assert.equal(oai.reasoning_effort, 'auto', '即使原生 select 已是 auto，oai.reasoning_effort 也必须重置为 auto');
+});
+
 test.after(() => {
     delete globalThis.document;
     delete globalThis.window;

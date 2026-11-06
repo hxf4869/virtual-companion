@@ -78,7 +78,7 @@ export function projectModelSettings(settings, decision, scope) {
     oai.openai_max_tokens = decision.maxOutputTokens;
     if (decision.pinned.temperature !== undefined) oai.temp_openai = decision.pinned.temperature;
     if (decision.pinned.topP !== undefined) oai.top_p_openai = decision.pinned.topP;
-    if (decision.pinned.reasoningEffort !== undefined) oai.reasoning_effort = decision.pinned.reasoningEffort;
+    if (decision.source === 'custom') oai.reasoning_effort = decision.pinned.reasoningEffort ?? 'auto';
 }
 
 export async function createChatEngine({ client, context, signal, settings, decision, presets, models, extensions, getEnabledExtensions, packet, readInput = () => '', readFirstDisplayedMessageId: customReadFirstDisplayedMessageId, initializeCards, onToast = () => {} }) {
