@@ -67,7 +67,7 @@ Android 系统界面数值；第 1–3、6、8 节原则继续适用。“ST 视
 2. 与电脑端共用一份聊天、一条生成链、一个引擎；复杂卡、MVU、EJS、剧情、酒馆配置在手机上原生可用，不依赖 ST 页面。
 3. 性能达到第 3.6 节预算（验收门槛）。
 4. 适配达到第 3.8 节约束与第 6 节设备矩阵（验收门槛）。
-5. 系统能力：安卓按 ADR-0011 第 4、5 节；iOS 按 ADR-0012 第 6 点的限制范围。
+5. 系统能力：安卓按 ADR-0011 第 4、5 节；iOS 按 ADR-0012 第 7 点的限制范围。
 6. 电脑端零回归：DR2 的 Vitest、离线测试、受管整组与 `dr2-layout` 保持通过。
 
 **非目标**：上架应用商店、系统推送服务（含 APNs / VoIP）、云打包、部署、改变电脑端外观、在 Go 复制生成链、为手机维护第二份业务状态。
@@ -154,6 +154,8 @@ mobile-shell/                Capacitor 工程（android/、ios/、capacitor.conf
 | 滚动与页面切换 | 无 > 50 ms 长任务，约 60 fps；侧滑返回跟手 |
 | 引擎运行时额外堆 | ≤ 15 MB |
 
+“进入对话到历史可见 ≤ 0.3 s”在 MB2-1 原生 WebView 8 个样本均未达标（329–987 ms），Owner 决定保持 300 ms，在 MB2-6 实现并验收以下优化：会话列表空闲时预取最近会话的末页并在内存 / IndexedDB 缓存、进入对话先渲染缓存的最后一屏再与服务端校准、虚拟列表首屏只挂载可视区域。共享 `session-bridge.ts` 的运行模块改为动态导入（MB2-1 已验证体积达标）在 MB2-3 落入生产入口。
+
 未达标先报告 Owner（第 9 节），可选措施：路由与组件拆包、引擎模块按需加载、空闲预热、Service Worker 缓存静态资源、
 减少玻璃层数；仍不达标再评估会话列表与对话页的 React Native 后路。
 
@@ -167,7 +169,7 @@ mobile-shell/                Capacitor 工程（android/、ios/、capacitor.conf
 - 候选插件（均已查 npm，许可需在 MB2-1 再核）：`@capacitor/{app,keyboard,status-bar,local-notifications,haptics}`（MIT，官方）、
   `@capacitor-community/safe-area`（MIT）、`@capawesome-team/capacitor-android-foreground-service`（MIT）、
   `@capgo/capacitor-share-target`（MPL-2.0，需登记；不合适时自写最小原生代码）。
-- 平台差异（ADR-0012 第 6 点）：
+- 平台差异（ADR-0012 第 7 点）：
 
 | 能力 | 安卓 | iOS |
 |---|---|---|
@@ -178,6 +180,11 @@ mobile-shell/                Capacitor 工程（android/、ios/、capacitor.conf
 | 麦克风 | WebView `getUserMedia` + 权限 | WKWebView `getUserMedia`（iOS 14.3+）+ 权限 |
 
 - 壳内不放业务逻辑、不存业务状态、不直连 Go / TTS / ASR（ADR-0011 §4）。通知正文与锁屏可见性按 DESIGN §17.7。
+- **加载方式与安全（Claude 建议，2026-11-06 记录）**：壳以 `server.url` 加载同源远程 `/m/`，以保持现有同源 Cookie 登录与 CSRF 模型（打包网页资源会使页面与服务器跨源，需重做认证）。Capacitor 官方将该用法定位为开发用途，本项目仅 Owner 自用、不上架，接受该边界，并强制：
+  1. `allowNavigation` 只含 Owner 服务器 origin，强制 HTTPS，其他导航交给系统浏览器；
+  2. **原生桥只对顶层 `/m/` 文档可用**：角色卡 iframe、EJS / Helper 宿主 iframe 不得访问 `Capacitor` 插件（安卓核对 JavaScript 接口是否注入子 frame，iOS 用户脚本限 main frame；无法在壳层隔离时，在网页侧桥入口校验调用来源并拒绝非顶层调用），MB2-13 加攻击用例；
+  3. 桥接口只暴露第 3.7 节列出的方法，不提供通用文件、Shell 或任意插件调用。
+- **安卓后台策略（Owner 2026-11-06）**：MB2-1 实测 Doze 深度休眠中前台服务下仍出现约 25 分钟无帧。默认接受锁屏休眠时生成暂停，回前台自动检测未完成回复并提示“继续”（ADR-0011 §5 兜底）；设置 › 通知提供可选“不受电池优化限制”（`REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`，用户主动开启，说明耗电影响），开启后按 30 分钟持续流复测并如实记录结果。
 
 ### 3.8 适配约束（硬规则）
 
@@ -196,14 +203,16 @@ mobile-shell/                Capacitor 工程（android/、ios/、capacitor.conf
 9. **深浅色与主题**：所有页面在浅、深、自动及角色主题覆盖下检查；不写字面颜色。
 10. **减弱动态**：`prefers-reduced-motion` 时动效直接到终态。
 
-### 3.9 组件选型（MB2-1 对比后定）
+### 3.9 组件选型（2026-11-06 Owner 定为方案 A：Ionic React）
+
+依据 [MB2-1 报告](2026-11-06-mb2-spike-report.md)：A 具备页面栈与侧滑返回、卡片实例往返已通过；B 缺完整页面栈（需手写，违反第 3.8 节）、Vaul 已停止维护、卡片集成存在缺陷。A 在 Chromium 4× 下的消息滚动（帧间隔 P50 33 ms）与页面切换（3 次 > 50 ms 长任务）列为 MB2-5 / MB2-6 的验收门槛，修不到预算先报告 Owner。路由：手机入口使用 Ionic 页面栈（React Router 6，`>=6.4 <7`），电脑端保持 TanStack Router；`features/**` 只依赖注入的导航回调。下表保留对比记录。
 
 | 方案 | 组成 | 优点 | 待验证 |
 |---|---|---|---|
 | A | Ionic React 9（MIT）：`IonApp`、`IonTabs`、页面栈与侧滑返回、`IonModal` sheet、`IonItemSliding`、`IonRefresher`；聊天列表 react-virtuoso | 手机交互与安全区、键盘、iOS / 安卓风格现成，与 Capacitor 同团队 | 与电脑端 TanStack Router、Base UI 弹层共存；用 DESIGN token 完全覆盖默认样式；包体积 |
 | B | 继续 Base UI + vaul（抽屉）+ motion（动效与页面过渡）+ @use-gesture（手势）+ react-virtuoso / @tanstack/react-virtual | 与电脑端技术栈一致、包小 | 页面栈与侧滑返回需组装，适配风险更高 |
 
-评估标准（MB2-1 报告逐项给数据）：第 3.8 节各条的达成难度、第 3.6 节性能指标、包体积、与共享 features 的集成成本、
+原评估标准（MB2-1 报告已逐项给数据）：第 3.8 节各条的达成难度、第 3.6 节性能指标、包体积、与共享 features 的集成成本、
 DESIGN 第 17 节还原度（同一页面两版截图对比）、维护活跃度与许可。结论报告 Owner 确认后写入本节并作为后续条目的唯一选型。
 
 ## 4. 功能对齐矩阵
@@ -443,7 +452,7 @@ MB2-7 至 MB2-11 可并行（不同 `features/<area>` 与 `mobile/pages/<area>`�
 | 抽取共享逻辑时影响电脑端 | DR2 回归 | MB2-4 分批，每批跑电脑端受管与 Vitest；DOM 不变 |
 | 复杂卡依赖桌面宽度 | 卡片显示错乱 | 全屏卡片页；`mb2-cards` 覆盖 MVU / EJS |
 | 组件库与现有栈冲突 | 集成成本高 | MB2-1 双方案对比后定 |
-| iOS 后台与来电限制 | 体验差异 | ADR-0012 第 6 点如实说明；不接推送 |
+| iOS 后台与来电限制 | 体验差异 | ADR-0012 第 7 点如实说明；不接推送 |
 | 插件许可或能力不足 | MB2-13 受阻 | MB2-1 先核实；不合适时自写最小原生代码 |
 | `mb-mobile` 迁移编号与数据 | 开发库迁移失败 | MB2-2 重编号，核对 Mac 开发库后再切换 |
 | 受管环境差异 | 结果不可比 | 合并门槛以 Mac 参考环境为准 |
@@ -457,7 +466,11 @@ MB2-7 至 MB2-11 可并行（不同 `features/<area>` 与 `mobile/pages/<area>`�
 5. 手机浏览器打开 `/` 不跳转，电脑端窄窗放“打开手机版”入口。
 6. 出图交执行者，Claude 审核后 Owner 选定；开发严格按图。
 7. 适配严格约束，优先使用现成组件与开源实现，少造轮子（第 3.8、3.9 节）。
-8. 组件选型：Ionic React 与无样式组合在 MB2-1 对比后定。
+8. 组件选型：Ionic React（方案 A，MB2-1 后确认）；其掉帧问题为 MB2-5 / MB2-6 验收门槛。
 9. 性能预算：严格档（第 3.6 节）。
 10. 设备范围：手机竖屏 320–430、手机横屏、折叠屏 / 小平板（双栏），iPad / 大平板在 App 内用电脑端；常见情况都要考虑。
 11. `/native/`：手机版验收通过并经 Owner 确认后移除。
+12. 历史可见保持 300 ms，MB2-6 实现预取与缓存后验收（第 3.6 节）。
+13. 安卓锁屏休眠：接受暂停 + 回前台继续，并提供可选“不受电池优化限制”开关（第 3.7 节）。
+14. 候选图提交到单独的审图分支供 Claude 审核。
+15. 壳以 `server.url` 加载远程 `/m/`，并强制原生桥只对顶层文档可用（第 3.7 节，Claude 建议，Owner 未提出异议）。
