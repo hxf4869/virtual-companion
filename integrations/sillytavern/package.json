@@ -18,7 +18,7 @@
     "stop-managed": "node scripts/stop-managed.mjs",
     "status-managed": "node scripts/status-managed.mjs",
     "pretest": "npm run build:desktop",
-    "test": "node --test \"tests/*.test.mjs\"",
+    "test": "node --test \"tests/*.test.mjs\" && node --test tests/evaluation-meter.performance.mjs",
     "accept": "node scripts/accept.mjs",
     "protection-report": "node scripts/protection-report.mjs",
     "check:desktop": "tsc --project desktop-ui/tsconfig.json",

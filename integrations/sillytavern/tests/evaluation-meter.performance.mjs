@@ -1,3 +1,5 @@
+// Run after the parallel offline suite: durable-journal latency requires an
+// otherwise idle test process. Both npm test and check.sh include this file.
 import assert from 'node:assert/strict';
 import { once } from 'node:events';
 import fs from 'node:fs/promises';

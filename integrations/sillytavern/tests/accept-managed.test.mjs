@@ -224,3 +224,22 @@ test('真实语音验收只保留最近五次产物，不删其他场景和未�
         ]);
     } finally { await fs.rm(root, { recursive: true, force: true }); }
 });
+
+test('受管 seed 可导入，不启动 CLI 或修改调用方的端口环境', async () => {
+    const keys = ['VC_W03_ST_PORT', 'VC_W03_FIXTURE_PORT', 'VC_W03_GO_PORT', 'VC_W03_OWNER_ACCOUNT_ID'];
+    const before = keys.map(key => process.env[key]);
+    const seed = await import('../scripts/accept-managed.mjs');
+    assert.equal(typeof seed.seedSyntheticOwner, 'function');
+    assert.equal(typeof seed.seedManagedProfiles, 'function');
+    assert.deepEqual(keys.map(key => process.env[key]), before);
+});
+
+test('CM-3 隔离入口在 round 不合法或已取消时拒绝启动', async () => {
+    const { withIsolatedChatMemoryStack } = await import('../scripts/lib/chat-memory-isolated-stack.mjs');
+    const evaluate = () => assert.fail('不应启动评测');
+    await assert.rejects(withIsolatedChatMemoryStack({ round: '../shared', meterPort: 12345 }, evaluate),
+        { message: 'ISOLATION_INPUT_INVALID' });
+    await assert.rejects(withIsolatedChatMemoryStack({
+        round: 'round-aborted', meterPort: 12345, signal: AbortSignal.abort(new Error('private response')),
+    }, evaluate), { message: 'ISOLATION_INTERRUPTED' });
+});

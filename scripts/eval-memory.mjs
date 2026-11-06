@@ -90,6 +90,33 @@ export async function evaluateMemory() {
 async function main(){
     const arg = (name, fallback) => process.argv.includes(name) ? process.argv[process.argv.indexOf(name) + 1] : fallback;
     const mode = arg('--mode', 'offline');
+    if (mode === 'generate') {
+        const { generateChatMemoryDataset } = await import('./lib/chat-memory-dataset.mjs');
+        const dataset = generateChatMemoryDataset({ seed: Number(arg('--seed', '20261106')) });
+        console.log(JSON.stringify({ version: dataset.version, seed: dataset.seed, hashes: dataset.hashes,
+            sourceCounts: dataset.sourceCounts, categories: Object.fromEntries([...new Set(dataset.cases.map(row => row.category))]
+                .map(category => [category, dataset.cases.filter(row => row.category === category).length])), modelCalls: 0 }));
+        return;
+    }
+    if (mode === 'real') {
+        const { runRealEvaluation } = await import('./lib/chat-memory-evaluation.mjs');
+        const controller = new AbortController();
+        const interrupt = () => controller.abort();
+        process.once('SIGINT', interrupt); process.once('SIGTERM', interrupt);
+        try {
+            const report = await runRealEvaluation({ round: arg('--round', ''), configRef: arg('--config-ref', ''),
+                mode: arg('--budget-mode', 'cny'), ownerTokenOnly: process.argv.includes('--owner-token-only'),
+                seed: Number(arg('--seed', '20261106')), variant: arg('--variant', 'baseline'),
+                quoteFile: arg('--quote-file', undefined), root: arg('--output', undefined), maxCalls: Number(arg('--max-calls', '6000')),
+                baselineFile: arg('--baseline', undefined), resume: process.argv.includes('--resume'), signal: controller.signal,
+                onProgress: progress => console.log(JSON.stringify(progress)) });
+            console.log(JSON.stringify({ executionStatus: report.executionStatus, verdict: report.verdict,
+                accuracy: report.quality.accuracy, byCategory: report.quality.byCategory, gates: report.gates,
+                budget: report.budget, actualCostCny: report.actualCostCny }));
+            if (report.executionStatus !== 'COMPLETE') process.exitCode = 1;
+        } finally { process.removeListener('SIGINT', interrupt); process.removeListener('SIGTERM', interrupt); }
+        return;
+    }
     if (mode === 'preflight') {
         const { preflightEvaluation } = await import('./lib/chat-memory-evaluation.mjs');
         const report = await preflightEvaluation({ round: arg('--round', ''), configRef: arg('--config-ref', ''),
@@ -104,6 +131,6 @@ async function main(){
     console.log(JSON.stringify({...report,regressions}));if(regressions.length)process.exitCode=1;
 }
 if(process.argv[1] && path.resolve(process.argv[1])===fileURLToPath(import.meta.url))main().catch(error=>{
-    console.error(['CONFIG_NOT_READY','BUDGET_STOP','BUDGET_LOCKED','BUDGET_SNAPSHOT_MISMATCH','EVALUATION_MODE_INVALID'].includes(error.message)
+    console.error(/^(?:CM|ISOLATION|BUDGET|CONFIG|ARTIFACT|EVALUATION)_[A-Z0-9_]+$/.test(error.message)
         ? error.message : 'MEMORY_EVAL_FAILED'); process.exitCode=1;
 });

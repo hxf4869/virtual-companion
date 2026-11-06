@@ -49,7 +49,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { spawn, spawnSync } from 'node:child_process';
 import crypto from 'node:crypto';
 import { createRequire } from 'node:module';
@@ -64,7 +64,6 @@ import { ensureRerankContainer } from './lib/rerank-container.mjs';
 import { startW10Capture, stopW10Capture } from './w10-accept.mjs';
 import { LifecycleError } from './lib/accept-runtime.mjs';
 import { companiondPlan } from './lib/companiond-plan.mjs';
-import { ACCEPT_SCENES } from './managed-scenes.mjs';
 import { prepareVoiceRealArtifacts } from './voice-real-accept.mjs';
 
 const INTEG = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -78,10 +77,6 @@ const ARTIFACTS_ROOT = path.join(DEV_MANAGED, 'artifacts');
 const ST_PORT = Number(process.env.VC_W03_ST_PORT || 8752);
 const FIXTURE_PORT = Number(process.env.VC_W03_FIXTURE_PORT || 8753);
 const GO_PORT = Number(process.env.VC_W03_GO_PORT || 8095);
-// 场景在运行时读这些变量。写回解析后的端口，避免未导出时拼出 undefined，被 Go 当成非法 base URL 返回 400。
-process.env.VC_W03_ST_PORT = String(ST_PORT);
-process.env.VC_W03_FIXTURE_PORT = String(FIXTURE_PORT);
-process.env.VC_W03_GO_PORT = String(GO_PORT);
 const GO_BASE = `http://127.0.0.1:${GO_PORT}`;
 const ST_BASE = `http://127.0.0.1:${ST_PORT}`;
 const FIXTURE_BASE = `http://127.0.0.1:${FIXTURE_PORT}`;
@@ -94,13 +89,13 @@ const MINIO_IMAGE = process.env.VC_W03_MINIO_IMAGE || 'vc-g12-minio-tools:local'
 const S3_BUCKET = process.env.VC_W03_S3_BUCKET || 'vc03m-accept';
 const PG_LABEL = 'com.vc.w03=managed';
 // Disposable PG resets job IDs; a fresh owner also isolates persistent engine operations.
-if (!process.env.VC_W03_OWNER_ACCOUNT_ID) process.env.VC_W03_OWNER_ACCOUNT_ID = String(Date.now());
-const OWNER_ACCOUNT_ID = process.env.VC_W03_OWNER_ACCOUNT_ID;
+const OWNER_ACCOUNT_ID = process.env.VC_W03_OWNER_ACCOUNT_ID || String(Date.now());
 const SECOND_ACCOUNT_ID = String(BigInt(OWNER_ACCOUNT_ID) + 1n);
 const RIGHTS_ACCOUNT_ID = String(9007199254740993n + BigInt(Date.now()));
 const RIGHTS_HANDLE = `vc-w06-rights-${RIGHTS_ACCOUNT_ID}`;
 const GO_TOOLCHAIN = 'go1.26.10';
 
+let ACCEPT_SCENES;
 const argv = process.argv.slice(2);
 const DRY_RUN = argv.includes('--dry-run');
 const CAPTURE = argv.includes('--capture');
@@ -270,9 +265,9 @@ function totpCode(secret, at = Date.now()) {
     const offset = digest.at(-1) & 15;
     return String((digest.readUInt32BE(offset) & 0x7fffffff) % 1000000).padStart(6, '0');
 }
-async function authRequest(suffix, body, base = GO_BASE) {
+async function authRequest(suffix, body, base = GO_BASE, origin = ST_BASE) {
     const response = await fetch(`${base}/api/v1/auth/${suffix}`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json', Origin: ST_BASE }, body: JSON.stringify(body),
+        method: 'POST', headers: { 'Content-Type': 'application/json', Origin: origin }, body: JSON.stringify(body),
     });
     const data = await response.json();
     if (!response.ok) throw new LifecycleError(`合成认证步骤 ${suffix.split('/').at(-1)} 未完成（HTTP ${response.status}）`);
@@ -288,34 +283,47 @@ function sessionFrom(response, data) {
 }
 
 /** 合成账号使用已有跨语言 BCrypt 测试向量；会话由真实密码+TOTP API 签发。 */
-async function seedSyntheticOwner(secrets) {
+export async function seedSyntheticOwner(secrets, {
+    sql = psql, goBase = GO_BASE, stBase = ST_BASE, ownerId = OWNER_ACCOUNT_ID, secondId = SECOND_ACCOUNT_ID, secondSession = false, judgeId,
+} = {}) {
+    const authenticate = (suffix, body) => authRequest(suffix, body, goBase, stBase);
+    async function activate(account) {
+        const { data: challenge } = await authenticate('login', { account, password: secrets.password });
+        if (challenge.nextStep !== 'AUTHENTICATOR_SETUP_REQUIRED') dieLifecycle('合成账号应进入首次 TOTP 设置');
+        const { data: setup } = await authenticate(`challenges/${challenge.challengeId}/authenticator-setup`, {});
+        return authenticate(`challenges/${challenge.challengeId}/authenticator-confirm`, { code: totpCode(setup.manualKey), trustDevice: false });
+    }
     const vector = JSON.parse(fs.readFileSync(path.join(BACKEND, 'contracttest/testdata/crypto-vectors.json'), 'utf8')).bcrypt;
-    psql(`
+    sql(`
 INSERT INTO vc.vc_user(id, display_name)
-VALUES (${BigInt(OWNER_ACCOUNT_ID)}, 'w03-accept-owner'), (${BigInt(SECOND_ACCOUNT_ID)}, 'w05-accept-second')
+VALUES (${BigInt(ownerId)}, 'w03-accept-owner'), (${BigInt(secondId)}, 'w05-accept-second')${judgeId
+        ? `, (${BigInt(judgeId)}, 'cm3-accept-judge')` : ''}
 ON CONFLICT (id) DO UPDATE SET display_name = EXCLUDED.display_name;
 INSERT INTO vc.identity_account(id, username, password_hash, role, status, display_name)
-VALUES (${BigInt(OWNER_ACCOUNT_ID)}, 'w03-accept-owner', '${vector.goHash}', 'ADMIN', 'ACTIVE', 'w03-accept-owner'),
-       (${BigInt(SECOND_ACCOUNT_ID)}, 'w05-accept-second', '${vector.goHash}', 'ADMIN', 'ACTIVE', 'w05-accept-second')
+VALUES (${BigInt(ownerId)}, 'w03-accept-owner', '${vector.goHash}', 'ADMIN', 'ACTIVE', 'w03-accept-owner'),
+       (${BigInt(secondId)}, 'w05-accept-second', '${vector.goHash}', 'ADMIN', 'ACTIVE', 'w05-accept-second')${judgeId
+        ? `, (${BigInt(judgeId)}, 'cm3-accept-judge', '${vector.goHash}', 'ADMIN', 'ACTIVE', 'cm3-accept-judge')` : ''}
 ON CONFLICT (id) DO UPDATE SET role = 'ADMIN', status = 'ACTIVE';
 `);
     secrets.password = vector.password;
     if (secrets.needsRights) {
-        psql(`INSERT INTO vc.vc_user(id,display_name) VALUES (${BigInt(RIGHTS_ACCOUNT_ID)}, 'W06 synthetic rights');
+        sql(`INSERT INTO vc.vc_user(id,display_name) VALUES (${BigInt(RIGHTS_ACCOUNT_ID)}, 'W06 synthetic rights');
           INSERT INTO vc.identity_account(id,username,password_hash,role,status,display_name) VALUES (${BigInt(RIGHTS_ACCOUNT_ID)},'w06-accept-rights','${vector.goHash}','ADMIN','ACTIVE','W06 synthetic rights');`);
         const { data: rightsChallenge } = await authRequest('login', { account:'w06-accept-rights', password:secrets.password });
         const { data: rightsSetup } = await authRequest(`challenges/${rightsChallenge.challengeId}/authenticator-setup`, {});
         const rightsAuth = await authRequest(`challenges/${rightsChallenge.challengeId}/authenticator-confirm`, { code:totpCode(rightsSetup.manualKey), trustDevice:false });
         secrets.rightsSession = sessionFrom(rightsAuth.response, rightsAuth.data);
     }
-    const { data: challenge } = await authRequest('login', { account: 'w03-accept-owner', password: secrets.password });
-    if (challenge.nextStep !== 'AUTHENTICATOR_SETUP_REQUIRED') dieLifecycle('合成 Owner 应进入首次 TOTP 设置');
-    const { data: setup } = await authRequest(`challenges/${challenge.challengeId}/authenticator-setup`, {});
-    const { response, data } = await authRequest(`challenges/${challenge.challengeId}/authenticator-confirm`, { code: totpCode(setup.manualKey), trustDevice: false });
-    secrets.session = sessionFrom(response, data);
-    secrets.recoveryCodes = data.recoveryCodes;
-    const client = createGoAdminClient({ baseUrl: GO_BASE, origin: ST_BASE, session: secrets.session });
-    if (!(await client.reauth(secrets.password)).ok) dieLifecycle('合成 Owner 重新认证未完成');
+    async function authenticatedSession(account) {
+        const { response, data } = await activate(account);
+        const session = sessionFrom(response, data);
+        const client = createGoAdminClient({ baseUrl: goBase, origin: stBase, session });
+        if (!(await client.reauth(secrets.password)).ok) dieLifecycle('合成账号重新认证未完成');
+        return { session, recoveryCodes: data.recoveryCodes };
+    }
+    ({ session: secrets.session, recoveryCodes: secrets.recoveryCodes } = await authenticatedSession('w03-accept-owner'));
+    if (secondSession) secrets.secondSession = (await authenticatedSession('w05-accept-second')).session;
+    if (judgeId) secrets.judgeSession = (await authenticatedSession('cm3-accept-judge')).session;
     log.ok('合成 Owner 真实密码、TOTP 设置与重新认证完成（不输出凭据、验证码或恢复码）');
 }
 
@@ -483,6 +491,43 @@ function clearStaleVcBindings(dataRoot) {
     return files;
 }
 
+export async function seedManagedProfiles(dataRoot, upstreamSt, rightsHandle, judgeHandle) {
+    // 仅给一次性合成验收创建第二个本地 profile。复用 ST 的存储实现，在进程启动前写入。
+    const requireSt = createRequire(path.join(upstreamSt, 'package.json'));
+    const storage = requireSt('node-persist').create();
+    await storage.init({ dir: path.join(dataRoot, '_storage'), ttl: false, expiredInterval: 0 });
+    // 第二账号先写入后，ST 只在用户表为空时创建 default-user。Owner 映射的就是 default-user，缺失时宿主拒绝进入聊天。
+    if (!await storage.getItem('user:default-user')) {
+        await storage.setItem('user:default-user', { handle: 'default-user', name: 'User', created: Date.now(), password: '', admin: true, enabled: true, salt: '' });
+    }
+    await storage.setItem('user:vc-w05-second', { handle: 'vc-w05-second', name: '合成第二账号', created: Date.now(), password: '', salt: '', enabled: true, admin: false });
+    if (rightsHandle) {
+        await storage.setItem(`user:${rightsHandle}`, { handle:rightsHandle, name:'W06 合成数据权利', created:Date.now(), password:'', salt:'', enabled:true, admin:false });
+        const target = path.join(dataRoot,rightsHandle,'settings.json');
+        const settings = JSON.parse(fs.readFileSync(path.join(upstreamSt, 'default/content/settings.json'),'utf8'));
+        settings.firstRun=false; settings.username='W06 合成账号';
+        fs.mkdirSync(path.dirname(target),{recursive:true,mode:0o700});fs.writeFileSync(target,JSON.stringify(settings),{mode:0o600});
+    }
+    if (judgeHandle) {
+        await storage.setItem(`user:${judgeHandle}`, { handle: judgeHandle, name: '合成评审账号', created: Date.now(),
+            password: '', salt: '', enabled: true, admin: false });
+    }
+    // Persona onboarding is separate from B01 authentication. This disposable
+    // profile starts with a named persona so parallel tabs do not each prompt.
+    const secondSettingsPath = path.join(dataRoot, 'vc-w05-second/settings.json');
+    const secondSettings = JSON.parse(fs.readFileSync(fs.existsSync(secondSettingsPath) ? secondSettingsPath : path.join(upstreamSt, 'default/content/settings.json'), 'utf8'));
+    secondSettings.firstRun = false; secondSettings.username = '合成第二账号';
+    fs.mkdirSync(path.dirname(secondSettingsPath), { recursive: true, mode: 0o700 });
+    fs.writeFileSync(secondSettingsPath, JSON.stringify(secondSettings), { mode: 0o600 });
+    const defaultSettingsPath = path.join(dataRoot, 'default-user/settings.json');
+    if (!fs.existsSync(defaultSettingsPath)) {
+        const defaultSettings = JSON.parse(fs.readFileSync(path.join(upstreamSt, 'default/content/settings.json'), 'utf8'));
+        defaultSettings.firstRun = false; defaultSettings.username = '合成验收用户';
+        fs.mkdirSync(path.dirname(defaultSettingsPath), { recursive: true, mode: 0o700 });
+        fs.writeFileSync(defaultSettingsPath, JSON.stringify(defaultSettings), { mode: 0o600 });
+    }
+}
+
 async function startManagedStack(secrets, artifactsDir) {
     const nativeDevOk = path.join(INTEG, 'dev', 'bootstrap-ok');
     if (!fs.existsSync(nativeDevOk)) {
@@ -498,36 +543,7 @@ async function startManagedStack(secrets, artifactsDir) {
         env: { VC_ST_DEV_DIR: DEV_MANAGED, VC_ST_PORT: String(ST_PORT) },
         label: 'assemble-managed（受管 st-run 组装，幂等）',
     });
-    // 仅给一次性合成验收创建第二个本地 profile。复用 ST 的存储实现，在进程启动前写入。
-    const requireSt = createRequire(path.join(INTEG, 'upstream/SillyTavern/package.json'));
-    const storage = requireSt('node-persist').create();
-    await storage.init({ dir: path.join(DEV_MANAGED, 'data/_storage'), ttl: false, expiredInterval: 0 });
-    // 第二账号先写入后，ST 只在用户表为空时创建 default-user。Owner 映射的就是 default-user，缺失时宿主拒绝进入聊天。
-    if (!await storage.getItem('user:default-user')) {
-        await storage.setItem('user:default-user', { handle: 'default-user', name: 'User', created: Date.now(), password: '', admin: true, enabled: true, salt: '' });
-    }
-    await storage.setItem('user:vc-w05-second', { handle: 'vc-w05-second', name: '合成第二账号', created: Date.now(), password: '', salt: '', enabled: true, admin: false });
-    if (secrets.needsRights) {
-        await storage.setItem(`user:${RIGHTS_HANDLE}`, { handle:RIGHTS_HANDLE, name:'W06 合成数据权利', created:Date.now(), password:'', salt:'', enabled:true, admin:false });
-        const target = path.join(DEV_MANAGED,'data',RIGHTS_HANDLE,'settings.json');
-        const settings = JSON.parse(fs.readFileSync(path.join(INTEG,'upstream/SillyTavern/default/content/settings.json'),'utf8'));
-        settings.firstRun=false; settings.username='W06 合成账号';
-        fs.mkdirSync(path.dirname(target),{recursive:true,mode:0o700});fs.writeFileSync(target,JSON.stringify(settings),{mode:0o600});
-    }
-    // Persona onboarding is separate from B01 authentication. This disposable
-    // profile starts with a named persona so parallel tabs do not each prompt.
-    const secondSettingsPath = path.join(DEV_MANAGED, 'data/vc-w05-second/settings.json');
-    const secondSettings = JSON.parse(fs.readFileSync(fs.existsSync(secondSettingsPath) ? secondSettingsPath : path.join(INTEG, 'upstream/SillyTavern/default/content/settings.json'), 'utf8'));
-    secondSettings.firstRun = false; secondSettings.username = '合成第二账号';
-    fs.mkdirSync(path.dirname(secondSettingsPath), { recursive: true, mode: 0o700 });
-    fs.writeFileSync(secondSettingsPath, JSON.stringify(secondSettings), { mode: 0o600 });
-    const defaultSettingsPath = path.join(DEV_MANAGED, 'data/default-user/settings.json');
-    if (!fs.existsSync(defaultSettingsPath)) {
-        const defaultSettings = JSON.parse(fs.readFileSync(path.join(INTEG, 'upstream/SillyTavern/default/content/settings.json'), 'utf8'));
-        defaultSettings.firstRun = false; defaultSettings.username = '合成验收用户';
-        fs.mkdirSync(path.dirname(defaultSettingsPath), { recursive: true, mode: 0o700 });
-        fs.writeFileSync(defaultSettingsPath, JSON.stringify(defaultSettings), { mode: 0o600 });
-    }
+    await seedManagedProfiles(path.join(DEV_MANAGED, 'data'), path.join(INTEG, 'upstream/SillyTavern'), secrets.needsRights ? RIGHTS_HANDLE : null);
     const clearedBindings = clearStaleVcBindings(path.join(DEV_MANAGED, 'data'));
     log.info(`已清除持久 dataRoot 中旧库实例绑定 ${clearedBindings} 个聊天文件`);
     runChecked(process.execPath, [path.join(SCRIPTS, 'start-managed.mjs')], {
@@ -824,6 +840,12 @@ async function runFull() {
 }
 
 async function main() {
+    // 场景在运行时读这些变量。写回解析后的端口，避免未导出时拼出 undefined，被 Go 当成非法 base URL 返回 400。
+    process.env.VC_W03_ST_PORT = String(ST_PORT);
+    process.env.VC_W03_FIXTURE_PORT = String(FIXTURE_PORT);
+    process.env.VC_W03_GO_PORT = String(GO_PORT);
+    process.env.VC_W03_OWNER_ACCOUNT_ID = OWNER_ACCOUNT_ID;
+    ({ ACCEPT_SCENES } = await import('./managed-scenes.mjs'));
     if (HELP) {
         usage();
         return;
@@ -857,7 +879,9 @@ async function main() {
     }
 }
 
-main().catch((e) => {
-    log.fail(`未预期失败：${e.stack || e.message}`);
-    process.exit(3);
-});
+if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
+    main().catch((e) => {
+        log.fail(`未预期失败：${e.stack || e.message}`);
+        process.exit(3);
+    });
+}
