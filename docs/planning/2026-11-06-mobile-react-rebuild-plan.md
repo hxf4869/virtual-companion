@@ -412,8 +412,9 @@ MB2-7 至 MB2-11 可并行（不同 `features/<area>` 与 `mobile/pages/<area>`�
 ## 8. 执行与调度约定（Codex）
 
 - 调度者：Codex（`gpt-6-astra`，xhigh），负责派任务、审 diff、跑验证、集成到 `mobile-react-rebuild`、小步提交并立即推送当前跟踪分支（AGENTS.override.md）。
-- 前端执行：Gemini 4 Argon High，经 `ai-run agy --model gemini-4-argon-high --dangerously-skip-permissions -p "/boost …"`；
-  后端、构建与 App 壳由 Codex 实施或另起 Codex 子任务。外部 CLI 一律经 `ai-run` 包装并后台运行，日志路径写入任务记录。
+- 前端执行：Gemini 4 Argon High，每个会话（含续接）提示词以 `/boost` 开头，后台运行并记录日志路径。AgentBox 使用 `ai-run agy --model gemini-4-argon-high --dangerously-skip-permissions -p "/boost …"`；
+  本机 Mac 按 Owner 2026-11-06 环境更正及 DR2 §0.1a，直接使用 `/Users/hxf/.local/bin/agy --model gemini-4-argon-high --dangerously-skip-permissions --print-timeout 0 -p "/boost …"`，关闭标准输入、日志重定向后放后台。读取 worktree 外参考材料时添加 `--add-dir <绝对路径>`；不为本机补装 `ai-run`。
+  后端、构建与 App 壳由 Codex 实施或另起 Codex 子任务；本轮所有设计图由 Codex 使用 imagegen 生成。
 - 每个条目一个 worktree（`../vc-mb2-<n>`），一个写入 owner；执行者只产生未提交 diff，由调度者审计后提交。
 - 每条前端任务提示词需包含：AGENTS.md、ADR-0012、本文第 0–6 节与对应条目、DESIGN.md 第 17 节、选定图路径、
   “先写失败测试再实现、不删弱测试、不改电脑端外观、只改条目文件范围、遵守第 3.8 / 3.9 节”。

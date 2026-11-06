@@ -476,7 +476,7 @@ Owner 选择 React，要求保留现有正常 UI、优先复用成熟开源组�
 ## L. 手机端 React 重建（MB2，2026-11-06 Owner 要求重做手机端）
 
 新增原因：电脑端 DR2 合入 main 后功能远多于 `mb-mobile` 的 uni-app 手机端；Owner 决定手机端重做并接受大面积调整。
-方案为手机与电脑端共用 React 代码与独立引擎，放弃 uni-app 界面与隐藏 ST 引擎，见 [ADR-0012](../decisions/0012-mobile-react-shared-engine.md)（Proposed）
+方案为手机与电脑端共用 React 代码与独立引擎，放弃 uni-app 界面与隐藏 ST 引擎，见 [ADR-0012](../decisions/0012-mobile-react-shared-engine.md)（Accepted）
 与 [MB2 计划](2026-11-06-mobile-react-rebuild-plan.md)。ADR-0012 已于 2026-11-06 获 Owner 批准（React + Capacitor，安卓与 iOS 同时交付）；MB2-1 Spike 报告为固定停点，Owner 确认组件选型与性能预算后继续。`MB-*`（ADR-0011 路线）不再推进。
 
 | ID | P | 内容 | 验收要点 |
@@ -497,3 +497,5 @@ Owner 选择 React，要求保留现有正常 UI、优先复用成熟开源组�
 | MB2-13 | P2 | 安卓与 iOS App 壳及系统能力 | 安卓模拟器 + adb、iOS 模拟器 + 真机逐项记录 |
 | MB2-14 | P1 | 电脑端“打开手机版”入口；`/native/` 移除（MB2-15 通过且 Owner 确认后） | 两端受管整组、`check.sh` |
 | MB2-15 | P1 | 全量验收、视觉终审与合并准备 | Mac 参考环境整组、性能预算、截图终审 |
+
+- **[问] MB2-0（2026-11-06）**：74 张浅深候选已交付至 `.review-queue/MB2-0/images/`，完整提示词与候选索引见同目录上级 `PROMPTS.md` / `NOTES.md`。等待 Claude 填写 `REVIEW.md`，再由 Owner 填写 `PICKS.md`；未选图的页面暂停实现。

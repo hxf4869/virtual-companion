@@ -2,6 +2,7 @@
 
 - 状态：Accepted（规划，实现以 MB-0 验证通过为前提）
 - 日期：2026-11-02
+- 部分替代（2026-11-06）：[ADR-0012](0012-mobile-react-shared-engine.md) 替代第 1、2 节、第 4 节的 uni-app `web-view` 壳选型，以及第 8 节“iOS 另行立项”。当前路线为共享 React 独立引擎 + Capacitor，安卓与 iOS 同时；第 3、5、6、7、7.1 节与第 8 节其余范围继续有效，平台差异以 ADR-0012 为准。
 - 决策人：Owner
 - 替代：ADR-0010（uni-app 壳 + web-view 承载同一 ST Web）
 - 关联：ADR-0009（V2 SillyTavern 宿主方向）、`DESIGN.md`、`docs/planning/2026-11-02-session-handoff.md` 第 2 节、

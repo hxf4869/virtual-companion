@@ -1667,7 +1667,9 @@ N-00～N-08（对应评审发现 F-01～F-08）为在途修复，逐项状态与
 
 ### MB2 手机端 React 重建（2026-11-06 起；方案 `docs/planning/2026-11-06-mobile-react-rebuild-plan.md`）
 
-- [ ] MB2-0–MB2-15：[ADR-0012](docs/decisions/0012-mobile-react-shared-engine.md) 已获 Owner 批准（2026-11-06，React + Capacitor，安卓与 iOS 同时）；MB2-1 报告为固定停点。条目与验收见 [Backlog L](docs/planning/2026-10-31-handoff-backlog.md) L 节。
+- [ ] MB2-0（2026-11-06）：规范修订与 74 张候选图已交付；ADR-0011 标明替代范围，DESIGN §17 改为共享 React 手机界面并补全屏卡片、酒馆布局、双栏与玻璃降级，既有数值保留。本机调度按 Owner 更正直接后台调用 agy，每个会话加 `/boost`。图与完整提示词见 [.review-queue/MB2-0/NOTES.md](.review-queue/MB2-0/NOTES.md)，不提交 Git。文档与文件完整性检查 PASS；Claude `REVIEW.md` 与 Owner `PICKS.md` 为 NOT_RUN，未代选，条目暂不勾选。
+- [ ] MB2-1：性能、Ionic / 无样式组合与双平台壳 Spike 进行中；报告完成后固定停止，等 Owner 确认。Owner 本轮另授权补齐本机模拟器与构建工具后继续实测。
+- [ ] MB2-2–MB2-15：本轮未开始。[ADR-0012](docs/decisions/0012-mobile-react-shared-engine.md) 已获 Owner 批准（2026-11-06，React + Capacitor，安卓与 iOS 同时）；后续条目与验收见 [Backlog L](docs/planning/2026-10-31-handoff-backlog.md) L 节。
 
 ### NF 电脑端前端替换（2026-11-03）
 
