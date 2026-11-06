@@ -156,7 +156,7 @@ function jobRows(ctx) {
         WHERE w.kind='ST_MEMORY_EXTRACT') x;`) || [];
 }
 
-async function waitExtraction(ctx, expected, { signal, onProgress, timeoutMs, savedAt, sourceMap, measure, instances }) {
+export async function waitExtraction(ctx, expected, { signal, onProgress, timeoutMs, savedAt, sourceMap, measure, instances }) {
     const deadline = performance.now() + timeoutMs, seen = new Set(), profilesSeen = new Set(); let lastProgress = 0, jobs = [];
     while (performance.now() < deadline) {
         signal?.throwIfAborted(); jobs = jobRows(ctx);
@@ -170,7 +170,9 @@ async function waitExtraction(ctx, expected, { signal, onProgress, timeoutMs, sa
         for (const local of instances.values()) {
             if (!local.finishedWriteAt || local.mode !== 'COMPANION' || profilesSeen.has(local.id)) continue;
             const scopedJobs = jobs.filter(job => sourceMap.get(job.message_id)?.startsWith(local.id + '-'));
-            if (scopedJobs.length < local.userCount || scopedJobs.some(job => job.status !== 'DONE')) continue;
+            // A failed later profile job can still have published L1. Once all
+            // jobs end, ask PG whether a valid current profile actually exists.
+            if (scopedJobs.length < local.userCount || scopedJobs.some(job => !TERMINAL.has(job.status))) continue;
             const owner = numberID(local.account.session.accountId), rel = numberID(local.relationshipId);
             const current = ownerSQL(ctx, owner, `SELECT COALESCE((SELECT row_to_json(p) FROM vc.memory_profile_current(${owner},${rel},
                 (SELECT id FROM vc.conversation WHERE owner_user_id=${owner} AND st_chat_identity=${quote(local.chats.at(-1).identity)})) p),'null'::json);`);
@@ -513,6 +515,10 @@ export async function evaluateCoreOnStack(ctx, { dataset, roles, modelRoutes, me
         results, quality, reply: summarizeReplyQuality(replyQuality.drain()), metrics: summarizeSamples(metricRows), metricRows,
         extraction: { planned: dataset.sourceCounts.eligibleUserTurns, jobs: extraction.jobs.length,
             done: extraction.jobs.filter(row => row.status === 'DONE').length, timedOut: extraction.timedOut,
+            jobOutcomes: Object.fromEntries([...TERMINAL, 'PENDING', 'CLAIMED'].map(status =>
+                [status, extraction.jobs.filter(row => row.status === status).length])),
+            publishedSources: extraction.jobs.filter(row => Number(row.published) > 0).length,
+            publishedFailedSources: extraction.jobs.filter(row => row.status !== 'DONE' && Number(row.published) > 0).length,
             profilesReady: [...instances.values()].filter(local => local.profile).length,
             layers: [...instances.values()].filter(local => local.mode === 'COMPANION').map(local => ({ instance: local.id,
                 l2FactIds: factsInText((local.profile?.out_scenes || []).map(scene => scene.summary || '').join('\n'), dataset.facts),

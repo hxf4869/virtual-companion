@@ -5,7 +5,7 @@ import { once } from 'node:events';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { factsInText, outboundMemoryText, readEvaluationResponse, evaluationQueryRows, diagnosticEvidence } from '../scripts/chat-memory-real-eval.mjs';
+import { factsInText, outboundMemoryText, readEvaluationResponse, evaluationQueryRows, diagnosticEvidence, waitExtraction } from '../scripts/chat-memory-real-eval.mjs';
 import { summarizeDiagnosticControls } from '../../../scripts/lib/chat-memory-scoring.mjs';
 import { prepareSourceIdentities, sourceMessages } from '../server-plugin/virtual-companion/lib/source-identity.js';
 import { getF2Store } from '../server-plugin/virtual-companion/lib/f2-store.js';
@@ -15,6 +15,21 @@ import { createRoundArtifacts } from '../../../scripts/lib/chat-memory-artifacts
 import { instrumentEvaluationBuild } from '../scripts/lib/chat-memory-observation-build.mjs';
 import { createEvaluationStClient } from '../scripts/lib/chat-memory-isolated-stack.mjs';
 import { refreshMemorySlot } from '../server-plugin/virtual-companion/lib/memory-guard.js';
+
+test('terminal extraction failure does not hide an independently valid published profile', async () => {
+    const jobs = [{ status: 'DEAD_LETTERED', published: 1, message_id: 'synthetic-message' }];
+    const profile = { out_persona: '合成画像', out_scenes: [] };
+    const local = { id: 'synthetic', mode: 'COMPANION', userCount: 1, finishedWriteAt: 1,
+        account: { session: { accountId: '1' } }, relationshipId: '2', chats: [{ identity: 'synthetic-chat' }] };
+    const measured = [];
+    const result = await waitExtraction({ w08: { psql: query => JSON.stringify(query.includes('vc.work_item') ? jobs : profile) } }, 1,
+        { timeoutMs: 1000, savedAt: new Map(), sourceMap: new Map([['synthetic-message', 'synthetic-turn-1']]),
+            instances: new Map([['synthetic', local]]), measure: (...args) => measured.push(args) });
+    assert.equal(result.jobs[0].status, 'DEAD_LETTERED');
+    assert.equal(result.timedOut, false);
+    assert.deepEqual(local.profile, profile);
+    assert.equal(measured.filter(row => row[1] === 'profile_ready_ms').length, 1);
+});
 
 test('evaluation native generation forwards browser origin through final memory recheck', async () => {
     const baseUrl = 'http://127.0.0.1:18420';
