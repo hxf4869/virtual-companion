@@ -212,6 +212,7 @@ export interface SessionBridge {
 export interface SessionBridgeDeps {
     queryClient?: QueryClient;
     prepareRuntime?: PrepareChatRuntime;
+    eagerRuntime?: boolean;
 }
 
 interface LeafEntry {
@@ -906,6 +907,13 @@ export function createSessionBridge(
             });
 
         return runtimePromise;
+    }
+
+    if (
+        deps.eagerRuntime &&
+        (deps.prepareRuntime || (client && typeof (client as any).settings === 'function'))
+    ) {
+        void ensureRuntime().catch(() => {});
     }
 
     function normalizeRowInput(

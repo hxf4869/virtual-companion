@@ -125,7 +125,7 @@ async function sceneIndependentDesktop(ctx) {
     try {
         const context = await desktopBenchmarkContext(browser, ctx);
         let runtimeRequests = 0;
-        await context.route(url => url.pathname.endsWith('/desktop/standalone/runtime.js') || url.pathname === '/version', async route => { runtimeRequests++; await gate; await route.continue(); });
+        await context.route(url => url.pathname.endsWith('/desktop/standalone/runtime.js') || /^\/desktop\/assets\/runtime-[A-Za-z0-9_-]+\.js$/.test(url.pathname) || url.pathname === '/version', async route => { runtimeRequests++; await gate; await route.continue(); });
         const page = await context.newPage(); page.setDefaultTimeout(20000);
         const requests = [], errors = [];
         page.on('request', request => requests.push(new URL(request.url()).pathname));

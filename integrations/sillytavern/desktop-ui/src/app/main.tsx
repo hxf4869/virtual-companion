@@ -90,7 +90,7 @@ export function App({ client: externalClient, routeOverrides }: AppProps = {}) {
   }
 
   return (
-    <AppProviders client={client}>
+    <AppProviders client={client} eagerRuntime>
       <AppConsentGate>
         <DesktopPreferences />
         <RouterProvider router={router} />

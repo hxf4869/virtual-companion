@@ -28,6 +28,7 @@ export interface AppProvidersProps {
     client?: AppClient;
     queryClient?: QueryClient;
     sessionBridge?: SessionBridge;
+    eagerRuntime?: boolean;
 }
 
 export function AppProviders({
@@ -35,12 +36,18 @@ export function AppProviders({
     client,
     queryClient: customQueryClient,
     sessionBridge,
+    eagerRuntime,
 }: AppProvidersProps) {
     const resolvedClient = useMemo(() => client ?? createAppClient(), [client]);
     const resolvedQueryClient = customQueryClient ?? queryClient;
     const resolvedBridge = useMemo(
-        () => sessionBridge ?? createSessionBridge(resolvedClient, { queryClient: resolvedQueryClient }),
-        [sessionBridge, resolvedClient, resolvedQueryClient],
+        () =>
+            sessionBridge ??
+            createSessionBridge(resolvedClient, {
+                queryClient: resolvedQueryClient,
+                eagerRuntime,
+            }),
+        [sessionBridge, resolvedClient, resolvedQueryClient, eagerRuntime],
     );
 
     useEffect(() => {

@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import { App } from '../../src/app/main';
+import { queryClient } from '../../src/app/providers';
 import { MobileApp } from '../../src/mobile/app/MobileApp';
 import { MobileBootstrapApp } from '../../src/mobile/app/main';
 import { useSessionBridge } from '../../src/runtime/session-bridge';
@@ -8,6 +9,10 @@ import {
     captureSessionContext,
     setStHeadersProvider,
 } from '../../../extension/vc-model-settings/api.js';
+import {
+    CONSENT_VERSION,
+    REQUIRED_CONSENTS,
+} from '../../../extension/vc-model-settings/consent-logic.js';
 import {
     openaiDefaults,
     powerUserDefaults,
@@ -17,6 +22,7 @@ import type { AppClient } from '../../src/data/client';
 
 describe('desktop and mobile app entries', () => {
     beforeEach(() => {
+        queryClient.clear();
         delete document.documentElement.dataset.vcApp;
         delete document.documentElement.dataset.vcDevice;
         delete document.documentElement.dataset.vcRuntime;
@@ -247,19 +253,235 @@ describe('desktop and mobile app entries', () => {
         }
     });
 
-    it('bootstraps MobileBootstrapApp and marks data-vc-device="mobile" and data-vc-app="ready"', async () => {
+    it('bootstraps MobileBootstrapApp with idle runtime and marks data-vc-device="mobile" and data-vc-app="ready"', async () => {
+        const settingsSpy = vi.fn(async () => ({ settings: '{}' }));
+        const charactersSpy = vi.fn(async () => []);
         const client = {
             initialize: vi.fn(async () => {}),
+            settings: settingsSpy,
+            characters: charactersSpy,
             go: {
                 captureSessionContext: vi.fn(() => ({ accountId: '1', sessionId: '1' })),
             },
         } as unknown as AppClient;
 
-        const { container } = render(<MobileBootstrapApp client={client} />);
+        let capturedBridge: ReturnType<typeof useSessionBridge> | null = null;
+        function MobileProbe() {
+            capturedBridge = useSessionBridge();
+            return <span data-testid="mobile-boot-probe">{capturedBridge.getSnapshot().runtime}</span>;
+        }
+
+        const { container, unmount } = render(
+            <MobileBootstrapApp client={client}>
+                <MobileProbe />
+            </MobileBootstrapApp>,
+        );
         await waitFor(() => {
             expect(document.documentElement.dataset.vcApp).toBe('ready');
         });
         expect(document.documentElement.dataset.vcDevice).toBe('mobile');
         expect(container.querySelector('[data-vc-mobile-app]')).toBeTruthy();
+        expect(screen.getByTestId('mobile-boot-probe').textContent).toBe('idle');
+        expect(capturedBridge?.getSnapshot().runtime).toBe('idle');
+        expect(settingsSpy).not.toHaveBeenCalled();
+        expect(charactersSpy).not.toHaveBeenCalled();
+        expect(document.documentElement.dataset.vcRuntime).toBeUndefined();
+        unmount();
+    });
+
+    it('prewarms chat runtime on desktop App startup while keeping UI interactive before runtime finishes', async () => {
+        let releaseConsents!: () => void;
+        const consentsGate = new Promise<void>(resolve => {
+            releaseConsents = resolve;
+        });
+        let releaseSettings!: () => void;
+        const settingsGate = new Promise<void>(resolve => {
+            releaseSettings = resolve;
+        });
+
+        const baseOai = {
+            ...structuredClone(openaiDefaults),
+            preset_settings_openai: 'Default',
+        };
+        const settingsSpy = vi.fn(async () => {
+            await settingsGate;
+            return {
+                settings: JSON.stringify({
+                    username: '你',
+                    user_avatar: 'user.png',
+                    world_info: { globalSelect: [] },
+                    power_user: {
+                        ...structuredClone(powerUserDefaults),
+                        send_on_enter: 1,
+                    },
+                    oai_settings: baseOai,
+                    extension_settings: {
+                        disabledExtensions: [],
+                        variables: { global: {} },
+                        regex: [],
+                        tavern_helper: {
+                            script: {
+                                enabled: { global: true, presets: [], characters: [] },
+                                scripts: [],
+                            },
+                        },
+                    },
+                }),
+                openai_setting_names: ['Default'],
+                openai_settings: [JSON.stringify(baseOai)],
+                world_names: [],
+            };
+        });
+        const charactersSpy = vi.fn(async () => []);
+        const grantedConsents = REQUIRED_CONSENTS.map(item => ({
+            consentType: item.type,
+            version: CONSENT_VERSION,
+            granted: true,
+            recordedAt: '2026-11-06T00:00:00Z',
+        }));
+
+        const client = {
+            identity: { accountId: '1', sessionId: '1' },
+            initialize: vi.fn(async () => {}),
+            headers: () => ({}),
+            settings: settingsSpy,
+            characters: charactersSpy,
+            recent: vi.fn(async () => []),
+            request: vi.fn(async (url: string) => {
+                if (url === '/api/avatars/get') return ['user.png'];
+                return { token_count: 5, entries: {} };
+            }),
+            post: vi.fn(async () => ({ ok: true })),
+            settingsChanged: vi.fn(() => false),
+            saveSettings: vi.fn(async () => new Response('{}', { status: 200 })),
+            documents: {
+                captureSettings: vi.fn(),
+                seedPresets: vi.fn(),
+                projectSettings: vi.fn(),
+                captureWorldbook: vi.fn(),
+            },
+            go: {
+                captureSessionContext: vi.fn(async () => ({ accountId: '1', sessionId: '1' })),
+                listConsents: vi.fn(async () => {
+                    await consentsGate;
+                    return grantedConsents;
+                }),
+                listRelationships: vi.fn(async () => []),
+                getActiveSummary: vi.fn(async () => ({ items: [] })),
+            },
+        } as unknown as AppClient;
+
+        const prevFetch = globalThis.fetch;
+        const prevJQuery = (globalThis as any).jQuery;
+        const prevDollar = (globalThis as any).$;
+        const prevToastr = (globalThis as any).toastr;
+        const jQueryStub = Object.assign(
+            () => ({ triggerHandler: async () => {}, on: () => jQueryStub, off: () => jQueryStub }),
+            { ui: {} },
+        );
+        Object.assign(globalThis, {
+            _: (stLib as any).lodash,
+            lodash: (stLib as any).lodash,
+            DOMPurify: (stLib as any).DOMPurify,
+            showdown: (stLib as any).showdown,
+            hljs: (stLib as any).hljs,
+            Handlebars: (stLib as any).Handlebars,
+            moment: (stLib as any).moment,
+            jQuery: jQueryStub,
+            $: jQueryStub,
+            toastr: { info() {}, warning() {}, error() {}, success() {}, clear() {} },
+        });
+        globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
+            const url = String(input);
+            if (url.endsWith('/model-purposes')) {
+                return new Response(JSON.stringify([]), {
+                    status: 200,
+                    headers: { 'Content-Type': 'application/json' },
+                });
+            }
+            if (url.endsWith('/providers')) {
+                return new Response(JSON.stringify([]), {
+                    status: 200,
+                    headers: { 'Content-Type': 'application/json' },
+                });
+            }
+            if (url.endsWith('/version')) {
+                return new Response(JSON.stringify({ pkgVersion: '1.14.0' }), {
+                    status: 200,
+                    headers: { 'Content-Type': 'application/json' },
+                });
+            }
+            if (url.endsWith('/api/v1/auth/session')) {
+                return new Response(JSON.stringify({ accountId: '1', sessionId: '1' }), {
+                    status: 200,
+                    headers: { 'Content-Type': 'application/json' },
+                });
+            }
+            return new Response(JSON.stringify({ items: [] }), {
+                status: 200,
+                headers: { 'Content-Type': 'application/json' },
+            });
+        }) as typeof fetch;
+
+        let capturedBridge: ReturnType<typeof useSessionBridge> | null = null;
+        function DesktopChatWithoutCardMount() {
+            capturedBridge = useSessionBridge();
+            return (
+                <div data-testid="desktop-custom-chat">
+                    {capturedBridge.getSnapshot().runtime}
+                </div>
+            );
+        }
+
+        const { container, unmount } = render(
+            <App
+                client={client}
+                routeOverrides={{
+                    chat: DesktopChatWithoutCardMount,
+                }}
+            />,
+        );
+
+        try {
+            setStHeadersProvider(() => ({}), {
+                identity: { accountId: '1', sessionId: '1' },
+            });
+            await captureSessionContext();
+
+            await waitFor(() => {
+                expect(document.documentElement.dataset.vcApp).toBe('ready');
+            });
+
+            // Before AppConsentGate or any route/MessageList mounts, desktop AppProviders
+            // has already started runtime prewarm in the background.
+            expect(container.querySelector('#vc-shell')).toBeNull();
+            expect(charactersSpy).toHaveBeenCalledTimes(1);
+            expect(settingsSpy).toHaveBeenCalled();
+            expect(document.documentElement.dataset.vcRuntime).toBeUndefined();
+
+            releaseConsents();
+            await waitFor(() => {
+                expect(screen.getByTestId('desktop-custom-chat')).toBeTruthy();
+            });
+
+            // Desktop shell and custom chat route are interactive while runtime is still preparing.
+            expect(container.querySelector('#vc-shell')).toBeTruthy();
+            expect(capturedBridge?.getSnapshot().runtime).toBe('preparing');
+            expect(document.documentElement.dataset.vcRuntime).toBeUndefined();
+
+            releaseSettings();
+            await waitFor(() => {
+                expect(capturedBridge?.getSnapshot().runtime).toBe('prepared');
+                expect(document.documentElement.dataset.vcRuntime).toBe('prepared');
+            });
+        } finally {
+            releaseConsents?.();
+            releaseSettings?.();
+            unmount();
+            globalThis.fetch = prevFetch;
+            (globalThis as any).jQuery = prevJQuery;
+            (globalThis as any).$ = prevDollar;
+            (globalThis as any).toastr = prevToastr;
+        }
     });
 });
