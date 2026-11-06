@@ -1692,7 +1692,7 @@ operations:
   keepBecause:
   - owner-instruction
   - core-outcome
-  replacementOrImpact: 'SX-5: implemented owner-scoped transactional chat commands with conditional field rebasing, stable candidate identities, idempotent encrypted receipts, source revocation and outbox barriers. Generation terminal writes use the approved persisted run fence. Account authority stays ST until the separately authorized SX-8 cutover.'
+  replacementOrImpact: 'SX-5: implemented owner-scoped transactional chat commands with conditional field rebasing, stable candidate identities, idempotent encrypted receipts, source revocation and outbox barriers. Generation terminal writes use the approved persisted run fence. Account authority stays ST until the separately authorized SX-8 cutover. SX-6 insert is a separately reviewed contract addition pending implementation; existing commands remain implemented.'
 - operationId: listStoredChatChanges
   method: GET
   path: /api/v1/chats/{chatId}/changes

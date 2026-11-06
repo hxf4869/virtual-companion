@@ -286,7 +286,7 @@
 `StoryExpectedSession` 参数及既有 Origin 精确白名单规则；读取在身份头存在时比对。Cookie 身份始终是
 唯一授权来源，身份头和 epoch 只是前置条件。认证失败不得自动切账号重放，资源不存在/非本人一律隐藏存在性。
 
-`ChatOperation` 按 kind 使用 `oneOf` / discriminator，8 个分支的 envelope、target、preconditions、payload
+`ChatOperation` 按 kind 使用 `oneOf` / discriminator，9 个分支（insert 具体契约待复审）的 envelope、target、preconditions、payload
 均为关闭未知字段的类型化对象（无载荷的 delete/selectSwipe 为 null）。`data` 与字段值槽保留任意 JSON，
 以兼容 ST 未知字段；这不允许扩展操作协议或修改受保护身份。
 
@@ -294,6 +294,7 @@
 |---|---|---|---|
 | edit / `ChatEditOperation` | messageId，可选 candidateId | baseRevision（messageRevision）；旧字段值在 changes.before | changes[{path,before,after}] |
 | append / `ChatAppendOperation` | 会话根 `{}` | `{}`，不校验无关 chatRevision | messages[{clientMessageId,data}] |
+| insert / `ChatInsertOperation`（SX-6 待审） | 已有 beforeMessageId | 精确 orderRevision | messages；同批计入 100 条新消息限制 |
 | delete / `ChatDeleteOperation` | messageId | 精确 messageRevision | null |
 | metadata / `ChatMetadataOperation` | 会话根 `{}` | baseRevision（metadataRevision）；旧字段值在 changes.before | changes，路径以 title/header/metadata 开头 |
 | addSwipe / `ChatAddSwipeOperation` | messageId | 精确 messageRevision | candidate{candidateId,data}，默认保留旧选择 |
@@ -366,9 +367,15 @@ Owner 批准增加过渡内部接口 `POST /api/v1/service/chats/{chatId}/genera
   栅栏明细；紧凑 runId/requestId/摘要/结果记录至少保留至聊天删除与权利屏障完成，账号删除级联清除，过期不能重启旧 run。
 - **退出安排**：SX-9/SX-10 生成迁入 Go 后改为同规则的 Go 内部登记；SX-15 移除 Node 调用面。
 
+### 4.4.2 SX-6 历史插入补充（2026-11-07，具体契约待 Owner 复审）
+
+Helper `createChatMessages(insert_before/insert_at)` 对应类型化 insert：已有 beforeMessageId + 精确 orderRevision + messages，沿用请求幂等、clientMessageId 墓碑和整批 100 命令/100 新消息/8 MiB 上限。锚点不存在/已删除/不属本聊天为404；版本不符409留稿。首条之前与同锚点连续插入均可表达；单批共用初始版本，跨请求用上次 ACK 的新版本。
+
+成功事务推进一次 orderRevision，旧游标410，活动run因顺序变化被 fence；changes 包含新消息ID及 orderChanged。来源和入队沿 append 的 no_memory/无痕规则，不能带 generation 提交终态（整批422）。无关尾部追加不推进 orderRevision，因此与插入均可成功且互不覆盖；先发生的插入/重排会让旧版本插入409。既有候选/消息来源身份不因位置变化重建。契约审过后再实施 Go/Helper 闭环。
+
 ### 4.5 Session 与读取整段聊天的脚本兼容
 
-**SX-6 Owner 补充边界（2026-11-07，字段契约待单独复审）**：已认证 `GET /api/v1/auth/session?include=chatStorage` 按需增加
+**SX-6 Owner 补充边界（2026-11-07，按需字段契约 63fa64e5 已复审通过）**：已认证 `GET /api/v1/auth/session?include=chatStorage` 按需增加
 `chatStorage: {mode: ST|GO|FROZEN, authorityEpoch}`；不带 include 的响应与每请求插件核验保持原样，不查询存储权威。
 只有宿主页面启动注入与 Session 初始化请求 include；其查询失败为 503，客户端视为暂时不可用，保留身份与草稿，稍后重试，不当作登出。
 它仅用于选择存储，

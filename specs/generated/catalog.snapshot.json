@@ -3219,7 +3219,7 @@
             "method": "POST",
             "operationId": "applyStoredChatOperations",
             "path": "/api/v1/chats/{chatId}/operations",
-            "replacementOrImpact": "SX-5: implemented owner-scoped transactional chat commands with conditional field rebasing, stable candidate identities, idempotent encrypted receipts, source revocation and outbox barriers. Generation terminal writes use the approved persisted run fence. Account authority stays ST until the separately authorized SX-8 cutover."
+            "replacementOrImpact": "SX-5: implemented owner-scoped transactional chat commands with conditional field rebasing, stable candidate identities, idempotent encrypted receipts, source revocation and outbox barriers. Generation terminal writes use the approved persisted run fence. Account authority stays ST until the separately authorized SX-8 cutover. SX-6 insert is a separately reviewed contract addition pending implementation; existing commands remain implemented."
           },
           {
             "currentH5Callers": [],
@@ -3316,7 +3316,7 @@
           }
         ]
       },
-      "sha256": "830208550da52038b4c328506b22d46e61dad0b030a367f4d745a1d56632fa11"
+      "sha256": "89a146df4e18fe8e4d8fc67c66a7023401ad6aaa84b2079075153667a88bc1c9"
     },
     "memory-candidate-statuses.yaml": {
       "document": {

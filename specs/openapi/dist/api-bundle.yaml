@@ -4293,13 +4293,13 @@ paths:
       operationId: getAuthSession
       summary: Restore the current authenticated account state
       description: 'Returns ACTIVE only for a live opaque vc_session. This is the sole page refresh source for account, role
-        and authenticator state; clients must not infer admission from local storage. SX-6 addition pending Owner review:
-        only include=chatStorage adds the owner-scoped chatStorage hint; without include the response and ordinary plugin
-        Owner verification stay unchanged and MUST NOT query storage authority. The hint is never authorization. It reports
-        the persisted ST/GO/FROZEN mode and authorityEpoch; a missing authority row has the defined initial ST/1 value. Only
-        an included hint lookup can fail this read with 503 SCHEMA_UNAVAILABLE. Clients treat that failure as temporarily
-        unavailable, retain their identity and drafts, and retry later; they must not infer logout or fall back to ST. Each
-        write still checks the current server authority and epoch. Host page bootstrap injection and Session initialization
+        and authenticator state; clients must not infer admission from local storage. SX-6 contract approved in 63fa64e5,
+        implementation pending: only include=chatStorage adds the owner-scoped chatStorage hint; without include the response
+        and ordinary plugin Owner verification stay unchanged and MUST NOT query storage authority. The hint is never authorization.
+        It reports the persisted ST/GO/FROZEN mode and authorityEpoch; a missing authority row has the defined initial ST/1
+        value. Only an included hint lookup can fail this read with 503 SCHEMA_UNAVAILABLE. Clients treat that failure as
+        temporarily unavailable, retain their identity and drafts, and retry later; they must not infer logout or fall back
+        to ST. Each write still checks the current server authority and epoch. Host page bootstrap injection and Session initialization
         request the include; routine per-request plugin session checks do not. After 409 CHAT_AUTHORITY_CHANGED, clients re-read
         this endpoint with the same page identity, retain the draft and never automatically resend the rejected write. FROZEN
         is read-only: display the approved "正在迁移" notice, keep drafts locally, and do not fall back to ST or queue automatic
@@ -8907,6 +8907,51 @@ components:
         lastMessageId:
           type: string
           format: uuid
+    ChatInsertTarget:
+      type: object
+      additionalProperties: false
+      required:
+      - beforeMessageId
+      properties:
+        beforeMessageId:
+          type: string
+          format: uuid
+      description: A live message in the owned target chat at transaction start. Missing, deleted or foreign anchors return
+        404 NOT_FOUND_OR_FORBIDDEN; do not resolve an array index or a newly inserted ID as the anchor.
+    ChatInsertOperation:
+      type: object
+      additionalProperties: false
+      required:
+      - kind
+      - target
+      - preconditions
+      - payload
+      properties:
+        kind:
+          type: string
+          const: insert
+        target:
+          $ref: '#/components/schemas/ChatInsertTarget'
+        preconditions:
+          $ref: '#/components/schemas/ChatOrderPreconditions'
+        payload:
+          $ref: '#/components/schemas/ChatAppendPayload'
+      description: 'SX-6 contract addition pending Owner review before implementation. Atomically insert the supplied new
+        messages immediately before the existing anchor, preserving their payload order. Resolve the owned live anchor first,
+        then require exact transaction-start orderRevision; mismatch is 409 REVISION_CONFLICT and the client retains its draft.
+        The surrounding requestId receipt and clientMessageId replay/tombstone rules are the same as append, so retry never
+        duplicates or resurrects a message. No implicit append-then-reorder sequence of separate transactions. Successful
+        insertion advances orderRevision once per transaction, expires old cursors with 410 CHAT_CURSOR_EXPIRED, fences active
+        generation runs through the existing order guard, and publishes inserted changedIds with orderChanged=true in changes.
+        Existing message and candidate source identities are preserved. New sources use the same transactional source barriers,
+        eligibility, no_memory/incognito checks and extraction enqueue rules as append. Insert cannot commit generated output:
+        any request combining insert with ChatGenerationCommit is rejected atomically with 422 CHAT_INVALID_OPERATION; generated
+        terminal output continues through append/edit/addSwipe with generation. Unrelated tail append does not advance orderRevision
+        and remains compatible with insertion; neither write may lose the other. A preceding insert/reorder does advance orderRevision
+        and conflicts with a stale insert. Two ordered insert commands may share the initial orderRevision and anchor in one
+        batch; their payloads appear before the anchor in command order. Separate successive insert requests use the first
+        ACK''s new orderRevision. Anchors deleted by the same batch are invalid commands. All command/message/byte limits
+        apply across append and insert together.'
     ChatOrderPreconditions:
       type: object
       additionalProperties: false
@@ -9095,6 +9140,7 @@ components:
       oneOf:
       - $ref: '#/components/schemas/ChatEditOperation'
       - $ref: '#/components/schemas/ChatAppendOperation'
+      - $ref: '#/components/schemas/ChatInsertOperation'
       - $ref: '#/components/schemas/ChatDeleteOperation'
       - $ref: '#/components/schemas/ChatMetadataOperation'
       - $ref: '#/components/schemas/ChatAddSwipeOperation'
@@ -9106,6 +9152,7 @@ components:
         mapping:
           edit: '#/components/schemas/ChatEditOperation'
           append: '#/components/schemas/ChatAppendOperation'
+          insert: '#/components/schemas/ChatInsertOperation'
           delete: '#/components/schemas/ChatDeleteOperation'
           metadata: '#/components/schemas/ChatMetadataOperation'
           addSwipe: '#/components/schemas/ChatAddSwipeOperation'
@@ -9115,9 +9162,9 @@ components:
       description: Closed, typed atomic commands. Validate all preconditions against the transaction-start state; apply payloads
         in array order and validate the final candidate/data invariants. Multiple commands may share the same observed messageRevision
         (e.g. add+select) without guessing intermediate revisions. New IDs created earlier in this batch may be payload/selection
-        references, but edit/delete targets and reorder interval membership must exist at transaction start. Contradictory
-        deletes, duplicate edits/overlapping paths or commands targeting deleted objects are rejected. Each changed domain
-        increments once per transaction. Any failure rolls back the complete batch, barriers and receipt.
+        references, but insert anchors, edit/delete targets and reorder interval membership must exist at transaction start.
+        Contradictory deletes, duplicate edits/overlapping paths or commands targeting deleted objects are rejected. Each
+        changed domain increments once per transaction. Any failure rolls back the complete batch, barriers and receipt.
     ChatCreateRequest:
       type: object
       additionalProperties: false
@@ -9280,9 +9327,9 @@ components:
           maxItems: 100
         generation:
           $ref: '#/components/schemas/ChatGenerationCommit'
-      description: At most 100 commands and 100 newly appended messages across the batch, at most 8 MiB UTF-8 JSON. One optional
-        generation describes the terminal run for the whole transaction; required whenever it commits generated output. See
-        ChatRequestId for body-only idempotency, replay and retention.
+      description: At most 100 commands and 100 newly appended or inserted messages across the batch, at most 8 MiB UTF-8
+        JSON. One optional generation describes the terminal run for the whole transaction; required whenever it commits generated
+        output and forbidden in a batch containing insert. See ChatRequestId for body-only idempotency, replay and retention.
     ChatCommit:
       type: object
       additionalProperties: false
