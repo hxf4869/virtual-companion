@@ -52,4 +52,29 @@ export const app = defineConfig({
     },
 });
 
-export default defineConfig(() => (process.env.VC_DESKTOP_TARGET === 'app' ? app : bridge));
+export const mobile = defineConfig({
+    root: fileURLToPath(new URL('./', import.meta.url)),
+    cacheDir: fileURLToPath(new URL('../node_modules/.vite', import.meta.url)),
+    base: '/m/',
+    plugins: [react(), desktopResolvedGraph()],
+    define: { 'process.env.NODE_ENV': JSON.stringify('production') },
+    build: {
+        target: 'es2020',
+        outDir: fileURLToPath(new URL('../server-plugin/virtual-companion/mobile/app/', import.meta.url)),
+        emptyOutDir: true,
+        assetsDir: 'assets',
+        sourcemap: false,
+        rollupOptions: {
+            input: fileURLToPath(new URL('./mobile.html', import.meta.url)),
+            external: [
+                '/scripts/vc-runtime/source-identity.js',
+            ],
+        },
+    },
+});
+
+export default defineConfig(() => {
+    if (process.env.VC_DESKTOP_TARGET === 'app') return app;
+    if (process.env.VC_DESKTOP_TARGET === 'mobile') return mobile;
+    return bridge;
+});

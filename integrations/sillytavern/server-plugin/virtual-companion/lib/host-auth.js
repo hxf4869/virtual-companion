@@ -35,19 +35,72 @@ export function parseAccountHandles(raw) {
     return map;
 }
 
-// 手机界面（ADR-0011）：uni-app H5 产物，同源在 /m/ 提供；只读产物目录内的文件。
+// 手机界面（ADR-0012）：React 手机入口产物，同源在 /m/ 提供；只读产物目录内的文件。
 const MOBILE_TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',
-    '.svg': 'image/svg+xml', '.png': 'image/png', '.json': 'application/json', '.woff2': 'font/woff2', '.ttf': 'font/ttf', '.ico': 'image/x-icon' };
+    '.svg': 'image/svg+xml', '.png': 'image/png', '.json': 'application/json', '.woff2': 'font/woff2', '.ttf': 'font/ttf', '.ico': 'image/x-icon',
+    '.txt': 'text/plain; charset=utf-8' };
+
+function isSafeMobileParam(rawSegment) {
+    if (!rawSegment) return false;
+    let decoded;
+    try { decoded = decodeURIComponent(rawSegment); } catch { return false; }
+    if (!decoded || decoded === '.' || decoded === '..') return false;
+    if (decoded.includes('/') || decoded.includes('\\') || decoded.includes('\0')) return false;
+    return true;
+}
+
+export function isMobileRoutePath(reqPath) {
+    if (reqPath === '/m/' || reqPath === '/m/index.html') return true;
+    if (!reqPath.startsWith('/m/')) return false;
+    const rawRel = reqPath.slice('/m/'.length).replace(/\/+$/, '');
+    if (!rawRel) return true;
+    const rawParts = rawRel.split('/');
+    if (rawParts.some((part) => !isSafeMobileParam(part))) return false;
+    const head = decodeURIComponent(rawParts[0]);
+    if (head === 'chat') {
+        return rawParts.length === 1 || rawParts.length === 2 || (rawParts.length === 3 && decodeURIComponent(rawParts[2]) === 'card');
+    }
+    if (head === 'characters') {
+        return rawParts.length === 1 || rawParts.length === 2 || (rawParts.length === 3 && decodeURIComponent(rawParts[2]) === 'persona');
+    }
+    if (head === 'memory' || head === 'story') {
+        return rawParts.length === 1 || rawParts.length === 2;
+    }
+    if (head === 'inbox') {
+        return rawParts.length === 1 || (rawParts.length === 3 && decodeURIComponent(rawParts[1]) === 'call');
+    }
+    if (head === 'settings') {
+        if (rawParts.length === 1 || rawParts.length === 2) return true;
+        return rawParts.length === 3 && decodeURIComponent(rawParts[1]) === 'tavern';
+    }
+    return false;
+}
+
 export function serveMobile(mobileDir, req, res) {
+    const rawTail = req.path.slice('/m/'.length);
     let rel;
-    try { rel = decodeURIComponent(req.path.slice('/m/'.length)) || 'index.html'; } catch { return fail(res, 400, 'INVALID_REQUEST', '路径无效'); }
-    if (rel.split('/').some((part) => part === '' || part === '..' || part.includes('\\') || part.includes('\0'))) {
+    try { rel = decodeURIComponent(rawTail) || 'index.html'; } catch { return fail(res, 400, 'INVALID_REQUEST', '路径无效'); }
+    const routeEntry = rel === 'index.html' || isMobileRoutePath(req.path);
+    if (!routeEntry && rel.split('/').some((part) => part === '' || part === '.' || part === '..' || part.includes('\\') || part.includes('\0'))) {
         return fail(res, 404, 'NOT_FOUND_OR_FORBIDDEN', '未找到此入口');
     }
     const root = path.resolve(mobileDir);
+    const indexFile = path.join(root, 'index.html');
+    if (!fs.existsSync(indexFile)) return fail(res, 503, 'VC_MOBILE_UNAVAILABLE', '手机界面暂不可用');
+    if (routeEntry) {
+        const identity = req.vcIdentity;
+        const meta = identity?.accountId && identity?.sessionId
+            ? `<meta name="vc-account-id" content="${identity.accountId}"><meta name="vc-session-id" content="${identity.sessionId}">`
+            : '';
+        const html = fs.readFileSync(indexFile, 'utf8').replace('<head>', `<head>${meta}`);
+        res.setHeader('Content-Type', 'text/html; charset=utf-8');
+        res.setHeader('Cache-Control', 'no-store');
+        res.setHeader('Vary', 'Cookie');
+        res.setHeader('X-Content-Type-Options', 'nosniff');
+        return res.end(req.method === 'HEAD' ? undefined : html);
+    }
     const file = path.resolve(root, rel);
     if (!file.startsWith(root + path.sep)) return fail(res, 404, 'NOT_FOUND_OR_FORBIDDEN', '未找到此入口');
-    if (!fs.existsSync(path.join(root, 'index.html'))) return fail(res, 503, 'VC_MOBILE_UNAVAILABLE', '手机界面暂不可用');
     let stat;
     try { stat = fs.statSync(file); } catch { return fail(res, 404, 'NOT_FOUND_OR_FORBIDDEN', '未找到此入口'); }
     if (!stat.isFile()) return fail(res, 404, 'NOT_FOUND_OR_FORBIDDEN', '未找到此入口');
@@ -80,7 +133,7 @@ export function createHostAuth({ config, getUser, accountVersion, indexHtml, fet
     desktopAppDir = fileURLToPath(new URL('../desktop/app/', import.meta.url)),
     desktopHtml = () => fs.readFileSync(path.join(desktopAppDir, 'index.html'), 'utf8'),
     authDir = fileURLToPath(new URL('../auth/', import.meta.url)),
-    mobileDir = fileURLToPath(new URL('../mobile-dist/', import.meta.url)) }) {
+    mobileDir = fileURLToPath(new URL('../mobile/app/', import.meta.url)) }) {
     async function proxyAuth(req, res, suffix) {
         if (!AUTH_API.some(([method, pattern]) => req.method === method && pattern.test(suffix))) return fail(res, 404, 'NOT_FOUND_OR_FORBIDDEN', '未找到此入口');
         const headers = { Accept: 'application/json', Cookie: goCookies(req.headers.cookie) };
@@ -110,7 +163,7 @@ export function createHostAuth({ config, getUser, accountVersion, indexHtml, fet
             if (req.method === 'GET' && ['/desktop', '/desktop/index.html'].includes(req.path)) return res.redirect(303, '/desktop/');
             if (req.method === 'GET' && ['/native', '/native/index.html'].includes(req.path)) return res.redirect(303, '/native/');
             if (req.method === 'GET' && req.path === '/m') return res.redirect(303, '/m/');
-            const pageEntry = req.method === 'GET' && ['/', '/desktop/', '/native/', '/m/'].includes(req.path);
+            const pageEntry = req.method === 'GET' && (['/', '/desktop/', '/native/'].includes(req.path) || isMobileRoutePath(req.path));
             if (req.method === 'GET' && ['/auth', '/login'].includes(req.path)) return res.redirect(303, '/auth/');
             if (req.method === 'GET' && ASSETS.has(req.path)) {
                 const file = ASSETS.get(req.path);

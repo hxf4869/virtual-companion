@@ -201,10 +201,13 @@ describe('t14-window: MessageList / SessionBridge firstDisplayedMessageId real w
             };
 
             const bridgeA = createSessionBridge(clientA);
+            expect(bridgeA.getSnapshot().runtime).toBe('idle');
             const eventsA: string[] = [];
             bridgeA.getContext().eventSource.on('app_ready', () => {
                 eventsA.push('app_ready');
             });
+            void bridgeA.whenIdle();
+            expect(bridgeA.getSnapshot().runtime).toBe('preparing');
 
             // Also start Bridge A2 with a controlled factory to verify synchronous signal abort and late onToast suppression
             let capturedSignalA2: AbortSignal | undefined;
@@ -223,6 +226,9 @@ describe('t14-window: MessageList / SessionBridge firstDisplayedMessageId real w
                     return {};
                 }) as any,
             });
+            expect(bridgeA2.getSnapshot().runtime).toBe('idle');
+            expect(capturedSignalA2).toBeUndefined();
+            void bridgeA2.whenIdle();
 
             expect(capturedSignalA2).toBeDefined();
             expect(capturedSignalA2?.aborted).toBe(false);
@@ -253,6 +259,8 @@ describe('t14-window: MessageList / SessionBridge firstDisplayedMessageId real w
                     };
                 }) as any,
             });
+            expect(bridgeB.getSnapshot().runtime).toBe('idle');
+            void bridgeB.whenIdle();
 
             await waitFor(() => {
                 expect(bridgeB.getSnapshot().runtime).toBe('prepared');

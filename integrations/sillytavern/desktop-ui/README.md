@@ -1,12 +1,13 @@
 # 桌面 React 应用
 
-受管宿主在同源 `/` 和 `/desktop/` 提供同一个 React 19 + TypeScript + Vite 应用。SillyTavern 插件负责鉴权和提供静态资源，TanStack Router 使用 hash 路由。手机 H5 从 `/m/` 启动，经 `/native/` 使用完整的原生 ST 宿主。桌面与手机共用 Go/ST 服务和 F2 聊天存储。
+受管宿主在同源 `/` 和 `/desktop/` 提供电脑端 React 19 + TypeScript + Vite 应用，在同源 `/m/` 提供手机 React 入口（`mobile.html` → `src/mobile/app/main.tsx`）。SillyTavern 插件负责鉴权、注入会话身份 meta 并提供静态资源。桌面与手机共用 Go/ST 服务、独立引擎（`SessionBridge` 按需动态加载 `desktop/standalone/runtime.js`）和 F2 聊天存储。
 
 ## 代码边界
 
 | 目录 | 职责 |
 | --- | --- |
-| `src/app/` | 启动、路由、Provider 与同意门禁接线 |
+| `src/app/` | 电脑端启动、路由、Provider 与同意门禁接线 |
+| `src/mobile/app/` | 手机入口启动与 `MobileApp` 壳装配（复用 `AppProviders` 与 `SessionBridge`） |
 | `src/shell/` | 导航、极光、浮层宿主和离开保护。`useChrome.ts` 按 `744 / 1180 / 1600px` 切换四档桌面布局 |
 | `src/design/` | 设计 token、分层 CSS 和 Base UI 控件皮肤。组件尺寸适配使用容器查询 |
 | `src/features/` | 聊天、角色、记忆、陪伴、剧情及产品与酒馆设置 |
@@ -48,7 +49,7 @@ npm --prefix integrations/sillytavern run test:desktop
 bash scripts/check.sh
 ```
 
-构建覆盖两份忽略的产物及其许可清单。桌面应用写到 `server-plugin/virtual-companion/desktop/app/`，原生桥写到 `extension/vc-model-settings/desktop/build/index.js`。受管装配会重建两者。直接跑离线 Node 单测前先构建。
+构建覆盖三份忽略的产物及其许可清单：桌面应用写到 `server-plugin/virtual-companion/desktop/app/`，手机入口写到 `server-plugin/virtual-companion/mobile/app/`，原生桥写到 `extension/vc-model-settings/desktop/build/index.js`，同时执行手机首屏静态依赖图体积预算门禁（JS gzip ≤ 300,000 bytes、CSS gzip ≤ 60,000 bytes）。受管装配会重建三者。直接跑离线 Node 单测前先构建。
 
 运行 T11 整组时使用目标 worktree 的 `integrations/sillytavern/dev-managed/`，为栈分配独立端口和容器名。生成的 MemoryCore 模块从集成目录解析本地 npm 依赖。`catalog-admin` 由场景依赖自动补齐，总计 18 项。`nf-prompts` 包含正则参与实际生成的断言。`dr2-pages` 需要本机 `127.0.0.1:11438` 上的 `qwen3-embedding:0.6b`，`mb-engine` 需要同分支验收约定的手机 H5 产物。[受管验收说明](../README.md#受管端到端验收scriptsaccept-managedmjs)
 

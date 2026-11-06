@@ -1,6 +1,5 @@
 import React, { createContext, useContext, useSyncExternalStore, type ReactNode } from 'react';
 import type { QueryClient } from '@tanstack/react-query';
-import { prepareChatRuntime } from '../../../extension/vc-model-settings/desktop/standalone/runtime.js';
 import { resolveDesktopConversation } from '../../../extension/vc-model-settings/desktop/standalone/business.js';
 import { EventEmitter } from '../../../extension/vc-model-settings/desktop/standalone/engine/events.js';
 import { event_types } from '../../../extension/vc-model-settings/desktop/standalone/engine/st/events.js';
@@ -18,6 +17,18 @@ import {
     parseConversationKey,
     type ConversationRow,
 } from '../data/queries/chat';
+
+type PrepareChatRuntime =
+    typeof import('../../../extension/vc-model-settings/desktop/standalone/runtime.js').prepareChatRuntime;
+
+const defaultPrepareRuntime: PrepareChatRuntime = async options => {
+    options.signal?.throwIfAborted?.();
+    const mod = await import(
+        '../../../extension/vc-model-settings/desktop/standalone/runtime.js'
+    );
+    options.signal?.throwIfAborted?.();
+    return mod.prepareChatRuntime(options);
+};
 
 export type { ConversationRow };
 
@@ -200,7 +211,7 @@ export interface SessionBridge {
 
 export interface SessionBridgeDeps {
     queryClient?: QueryClient;
-    prepareRuntime?: typeof prepareChatRuntime;
+    prepareRuntime?: PrepareChatRuntime;
 }
 
 interface LeafEntry {
@@ -219,7 +230,7 @@ export function createSessionBridge(
     deps: SessionBridgeDeps = {},
 ): SessionBridge {
     const queryClient = deps.queryClient;
-    const prepareRuntimeFn = deps.prepareRuntime ?? prepareChatRuntime;
+    const prepareRuntimeFn = deps.prepareRuntime ?? defaultPrepareRuntime;
     const listeners = new Set<() => void>();
     const drafts = new Map<string, string>();
     const mountedLeaves = new Map<HTMLElement, LeafEntry>();
@@ -261,6 +272,7 @@ export function createSessionBridge(
         if (dead) return;
         if (!runtimeInstance) {
             pendingConfiguration.push(apply);
+            void ensureRuntime().catch(() => {});
             return;
         }
         await apply(runtimeInstance);
@@ -665,10 +677,19 @@ export function createSessionBridge(
                     const parsed = JSON.parse(packet.settings);
                     const power = parsed?.power_user || {};
                     const sendOnEnter = power.send_on_enter;
+                    const nextEnterToSend = sendOnEnter === undefined ? true : Number(sendOnEnter) !== -1;
+                    const nextPreferences = { ...power };
+                    if (committedSnapshot) {
+                        committedSnapshot = {
+                            ...committedSnapshot,
+                            enterToSend: nextEnterToSend,
+                            preferences: nextPreferences,
+                        };
+                    }
                     snapshot = {
                         ...snapshot,
-                        enterToSend: sendOnEnter === undefined ? true : Number(sendOnEnter) !== -1,
-                        preferences: { ...power },
+                        enterToSend: nextEnterToSend,
+                        preferences: nextPreferences,
                     };
                     if (!context.chatId) {
                         context.name1 = parsed.username || '';
@@ -849,6 +870,9 @@ export function createSessionBridge(
                 if (typeof document !== 'undefined' && document.documentElement) {
                     document.documentElement.dataset.vcRuntime = 'prepared';
                 }
+                if (committedSnapshot) {
+                    committedSnapshot = { ...committedSnapshot, runtime: 'prepared' };
+                }
                 snapshot = { ...snapshot, runtime: 'prepared' };
                 await eventSource.emit(event_types.APP_INITIALIZED);
                 await eventSource.emit(event_types.APP_READY);
@@ -865,6 +889,13 @@ export function createSessionBridge(
                 if (typeof document !== 'undefined' && document.documentElement) {
                     document.documentElement.dataset.vcRuntime = 'error';
                 }
+                if (committedSnapshot) {
+                    committedSnapshot = {
+                        ...committedSnapshot,
+                        runtime: 'error',
+                        notice: '聊天没有加载出来，请重试。',
+                    };
+                }
                 snapshot = {
                     ...snapshot,
                     runtime: 'error',
@@ -875,10 +906,6 @@ export function createSessionBridge(
             });
 
         return runtimePromise;
-    }
-
-    if (deps.prepareRuntime || (client && typeof (client as any).settings === 'function')) {
-        void ensureRuntime().catch(() => {});
     }
 
     function normalizeRowInput(

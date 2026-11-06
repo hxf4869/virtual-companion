@@ -294,7 +294,7 @@ W03 集成收口的受管链路：ST 前台生成经 server plugin 桥接 Go 后
 
 ## 桌面 React 自有界面
 
-正式电脑端在同源 `/` 和 `/desktop/` 启动同一个 React 应用。React 管理页面、消息与输入，SessionBridge 接入既有会话和 F2 保存，Helper/EJS/MVU iframe 由独立卡片运行模块管理。构建分别生成 `server-plugin/virtual-companion/desktop/app/` 与原生扩展的 `desktop/build/`。手机原生引擎使用 `/native/`，由原生 ST 与桥接 bundle 提供卡片和配置，沿用同一 F2 聊天存储。架构、双构建和受管场景见 [desktop-ui 开发说明](desktop-ui/README.md)，当前任务见 [DR2 backlog](../../docs/planning/2026-10-31-handoff-backlog.md#k-电脑端前端重建dr2)。
+正式电脑端在同源 `/` 和 `/desktop/` 启动同一个 React 应用，手机端在同源 `/m/` 启动手机 React 入口（`desktop-ui/mobile.html` → `server-plugin/virtual-companion/mobile/app/`）。React 管理页面、消息与输入，SessionBridge 接入既有会话和 F2 保存，Helper/EJS/MVU iframe 由独立卡片运行模块管理。`build:desktop` 统一生成 `server-plugin/virtual-companion/desktop/app/`、`server-plugin/virtual-companion/mobile/app/` 与原生扩展的 `desktop/build/`，并校验手机首屏静态依赖图与预加载体积预算（JS gzip ≤ 300 KB、CSS gzip ≤ 60 KB）。架构、双端构建和受管场景见 [desktop-ui 开发说明](desktop-ui/README.md)，当前任务见 [DR2 backlog](../../docs/planning/2026-10-31-handoff-backlog.md#k-电脑端前端重建dr2) 与 [MB2 手机重建计划](../../docs/planning/2026-11-06-mobile-react-rebuild-plan.md)。
 
 仅构建桌面或跑离线测试时，在本目录运行 `node scripts/prepare-desktop-source.mjs` 准备锁定源码和 npm 缓存。该命令只检出缺少的上游，不更新现有检出。CI 在桌面构建前显式执行该准备步骤。
 

@@ -225,6 +225,8 @@ const appPackages = {
     'features/tavern/CodeField.tsx': ['@monaco-editor/react', 'react'],
     'features/tavern/PromptOrder.tsx': ['@dnd-kit/core', '@dnd-kit/sortable', 'react'],
     'features/tavern/TavernRoute.tsx': ['@tanstack/react-router', 'react'],
+    'mobile/app/MobileApp.tsx': ['@tanstack/react-query', 'react'],
+    'mobile/app/main.tsx': ['react', 'react-dom/client'],
     'runtime/session-bridge.ts': ['@tanstack/react-query', 'react'],
     'shell/AppShell.tsx': ['react'],
     'shell/Aurora.tsx': ['react'],
@@ -289,7 +291,18 @@ export function desktopResolvedGraph() {
                 const file = id.split('?')[0];
                 if (!isFirstPartyModule(file)) continue;
                 const module = this.getModuleInfo(id);
+                const importerRel = file.startsWith(`${desktopSrc}${path.sep}`)
+                    ? toPosix(path.relative(desktopSrc, file))
+                    : '';
+                const importerIsMobile = importerRel === 'mobile' || importerRel.startsWith('mobile/');
                 for (const target of [...module.importedIds, ...module.dynamicallyImportedIds]) {
+                    const targetFile = target.split('?')[0];
+                    if (targetFile.startsWith(`${desktopSrc}${path.sep}`)) {
+                        const targetRel = toPosix(path.relative(desktopSrc, targetFile));
+                        if ((targetRel === 'mobile' || targetRel.startsWith('mobile/')) && !importerIsMobile) {
+                            this.error(`Unexpected desktop-imports-mobile ${targetRel} from ${file}`);
+                        }
+                    }
                     // Rolldown exposes external modules as graph nodes with no loaded code.
                     if (this.getModuleInfo(target)?.code == null && !allowsDesktopExternal(file, target)) {
                         this.error(`Unexpected desktop external import ${target} from ${file}`);

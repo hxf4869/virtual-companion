@@ -3,11 +3,23 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import crypto from 'node:crypto';
+import { spawnSync } from 'node:child_process';
+import zlib from 'node:zlib';
 import { fileURLToPath } from 'node:url';
 import { init, parse } from 'es-module-lexer';
 import ts from 'typescript';
 import { build } from 'vite';
-import { desktopResolvedGraph, isDesktopPackageImport, isWhitelistedExtensionModule } from '../scripts/lib/desktop-source-boundary.mjs';
+import {
+    desktopResolvedGraph,
+    isDesktopPackageImport,
+    isWhitelistedExtensionModule,
+} from '../scripts/lib/desktop-source-boundary.mjs';
+import {
+    MOBILE_CSS_GZIP_BUDGET,
+    MOBILE_JS_GZIP_BUDGET,
+    verifyMobileBundleBudget,
+} from '../scripts/build-desktop.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ST_ROOT = path.resolve(__dirname, '..');
@@ -123,7 +135,10 @@ export async function analyzeDesktopImportBoundary({
 } = {}) {
     desktopSrcRoot = fs.realpathSync(desktopSrcRoot);
     extensionRoot = fs.realpathSync(extensionRoot);
-    const roots = entryFiles ?? [path.join(desktopSrcRoot, 'app', 'main.tsx')];
+    const roots = entryFiles ?? [
+        path.join(desktopSrcRoot, 'app', 'main.tsx'),
+        path.join(desktopSrcRoot, 'mobile', 'app', 'main.tsx'),
+    ];
     const visited = new Set();
     const reachableExtensionModules = new Set();
     const violations = [];
@@ -140,6 +155,8 @@ export async function analyzeDesktopImportBoundary({
         }
         if (visited.has(normalizedCurrent)) return;
         visited.add(normalizedCurrent);
+        const currentRelToDesktop = toPosix(path.relative(desktopSrcRoot, normalizedCurrent));
+        const importerIsMobile = currentRelToDesktop === 'mobile' || currentRelToDesktop.startsWith('mobile/');
 
         const specifiers = await extractSpecifiers(normalizedCurrent);
         for (const specifier of specifiers) {
@@ -165,6 +182,15 @@ export async function analyzeDesktopImportBoundary({
             if (relToDesktop === 'bridge' || relToDesktop.startsWith('bridge/')) {
                 violations.push({
                     type: 'forbidden-bridge-import',
+                    specifier,
+                    target: relToDesktop,
+                    chain: nextChain,
+                });
+                continue;
+            }
+            if ((relToDesktop === 'mobile' || relToDesktop.startsWith('mobile/')) && !importerIsMobile) {
+                violations.push({
+                    type: 'desktop-imports-mobile',
                     specifier,
                     target: relToDesktop,
                     chain: nextChain,
@@ -504,5 +530,131 @@ test('Vite 实际解析拒绝已存在的裸包与外部动态导入', async () 
                 rollupOptions: { external },
             },
         }), failure);
+    }
+});
+
+test('mobile 入口纳入边界检查，且禁止桌面模块反向引用 mobile/**', async () => {
+    const desktopMain = path.join(DESKTOP_SRC_ROOT, 'app', 'main.tsx');
+    const mobileMain = path.join(DESKTOP_SRC_ROOT, 'mobile', 'app', 'main.tsx');
+    const mobileApp = path.join(DESKTOP_SRC_ROOT, 'mobile', 'app', 'MobileApp.tsx');
+    assert.equal(fs.existsSync(mobileMain), true, '缺少 mobile/app/main.tsx');
+    assert.equal(fs.existsSync(mobileApp), true, '缺少 mobile/app/MobileApp.tsx');
+
+    const defaultBoundary = await analyzeDesktopImportBoundary();
+    assert.deepEqual(defaultBoundary.violations, []);
+    assert.ok(defaultBoundary.visited.includes(desktopMain));
+    assert.ok(defaultBoundary.visited.includes(mobileMain));
+    assert.ok(defaultBoundary.visited.includes(mobileApp));
+
+    const desktopOnly = await analyzeDesktopImportBoundary({ entryFiles: [desktopMain] });
+    assert.deepEqual(desktopOnly.violations, []);
+    assert.equal(desktopOnly.visited.includes(mobileMain), false);
+    assert.equal(desktopOnly.visited.includes(mobileApp), false);
+
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vc-boundary-mobile-'));
+    try {
+        const fakeSrc = path.join(tmpDir, 'desktop-ui', 'src');
+        const fakeExt = path.join(tmpDir, 'extension', 'vc-model-settings');
+        fs.mkdirSync(path.join(fakeSrc, 'app'), { recursive: true });
+        fs.mkdirSync(path.join(fakeSrc, 'mobile', 'app'), { recursive: true });
+        fs.mkdirSync(fakeExt, { recursive: true });
+        fs.writeFileSync(path.join(fakeSrc, 'mobile', 'app', 'MobileApp.tsx'), 'export const MobileApp = () => null;\n');
+        const badDesktop = path.join(fakeSrc, 'app', 'bad.tsx');
+        fs.writeFileSync(badDesktop, "import { MobileApp } from '../mobile/app/MobileApp';\nexport const x = MobileApp;\n");
+
+        const report = await analyzeDesktopImportBoundary({
+            entryFiles: [badDesktop],
+            desktopSrcRoot: fakeSrc,
+            extensionRoot: fakeExt,
+        });
+        assert.deepEqual(report.violations.map(v => `${v.type}:${v.target}`), [
+            'desktop-imports-mobile:mobile/app/MobileApp.tsx',
+        ]);
+    } finally {
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+
+    const entry = path.join(DESKTOP_SRC_ROOT, 'app/providers.tsx');
+    await assert.rejects(build({
+        configFile: false,
+        logLevel: 'silent',
+        plugins: [
+            desktopResolvedGraph(),
+            {
+                name: 'desktop-imports-mobile-fixture',
+                enforce: 'pre',
+                load: id => id === entry ? 'import "../mobile/app/MobileApp"; export const bad = 1;' : null,
+            },
+        ],
+        build: {
+            write: false,
+            lib: { entry, formats: ['es'] },
+        },
+    }), /Unexpected desktop-imports-mobile mobile\/app\/MobileApp\.tsx/);
+});
+
+test('mobile/app 初始静态依赖图与预加载满足预算且超预算输入退出非零', () => {
+    const mobileOutputDir = path.join(ST_ROOT, 'server-plugin/virtual-companion/mobile/app');
+    assert.equal(fs.existsSync(path.join(mobileOutputDir, 'index.html')), true, '缺少 mobile/app/index.html');
+    assert.equal(fs.existsSync(path.join(mobileOutputDir, 'THIRD_PARTY_NOTICES.txt')), true, '缺少 mobile/app/THIRD_PARTY_NOTICES.txt');
+
+    const metrics = verifyMobileBundleBudget(mobileOutputDir);
+    assert.equal(MOBILE_JS_GZIP_BUDGET, 300_000);
+    assert.equal(MOBILE_CSS_GZIP_BUDGET, 60_000);
+    assert.ok(metrics.jsFiles.length >= 1, 'mobile 入口必须包含至少 1 个 JS chunk');
+    assert.ok(metrics.jsGzipBytes > 0 && metrics.jsGzipBytes <= MOBILE_JS_GZIP_BUDGET, `JS gzip ${metrics.jsGzipBytes} 超出预算`);
+    assert.ok(metrics.cssGzipBytes <= MOBILE_CSS_GZIP_BUDGET, `CSS gzip ${metrics.cssGzipBytes} 超出预算`);
+
+    const buildScript = path.join(ST_ROOT, 'scripts/build-desktop.mjs');
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vc-mobile-budget-bad-'));
+    try {
+        // 1. JS gzip 超标 (> 300,000 bytes) 必须失败并退出非零
+        const overJsDir = path.join(tmpDir, 'over-js');
+        fs.mkdirSync(path.join(overJsDir, 'assets'), { recursive: true });
+        fs.writeFileSync(
+            path.join(overJsDir, 'index.html'),
+            '<!doctype html><html><head><link rel="modulepreload" href="/m/assets/preload.js"></head><body><script type="module" src="/m/assets/entry.js"></script></body></html>',
+        );
+        // 构造不可压缩随机字节使 gzip > 300,000 bytes
+        const randomPayload = crypto.randomBytes(320_000);
+        fs.writeFileSync(path.join(overJsDir, 'assets/entry.js'), 'import "./dep.js";\nconsole.log("entry");\n');
+        fs.writeFileSync(path.join(overJsDir, 'assets/dep.js'), `export const big = ${JSON.stringify(randomPayload.toString('base64'))};\n`);
+        fs.writeFileSync(path.join(overJsDir, 'assets/preload.js'), 'export const p = 1;\n');
+        assert.ok(zlib.gzipSync(fs.readFileSync(path.join(overJsDir, 'assets/dep.js'))).byteLength > MOBILE_JS_GZIP_BUDGET);
+
+        assert.throws(() => verifyMobileBundleBudget(overJsDir), /JS gzip/);
+        const cliJsRes = spawnSync(process.execPath, [buildScript, '--check-mobile-budget', overJsDir], { encoding: 'utf8' });
+        assert.notEqual(cliJsRes.status, 0, 'JS 超预算时 CLI 必须非零退出');
+
+        // 2. CSS gzip 超标 (> 60,000 bytes) 必须失败并退出非零
+        const overCssDir = path.join(tmpDir, 'over-css');
+        fs.mkdirSync(path.join(overCssDir, 'assets'), { recursive: true });
+        fs.writeFileSync(
+            path.join(overCssDir, 'index.html'),
+            '<!doctype html><html><head><link rel="stylesheet" href="/m/assets/entry.css"></head><body><script type="module" src="/m/assets/entry.js"></script></body></html>',
+        );
+        fs.writeFileSync(path.join(overCssDir, 'assets/entry.js'), 'console.log("ok");\n');
+        const cssPayload = crypto.randomBytes(65_000);
+        fs.writeFileSync(path.join(overCssDir, 'assets/entry.css'), `/* ${cssPayload.toString('base64')} */\n`);
+        assert.ok(zlib.gzipSync(fs.readFileSync(path.join(overCssDir, 'assets/entry.css'))).byteLength > MOBILE_CSS_GZIP_BUDGET);
+
+        assert.throws(() => verifyMobileBundleBudget(overCssDir), /CSS gzip/);
+        const cliCssRes = spawnSync(process.execPath, [buildScript, '--check-mobile-budget', overCssDir], { encoding: 'utf8' });
+        assert.notEqual(cliCssRes.status, 0, 'CSS 超预算时 CLI 必须非零退出');
+
+        // 3. 静态依赖图若提前静态导入 standalone runtime 也必须拒绝
+        const eagerEngineDir = path.join(tmpDir, 'eager-engine');
+        fs.mkdirSync(path.join(eagerEngineDir, 'assets'), { recursive: true });
+        fs.writeFileSync(
+            path.join(eagerEngineDir, 'index.html'),
+            '<!doctype html><html><head></head><body><script type="module" src="/m/assets/entry.js"></script></body></html>',
+        );
+        fs.writeFileSync(
+            path.join(eagerEngineDir, 'assets/entry.js'),
+            'import { prepareChatRuntime } from "/scripts/extensions/third-party/vc-model-settings/desktop/standalone/runtime.js";\nconsole.log(prepareChatRuntime);\n',
+        );
+        assert.throws(() => verifyMobileBundleBudget(eagerEngineDir), /runtime\.js/);
+    } finally {
+        fs.rmSync(tmpDir, { recursive: true, force: true });
     }
 });
