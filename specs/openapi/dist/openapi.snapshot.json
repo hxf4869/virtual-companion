@@ -152,6 +152,7 @@
     "saveModelPurpose",
     "callMemoryCoreModel",
     "resolveModelPurpose",
+    "registerStoredChatGeneration",
     "reserveModelUsage",
     "settleModelUsage",
     "cancelModelUsage",
@@ -203,6 +204,6 @@
   ],
   "source": {
     "path": "specs/openapi/virtual-companion.yaml",
-    "sha256": "9c8697b39b8a0be91f74a39b7c4b0e7469b98af7b4c5d69742e600583ccd78de"
+    "sha256": "672e75542394923e6943f59496606834499df6238d4f36899c6eb4a685adbd39"
   }
 }

@@ -6407,6 +6407,97 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/service/chats/{chatId}/generation-runs:
+    parameters:
+    - $ref: '#/components/parameters/ChatId'
+    post:
+      operationId: registerStoredChatGeneration
+      summary: Register a persisted chat input fence before a Node generation
+      description: >-
+        SX-5 transitional contract, pending Owner review before implementation. DEFER until implemented and
+        verified. This is exclusively the existing serviceToken channel used by model-usage reservations:
+        the Node plugin supplies the Owner it has already verified through the Go session. Cookie authentication
+        alone never authorizes this route, any browser Origin is refused, and the browser Go proxy must not expose
+        it. Existing browser generation CSRF/Origin/expected-identity checks remain unchanged.
+        In one owner-bound transaction, check GO authority and exact authorityEpoch/chatRevision, then require
+        inputMessageId and inputCandidateId to identify a currently persisted, live, selected candidate in this
+        same owned chat. Missing/unpersisted input, a deselected candidate or stale chatRevision is 409
+        REVISION_CONFLICT, with no registration; stale/frozen/ST authority is 409 CHAT_AUTHORITY_CHANGED.
+        Capture the input message/source revisions and generation, branchRoot, metadata/order revisions and
+        the existing history boundary, without persisting input text in the run record.
+        At most ONE active logical storage run exists per owner/chat. A successfully registered fresh run
+        atomically fences the previous active run; this supports an explicit new generation/regeneration after
+        stopping the previous one and never grants the old run a second terminal commit. Nested Helper/EJS/tool
+        calls that belong to the same foreground operation reuse its run and registration requestId; they do
+        not register competing runs. A stop commits aborted using the existing run when its causal fence is still
+        valid. Fencing a run does not by itself resend or cancel a provider request; existing generation/usage
+        controls remain responsible for those side effects.
+        requestId is the sole registration idempotency key, scoped to owner + method + canonical resource.
+        Same requestId and canonical payload returns the original 201 registration, including original timestamps,
+        after checking current authorization, epoch and chat deletion; it does not reactivate a fenced/expired/
+        terminal run or renew its deadline. A successful registration ACK is not authorization to repeat an
+        uncertain provider send. Reusing requestId with different content is IDEMPOTENCY_KEY_REUSED. A runId is
+        owner-unique and cannot be registered by a different requestId, even for the same input; any such reuse
+        is CHAT_GENERATION_FENCED. Registration and its receipt commit atomically.
+        The active run expires 15 minutes after its first successful registration (server clock; no renewal).
+        Its only terminal storage transition is settled or aborted through ChatGenerationCommit. Before that
+        transition, expired/superseded runs, changed/deleted input, changed input selection, changes to existing
+        history source signatures/selections, metadata/order changes, branch changes or an authority change
+        fence the run. Unrelated tail appends do not invalidate the captured history prefix. All guards and the
+        terminal transition share the message transaction. A terminal retry with the same successful write
+        requestId returns that write receipt; another terminal write is CHAT_GENERATION_FENCED. The Session
+        retains rejected final/partial output as a pending draft; it never appends it to a newer context.
+        Registration/finalization and the existing retention worker expire overdue active rows. After seven
+        days, response bodies and historical fence detail are cleared; compact owner/runId/requestId/digest/
+        outcome records remain through chat deletion and completion of its rights barrier, so expiry cannot
+        restart a run. Account deletion cascades all remaining records. Deadline validation is synchronous and
+        never depends on cleanup having run.
+        SX-9/SX-10 replace Node registration with an internal Go call using the same transaction rules; SX-15
+        removes this Node-facing service route. The public /chats terminal request shapes are unchanged.
+      security:
+      - serviceToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChatGenerationRegistrationRequest'
+      responses:
+        '201':
+          description: Original immutable registration, including on an authorized idempotent replay
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatGenerationRegistration'
+        '400':
+          $ref: '#/components/responses/ChatBadRequest'
+        '401':
+          description: Missing or invalid service token; cookie-only requests are never accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: ACCESS_DENIED for browser Origin or a non-ACTIVE plugin-verified Owner
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          $ref: '#/components/responses/ChatNotFound'
+        '409':
+          $ref: '#/components/responses/ChatConflict'
+        '410':
+          $ref: '#/components/responses/ChatResultExpired'
+        '428':
+          $ref: '#/components/responses/ChatPreconditionRequired'
+        '503':
+          description: INVALID_REQUEST when the existing service channel is not configured; SCHEMA_UNAVAILABLE for
+            chat storage or restore-gate unavailability. No registration ACK before durable commit.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
   /api/v1/service/model-usage/reservations:
     post:
       operationId: reserveModelUsage
@@ -8002,8 +8093,8 @@ paths:
     get:
       operationId: getStoredChat
       summary: Read full chat header, metadata and versions
-      description: SX-2 frozen contract only; not implemented. DEFER in specs/catalog/go-v1-api-scope.yaml until SX-3–SX-6
-        implement and validate it. Owner/RLS scoped cookieAuth; expected account/session headers are preconditions,
+      description: SX-2 frozen contract only; not implemented. DEFER in specs/catalog/go-v1-api-scope.yaml until
+        SX-3–SX-6 implement and validate it. Owner/RLS scoped cookieAuth; expected account/session headers are preconditions,
         never authorization. State-changing requests use existing CSRF and exact Origin checks. Current state only;
         protected binding/source fields remain server-owned.
       security:
@@ -8100,7 +8191,11 @@ paths:
         with changes for concurrent edits/deletes/appends. anchorMessageId is a fresh current read ending at and including
         that stable message, with up to limit-1 older messages; mutually exclusive with before/after. Deleted/foreign
         anchor is 404; clients then reopen the tail. include=chat returns full header/metadata and domain versions
-        from the SAME read for one-request first opening. Empty chats return an empty page, not a header-as-message.'
+        from the SAME read for one-request first opening. Empty chats return an empty page, not a header-as-message.
+        Owner-approved SX-4 extension (2026-11-07): q searches current selected-candidate text across the entire chat,
+        using a trimmed, Unicode case-insensitive substring. Cursors bind the normalized query; paging, anchor and
+        hasOlder/hasNewer use that same filtered set. A nonmatching anchor returns 404. Search never filters only
+        the already-loaded client page, and does not search deselected candidates.'
       security:
       - cookieAuth: []
       parameters:
@@ -8125,6 +8220,13 @@ paths:
           type: string
           format: uuid
         description: Fresh page ending at and including this stable message after cursor expiration; excludes before/after.
+      - name: q
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Trimmed, Unicode case-insensitive substring of the current selected candidate's mes across the
+          full chat. Empty means no filter. Bound to cursors; applies to anchor and page-existence flags too.
       - $ref: '#/components/parameters/ChatPageLimit'
       - $ref: '#/components/parameters/ChatView'
       - name: include
@@ -8216,8 +8318,8 @@ paths:
     get:
       operationId: getStoredMessage
       summary: Read one full message by stable ID
-      description: SX-2 frozen contract only; not implemented. DEFER in specs/catalog/go-v1-api-scope.yaml until SX-3–SX-6
-        implement and validate it. Owner/RLS scoped cookieAuth; expected account/session headers are preconditions,
+      description: SX-2 frozen contract only; not implemented. DEFER in specs/catalog/go-v1-api-scope.yaml until
+        SX-3–SX-6 implement and validate it. Owner/RLS scoped cookieAuth; expected account/session headers are preconditions,
         never authorization. State-changing requests use existing CSRF and exact Origin checks. Always view=full with
         all candidates, variables and unknown fields; independent of current page. A deleted message never returns
         retained body data.
@@ -8412,8 +8514,8 @@ paths:
     get:
       operationId: listStoredChatChanges
       summary: Catch up complete chat transactions by revision
-      description: SX-2 frozen contract only; not implemented. DEFER in specs/catalog/go-v1-api-scope.yaml until SX-3–SX-6
-        implement and validate it. Owner/RLS scoped cookieAuth; expected account/session headers are preconditions,
+      description: SX-2 frozen contract only; not implemented. DEFER in specs/catalog/go-v1-api-scope.yaml until
+        SX-3–SX-6 implement and validate it. Owner/RLS scoped cookieAuth; expected account/session headers are preconditions,
         never authorization. State-changing requests use existing CSRF and exact Origin checks. Use the chatRevision
         from an initial current page as afterRevision, then follow throughRevision until caught up. Read changed IDs
         in full and remove deleted IDs; order changes invalidate cursor order. Responses do not retain old message
@@ -9161,6 +9263,79 @@ components:
       description: clientMessageId becomes the stable messageId. The server assigns order and candidate identities,
         preserving a canonical mapping in the returned full message. Same ID and same initial content never creates
         a second message; reuse for different content is CHAT_ID_REUSED. Tombstoned IDs cannot resurrect messages.
+    ChatGenerationRegistrationRequest:
+      type: object
+      additionalProperties: false
+      required: [ownerAccountId, requestId, authorityEpoch, generationRunId, chatRevision, inputMessageId, inputCandidateId]
+      properties:
+        ownerAccountId:
+          type: string
+          pattern: '^[1-9][0-9]*$'
+          description: Owner already verified by the trusted Node plugin, as in ModelUsageReserveRequest; never browser authority.
+        requestId:
+          $ref: '#/components/schemas/ChatRequestId'
+        authorityEpoch:
+          $ref: '#/components/schemas/ChatAuthorityEpoch'
+        generationRunId:
+          type: string
+          format: uuid
+          description: Stable logical foreground storage run, shared by nested calls of that operation.
+        chatRevision:
+          $ref: '#/components/schemas/ChatRevision'
+        inputMessageId:
+          type: string
+          format: uuid
+          description: Already-saved causal input; never a pending client-only message.
+        inputCandidateId:
+          type: string
+          format: uuid
+          description: The currently selected candidate of inputMessageId at registration.
+    ChatGenerationRegistration:
+      type: object
+      additionalProperties: false
+      required: [requestId, chatId, generationRunId, inputMessageId, inputCandidateId, inputMessageRevision,
+        inputSourceRevision, inputSourceGeneration, chatRevision, metadataRevision, orderRevision, authorityEpoch,
+        branchRoot, registeredAt, expiresAt]
+      properties:
+        requestId:
+          $ref: '#/components/schemas/ChatRequestId'
+        chatId:
+          type: string
+          format: uuid
+        generationRunId:
+          type: string
+          format: uuid
+        inputMessageId:
+          type: string
+          format: uuid
+        inputCandidateId:
+          type: string
+          format: uuid
+        inputMessageRevision:
+          $ref: '#/components/schemas/ChatRevision'
+        inputSourceRevision:
+          $ref: '#/components/schemas/ChatRevision'
+        inputSourceGeneration:
+          $ref: '#/components/schemas/ChatRevision'
+        chatRevision:
+          $ref: '#/components/schemas/ChatRevision'
+        metadataRevision:
+          $ref: '#/components/schemas/ChatRevision'
+        orderRevision:
+          $ref: '#/components/schemas/ChatRevision'
+        authorityEpoch:
+          $ref: '#/components/schemas/ChatAuthorityEpoch'
+        branchRoot:
+          type: string
+          format: uuid
+        registeredAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+      description: Immutable registration facts, no message body and no claim that the run is still active on replay.
+        expiresAt is registeredAt plus 15 minutes. Replaying this response does not renew or reactivate the run.
     ChatGenerationCommit:
       type: object
       additionalProperties: false

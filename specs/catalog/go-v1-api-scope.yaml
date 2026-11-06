@@ -13,7 +13,7 @@ note: 'The API consumer matrix remains the deletion/scope source. KEEP requires 
 counts:
   KEEP: 125
   SIMPLIFY: 5
-  DEFER: 27
+  DEFER: 28
   RETIRE: 42
 operations:
 - operationId: callMemoryCoreModel
@@ -1715,6 +1715,15 @@ operations:
   replacementOrImpact: 'SX-2 / ADR-0013: frozen planned contract only, NOT implemented or routed. SX-3–SX-6 must
     implement and validate before promoting this operation to KEEP; DEFER records implementation deferral, not rejection
     of the approved ST-exit direction.'
+- operationId: registerStoredChatGeneration
+  method: POST
+  path: /api/v1/service/chats/{chatId}/generation-runs
+  currentH5Callers: []
+  decision: DEFER
+  replacementOrImpact: 'SX-5 transitional serviceToken-only registration of a persisted input fence. Owner approved
+    adding the interface on 2026-11-07; the concrete contract awaits Owner review before implementation. The plugin
+    supplies its verified Owner; browser proxy/CSRF/Origin protections remain unchanged. SX-9/SX-10 internalize
+    registration in Go and SX-15 removes the Node-facing route.'
 undeclaredLegacyOperations:
 - path: /api/v1/auth/admin/invites
   method: POST

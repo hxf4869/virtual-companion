@@ -520,7 +520,7 @@ Owner 选择 React，要求保留现有正常 UI、优先复用成熟开源组�
 | SX-1 | P0 | 调用面、补丁职责与阶段 0 合成测量归档（已随计划交付） |
 | SX-2 | P0 | 聊天存储与分页历史接口契约审定并冻结，之后同步 specs |
 | SX-3 | P0 | Go 聊天 / 候选 / 顺序 / metadata 存储、身份与 authority epoch、RLS、回执与 outbox |
-| SX-4 | P0 | 会话索引、双向快照分页、changes、按 messageId 定位与全聊搜索 |
+| SX-4 | P0 | 会话索引、双向当前状态 keyset 分页、changes、按 messageId 定位与全聊搜索 |
 | SX-5 | P0 | 消息批量操作、幂等、重排 / fork、生成终态与 inbox 去重 |
 | SX-6 | P0 | 共享 Session ChatStore、原生与卡片脚本兼容、完整历史屏障与窗口投影 |
 | SX-7 | P1 | Go 来源镜像切权威、source_ref / generation 同事务、inbox / 语音 / 收藏 / 记忆来源适配 |
@@ -535,6 +535,8 @@ Owner 选择 React，要求保留现有正常 UI、优先复用成熟开源组�
 | SX-16 | P2 | 退役运行手册、发布 / 回滚制品、最终备份演练、OP-11 定向清理（真实操作另行授权） |
 
 **SX-4 [问]（2026-11-07，已答）**：冻结 OpenAPI 的 `listStoredMessages` 没有正文搜索参数/路由，`listStoredChats.q` 明确只搜索标题/角色，无法按原契约完成“全聊搜索”。建议给 `GET /api/v1/chats/{chatId}/messages` 增加可选 `q`，搜索当前选中候选正文、复用消息分页响应并将查询绑定到游标。**答（Owner 2026-11-07）**：批准上述 `q` 扩展；先补 OpenAPI 再实现，不将当前页过滤充作全聊搜索。
+
+**SX-5 [问]（2026-11-07，接口方向已答、具体契约待审）**：`ChatGenerationCommit` 要求生成前已持久化的 run/输入版本栅栏，但现有 Go/插件没有该注册入口，冻结聊天 API 只有终态提交。建议新增仅现有 serviceToken 通道可调用的 `POST /api/v1/service/chats/{chatId}/generation-runs`，携带 `ownerAccountId`、`requestId`、`authorityEpoch`、`generationRunId`、精确 `chatRevision`；Node 生成桥在出站前登记当前输入/候选及分支栅栏，Session 在原有终态结构中引用同一 run。公开 `/chats*` 终态语义不变；未经注册或已失效的 run 一律拒绝。**答（Owner 2026-11-07）**：批准仅 serviceToken 的过渡登记入口，沿用 model-usage reservations 的已核验 Owner/Origin 边界；必须绑定已保存输入 messageId/选中候选并拒绝过期 epoch，明确活动 run 数量、新 run 失效规则、TTL 与清理；先单独提交 OpenAPI/catalog/生成物供 Owner 审阅，审完才实施依赖登记的逻辑。具体候选见退出计划 §4.4.1；等待审阅期间继续不依赖它的消息操作。
 
 ## N. 聊天与记忆质量（CM，2026-11-06 Owner 决定以指标驱动）
 

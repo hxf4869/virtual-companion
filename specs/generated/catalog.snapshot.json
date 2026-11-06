@@ -1202,7 +1202,7 @@
         "adr": "docs/decisions/0007-go-companion-runtime.md",
         "catalogId": "go-v1-api-scope",
         "counts": {
-          "DEFER": 27,
+          "DEFER": 28,
           "KEEP": 125,
           "RETIRE": 42,
           "SIMPLIFY": 5
@@ -3220,6 +3220,14 @@
             "operationId": "exportStoredChat",
             "path": "/api/v1/chats/{chatId}/export",
             "replacementOrImpact": "SX-2 / ADR-0013: frozen planned contract only, NOT implemented or routed. SX-3–SX-6 must implement and validate before promoting this operation to KEEP; DEFER records implementation deferral, not rejection of the approved ST-exit direction."
+          },
+          {
+            "currentH5Callers": [],
+            "decision": "DEFER",
+            "method": "POST",
+            "operationId": "registerStoredChatGeneration",
+            "path": "/api/v1/service/chats/{chatId}/generation-runs",
+            "replacementOrImpact": "SX-5 transitional serviceToken-only registration of a persisted input fence. Owner approved adding the interface on 2026-11-07; the concrete contract awaits Owner review before implementation. The plugin supplies its verified Owner; browser proxy/CSRF/Origin protections remain unchanged. SX-9/SX-10 internalize registration in Go and SX-15 removes the Node-facing route."
           }
         ],
         "runtimeAfterCutover": "Go companiond serves the KEEP/SIMPLIFY surface after the 2026-08-30 cutover; DEFER/RETIRE operations are not runtime fallbacks.",
@@ -3256,7 +3264,7 @@
           }
         ]
       },
-      "sha256": "a18363ef8f359e65813d80c28692802801589852bd5a5fe96ab0092ef38b9ad7"
+      "sha256": "0c9f27ffe2d9696c36eab0d556fd691b0e73da0d9e2f31fc07e16d9536ef599d"
     },
     "memory-candidate-statuses.yaml": {
       "document": {
