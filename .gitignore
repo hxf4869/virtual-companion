@@ -68,13 +68,6 @@ ops/deploy/.local/
 
 # Local UI review/process artifacts. Curated design specifications and the
 # explicitly approved reference comps remain trackable.
-/.impeccable/review/
-/.impeccable/questions/
-/.impeccable/critique/
-/.impeccable/mocks/admin-console/
-/.impeccable/mocks/decision/admin-language-correction.prompt.txt
-/.impeccable/mocks/decision/admin-resource-explorer.png
-/.impeccable/mocks/decision/admin-state-bands.png
 # Capacity measurement local run (synthetic secrets, docker env, raw snapshots)
 scripts/measure/g12-go-capacity/.run/
 

@@ -311,7 +311,7 @@ MB2-7 至 MB2-11 可并行（不同 `features/<area>` 与 `mobile/pages/<area>`�
 - App 壳：Capacitor 最小工程（安卓 + iOS）加载 `/m/`，逐项验证：Cookie 保持、`getUserMedia`、软键盘与 resize 模式、返回键 / 侧滑返回、
   安卓前台服务 30 分钟流式不断、本地通知快捷回复回传（两端）、系统分享（安卓分享接收、iOS Share Extension）、安全区、恢复刷新；
   核对每个插件的许可与维护状态。
-- 产出：`docs/planning/2026-11-xx-mb2-spike-report.md`（指标数值、通过 / 不通过、组件选型推荐、插件清单与许可、待真机项、预算是否需调整）。
+- 产出：`docs/planning/2026-11-06-mb2-spike-report.md`（指标数值、通过 / 不通过、组件选型推荐、插件清单与许可、待真机项、预算是否需调整）。
   Spike 代码放任务 worktree，不合入产品目录。**报告完成后停止，等 Owner 确认。**
 - 提交：`docs(MB2-1): 手机性能、组件选型与 App 壳可行性报告`
 

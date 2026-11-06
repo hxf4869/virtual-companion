@@ -1,68 +1,58 @@
 # Repository Agent Rules — Virtual Companion
 
-AI 虚拟陪伴系统单体仓库：Go 1.26.10 `companiond` 后端、SillyTavern 宿主（`integrations/sillytavern/`）、
-PostgreSQL 18 + pgvector。Technical Alpha：Generation/Realtime/Memory 纵切已接通，现状以 README 为准。
-2026-10-27 起目标方向为 V2（ADR-0009）：SillyTavern Node + Go 长期服务、Owner 本人非商业使用。
-2026-11-03 Owner 确认电脑端由已有 React 工程独立启动并替换当前页面；NF-00–NF-11 以
-`docs/planning/2026-11-02-desktop-frontend-refactor-plan.md` §11 为唯一实施计划，允许按序连续执行。
-桌面不得运行完整 ST 页面或隐藏宿主；手机现有原生宿主消费者按 ADR-0011 保留到地址适配完成。
-旧 Vue / uni-app 前端已在 W15 删除。
+AI 虚拟陪伴系统单体仓库：Go 1.26.10 `companiond` 后端、PostgreSQL 18 + pgvector、SillyTavern 宿主（`integrations/sillytavern/`）。
+Owner 本人非商业使用（ADR-0009）。现状：
+
+- 电脑端：单一 React 应用（`integrations/sillytavern/desktop-ui`），不运行完整或隐藏的 ST 页面；提示词组装与角色卡脚本由
+  `extension/vc-model-settings/desktop/standalone/` 的独立引擎在浏览器执行。
+- 手机端：同一 React 工程的第二个入口（`/m/`）+ Ionic React，Capacitor 打包安卓与 iOS（ADR-0012，MB2 进行中）。
+- 服务端：ST Node 仍承担聊天 / 角色卡 / 世界书 / 预设 / 设置 / 图片存储与生成代理；Owner 2026-11-06 决定全部迁出到 Go（ADR-0013 起草中）。
+
+## 统一工作流（必读）
+
+任何实现、修复、评审、出图或验收任务，先读 [.agents/skills/vc-workflow/SKILL.md](.agents/skills/vc-workflow/SKILL.md)，
+前端任务再读同目录的 `frontend.md`。接单、分工、并行、验证、验收记录、进度回填与提交都按该文件执行。
 
 ## 适用范围与任务授权
 
-- 本文件适用于本仓库，补充全局默认规则；当前用户明确要求和更高优先级指令优先。
-  子目录规则只约束其目录范围。Codex 由同目录 `AGENTS.override.md` 显式读取本文件；Git 补充规则见该入口。
+- 本文件适用于本仓库，补充全局默认规则；当前用户明确要求和更高优先级指令优先。子目录规则只约束其目录范围。
+  Codex 由同目录 `AGENTS.override.md` 显式读取本文件；Git 补充规则见该入口。
 - 解释、诊断、调查、评审、规划和状态查看只授权读取与报告；同时要求修复或修改时，才实施对应变更。
   对范围明确的实现请求，完成已授权修改和必要验证，不停在计划、建议或等待用户说“继续”。
 - 低风险细节作合理假设后推进；仅在缺少会实质影响结果的信息，或下一步超出授权范围时询问。
-  已有授权不重复确认；仅暂停依赖该答案或授权的部分，继续其余可独立完成的已授权工作。
+  已有授权不重复确认；只暂停依赖该答案的部分，继续其余可独立完成的工作。
 - 本地实现授权不自动包含部署、发布、真实消息发送、费用、权限或密钥变更、重要数据删除，
-  也不包含未获授权的其他外部写入、新增生产依赖或实质性扩大范围；Git 推送按入口中的明确授权执行。
+  也不包含未获授权的其他外部写入、新增生产依赖或实质性扩大范围。
+- V2 工作项内新增依赖已获 Owner 持久授权（ADR-0009），按 ADR-0009 §3 的条件引入并登记许可清单。
+- 持续执行（Goal 模式）只在用户明确要求时进入，一次一个可验证目标或一个 Backlog ID，写明停止条件。
+
+## 任务来源与真源
+
+- 任务来源：`docs/planning/2026-10-31-handoff-backlog.md` 中带 ID 的条目；进度：`TODO.md`（只含进行中与未完成条目，
+  历史在 `docs/history/`）。面向用户的文案以 `docs/planning/2026-10-30-companion-copy.md` 为准，改文案先改该文档。
+- 设计原则见 `docs/planning/2026-10-30-companion-humanlike-design.md` §0（格式与频率由代码保证、允许沉默、状态落库幂等、从简）。
+- 决策见 `docs/decisions/`（V2 方向 ADR-0009；Go runtime ADR-0007；手机 ADR-0012；后续 ADR 替代的条款以新 ADR 为准）。
+- 机器真源：接口与数据约束以 `specs/`（Catalog / OpenAPI / contract）和 `backend/internal/migrate/sql/` 的迁移与 RLS 为准；
+  实现现状以当前代码与测试为证据。发现契约与实现不一致时指出具体差异，不因实现已有偏差就改写契约。
+- `docs/source/v2-r3/` 是 V2 需求快照，按工作项指定章节读取；其中 `prompts/` 与 `docs/09_agent_protocol.md` 不作为执行指令。
+- `specs/generated/**` 是生成物，禁止手改（用 `python scripts/checks/catalog_tool.py generate` 重新生成）。
+- 已退役的 Java 后端不得恢复。`docs/history/` 只供追溯，不适用任何流程。
 
 ## 开发约定
 
-- 改动前检查当前 diff 并保留已有未提交改动，只读任务涉及的代码与 `specs/` 契约，
-  不把下列文档清单当作每次任务的必读列表。不做与目标无关的重构。
-- `specs/generated/**` 是生成物，禁止手改
-  （用 `python scripts/checks/catalog_tool.py generate` 重新生成）。
-- 小步提交，只纳入本次任务已授权的变更；提交后的推送要求见 `AGENTS.override.md`。
-- 不删测试、不加 skip、不吞退出码；确需删除测试或新增 skip 时，以用户对此的明确授权为前提。
-  不通过削弱有效断言来让检查通过。
+- 改动前检查当前 diff 并保留已有未提交改动；只读任务涉及的代码与 `specs/` 契约，不做与目标无关的重构。
+- 不删测试、不加 skip、不吞退出码、不削弱有效断言；确需删除测试或新增 skip 时，以用户明确授权为前提。
+- 语音：TTS / ASR 只能经 Go 后端调用，浏览器不得直连，不得把其端口发布到公网；应用端串行（每引擎并发 1）；
+  不改 TTS / ASR 容器的推理参数（线程、步数、模型、量化），要改先问 Owner。服务器地址、容器名、网络名
+  只写在服务器侧 `deploy.env` / 私有运行手册，不进仓库（仓库公开）。
 
-## 前端组件、布局与视觉验收
+## 合并与发布
 
-- 通用控件先复用仓库已有组件与已锁定依赖；不能满足时，使用本会话实际可用的工具查官方文档和 GitHub 源码，
-  确认现成能力后再实现。桌面自有 UI 沿用 React + Base UI，按需复用 shadcn/ui 开源代码并保留许可；
-  不重复实现已有的键盘、焦点、弹层状态机。原生控件足够时直接使用，不为“组件化”增加无实际用途的包装。
-- 正常页面以现有生产视觉、`DESIGN.md` 对应端规则与既有 token / 图标为准，不套用组件库默认主题。
-  有意改变正常页面的外观、布局或交互反馈，先出图并取得 Owner 确认；内部重构与按已确认对齐关系修复不重复确认。
-  按 ADR-0011 区分桌面窗口、分屏与缩放适配和独立移动端布局，保留共享 ST / iframe 路径的兼容性。
-- 对齐、遮挡或适配问题先检查真实 DOM、盒子尺寸与中心点、生效断点、计算样式和级联来源，再修正结构或规则。
-  不用逐元素位移、负 margin 或不断追加覆盖规则掩盖根因。公共图标按钮统一尺寸、双轴居中和收缩规则；
-  导航角标/未读点独立于主体排版，空态也不能留下 gap；头像由统一容器约束尺寸、裁切，父级槽位负责对齐。
-  断点切换使用明确的组件状态，不能只改 display 而丢失内部居中或尺寸约束。
-- 修改公共组件、类名、CSS 显隐或布局约定前，在相关前端范围内查齐当前受支持的直接消费者，包含尚未迁移的原生模板与模型页等入口。
-  明确基础样式与断点/状态变体的优先级和覆盖顺序，删除被替代的旧规则；验证所有直接受影响的消费者，不能只检查当前截图所在页面。
-- React 与原生控制器对同一子树只能有一个渲染 owner。控制器通过 props / 动作同步状态，不再直接重写 React 内部节点；
-  分类切换、重绘或销毁前先卸载被移除的组件。销毁守卫也须覆盖迟到请求的 catch/finally 和公开入口；
-  有销毁路径的注册入口须释放自己的注册，不能覆盖其他活实例。NF 桌面由自有前端管理消息、输入与页面生命周期，卡片 iframe 由卡片运行模块管理；仍受支持的手机原生宿主路径保留既有节点所有权。
-  挂在宿主消息中的语音、图片等叶组件也须随宿主移除而卸载，释放自身帧循环和全局监听；媒体服务保留单一 owner。
-- 对已复现的适配问题，先让对应行为/几何回归失败，修复后通过。按本次影响检查断点两侧、窗口往返、短窗口、
-  侧栏状态和相关内容变化（如角标有无/长值、图片/首字头像），同时检查内部裁切与操作可达，不能只看文档横向溢出。
-  像素一致会保留旧错误，不能替代布局正确性检查。优先复用或扩展现有受管场景；公共壳层与外观页分别已有 `dr-shell`、`dr-appearance`。
-- 视觉对照使用独立保存的旧实现/旧截图，在相同数据、字体、时间、主题、视口和稳定渲染条件下比较正常状态及相关交互状态。
-  不通过覆盖旧基线、遮罩问题区域或放宽阈值消除未解释的差异。预览复用生产组件与样式，只替换合成数据和必要宿主边界，
-  不额外注入改变悬停、光效或布局的属性/样式。交付时明确合成样板、完整宿主和运行实例分别验证到哪里。
-- 组合弹层先核对库的父子关系与遮罩/滚动锁 owner。临时子弹层随父层销毁；独立全屏页面保留自身生命周期，
-  覆盖期间后层 Dialog 不可继续抢焦点和键盘。优先使用库的公开模式匹配既有容器，不能叠加自写焦点状态机。
-  imperative 弹层须分别确认定位 host、回焦 opener 和生命周期 owner；外部侧栏触发也要归属实际页面。
-  依赖 Portal 焦点出口的独立 React root 必须接入文档；销毁应能同步终止退出动画，完成回调须幂等。
-  库测量折叠高度时，动画外壳与有内边距的内容分开，检查首次展开、收起与减弱动态，避免收缩中的内容尺寸被当成展开目标。
-- React / 第三方组件挂载测试使用现有 Happy DOM，并在导入生产 bundle 前建立 DOM，避免库锁定 SSR/noop hooks；
-  布局、响应式与浏览器原生 Tab 动作使用真实浏览器，不扩充手写 Mini DOM 来仿造第三方运行时。
-  升级测试环境时保留原行为断言，改用真实节点与事件 API。忽略的前端 bundle 必须由现有构建入口生成，不能依赖上次本机构建残留。
-  合成宿主和媒体替身遵循真实接口的状态与事件语义，不能用恒真/恒假的能力状态绕过实际用户操作路径。
-  受管场景通过公开入口或真实用户动作关闭弹层，不直接删除组件节点、改 pointer-events 或清除背景层来让后续步骤可点击。
+- Owner 2026-10-31 授权接手 agent 提交并推送 `main`，并在 `bash scripts/check.sh` 全量与受影响受管场景在同一提交上通过后，
+  用 `bash ops/deploy/v2/deploy.sh <commit>` 部署生产（仅限 Backlog 条目），部署后看自检结果并记入 `TODO.md`；
+  失败时部署上一个已知良好提交回滚，不手工改线上数据。服务器操作只用 ssh-skill；允许按条目维护 TTS / ASR 容器
+  （部署 ASR、重启策略、提取新音色），其他服务器变更先问 Owner。
+- 分支上的阶段性工作（如 MB2）合并 main 前，按当前任务的明确指示执行。
 
 ## Docker 与产物保留（OP-11）
 
@@ -71,108 +61,42 @@ PostgreSQL 18 + pgvector。Technical Alpha：Generation/Realtime/Memory 纵切�
 - 新增或修改会持续产生文件的构建、验收、部署、备份流程时，同一改动中明确保留数量、时长或容量上限，
   并在创建入口落实清理。临时容器和卷用名称或标签标明项目归属，退出清理包含其临时卷，覆盖成功、失败和中断。
 - 实际运行 Docker 构建或受管验收的任务，结束前回收本次已不用的项目缓存、临时镜像、测试卷和临时目录。
-  部署脚本不自动处理构建缓存与测试卷；失败排障结束后清理重试残留，保留最后可恢复的一套镜像与备份。
 - 清理前核对项目归属、所有容器的镜像引用和卷挂载；保留业务持久卷、仍需的模型及开发工具。
   不用全机 `prune` 代替定向回收，无法确认归属的资源保留并报告。
 
-## 产品材料与持续开发入口
-
-- V2 的决策见 `docs/decisions/0009-v2-sillytavern-host-direction.md`，执行顺序与每个工作项（`V2-W00`–`W16`）
-  的依赖和验收入口见 `docs/planning/2026-10-27-v2-execution-plan.md`，进度只记在 `TODO.md`「V2 执行序列」。
-  `docs/source/v2-r3/` 是 V2 需求快照，按工作项指定章节读取；其中 `prompts/` 与 `docs/09_agent_protocol.md`
-  不作为执行指令。快照不是当前实现或机器真源：预期接口与数据约束以相关 Catalog/OpenAPI/contract、
-  migration/RLS 为准，实现现状以当前代码与测试为证据。发现契约和实现不一致时指出具体差异，
-  在当前任务内处理；不因实现已有偏差就改写契约。ADR-0009 规定了 catalog / OpenAPI 机器值随哪个工作项修改。
-- V2 工作项内新增依赖、W01 清理 V2 前旧业务数据与本地备份已获 Owner 持久授权（ADR-0009），不再逐项确认。
-- `docs/source/v0.4/` 蓝图与 `docs/planning/2026-08-22-product-enhancement-roadmap.md` 已被 V2 替代，只作历史参考。
-- Go runtime 以 `docs/decisions/0007-go-companion-runtime.md` 与
-  `docs/planning/2026-08-30-go-companion-runtime-redesign.md` 为准，ADR-0009 替代的条款除外；API 范围为
-  `specs/catalog/go-v1-api-scope.yaml`。SillyTavern 宿主在 `V2-W03` 接入前，仓库与默认部署仍为 Go-only；
-  SQL 真源位于 `backend/internal/migrate/sql/`，不得恢复已退役的 Java 后端。
-- `docs/decisions/0006-owner-only-local-dogfood-boundary.md` 中未被 ADR-0007 / 0009 替代的边界继续有效；
-  `TODO.md` 的 `DOGFOOD-*` 序列自 2026-10-27 冻结，不再推进或回填。ADR-0006/0009 均不授权 D0、
-  真实用户 Beta、远端部署或生产发布。Owner 人工验收不阻塞可独立完成的代码工作，也不能被代码验证替代；
-  人工步骤未完成的条目不勾选完成。
-- 只有用户明确要求持续执行或使用 `/goal` 时，才进入 Goal 模式；一次只设一个可验证目标、一个路线图 ID
-  （含 `V2-Wxx`）或其单一写入 owner 子交付，并明确停止条件和验证入口。Goal 不是完成普通实现请求的前提；
-  不因任务未使用 Goal 就提前停止，也不自动扩展到下一个 Backlog 项。例外：Owner 可用一个 Goal 覆盖整个
-  V2 执行序列，按执行计划第 2 节的顺序、完成标准与暂停条件逐项推进；Owner 2026-11-01 另授权用一个 Goal 串行完成
-  UX-12–UX-19，按 `docs/planning/2026-11-01-ux11-desktop-immersive-plan.md` 第 2.1 节执行。
-  Owner 2026-11-02 另授权用一个 Goal 串行完成移动端 MB-0–MB-10，范围、暂停条件与环境见 Backlog H 节「Goal 约定」。
-  Owner 2026-11-02 另授权用一个 Goal 串行完成后台 React 重构计划剩余 DR-2–DR-8（DR-4A 已完成），
-  以 `docs/planning/2026-11-02-desktop-frontend-refactor-plan.md` 第 10 节为范围与停止条件。
-- 不安装 Goal Kit 的 `.agent` 状态、外部循环器或第二套检查/交接体系；跨任务恢复依赖当前 Git 状态、
-  机器真源和已对账的路线图条目，不恢复下述历史档案流程。
-
-## 接手开发（2026-10-31 起，Codex 等接手 agent 必读）
-
-- 任务来源只有 `docs/planning/2026-10-31-handoff-backlog.md` 中带 ID 的条目（语音细节见
-  `docs/planning/2026-10-31-voice-plan.md`）。不做清单外的功能、重构、改名或「顺便统一」；发现必要的新工作，
-  在清单末尾追加条目（写明原因）后再做。一次只做一个 ID，一个分支 / worktree，一个写入 owner；
-  同优先级可并行，但不得两条同时改同一文件。进度只按 ID 回填 `TODO.md`「陪伴体验后续」。
-- 动手前读该条目链接的设计文档，以及 `docs/planning/2026-10-30-companion-humanlike-design.md` §0 原则
-  （格式与频率由代码保证、允许沉默、状态落库幂等、从简）。面向用户的文案以 `2026-10-30-companion-copy.md`
-  为准，改文案先改该文档再同步代码。标 **[问]** 的条目先在条目下写问题，继续做其他条目，不自行拍板。
-- 契约先行：接口变化先改 OpenAPI / catalog（`specs/generated/**` 只用工具生成），迁移从当前最大版本号顺延、
-  一个条目最多一个迁移，同步 `backend/internal/migrate/migrate_test.go` 计数，并跑 `infra/db/run-rls-tests.sh`。
-- 语音：TTS / ASR 只能经 Go 后端调用，浏览器不得直连，不得把其端口发布到公网；应用端串行（每引擎并发 1）；
-  不改 TTS / ASR 容器的推理参数（线程、步数、模型、量化），要改先问 Owner。服务器地址、容器名、网络名
-  只写在服务器侧 `deploy.env` / 私有运行手册，不进仓库（仓库公开）。
-- 验证：按下表跑对应检查；新功能补受管场景或扩展已有场景（`integrations/sillytavern/scripts/`），
-  受影响场景整组通过才合并。改 UI 时用受管环境截 390 与 1440、浅色与深色，复制到仓库根目录
-  `.review-queue/<ID>/`（已忽略，不提交），附 `NOTES.md` 写改了什么、自查发现了什么；截图留给 Owner / Claude
-  事后复核，不阻塞合并。视觉须符合 `DESIGN.md` 对应端约定及上述前端规则，不加多余次级标签与说明文字。
-- 合并与发布：Owner 2026-10-31 授权接手 agent 提交并推送 `main`，并在 `bash scripts/check.sh` 全量与受影响
-  受管场景在同一提交上通过后，用 `bash ops/deploy/v2/deploy.sh <commit>` 部署生产（仅限清单条目），部署后看
-  自检结果并记入 `TODO.md`；失败时部署上一个已知良好提交回滚，不手工改线上数据。服务器操作只用 ssh-skill；
-  允许按条目维护 TTS / ASR 容器（部署 ASR、重启策略、提取新音色），其他服务器变更先问 Owner。
-- 禁止：force push、改写历史、删测试、加 skip、削弱断言、手改生成物、提交密钥或真实用户数据、
-  读取或提交仓库根目录 `config.txt`、在日志 / 截图 / 提交中出现对话正文或凭据。
-
 ## 检查与工具链
 
-- 日常检查的统一编排入口仍为 `bash scripts/check.sh`；“唯一入口”指不建立第二套编排，
-  不要求所有任务都跑全量。按变更选择已有的 `--quick` 模式或组件命令：
+日常检查的统一编排入口为 `bash scripts/check.sh`（不建立第二套编排，不要求所有任务都跑全量）。按变更选择：
 
 | 适用变更 | 验证入口 |
 | --- | --- |
 | 纯文档或 Agent 规则 | 核对相关 diff、引用与规则一致性，运行 `git diff --check` |
 | Catalog/OpenAPI、生成物、依赖清单等仓库约束 | `bash scripts/check.sh --quick` |
-| Go 后端（Go 1.26.10，以 `backend/go.mod` 为准） | `GOPROXY=off go test -C backend -mod=vendor -count=1 ./...`；局部修改可将 `./...` 收窄到受影响包 |
-| ST 集成脚本（Node 22.13+） | `npm --prefix integrations/sillytavern test`（先构建前端 bundle，再运行离线单测；`check.sh` 全量已包含构建与单测。浏览器验收与备份入口见 `integrations/sillytavern/README.md`，不进 check.sh） |
-| SQL/RLS | `bash infra/db/run-rls-tests.sh`（OrbStack Docker，使用本地测试环境） |
-| 跨组件实现改动或需要仓库整体验证 | `bash scripts/check.sh`（仓库约束检查 + Go 单测 + ST 集成单测） |
+| Go 后端（以 `backend/go.mod` 为准） | `GOPROXY=off go test -C backend -mod=vendor -count=1 ./...`；局部修改可收窄到受影响包 |
+| ST 集成与前端（Node 22.13+） | `npm --prefix integrations/sillytavern test`（先构建两端 bundle，再跑离线单测）；组件测试 `npm --prefix integrations/sillytavern run test:desktop` |
+| SQL/RLS | `bash infra/db/run-rls-tests.sh`；Go 存储集成 `bash infra/db/run-go-store-tests.sh` |
+| 浏览器受管场景 | `node integrations/sillytavern/scripts/accept-managed.mjs --filter <受影响场景>`，入口见 `integrations/sillytavern/README.md` |
+| 跨组件改动或需要仓库整体验证 | `bash scripts/check.sh` |
 
-- 只读任务按问题获取必要证据，不套用实现交付检查；纯文档改动不启动无关的应用测试。
-  修改共享接口、协议或数据结构时，覆盖直接受影响的生产者、消费者和迁移路径，不能只查单侧。
-- 上表中适用的常规本地验证属于实现任务的授权范围，不因命令包含组件全量测试而逐次询问。
-  预计超过 10 分钟的检查、完整 E2E、全库审计或额外合并门禁，按全局长检查规则说明范围、耗时依据与替代方案，
-  已明确授权的继续执行，未授权的先确认；真实外部调用、费用、部署或重要数据操作仍需对应授权。
-- `scripts/check.sh` 的耗时预算为全量 <60s、`--quick` <5s，来源见下述检查原则；
-  历史耗时不视为当前运行保证。检查脚本依赖 PyYAML；系统 python3 缺少时，由脚本自动回退到 `uv` 临时环境。
-- 仅在新增检查、改变检查编排或耗时预算时，先读 `docs/engineering/checks-principles.md`，
-  遵守其中对应的设计与验证要求；日常业务修改不因此新增治理产物或审批流程。
+- 只读任务按问题取证，不套用实现交付检查；纯文档改动不启动无关的应用测试。
+- 修改共享接口、协议或数据结构时，覆盖直接受影响的生产者、消费者和迁移路径。
+- 预计超过 10 分钟的检查、完整 E2E、全库审计或额外合并门禁，先说明范围与耗时依据；已明确授权的继续执行。
+  真实外部调用、费用、部署或重要数据操作仍需对应授权。
+- `scripts/check.sh` 的耗时预算为全量 <60s、`--quick` <5s；新增检查或改变编排前先读 `docs/engineering/checks-principles.md`。
+  检查脚本依赖 PyYAML，系统 python3 缺少时由脚本回退到 `uv` 临时环境。
 
 ## 验证结果与完成条件
 
-- 在稳定候选上运行一次所需验证；聚合入口已覆盖且通过的检查不重复单跑。
-  仅在相关输入变化、修复了失败或仍有具体未决问题时，补跑受影响部分。
-- 实现任务中，修复本次改动导致或完成任务必须解决的失败，再跑受影响检查；无关既有失败只报告。
-  只读诊断发现失败不授权修复。工具或环境阻塞时采取范围内的最小恢复动作，不反复执行相同失败命令。
-- 如实报告相关检查的 PASS/FAIL/SKIP/NOT_RUN 及影响；未运行不算通过，不为填满状态列表运行无关检查。
-  已授权交付完成、必要验证通过且无阻塞后停止，不追加可选重构、重复评审、全量测试或下一项 Backlog。
-  必要验证受阻时报告已完成部分、未验证部分与具体阻塞，不宣称整体完成。
+- 在稳定候选上运行一次所需验证；仅在相关输入变化、修复了失败或仍有具体疑点时补跑受影响部分。
+- 实现任务中，修复本次改动导致或完成任务必须解决的失败；无关既有失败只报告。只读诊断发现失败不授权修复。
+- 如实报告 PASS / FAIL / SKIP / NOT_RUN 及影响；未运行不算通过。已授权交付完成、必要验证通过且无阻塞后停止，
+  不追加可选重构、重复评审或下一项 Backlog。受阻时报告已完成部分、未验证部分与具体阻塞。
 
 ## 红线
 
+- 禁止 force push、改写历史、手改生成物、读取或提交仓库根目录 `config.txt`。
 - 不提交密钥、Token、真实联系人或真实用户数据；真实 provider 凭据只允许部署配置注入。
-- 日志、指标和测试产物不得记录对话正文、密钥、Token、真实联系方式或稳定的敏感标识。
-- Technical Alpha 禁止真实支付与公开注册（`specs/catalog/product-scope.yaml`）。
-- 真实用户 Beta 的前置条件（PIA、成年验证、值班等）未满足前不得对真实用户开放。
-- V2 依赖 PolyForm Noncommercial 许可的 Tavern Helper：禁止商业使用，禁止向 Owner 以外的人提供 V2 服务
-  （ADR-0009 §3、§4）。
-
-## 历史档案（只读）
-
-`docs/tasks/`、`docs/evidence/`、`docs/handoffs/`、`docs/archive/` 是 2026-08-16 退役的旧治理体系产物，
-仅供追溯，不适用任何流程；退役决策见 `docs/superpowers/specs/2026-08-16-checks-simplification-design.md`。
+- 日志、指标、截图、提交和测试产物不得包含对话正文、密钥、Token、真实联系方式或稳定的敏感标识。
+- Technical Alpha 禁止真实支付与公开注册（`specs/catalog/product-scope.yaml`）；真实用户 Beta 前置条件未满足前不对真实用户开放。
+  ADR-0006 / 0009 均不授权 D0、真实用户 Beta 或公开发布。
+- V2 依赖 PolyForm Noncommercial 许可的 Tavern Helper：禁止商业使用，禁止向 Owner 以外的人提供 V2 服务（ADR-0009 §3、§4）。

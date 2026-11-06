@@ -374,8 +374,6 @@ Owner 选型：手机 93 项均保留原版；桌面已记录 89 项（原版 37
 
 ## 12. SillyTavern 宿主映射
 
-对照表与分批计划见 [docs/planning/2026-10-29-frontend-redesign-plan.md](docs/planning/2026-10-29-frontend-redesign-plan.md)。
-
 - **开关与样式层**：根类 `body.vc-ui` 启用新外观；样式写在扩展里一张后加载、不放进 `@layer` 的样式表，
   变量统一 `--vc-` 前缀。需要压过宿主 `!important` 的地方（`body.no-blur` 去模糊、文档 / 气泡模式、
   头像形状）用同等或更高优先级显式覆盖。去掉该类即回到 ST 原生外观，作为排错手段。

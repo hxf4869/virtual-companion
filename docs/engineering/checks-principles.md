@@ -70,6 +70,6 @@ YAML，反复验证本已不可变的过去。git 对象一旦提交即不可变
 
 ## 六、事件存档
 
-- 设计与决策：`docs/superpowers/specs/2026-08-16-checks-simplification-design.md`
+- 设计与决策：`docs/engineering/2026-08-16-checks-simplification-design.md`
 - 拆除提交：`b175e86`（净 -34,709 行）；测试根标志修复 `ecde04f`
 - 旧体系历史产物（只读）：`docs/tasks/`、`docs/evidence/`、`docs/handoffs/`、`docs/archive/`

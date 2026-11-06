@@ -15,7 +15,7 @@
 | `src/runtime/` | SessionBridge 提供会话订阅与命令。`desktop/standalone/session.js` 持有消息、流式状态与 F2 保存 |
 | `src/bridge/` | 原生 ST 的库模式挂载入口，为原生控制器与样板保留既有 48 个运行时导出 |
 
-React 负责桌面页面和消息 DOM。`desktop/standalone/cards/` 负责 Helper / EJS / MVU iframe 与脚本生命周期，React 提供独立挂载节点。扩展纯逻辑和运行模块的导入由递归白名单测试约束。布局、色彩与交互沿用项目设计规范。[导入边界测试](../tests/desktop-import-boundary.test.mjs) · [DESIGN.md](../../../DESIGN.md) · [DR2 计划](../../../docs/superpowers/plans/2026-11-04-desktop-react-rebuild.md)
+React 负责桌面页面和消息 DOM。`desktop/standalone/cards/` 负责 Helper / EJS / MVU iframe 与脚本生命周期，React 提供独立挂载节点。扩展纯逻辑和运行模块的导入由递归白名单测试约束。布局、色彩与交互沿用项目设计规范。[导入边界测试](../tests/desktop-import-boundary.test.mjs) · [DESIGN.md](../../../DESIGN.md)
 
 ## 扩展目录保留项
 
