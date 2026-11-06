@@ -15,6 +15,10 @@ async function sceneDesktopTavern(ctx) {
     settings.extension_settings.EjsTemplate ||= {};
     Object.assign(settings.extension_settings.EjsTemplate,{compile_workers:false,sandbox:false});
     settings.extension_settings.EjsTemplate.code_editor=true;
+    settings.extension_settings.tavern_helper ||= {};
+    settings.extension_settings.tavern_helper.script ||= {};
+    settings.extension_settings.tavern_helper.script.enabled ||= {};
+    settings.extension_settings.tavern_helper.script.enabled.characters = [fixture.avatar];
     settings.extension_settings.variables ||= {global:{}};settings.extension_settings.variables.global ||= {};settings.extension_settings.variables.global.NF07='初始';
     settings.oai_settings ||= {}; settings.oai_settings.top_k_openai = 0;
     settings.nf07_unknown = {preserve:'synthetic'};
