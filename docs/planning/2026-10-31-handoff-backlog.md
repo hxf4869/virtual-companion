@@ -498,6 +498,8 @@ Owner 选择 React，要求保留现有正常 UI、优先复用成熟开源组�
 | MB2-14 | P1 | 电脑端“打开手机版”入口；`/native/` 移除（MB2-15 通过且 Owner 确认后） | 两端受管整组、`check.sh` |
 | MB2-15 | P1 | 全量验收、视觉终审与合并准备 | Mac 参考环境整组、性能预算、截图终审 |
 | MB2-DB1 | P1 | 记忆遗忘与 MemoryCore 调用预留的锁顺序修复（Owner 2026-11-06 追加授权） | 隔离库双事务回归、Go store/http、RLS、dr2-pages |
+| MB2-5F | P0 | 手机壳复审修正：全屏卡片路由与服务端入口白名单一致；同模式参数化页面不再持有过期 props；导入边界检查移除过期白名单并覆盖间接引用（Owner 2026-11-06 授权） | 手机壳 Vitest、host-auth 单测、导入边界、两端构建、`mb2-shell`、`mb2-layout` |
+| MB2-DB2 | P1 | 记忆提案校验与遗忘的锁顺序修复：`ValidateEngineProposal` 先取 owner barrier 再锁来源行（基准既有问题，Owner 2026-11-06 授权） | 隔离库双事务回归红转绿、Go store/http |
 
 - **[问] MB2-0（2026-11-06，后续已回填）**：审图分支 `review/mb2-0-images@69e3096f` 含84张候选与11张Spike同视口对比，完整提示词/索引随分支交付。Claude首次REVIEW已完成，随后按意见重出10张图；等待重出后复审及Owner确认PICKS，未选图页面暂停实现。
 
