@@ -5,8 +5,9 @@ import { RouterProvider } from '@tanstack/react-router';
 import { z } from 'zod';
 import { AppProviders, queryClient } from '../../src/app/providers';
 import { createDesktopRouter } from '../../src/app/router';
+import { SettingsRouteAdapter } from '../../src/app/SettingsRouteAdapter';
 import { ConflictError, type AppClient } from '../../src/data/client';
-import { SettingsRoute, useSettingsForm } from '../../src/features/settings/SettingsRoute';
+import { useSettingsForm } from '../../src/features/settings/SettingsRoute';
 import { ModelSection } from '../../src/features/settings/ModelSection';
 
 function installMatchMedia() {
@@ -148,7 +149,7 @@ describe('ModelSection & SettingsRoute', () => {
     const client = createModelTestClient();
     const router = createDesktopRouter({
       routeOverrides: {
-        settings: SettingsRoute,
+        settings: SettingsRouteAdapter,
       },
     });
 
@@ -192,6 +193,110 @@ describe('ModelSection & SettingsRoute', () => {
 
     await waitFor(() => {
       expect(router.state.location.pathname).toBe('/settings/appearance');
+    });
+  });
+
+  it('in-flight provider or bindings save still prompts leave confirmation dialog on category switch', async () => {
+    let resolveProviderSave!: (res: { ok: boolean; revision: number }) => void;
+    let resolvePurposeSave!: (res: Record<string, unknown>) => void;
+
+    const saveProvider = vi.fn(
+      () =>
+        new Promise<{ ok: boolean; revision: number }>((resolve) => {
+          resolveProviderSave = resolve;
+        }),
+    );
+    const saveModelPurpose = vi.fn(
+      () =>
+        new Promise<Record<string, unknown>>((resolve) => {
+          resolvePurposeSave = resolve;
+        }),
+    );
+
+    const client = createModelTestClient({
+      saveProvider,
+      saveModelPurpose,
+    });
+    const router = createDesktopRouter({
+      routeOverrides: {
+        settings: SettingsRouteAdapter,
+      },
+    });
+
+    const { container } = render(
+      <AppProviders client={client}>
+        <RouterProvider router={router} />
+      </AppProviders>,
+    );
+
+    await act(async () => {
+      await router.navigate({ to: '/settings/$category', params: { category: 'model' } });
+    });
+
+    const displayInput = (await screen.findByLabelText('显示名称')) as HTMLInputElement;
+    fireEvent.change(displayInput, { target: { value: '保存中的供应商名称' } });
+
+    const saveBtn = container.querySelector<HTMLButtonElement>('#vcms-save')!;
+    fireEvent.click(saveBtn);
+    await waitFor(() => {
+      expect(saveProvider).toHaveBeenCalledTimes(1);
+      expect(saveBtn.textContent).toContain('保存中');
+    });
+
+    // While provider save is in-flight, switching category must still open the confirmation dialog
+    fireEvent.click(screen.getByRole('button', { name: '外观' }));
+    expect(await screen.findByText('放弃更改？')).toBeTruthy();
+    expect(router.state.location.pathname).toBe('/settings/model');
+
+    fireEvent.click(screen.getByRole('button', { name: '继续编辑' }));
+    await waitFor(() => {
+      expect(screen.queryByText('放弃更改？')).toBeNull();
+    });
+    expect(router.state.location.pathname).toBe('/settings/model');
+
+    await act(async () => {
+      resolveProviderSave({ ok: true, revision: 4 });
+    });
+    await waitFor(() => {
+      expect(saveBtn.textContent).toContain('保存更改');
+    });
+
+    // Switch to bindings tab and trigger in-flight bindings save
+    fireEvent.click(container.querySelector<HTMLElement>('[data-action="tab"][data-tab="bindings"]')!);
+    const stateCheckbox = await waitFor(() => {
+      const el = container.querySelector<HTMLInputElement>(
+        'input[data-bind="bindingState.FOREGROUND_CHAT"]',
+      );
+      expect(el).toBeTruthy();
+      return el!;
+    });
+    fireEvent.click(stateCheckbox);
+
+    const saveBindingsBtn = container.querySelector<HTMLButtonElement>('[data-action="save-bindings"]')!;
+    fireEvent.click(saveBindingsBtn);
+    await waitFor(() => {
+      expect(saveModelPurpose).toHaveBeenCalledTimes(1);
+    });
+
+    // While bindings save is in-flight, switching category must also open the confirmation dialog
+    fireEvent.click(screen.getByRole('button', { name: '外观' }));
+    expect(await screen.findByText('放弃更改？')).toBeTruthy();
+    expect(router.state.location.pathname).toBe('/settings/model');
+
+    fireEvent.click(screen.getByRole('button', { name: '放弃' }));
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe('/settings/appearance');
+    });
+
+    await act(async () => {
+      resolvePurposeSave({
+        purpose: 'FOREGROUND_CHAT',
+        providerId: 'openai-main',
+        profileKey: 'gpt-4o',
+        state: 'DISABLED',
+        status: 'READY',
+        revision: 2,
+      });
     });
   });
 
@@ -547,6 +652,7 @@ describe('ModelSection & SettingsRoute', () => {
         { mutateAsync },
         { identityKey },
       );
+      expect('leaveGuardModal' in sf).toBe(false);
       const val = sf.form.watch('title') ?? '';
       return (
         <div>

@@ -16,6 +16,11 @@ import { Icon } from '../../design/components/Icon';
 
 export interface AppConsentGateProps {
   children?: ReactNode;
+  onNavigateAuth?: (url: string) => void;
+}
+
+function defaultNavigateAuth(url: string): void {
+  window.location.replace(url);
 }
 
 function isReauthError(err: unknown): boolean {
@@ -28,9 +33,12 @@ function isReauthError(err: unknown): boolean {
   );
 }
 
-export function AppConsentGate({ children }: AppConsentGateProps) {
+export function AppConsentGate({
+  children,
+  onNavigateAuth = defaultNavigateAuth,
+}: AppConsentGateProps) {
   const client = useAppClient();
-  const exit = useExitDesktopAccount();
+  const exit = useExitDesktopAccount(onNavigateAuth);
   const consentsQuery = useConsentsQuery();
   const recordConsentMutation = useRecordConsentMutation();
   const sprite = iconSpriteUrl();

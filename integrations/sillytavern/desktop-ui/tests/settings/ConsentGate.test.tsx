@@ -44,6 +44,82 @@ describe('AppConsentGate', () => {
     expect(cache.getQueryData(['private-test'])).toBeUndefined();
   });
 
+  it('AccountSection and useExitDesktopAccount preserve exact logout order and do not clear session on failure', async () => {
+    const accountQuerySrc = readFileSync(
+      resolve(__dirname, '../../src/data/queries/account.ts'),
+      'utf8',
+    );
+    expect(accountQuerySrc).not.toMatch(/\b(window\.|document\.|localStorage|sessionStorage|HTMLElement)\b/);
+
+    const { AccountSection } = await import('../../src/features/settings/AccountSection');
+    const order: string[] = [];
+    let shouldFail = true;
+
+    const logoutCurrent = vi.fn(async () => {
+      order.push('logoutCurrent');
+      if (shouldFail) {
+        throw new Error('logout network error');
+      }
+      return { ok: true };
+    });
+    const client = {
+      go: {
+        logoutCurrent,
+      },
+    } as unknown as AppClient;
+
+    const destroy = vi.fn(() => {
+      order.push('bridge.destroy');
+    });
+    const cache = createQueryClient();
+    cache.setQueryData(['private-account-cache'], { secret: true });
+    const origClear = cache.clear.bind(cache);
+    vi.spyOn(cache, 'clear').mockImplementation(() => {
+      order.push('queryClient.clear');
+      origClear();
+    });
+    const onNavigateAuth = vi.fn((url: string) => {
+      order.push(`navigate:${url}`);
+    });
+
+    render(
+      <AppProviders
+        client={client}
+        queryClient={cache}
+        sessionBridge={{ destroy, getContext: () => ({ name1: 'Owner' }) } as unknown as SessionBridge}
+      >
+        <AccountSection onNavigateAuth={onNavigateAuth} />
+      </AppProviders>,
+    );
+
+    const logoutBtn = screen.getByRole('button', { name: '退出当前会话' });
+
+    // 1) Failure must NOT destroy bridge, clear query cache, or redirect
+    fireEvent.click(logoutBtn);
+    await waitFor(() => {
+      expect(logoutCurrent).toHaveBeenCalledTimes(1);
+    });
+    expect(destroy).not.toHaveBeenCalled();
+    expect(onNavigateAuth).not.toHaveBeenCalled();
+    expect(cache.getQueryData(['private-account-cache'])).toEqual({ secret: true });
+    expect(order).toEqual(['logoutCurrent']);
+
+    // 2) Subsequent success executes logoutCurrent -> bridge.destroy -> queryClient.clear -> navigate:/auth/
+    order.length = 0;
+    shouldFail = false;
+    fireEvent.click(logoutBtn);
+    await waitFor(() => {
+      expect(onNavigateAuth).toHaveBeenCalledWith('/auth/');
+    });
+    expect(order).toEqual([
+      'logoutCurrent',
+      'bridge.destroy',
+      'queryClient.clear',
+      'navigate:/auth/',
+    ]);
+    expect(cache.getQueryData(['private-account-cache'])).toBeUndefined();
+  });
+
   it('blocks app until required consents granted', async () => {
     const records: {
       consentType: string;

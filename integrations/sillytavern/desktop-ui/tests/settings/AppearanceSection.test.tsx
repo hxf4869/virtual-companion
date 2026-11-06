@@ -1,16 +1,26 @@
 import React from 'react';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, cleanup, act } from '@testing-library/react';
 import { AppProviders } from '../../src/app/providers';
 import { usePreferences } from '../../src/shell/usePreferences';
 import { createTestChatEnv } from '../chat/fixtures';
-import { AppearanceSection } from '../../src/features/settings/AppearanceSection';
+import {
+  AppearanceSection,
+  type AppearanceThemeOption,
+} from '../../src/features/settings/AppearanceSection';
 
 const TEST_THEMES = [
   { id: 'aurora', name: '极光' },
   { id: 'warm-paper', name: '暖纸' },
   { id: 'midnight-ink', name: '夜墨' },
 ] as const;
+
+function DesktopAppearanceHarness({ themes }: { themes?: readonly AppearanceThemeOption[] }) {
+  const preferences = usePreferences();
+  return <AppearanceSection preferences={preferences} themes={themes} />;
+}
 
 describe('AppearanceSection', () => {
   beforeEach(() => {
@@ -22,6 +32,33 @@ describe('AppearanceSection', () => {
     cleanup();
     window.localStorage.clear();
     usePreferences.getState().resetForTest?.();
+  });
+
+  it('does not import desktop shell directly and updates injected preferences state', () => {
+    const src = readFileSync(
+      resolve(__dirname, '../../src/features/settings/AppearanceSection.tsx'),
+      'utf8',
+    );
+    expect(src).not.toMatch(/from\s+['"][^'"]*\/shell\//);
+    expect(src).not.toMatch(/@tanstack\/react-router/);
+    expect(src).not.toMatch(/writeThemeMode|readThemeMode|readThemePreferences|dataset\.vcTheme/);
+    expect(src).not.toMatch(/fallbackThemeMode|readReplyStyleFallback|readReducedMotionFallback/);
+
+    const env = createTestChatEnv();
+    render(
+      <AppProviders client={env.client} queryClient={env.queryClient} sessionBridge={env.bridge}>
+        <DesktopAppearanceHarness themes={TEST_THEMES} />
+      </AppProviders>,
+    );
+
+    fireEvent.click(screen.getByRole('radio', { name: '深色' }));
+    expect(usePreferences.getState().themeMode).toBe('dark');
+
+    fireEvent.click(screen.getByRole('radio', { name: '铺开' }));
+    expect(usePreferences.getState().replyStyle).toBe('spread');
+
+    fireEvent.click(screen.getByRole('switch', { name: '减弱动态效果' }));
+    expect(usePreferences.getState().reducedMotion).toBe(true);
   });
 
   it('character theme targets current conversation character after switching', async () => {
@@ -53,7 +90,7 @@ describe('AppearanceSection', () => {
 
     const { unmount } = render(
       <AppProviders client={env.client} queryClient={env.queryClient} sessionBridge={env.bridge}>
-        <AppearanceSection themes={TEST_THEMES} />
+        <DesktopAppearanceHarness themes={TEST_THEMES} />
       </AppProviders>,
     );
 
@@ -75,7 +112,7 @@ describe('AppearanceSection', () => {
 
     render(
       <AppProviders client={env.client} queryClient={env.queryClient} sessionBridge={env.bridge}>
-        <AppearanceSection themes={TEST_THEMES} />
+        <DesktopAppearanceHarness themes={TEST_THEMES} />
       </AppProviders>,
     );
 

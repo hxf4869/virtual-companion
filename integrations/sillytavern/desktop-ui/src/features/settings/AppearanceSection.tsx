@@ -1,15 +1,12 @@
 import { useEffect, useState } from 'react';
+import { DESKTOP_THEMES } from '../../../../extension/vc-model-settings/desktop/themes/index.js';
 import { characterThemeKey } from '../../../../extension/vc-model-settings/theme-logic.js';
 import { Segment } from '../../design/components/Segment';
 import { Switch } from '../../design/components/Switch';
 import { useChatSnapshot, useSessionBridge } from '../../runtime/session-bridge';
-import {
-  DESKTOP_THEMES,
-  usePreferences,
-  type DesktopThemeDefinition,
-  type ReplyStyle,
-  type ThemeMode,
-} from '../../shell/usePreferences';
+import type { ReplyStyle, ThemeMode } from '../appearance/types';
+
+export type { ReplyStyle, ThemeMode };
 
 const THEME_MODES: readonly { value: ThemeMode; label: string }[] = [
   { value: 'auto', label: '跟随系统' },
@@ -48,7 +45,26 @@ export interface AppearanceThemeOption {
   name: string;
 }
 
+export interface AppearanceThemeStoreData {
+  global: string;
+  characters: Record<string, string>;
+}
+
+export interface AppearancePreferencesBinding {
+  themeMode: ThemeMode;
+  desktopThemePrefs: AppearanceThemeStoreData;
+  replyStyle: ReplyStyle;
+  reducedMotion: boolean;
+  setThemeMode: (mode: ThemeMode) => void;
+  setGlobalDesktopTheme: (themeId: string) => void;
+  setCharacterDesktopTheme: (characterId: string, themeId: string | null) => void;
+  setReplyStyle: (style: ReplyStyle) => void;
+  setReducedMotion: (reduced: boolean) => void;
+  syncFromStorage: (characterId?: string | null) => void;
+}
+
 export interface AppearanceSectionProps {
+  preferences: AppearancePreferencesBinding;
   themes?: readonly AppearanceThemeOption[];
 }
 
@@ -86,23 +102,26 @@ function ThemeSelect({
 }
 
 export function AppearanceSection({
-  themes = DESKTOP_THEMES as unknown as readonly DesktopThemeDefinition[],
-}: AppearanceSectionProps = {}) {
+  preferences,
+  themes = DESKTOP_THEMES as unknown as readonly AppearanceThemeOption[],
+}: AppearanceSectionProps) {
   const bridge = useSessionBridge();
   const snapshotCharacter = useChatSnapshot((s) => s.characterRef || s.avatar || '');
   const currentCharacter =
     snapshotCharacter || characterThemeKey(bridge.getContext?.()) || '';
 
-  const themeMode = usePreferences((s) => s.themeMode);
-  const desktopThemePrefs = usePreferences((s) => s.desktopThemePrefs);
-  const replyStyle = usePreferences((s) => s.replyStyle);
-  const reducedMotion = usePreferences((s) => s.reducedMotion);
-  const setThemeMode = usePreferences((s) => s.setThemeMode);
-  const setGlobalDesktopTheme = usePreferences((s) => s.setGlobalDesktopTheme);
-  const setCharacterDesktopTheme = usePreferences((s) => s.setCharacterDesktopTheme);
-  const setReplyStyle = usePreferences((s) => s.setReplyStyle);
-  const setReducedMotion = usePreferences((s) => s.setReducedMotion);
-  const syncFromStorage = usePreferences((s) => s.syncFromStorage);
+  const {
+    themeMode,
+    desktopThemePrefs,
+    replyStyle,
+    reducedMotion,
+    setThemeMode,
+    setGlobalDesktopTheme,
+    setCharacterDesktopTheme,
+    setReplyStyle,
+    setReducedMotion,
+    syncFromStorage,
+  } = preferences;
 
   const [suggest, setSuggest] = useState<boolean>(() => readBoolPref(SUGGEST_KEY, true));
   const [effects, setEffects] = useState<boolean>(() => readBoolPref(EFFECTS_KEY, true));

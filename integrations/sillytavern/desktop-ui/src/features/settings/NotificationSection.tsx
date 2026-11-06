@@ -1,5 +1,4 @@
 import { useCallback, useState } from 'react';
-import { useRouter } from '@tanstack/react-router';
 import {
   notifySupported,
   requestNotifyPermission,
@@ -10,11 +9,10 @@ import { Icon } from '../../design/components/Icon';
 import { Switch } from '../../design/components/Switch';
 
 export interface NotificationSectionProps {
-  onOpenInbox?: () => void;
+  onOpenInbox: () => void;
 }
 
-export function NotificationSection({ onOpenInbox }: NotificationSectionProps = {}) {
-  const router = useRouter({ warn: false });
+export function NotificationSection({ onOpenInbox }: NotificationSectionProps) {
   const supported = notifySupported();
   const [enabled, setEnabled] = useState<boolean>(() => systemNotifyEnabled());
   const [pending, setPending] = useState(false);
@@ -45,14 +43,8 @@ export function NotificationSection({ onOpenInbox }: NotificationSectionProps = 
   );
 
   const handleOpenInbox = useCallback(() => {
-    if (onOpenInbox) {
-      onOpenInbox();
-      return;
-    }
-    if (router) {
-      void router.navigate({ to: '/inbox' });
-    }
-  }, [onOpenInbox, router]);
+    onOpenInbox();
+  }, [onOpenInbox]);
 
   return (
     <section className="vc-settings-section" data-vc-notification-section="">

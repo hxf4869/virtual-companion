@@ -1,4 +1,4 @@
-import { createElement, type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   useForm,
   type DefaultValues,
@@ -6,10 +6,8 @@ import {
   type Resolver,
   type UseFormReturn,
 } from 'react-hook-form';
-import { useRouter } from '@tanstack/react-router';
 import type { z } from 'zod';
 import { ConflictError } from '../../data/client';
-import { useLeaveGuard } from '../../shell/useLeaveGuard';
 
 function createZodResolver<TValues extends FieldValues>(
   schema: z.ZodType<TValues, any, any>,
@@ -37,10 +35,6 @@ function createZodResolver<TValues extends FieldValues>(
       errors: fieldErrors as any,
     };
   };
-}
-
-function ActiveLeaveGuard({ dirty }: { dirty: boolean }) {
-  return useLeaveGuard(dirty);
 }
 
 export interface SettingsFormQueryLike<TData = unknown> {
@@ -98,7 +92,6 @@ export interface UseSettingsFormReturn<TValues extends FieldValues, TResult = un
   adoptLatest: () => void;
   restoreStashedDraft: () => void;
   keepDraft: () => void;
-  leaveGuardModal: ReactNode;
 }
 
 function isConflictError(err: unknown): boolean {
@@ -239,9 +232,6 @@ export function useSettingsForm<
       form.reset(nextValues);
     }
   }, [query?.data, mapData, extraDirty, conflict, submitting, form]);
-
-  const router = useRouter({ warn: false });
-  const leaveGuardModal = router ? createElement(ActiveLeaveGuard, { dirty: isDirty }) : null;
 
   const discard = useCallback(() => {
     setConflict(null);
@@ -386,6 +376,5 @@ export function useSettingsForm<
     adoptLatest,
     restoreStashedDraft,
     keepDraft,
-    leaveGuardModal,
   };
 }

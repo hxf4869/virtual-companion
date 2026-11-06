@@ -4,7 +4,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { AppProviders, queryClient } from '../src/app/providers';
 import { createTestChatEnv } from './chat/fixtures';
-import { SettingsRoute } from '../src/features/settings/SettingsRoute';
+import {
+  SettingsRoute,
+  type ProductSettingsCategory,
+} from '../src/features/settings/SettingsRoute';
 import { VoiceSection } from '../src/features/settings/VoiceSection';
 import { DesktopVoiceForm } from '../src/features/settings/DesktopVoiceForm';
 import { VoiceForm, voiceFormValues } from '../src/features/settings/VoiceForm';
@@ -12,6 +15,38 @@ import { AppearanceSection } from '../src/features/settings/AppearanceSection';
 import { TavernRoute } from '../src/features/tavern/TavernRoute';
 import { TavernEditor } from '../src/features/tavern/TavernEditor';
 import { TavernActionButton } from '../src/features/tavern/CodeField';
+import { usePreferences } from '../src/shell/usePreferences';
+
+function ConnectedAppearanceSection() {
+  const preferences = usePreferences();
+  return <AppearanceSection preferences={preferences} />;
+}
+
+function ConnectedSettingsRoute({
+  category,
+  onSelectCategory = vi.fn(),
+  onSelectTavern = vi.fn(),
+  onOpenInbox = vi.fn(),
+}: {
+  category: string;
+  onSelectCategory?: (
+    category: ProductSettingsCategory,
+    options?: { relationshipId?: string },
+  ) => void;
+  onSelectTavern?: (section: string) => void;
+  onOpenInbox?: () => void;
+}) {
+  const preferences = usePreferences();
+  return (
+    <SettingsRoute
+      category={category}
+      onSelectCategory={onSelectCategory}
+      onSelectTavern={onSelectTavern}
+      onOpenInbox={onOpenInbox}
+      preferences={preferences}
+    />
+  );
+}
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -93,12 +128,15 @@ describe('DR2-12-R4: 设置/酒馆终审问题回归 (F18, F19, F20, F21, F23)',
   beforeEach(() => {
     queryClient.clear();
     localStorage.clear();
+    usePreferences.getState().resetForTest?.();
     window.location.hash = '#/settings';
   });
 
   afterEach(() => {
     cleanup();
     queryClient.clear();
+    localStorage.clear();
+    usePreferences.getState().resetForTest?.();
     vi.restoreAllMocks();
   });
 
@@ -164,7 +202,7 @@ describe('DR2-12-R4: 设置/酒馆终审问题回归 (F18, F19, F20, F21, F23)',
 
     const { container } = render(
       <AppProviders client={env.client} queryClient={env.queryClient} sessionBridge={env.bridge}>
-        <SettingsRoute category="voice" />
+        <ConnectedSettingsRoute category="voice" />
       </AppProviders>,
     );
 
@@ -302,10 +340,11 @@ describe('DR2-12-R4: 设置/酒馆终审问题回归 (F18, F19, F20, F21, F23)',
     const env = createTestChatEnv();
     render(
       <AppProviders client={env.client} queryClient={env.queryClient} sessionBridge={env.bridge}>
-        <AppearanceSection />
+        <ConnectedAppearanceSection />
       </AppProviders>,
     );
     fireEvent.click(screen.getByRole('radio', { name: '深色' }));
+    expect(usePreferences.getState().themeMode).toBe('dark');
     expect(localStorage.getItem('vc-theme')).toBe('dark');
     expect(document.documentElement.dataset.vcTheme).toBe('dark');
   });
@@ -339,7 +378,7 @@ describe('DR2-12-R4: 设置/酒馆终审问题回归 (F18, F19, F20, F21, F23)',
 
     const settingsRender = render(
       <AppProviders client={env.client} queryClient={env.queryClient} sessionBridge={env.bridge}>
-        <SettingsRoute category="account" />
+        <ConnectedSettingsRoute category="account" />
       </AppProviders>,
     );
     const settingsNav = settingsRender.container.querySelector('.vc-settings-categories')!;

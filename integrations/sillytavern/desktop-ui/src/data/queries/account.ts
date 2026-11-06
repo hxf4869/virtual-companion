@@ -4,14 +4,14 @@ import { useAppClient } from '../../app/providers';
 import { useSessionBridge } from '../../runtime/session-bridge';
 import { queryKeys } from '../queryKeys';
 
-export function useExitDesktopAccount() {
+export function useExitDesktopAccount(onNavigateAuth?: (url: string) => void) {
   const queryClient = useQueryClient();
   const bridge = useSessionBridge();
   return useCallback(() => {
     bridge.destroy();
     queryClient.clear();
-    window.location.replace('/auth/');
-  }, [bridge, queryClient]);
+    onNavigateAuth?.('/auth/');
+  }, [bridge, queryClient, onNavigateAuth]);
 }
 
 export function useSessionQuery(enabled = true) {

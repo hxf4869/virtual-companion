@@ -1,11 +1,13 @@
-import React, { Suspense, useCallback, useEffect, useState } from 'react';
-import { useRouter } from '@tanstack/react-router';
+import React, { type ReactNode, Suspense, useCallback } from 'react';
 import './settings.css';
 import './model-settings.css';
 import { IconButton } from '../../design/components/IconButton';
 import { Menu, type MenuItemDef } from '../../design/components/Menu';
 import { AccountSection } from './AccountSection';
-import { AppearanceSection } from './AppearanceSection';
+import {
+  AppearanceSection,
+  type AppearancePreferencesBinding,
+} from './AppearanceSection';
 import { CompanionStyle } from './CompanionStyle';
 import { DataSection } from './DataSection';
 import { ModelSection } from './ModelSection';
@@ -43,9 +45,25 @@ export {
 
 const NotificationSectionLazy = React.lazy(() => import('./NotificationSection'));
 
+export interface SettingsLeaveGuardState {
+  dirty: boolean;
+  busy?: boolean;
+}
+
+export type RenderSettingsLeaveGuard = (state: SettingsLeaveGuardState) => ReactNode;
+
 export interface SettingsRouteProps {
   category?: string;
   relationshipId?: string;
+  onSelectCategory: (
+    category: ProductSettingsCategory,
+    options?: { relationshipId?: string },
+  ) => void;
+  onSelectTavern: (section: string) => void;
+  onOpenInbox: () => void;
+  preferences: AppearancePreferencesBinding;
+  renderLeaveGuard?: RenderSettingsLeaveGuard;
+  onNavigateAuth?: (url: string) => void;
 }
 
 function normalizeCategory(raw?: string): ProductSettingsCategory {
@@ -57,17 +75,14 @@ function normalizeCategory(raw?: string): ProductSettingsCategory {
 export function SettingsRoute({
   category = 'account',
   relationshipId,
-}: SettingsRouteProps = {}) {
-  const router = useRouter({ warn: false });
-  const [localCategory, setLocalCategory] = useState<ProductSettingsCategory>(() =>
-    normalizeCategory(category),
-  );
-
-  useEffect(() => {
-    setLocalCategory(normalizeCategory(category));
-  }, [category]);
-
-  const activeCategory = router ? normalizeCategory(category) : localCategory;
+  onSelectCategory,
+  onSelectTavern,
+  onOpenInbox,
+  preferences,
+  renderLeaveGuard,
+  onNavigateAuth,
+}: SettingsRouteProps) {
+  const activeCategory = normalizeCategory(category);
   const activeMeta =
     PRODUCT_SETTINGS_CATEGORIES.find((item) => item.key === activeCategory) ??
     PRODUCT_SETTINGS_CATEGORIES[0];
@@ -75,28 +90,16 @@ export function SettingsRoute({
   const handleSelectCategory = useCallback(
     (nextCategory: string) => {
       const normalized = normalizeCategory(nextCategory);
-      if (router) {
-        void router.navigate({
-          to: '/settings/$category',
-          params: { category: normalized },
-        });
-      } else {
-        setLocalCategory(normalized);
-      }
+      onSelectCategory(normalized);
     },
-    [router],
+    [onSelectCategory],
   );
 
   const handleSelectTavern = useCallback(
     (section: string) => {
-      if (router) {
-        void router.navigate({
-          to: '/settings/tavern/$section',
-          params: { section },
-        });
-      }
+      onSelectTavern(section);
     },
-    [router],
+    [onSelectTavern],
   );
 
   const categoryMenuItems: MenuItemDef[] = [
@@ -116,27 +119,33 @@ export function SettingsRoute({
   const renderSection = () => {
     switch (activeCategory) {
       case 'account':
-        return <AccountSection />;
+        return <AccountSection onNavigateAuth={onNavigateAuth} />;
       case 'model':
-        return <ModelSection />;
+        return <ModelSection renderLeaveGuard={renderLeaveGuard} />;
       case 'voice':
-        return <VoiceSection key={relationshipId ?? 'global'} relationshipId={relationshipId} />;
+        return (
+          <VoiceSection
+            key={relationshipId ?? 'global'}
+            relationshipId={relationshipId}
+            renderLeaveGuard={renderLeaveGuard}
+          />
+        );
       case 'notifications':
         return (
           <Suspense fallback={null}>
-            <NotificationSectionLazy />
+            <NotificationSectionLazy onOpenInbox={onOpenInbox} />
           </Suspense>
         );
       case 'appearance':
-        return <AppearanceSection />;
+        return <AppearanceSection preferences={preferences} />;
       case 'companion':
-        return <CompanionStyle />;
+        return <CompanionStyle renderLeaveGuard={renderLeaveGuard} />;
       case 'stickers':
         return <StickerSettings />;
       case 'data':
-        return <DataSection />;
+        return <DataSection onNavigateAuth={onNavigateAuth} />;
       default:
-        return <AccountSection />;
+        return <AccountSection onNavigateAuth={onNavigateAuth} />;
     }
   };
 

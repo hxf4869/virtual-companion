@@ -1,5 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useRouter } from '@tanstack/react-router';
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as logic from '../../../../extension/vc-model-settings/model-logic.js';
 import { iconSpriteUrl } from '../../../../extension/vc-model-settings/ui/icons.js';
 import { useAppClient } from '../../app/providers';
@@ -18,7 +17,6 @@ import {
 import { AlertDialog } from '../../design/components/AlertDialog';
 import { toast } from '../../design/components/Toast';
 import { useSessionBridge } from '../../runtime/session-bridge';
-import { useLeaveGuard } from '../../shell/useLeaveGuard';
 import { Action, Input } from '../models/fields';
 import { LocalModels } from './LocalModels';
 import { ProviderForm, ProviderList } from './ProviderForm';
@@ -44,8 +42,8 @@ function isKind(err: unknown, kind: string): boolean {
   return (err as { kind?: string }).kind === kind;
 }
 
-function ActiveRouterLeaveGuard({ dirty }: { dirty: boolean }) {
-  return <>{useLeaveGuard(dirty)}</>;
+export interface ModelSectionProps {
+  renderLeaveGuard?: (state: { dirty: boolean; busy?: boolean }) => ReactNode;
 }
 
 interface BindingDraftEntry {
@@ -57,10 +55,9 @@ interface BindingDraftEntry {
   error: string | null;
 }
 
-export function ModelSection() {
+export function ModelSection({ renderLeaveGuard }: ModelSectionProps = {}) {
   const client = useAppClient();
   const bridge = useSessionBridge();
-  const router = useRouter({ warn: false });
   const sprite = iconSpriteUrl();
 
   const [usageMonth, setUsageMonth] = useState<string>(() => logic.currentUsageMonth());
@@ -1739,7 +1736,7 @@ export function ModelSection() {
 
   return (
     <div className="vcms-panel" role="region" aria-label="模型设置" data-vc-model-section="">
-      {router ? <ActiveRouterLeaveGuard dirty={isDirty} /> : null}
+      {renderLeaveGuard ? renderLeaveGuard({ dirty: isDirty }) : null}
       <header className="vcms-header">
         <div className="vcms-header-titles">
           <h2 className="vcms-title" tabIndex={-1}>

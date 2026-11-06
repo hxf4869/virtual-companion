@@ -1024,6 +1024,11 @@ describe('CharactersRoute (B15 delete character, instance creation & rename)', (
             expect(capturedVoiceProps).toEqual({
                 category: 'voice',
                 relationshipId: '101',
+                onSelectCategory: expect.any(Function),
+                onSelectTavern: expect.any(Function),
+                onOpenInbox: expect.any(Function),
+                renderLeaveGuard: expect.any(Function),
+                preferences: expect.any(Object),
             });
         });
     });

@@ -39,6 +39,11 @@ export interface DesktopAccountDialogProps {
   initialScreen?: string;
   inline?: boolean;
   onOpenChange: (open: boolean) => void;
+  onNavigateAuth?: (url: string) => void;
+}
+
+function defaultNavigateAuth(url: string): void {
+  window.location.replace(url);
 }
 
 interface PendingSensitiveAction {
@@ -85,9 +90,10 @@ export function DesktopAccountDialog({
   initialScreen = 'home',
   inline = false,
   onOpenChange,
+  onNavigateAuth = defaultNavigateAuth,
 }: DesktopAccountDialogProps) {
   const client = useAppClient();
-  const exit = useExitDesktopAccount();
+  const exit = useExitDesktopAccount(onNavigateAuth);
   const active = open || inline;
 
   const sessionQuery = useSessionQuery(active);

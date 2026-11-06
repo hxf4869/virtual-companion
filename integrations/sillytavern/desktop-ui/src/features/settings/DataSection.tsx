@@ -3,7 +3,11 @@ import { Button } from '@base-ui/react/button';
 import { Icon } from '../../design/components/Icon';
 import { DesktopAccountDialog } from './DesktopAccountDialog';
 
-export function DataSection() {
+export interface DataSectionProps {
+  onNavigateAuth?: (url: string) => void;
+}
+
+export function DataSection({ onNavigateAuth }: DataSectionProps = {}) {
   const [dialogOpen, setDialogOpen] = useState(false);
 
   return (
@@ -28,6 +32,7 @@ export function DataSection() {
         open={dialogOpen}
         initialScreen="home"
         onOpenChange={setDialogOpen}
+        onNavigateAuth={onNavigateAuth}
       />
     </div>
   );

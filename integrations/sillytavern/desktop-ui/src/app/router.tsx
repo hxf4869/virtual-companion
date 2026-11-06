@@ -54,6 +54,7 @@ import type { ShellDestination } from '../shell/Sidebar';
 import { useReducedMotion } from '../shell/useReducedMotion';
 import { MemoryRouteAdapter } from './MemoryRouteAdapter';
 import { StoryRouteAdapter } from './StoryRouteAdapter';
+import { SettingsRouteAdapter } from './SettingsRouteAdapter';
 
 export type {
     ChatRouteProps,
@@ -568,7 +569,8 @@ export function createDesktopRouter(
             const { category } = useParams({ from: settingsCategoryRoute.id });
             const { relationshipId } = useSearch({ from: settingsCategoryRoute.id });
             return (
-                <SettingsComp
+                <SettingsRouteAdapter
+                    View={SettingsComp}
                     category={category}
                     {...(category === 'voice' && relationshipId
                         ? { relationshipId }

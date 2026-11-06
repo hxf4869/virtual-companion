@@ -14,9 +14,19 @@ const ACCOUNT_ITEMS = [
   ['totp', '身份验证器', '重新绑定两步验证', 'auth'],
 ] as const;
 
-export function AccountSection() {
+export interface AccountSectionProps {
+  onNavigateAuth?: (url: string) => void;
+}
+
+function defaultNavigateAuth(url: string): void {
+  window.location.replace(url);
+}
+
+export function AccountSection({
+  onNavigateAuth = defaultNavigateAuth,
+}: AccountSectionProps = {}) {
   const client = useAppClient();
-  const exit = useExitDesktopAccount();
+  const exit = useExitDesktopAccount(onNavigateAuth);
   const bridge = useSessionBridge();
   const context = bridge.getContext() || {};
   const name = String(context.name1 || '').trim() || '账户';
@@ -86,6 +96,7 @@ export function AccountSection() {
         open={dialogOpen}
         initialScreen={dialogScreen}
         onOpenChange={setDialogOpen}
+        onNavigateAuth={onNavigateAuth}
       />
     </div>
   );

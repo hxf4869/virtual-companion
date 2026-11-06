@@ -1,6 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useRouter } from '@tanstack/react-router';
 import {
   buildRelationshipVoicePayload,
   invalidateVoicePolicy,
@@ -20,13 +19,8 @@ import {
 import { AlertDialog } from '../../design/components/AlertDialog';
 import { Button } from '../../design/components/Button';
 import { toast } from '../../design/components/Toast';
-import { useLeaveGuard } from '../../shell/useLeaveGuard';
 import { DesktopVoiceForm } from './DesktopVoiceForm';
 import { voiceFormValues, type VoiceValues } from './VoiceForm';
-
-function ActiveRouterLeaveGuard({ dirty, busy }: { dirty: boolean; busy?: boolean }) {
-  return <>{useLeaveGuard(dirty, { busy })}</>;
-}
 
 const SCENES = ['morning', 'night', 'care', 'share', 'default'] as const;
 const MOODS = ['开心', '黏人', '好奇', '得意', '懒洋洋', '有点累', '想独处', '有点烦', '困'] as const;
@@ -79,6 +73,7 @@ export function buildGlobalVoicePayload(
 
 export interface VoiceSectionProps {
   relationshipId?: string;
+  renderLeaveGuard?: (state: { dirty: boolean; busy?: boolean }) => ReactNode;
 }
 
 function voiceRelationship(rows: unknown, id?: string) {
@@ -87,10 +82,9 @@ function voiceRelationship(rows: unknown, id?: string) {
     : undefined;
 }
 
-export function VoiceSection({ relationshipId }: VoiceSectionProps = {}) {
+export function VoiceSection({ relationshipId, renderLeaveGuard }: VoiceSectionProps = {}) {
   const client = useAppClient();
   const queryClient = useQueryClient();
-  const router = useRouter({ warn: false });
   const settingsQuery = useVoiceSettingsQuery();
   const enginesQuery = useVoiceEnginesQuery();
   const saveMutation = useSaveVoiceSettingsMutation();
@@ -278,7 +272,7 @@ export function VoiceSection({ relationshipId }: VoiceSectionProps = {}) {
 
   return (
     <section className="vc-settings-section" data-vc-voice-section="">
-      {router ? <ActiveRouterLeaveGuard dirty={isDirty} busy={working} /> : null}
+      {renderLeaveGuard ? renderLeaveGuard({ dirty: isDirty, busy: working }) : null}
       <header className="vc-settings-header">
         <div className="vc-settings-actions">
           {isDirty && (

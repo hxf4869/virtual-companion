@@ -1,6 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
+import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useRouter } from '@tanstack/react-router';
 import {
   DEFAULT_GLOBAL_RULES,
   RULES_KEY,
@@ -16,10 +15,9 @@ import { settingsDocQueryOptions } from '../../data/queries/tavern';
 import { Switch } from '../../design/components/Switch';
 import { toast } from '../../design/components/Toast';
 import { useSessionBridge } from '../../runtime/session-bridge';
-import { useLeaveGuard } from '../../shell/useLeaveGuard';
 
-function ActiveRouterLeaveGuard({ dirty, busy }: { dirty: boolean; busy: boolean }) {
-  return <>{useLeaveGuard(dirty, { busy })}</>;
+export interface CompanionStyleProps {
+  renderLeaveGuard?: (state: { dirty: boolean; busy?: boolean }) => ReactNode;
 }
 
 type StyleDocument = Record<string, unknown> & {
@@ -36,13 +34,12 @@ function readStyleDocument(raw: unknown): StyleDocument | null {
   }
 }
 
-export function CompanionStyle() {
+export function CompanionStyle({ renderLeaveGuard }: CompanionStyleProps = {}) {
   const client = useAppClient();
   const queryClient = useQueryClient();
   const queryOptions = settingsDocQueryOptions(client);
   const settingsQuery = useQuery(queryOptions);
   const bridge = useSessionBridge();
-  const router = useRouter({ warn: false });
   const [baseline, setBaseline] = useState<StyleDocument | null>(null);
   const [rules, setRules] = useState<string>(DEFAULT_GLOBAL_RULES);
   const [saving, setSaving] = useState(false);
@@ -92,7 +89,7 @@ export function CompanionStyle() {
 
   return (
     <section className="vc-column vc-style-page vc-settings-section" data-vc-companion-style="">
-      {router ? <ActiveRouterLeaveGuard dirty={isDirty} busy={saving} /> : null}
+      {renderLeaveGuard ? renderLeaveGuard({ dirty: isDirty, busy: saving }) : null}
       <div data-planner-row="">
         <div className="vc-group">
           <div className="vc-cell">
