@@ -387,6 +387,11 @@ func (s *Store) ValidateEngineProposal(ctx context.Context, c JobClaim, op Engin
 		return nil, e
 	}
 	e = s.WithOwner(ctx, c.OwnerID, func(ctx context.Context, tx pgx.Tx) error {
+		// Match forget's owner-barrier-before-source-row lock order. Staging
+		// takes this same transaction-scoped barrier again after the guards.
+		if _, e := tx.Exec(ctx, `SELECT vc.memory_write_barrier($1)`, c.OwnerID); e != nil {
+			return e
+		}
 		var valid bool
 		if e := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM vc.memorycore_scope s JOIN vc.work_item w ON w.owner_user_id=s.owner_user_id WHERE s.owner_user_id=$1 AND s.relationship_id=$2 AND s.revision=$3 AND w.id=$4 AND w.status='CLAIMED' AND w.claim_token=$5 AND w.claim_fence=$6 AND w.lease_expires_at>clock_timestamp())`, c.OwnerID, in.RelationshipID, op.Revision, c.JobID, c.Token, c.Fence).Scan(&valid); e != nil {
 			return e

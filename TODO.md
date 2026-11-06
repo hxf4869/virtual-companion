@@ -32,6 +32,7 @@
 - [x] MB2-4-chat（2026-11-06）：抽取草稿/发送、稳定消息动作与聊天状态；导航、壳层状态和减弱动态由桌面注入，原 DOM/classes/原生独立组件路径保留。PASS：桌面 Vitest 163 项、Node 离线 1189 项、受管 dr2-layout（9 宽度与往返）/nf-chat/nf-operations；nf-desktop 的 MB2-3 预热问题在 0be25328 修复后复验 PASS。独立逻辑复核与7对截图抽样 PASS，169张候选与说明见 .review-queue/MB2-4-chat；时间戳/极光采样差异有说明，不宣称像素相同。提交：8e8ba71c。
 - [x] MB2-DB1（2026-11-06）：Owner 追加授权后，隔离库真实双事务确认 40P01；V286 将 go_prepare_memorycore_call 的现有 owner barrier 放到 work_item 行锁之前，迁移总数207。PASS：并发回归红转绿（遗忘成功、调用CLAIM_LOST且无attempt）、Go migrate/store/http目标与store/http全组、RLS239项、独立锁序/权限审计。带V286的完整受管 dr2-pages 已复验 PASS（18.562s），原503阻塞解除；提交 d436615b。
 - [ ] MB2-5（2026-11-07，Owner限定子范围已交付）：Ionic五标签/大标题/页面栈、设置大sheet和共享主题极光已接入，首屏引擎idle；复用共享主题store与Lucide图标、库路由/模态生命周期，未实现业务页面。PASS：组件全量首轮192/194，修复图标登记与无效token后受影响3文件15/15；Node1189/1189、类型/双构建/导入边界、quick、mb2-shell/mb2-layout。最终首屏JS196159B/CSS10229B。独立4×CPU正常动画下首次交互与热重复共619帧，P50/P95为16.7ms、最大16.8ms，>33.3ms帧0、>50ms长任务0；范围仅壳层转场，不含真实消息滚动/历史/冷首屏/引擎净堆。8张390/1440浅深截图与选图并排，自查差异见.review-queue/MB2-5/NOTES.md；实际极光与sheet边距不宣称像素相同。表单返回保护公开API限制见Backlog L；业务页面/原生安全区键盘/系统字体/折叠双栏及待选图部分未完成，整条保持未勾选。提交：本条目feat(MB2-5)。
+- [x] MB2-DB2（2026-11-06）：`ValidateEngineProposal` 先取 owner barrier 再锁来源行，消除与遗忘的反向锁序（基准既有问题）。修复前双事务回归 40P01，修复后遗忘成功、校验返回既有冲突；Go store/httpapi 全组 PASS；未改迁移。
 - [ ] MB2-6–MB2-15：本轮未开始。[ADR-0012](docs/decisions/0012-mobile-react-shared-engine.md) 已获 Owner 批准（2026-11-06，React + Capacitor，安卓与 iOS 同时）；后续条目与验收见 [Backlog L](docs/planning/2026-10-31-handoff-backlog.md) L 节。
 
 
