@@ -352,6 +352,324 @@ describe('MB2-5 MobileShell (Ionic React 9 + Router 6)', () => {
     });
   });
 
+  it('dispatches all 7 SecondarySlotKey routes (chat-detail, character-detail, memory-detail, story-run, card-fullscreen, tavern-section, settings-category) with expected context and title resolution', async () => {
+    const client = createSilentClient();
+    const queryClient = createQueryClient();
+
+    window.history.replaceState(null, '', '/m/chat');
+
+    render(
+      <MobileApp
+        client={client}
+        queryClient={queryClient}
+        initialPath="/m/chat"
+        slots={{
+          tabs: {
+            chat: ({ navigate }) => (
+              <div data-testid="dispatch-nav">
+                <button
+                  type="button"
+                  data-testid="go-chat-detail"
+                  onClick={() => navigate('/m/chat/conv-7')}
+                >
+                  chat-detail
+                </button>
+                <button
+                  type="button"
+                  data-testid="go-character-detail"
+                  onClick={() => navigate('/m/characters/seraphina.png')}
+                >
+                  character-detail
+                </button>
+                <button
+                  type="button"
+                  data-testid="go-memory-detail"
+                  onClick={() => navigate('/m/memory/mem-101')}
+                >
+                  memory-detail
+                </button>
+                <button
+                  type="button"
+                  data-testid="go-story-run"
+                  onClick={() => navigate('/m/story/run-202')}
+                >
+                  story-run
+                </button>
+                <button
+                  type="button"
+                  data-testid="go-card-fullscreen"
+                  onClick={() => navigate('/m/chat/conv-7/card?message=msg-77')}
+                >
+                  card-fullscreen
+                </button>
+                <button
+                  type="button"
+                  data-testid="go-tavern-fn"
+                  onClick={() => navigate('/m/settings/tavern/WorldInfo')}
+                >
+                  tavern-fn
+                </button>
+                <button
+                  type="button"
+                  data-testid="go-tavern-node"
+                  onClick={() => navigate('/m/settings/tavern/Preset')}
+                >
+                  tavern-node
+                </button>
+                <button
+                  type="button"
+                  data-testid="go-settings-fn"
+                  onClick={() => navigate('/m/settings/appearance')}
+                >
+                  settings-fn
+                </button>
+                <button
+                  type="button"
+                  data-testid="go-settings-node"
+                  onClick={() => navigate('/m/settings/account')}
+                >
+                  settings-node
+                </button>
+              </div>
+            ),
+          },
+          chatDetail: ({ conversationKey, params, navigate }) => (
+            <div data-testid="slot-chat-detail">
+              <span>
+                chat-detail:{conversationKey}:{params.conversationKey}
+              </span>
+              <button
+                type="button"
+                data-testid="return-chat"
+                onClick={() => navigate('/m/chat')}
+              >
+                back
+              </button>
+            </div>
+          ),
+          characterDetail: ({ avatar, params, navigate }) => (
+            <div data-testid="slot-character-detail">
+              <span>
+                character-detail:{avatar}:{params.avatar}
+              </span>
+              <button
+                type="button"
+                data-testid="return-from-char"
+                onClick={() => navigate('/m/chat')}
+              >
+                back
+              </button>
+            </div>
+          ),
+          memoryDetail: ({ memoryId, params, navigate }) => (
+            <div data-testid="slot-memory-detail">
+              <span>
+                memory-detail:{memoryId}:{params.memoryId}
+              </span>
+              <button
+                type="button"
+                data-testid="return-from-mem"
+                onClick={() => navigate('/m/chat')}
+              >
+                back
+              </button>
+            </div>
+          ),
+          storyRun: ({ runId, params, navigate }) => (
+            <div data-testid="slot-story-run">
+              <span>
+                story-run:{runId}:{params.runId}
+              </span>
+              <button
+                type="button"
+                data-testid="return-from-story"
+                onClick={() => navigate('/m/chat')}
+              >
+                back
+              </button>
+            </div>
+          ),
+          cardFullscreen: ({ conversationKey, message, params, navigate }) => (
+            <div data-testid="slot-card-fullscreen">
+              <span>
+                card-fullscreen:{conversationKey}:{message}:{params.message}
+              </span>
+              <button
+                type="button"
+                data-testid="return-from-card"
+                onClick={() => navigate('/m/chat')}
+              >
+                back
+              </button>
+            </div>
+          ),
+          tavernSections: {
+            WorldInfo: ({ section, params, navigate }) => (
+              <div data-testid="slot-tavern-fn">
+                <span>
+                  tavern-section:{section}:{params.section}
+                </span>
+                <button
+                  type="button"
+                  data-testid="return-from-tavern-fn"
+                  onClick={() => navigate('/m/chat')}
+                >
+                  back
+                </button>
+              </div>
+            ),
+            Preset: <div data-testid="slot-tavern-node">tavern-node:Preset</div>,
+          },
+          settingsCategories: {
+            appearance: ({ category, params, navigate }) => (
+              <div data-testid="slot-settings-fn">
+                <span>
+                  settings-category:{category}:{params.category}
+                </span>
+                <button
+                  type="button"
+                  data-testid="return-from-settings-fn"
+                  onClick={() => navigate('/m/chat')}
+                >
+                  back
+                </button>
+              </div>
+            ),
+            account: <div data-testid="slot-settings-node">settings-node:account</div>,
+          },
+          secondaryTitles: {
+            'msg-77': '全屏卡片标题77',
+          },
+        }}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(window.location.pathname).toBe('/m/chat');
+      expect(screen.getByTestId('dispatch-nav')).toBeTruthy();
+    });
+
+    const routeChecks: ReadonlyArray<{
+      triggerTestId: string;
+      expectedPath: string;
+      expectedSlotAttr: string;
+      slotTestId: string;
+      expectedText: string;
+      returnTestId?: string;
+      expectedTitle?: string;
+    }> = [
+      {
+        triggerTestId: 'go-chat-detail',
+        expectedPath: '/m/chat/conv-7',
+        expectedSlotAttr: 'secondary:chat-detail',
+        slotTestId: 'slot-chat-detail',
+        expectedText: 'chat-detail:conv-7:conv-7',
+        returnTestId: 'return-chat',
+      },
+      {
+        triggerTestId: 'go-character-detail',
+        expectedPath: '/m/characters/seraphina.png',
+        expectedSlotAttr: 'secondary:character-detail',
+        slotTestId: 'slot-character-detail',
+        expectedText: 'character-detail:seraphina.png:seraphina.png',
+        returnTestId: 'return-from-char',
+      },
+      {
+        triggerTestId: 'go-memory-detail',
+        expectedPath: '/m/memory/mem-101',
+        expectedSlotAttr: 'secondary:memory-detail',
+        slotTestId: 'slot-memory-detail',
+        expectedText: 'memory-detail:mem-101:mem-101',
+        returnTestId: 'return-from-mem',
+      },
+      {
+        triggerTestId: 'go-story-run',
+        expectedPath: '/m/story/run-202',
+        expectedSlotAttr: 'secondary:story-run',
+        slotTestId: 'slot-story-run',
+        expectedText: 'story-run:run-202:run-202',
+        returnTestId: 'return-from-story',
+      },
+      {
+        triggerTestId: 'go-card-fullscreen',
+        expectedPath: '/m/chat/conv-7/card',
+        expectedSlotAttr: 'secondary:card-fullscreen',
+        slotTestId: 'slot-card-fullscreen',
+        expectedText: 'card-fullscreen:conv-7:msg-77:msg-77',
+        returnTestId: 'return-from-card',
+        expectedTitle: '全屏卡片标题77',
+      },
+      {
+        triggerTestId: 'go-tavern-fn',
+        expectedPath: '/m/settings/tavern/WorldInfo',
+        expectedSlotAttr: 'secondary:tavern-section',
+        slotTestId: 'slot-tavern-fn',
+        expectedText: 'tavern-section:WorldInfo:WorldInfo',
+        returnTestId: 'return-from-tavern-fn',
+      },
+      {
+        triggerTestId: 'go-tavern-node',
+        expectedPath: '/m/settings/tavern/Preset',
+        expectedSlotAttr: 'secondary:tavern-section',
+        slotTestId: 'slot-tavern-node',
+        expectedText: 'tavern-node:Preset',
+      },
+      {
+        triggerTestId: 'go-settings-fn',
+        expectedPath: '/m/settings/appearance',
+        expectedSlotAttr: 'secondary:settings-category',
+        slotTestId: 'slot-settings-fn',
+        expectedText: 'settings-category:appearance:appearance',
+        returnTestId: 'return-from-settings-fn',
+      },
+      {
+        triggerTestId: 'go-settings-node',
+        expectedPath: '/m/settings/account',
+        expectedSlotAttr: 'secondary:settings-category',
+        slotTestId: 'slot-settings-node',
+        expectedText: 'settings-node:account',
+      },
+    ];
+
+    for (const check of routeChecks) {
+      await act(async () => {
+        fireEvent.click(screen.getByTestId(check.triggerTestId));
+      });
+
+      await waitFor(() => {
+        expect(window.location.pathname).toBe(check.expectedPath);
+        expect(screen.getByTestId(check.slotTestId).textContent).toContain(check.expectedText);
+      });
+
+      const activeSlotEl = document.querySelector(
+        `[data-vc-mobile-slot="${check.expectedSlotAttr}"]`,
+      );
+      expect(activeSlotEl, `missing active slot ${check.expectedSlotAttr}`).toBeTruthy();
+
+      if (check.expectedTitle) {
+        expect(document.querySelector('[data-vc-secondary-title]')?.textContent).toBe(
+          check.expectedTitle,
+        );
+      }
+
+      if (check.returnTestId) {
+        await act(async () => {
+          fireEvent.click(screen.getByTestId(check.returnTestId));
+        });
+      } else {
+        const backBtn = document.querySelector('[data-vc-back-button]') as HTMLElement;
+        expect(backBtn).toBeTruthy();
+        await act(async () => {
+          fireEvent.click(backBtn);
+        });
+      }
+
+      await waitFor(() => {
+        expect(window.location.pathname).toBe('/m/chat');
+      });
+    }
+  });
+
   it('propagates updated slots and activePathname to subsequent same-pattern parameterized pages (A -> back -> B) and keeps exactly one active page', async () => {
     const client = createSilentClient();
     const queryClient = createQueryClient();
@@ -536,6 +854,15 @@ describe('MB2-5 MobileShell (Ionic React 9 + Router 6)', () => {
     });
 
     const avatarBtn = document.querySelector('[data-vc-settings-trigger]') as HTMLElement;
+    const modal = document.querySelector('ion-modal.vc-mobile-settings-modal') as any;
+    expect(modal).toBeTruthy();
+    expect(modal.breakpoints).toEqual([0, 0.56, 1]);
+    expect(modal.initialBreakpoint).toBe(1);
+    expect(modal.backdropBreakpoint).toBe(0);
+    expect(modal.showBackdrop).toBe(true);
+    expect(modal.handle).toBe(false);
+    expect(modal.presentingElement).toBeUndefined();
+
     const sheet = document.querySelector('[data-vc-settings-sheet]');
     expect(sheet?.getAttribute('data-open')).toBe('false');
 
@@ -770,5 +1097,24 @@ describe('MB2-5 MobileShell (Ionic React 9 + Router 6)', () => {
     expect(allMobileCss).toContain('prefers-reduced-transparency: reduce');
     expect(allMobileCss).toContain('--ion-safe-area-left');
     expect(allMobileCss).toContain('--ion-safe-area-right');
+    expect(allMobileCss).toContain('--mob-sheet-bg: rgba(242, 243, 248, 0.88);');
+    expect(allMobileCss).toContain('--mob-sheet-bg: rgba(20, 20, 24, 0.90);');
+    expect(allMobileCss).not.toContain('--ion-modal-offset-top');
+    expect(allMobileCss).toContain('--mob-large-title-block:');
+    expect(allMobileCss).toContain('html[data-vc-device="mobile"] body');
+    expect(allMobileCss).toContain('min-height: var(--mob-large-title-block);');
+    expect(allMobileCss).toContain('--height: calc(100% - var(--mob-large-title-block));');
+    expect(allMobileCss).toContain('--border-radius: var(--vc-radius-sheet);');
+    expect(allMobileCss).toContain('--background: transparent;');
+    expect(allMobileCss).toContain('--backdrop-opacity: 1;');
+    expect(allMobileCss).toContain('.vc-mobile-settings-modal::part(backdrop)');
+    expect(allMobileCss).not.toContain('.vc-mobile-settings-modal::part(content)');
+    expect(allMobileCss).toMatch(
+      /@media\s*\(orientation:\s*landscape\)\s*and\s*\(max-height:\s*500px\)\s*\{\s*[^{]*\[data-vc-theme\][^{]*\{\s*--mob-header-pad-top:\s*6px;/,
+    );
+
+    const shellTsx = readFileSync(resolve(mobileSrcDir, 'shell/MobileShell.tsx'), 'utf8');
+    expect(shellTsx).toContain('SECONDARY_SLOT_RENDERERS');
+    expect(shellTsx).not.toMatch(/slotKey\s*===\s*'chat-detail'\s*\?/);
   });
 });

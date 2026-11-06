@@ -242,6 +242,45 @@ type SecondarySlotKey =
   | 'tavern-section'
   | 'settings-category';
 
+interface SecondarySlotDispatchContext {
+  slots?: MobileShellSlots;
+  ctx: MobileRouteSlotContext;
+  paramValue: string;
+  messageParam?: string;
+}
+
+const SECONDARY_SLOT_RENDERERS: Record<
+  SecondarySlotKey,
+  (dispatchCtx: SecondarySlotDispatchContext) => React.ReactNode
+> = {
+  'chat-detail': ({ slots, ctx, paramValue }) =>
+    slots?.chatDetail ? slots.chatDetail({ ...ctx, conversationKey: paramValue }) : null,
+  'character-detail': ({ slots, ctx, paramValue }) =>
+    slots?.characterDetail ? slots.characterDetail({ ...ctx, avatar: paramValue }) : null,
+  'memory-detail': ({ slots, ctx, paramValue }) =>
+    slots?.memoryDetail ? slots.memoryDetail({ ...ctx, memoryId: paramValue }) : null,
+  'story-run': ({ slots, ctx, paramValue }) =>
+    slots?.storyRun ? slots.storyRun({ ...ctx, runId: paramValue }) : null,
+  'card-fullscreen': ({ slots, ctx, paramValue, messageParam }) =>
+    slots?.cardFullscreen
+      ? slots.cardFullscreen({
+          ...ctx,
+          conversationKey: paramValue,
+          message: messageParam,
+        })
+      : null,
+  'tavern-section': ({ slots, ctx, paramValue }) => {
+    const section = paramValue as TavernCategoryKey;
+    const slot = slots?.tavernSections?.[section];
+    return typeof slot === 'function' ? slot({ ...ctx, section }) : (slot ?? null);
+  },
+  'settings-category': ({ slots, ctx, paramValue }) => {
+    const category = paramValue as SettingsCategoryKey;
+    const slot = slots?.settingsCategories?.[category];
+    return typeof slot === 'function' ? slot({ ...ctx, category }) : (slot ?? null);
+  },
+};
+
 interface SecondaryRoutePageProps {
   slotKey: SecondarySlotKey;
   routePrefix: string;
@@ -396,48 +435,12 @@ function SecondaryRoutePage({
         className="vc-mobile-slot-container vc-mobile-slot-container--secondary"
         data-vc-mobile-slot={isActive ? `secondary:${slotKey}` : undefined}
       >
-        {slotKey === 'chat-detail'
-          ? slots?.chatDetail
-            ? slots.chatDetail({ ...ctx, conversationKey: paramValue })
-            : null
-          : slotKey === 'character-detail'
-            ? slots?.characterDetail
-              ? slots.characterDetail({ ...ctx, avatar: paramValue })
-              : null
-            : slotKey === 'memory-detail'
-              ? slots?.memoryDetail
-                ? slots.memoryDetail({ ...ctx, memoryId: paramValue })
-                : null
-              : slotKey === 'story-run'
-                ? slots?.storyRun
-                  ? slots.storyRun({ ...ctx, runId: paramValue })
-                  : null
-                : slotKey === 'card-fullscreen'
-                  ? slots?.cardFullscreen
-                    ? slots.cardFullscreen({
-                        ...ctx,
-                        conversationKey: paramValue,
-                        message: messageParam,
-                      })
-                    : null
-                  : slotKey === 'tavern-section'
-                    ? (() => {
-                        const slot = slots?.tavernSections?.[paramValue as TavernCategoryKey];
-                        if (typeof slot === 'function') {
-                          return slot({ ...ctx, section: paramValue as TavernCategoryKey });
-                        }
-                        return slot ?? null;
-                      })()
-                    : slotKey === 'settings-category'
-                      ? (() => {
-                          const slot =
-                            slots?.settingsCategories?.[paramValue as SettingsCategoryKey];
-                          if (typeof slot === 'function') {
-                            return slot({ ...ctx, category: paramValue as SettingsCategoryKey });
-                          }
-                          return slot ?? null;
-                        })()
-                      : null}
+        {SECONDARY_SLOT_RENDERERS[slotKey]({
+          slots,
+          ctx,
+          paramValue,
+          messageParam,
+        })}
       </main>
     </IonPage>
   );

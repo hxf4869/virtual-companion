@@ -60,6 +60,8 @@ export function MobileSettingsSheet({
       keepContentsMounted={true}
       breakpoints={[0, 0.56, 1]}
       initialBreakpoint={1}
+      backdropBreakpoint={0}
+      showBackdrop={true}
       handle={false}
       onDidDismiss={() => {
         onRequestClose();

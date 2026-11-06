@@ -29,6 +29,16 @@ html[data-vc-device="mobile"][data-vc-theme="light"] {
     --mob-glass-blur: blur(var(--vc-blur-1)) saturate(180%);
     --mob-sheet-blur: blur(var(--vc-blur-2)) saturate(180%);
     --mob-large-title: calc(34px * var(--fontScale, 1));
+    --mob-large-title-lh: 1.2;
+    --mob-header-pad-top: 12px;
+    --mob-header-pad-bottom: 10px;
+    --mob-large-title-row: max(var(--vc-touch), calc(var(--mob-large-title) * var(--mob-large-title-lh)));
+    --mob-large-title-block: calc(
+      var(--ion-safe-area-top, env(safe-area-inset-top, 0px)) +
+      var(--mob-header-pad-top) +
+      var(--mob-large-title-row) +
+      var(--mob-header-pad-bottom)
+    );
     --mob-tabbar-offset: calc(80px + var(--ion-safe-area-bottom, env(safe-area-inset-bottom, 0px)));
 
     /* Map Ionic tokens to VC semantic tokens */
@@ -163,6 +173,18 @@ html[data-vc-device="mobile"][data-vc-theme="light"] {
     overscroll-behavior-y: none;
   }
 
+  html[data-vc-device="mobile"] body {
+    --mob-large-title: calc(34px * var(--fontScale, 1));
+    --mob-large-title-row: max(var(--vc-touch), calc(var(--mob-large-title) * var(--mob-large-title-lh)));
+    --mob-large-title-block: calc(
+      var(--ion-safe-area-top, env(safe-area-inset-top, 0px)) +
+      var(--mob-header-pad-top) +
+      var(--mob-large-title-row) +
+      var(--mob-header-pad-bottom)
+    );
+    --mob-tabbar-offset: calc(80px + var(--ion-safe-area-bottom, env(safe-area-inset-bottom, 0px)));
+  }
+
   .vc-mobile-app {
     position: relative;
     width: 100%;
@@ -202,10 +224,12 @@ html[data-vc-device="mobile"][data-vc-theme="light"] {
     align-items: center;
     justify-content: space-between;
     gap: var(--vc-space-sm);
-    padding-top: calc(12px + var(--ion-safe-area-top, env(safe-area-inset-top, 0px)));
+    min-height: var(--mob-large-title-block);
+    padding-top: calc(var(--mob-header-pad-top) + var(--ion-safe-area-top, env(safe-area-inset-top, 0px)));
     padding-right: calc(var(--vc-page-pad) + var(--ion-safe-area-right, env(safe-area-inset-right, 0px)));
-    padding-bottom: 10px;
+    padding-bottom: var(--mob-header-pad-bottom);
     padding-left: calc(var(--vc-page-pad) + var(--ion-safe-area-left, env(safe-area-inset-left, 0px)));
+    box-sizing: border-box;
     flex-shrink: 0;
   }
 
@@ -213,7 +237,7 @@ html[data-vc-device="mobile"][data-vc-theme="light"] {
     margin: 0;
     font-size: var(--mob-large-title);
     font-weight: 700;
-    line-height: 1.2;
+    line-height: var(--mob-large-title-lh);
     letter-spacing: -0.02em;
     color: var(--vc-ink);
     min-width: 0;
@@ -253,8 +277,8 @@ html[data-vc-device="mobile"][data-vc-theme="light"] {
     border: none;
     border-radius: var(--vc-radius-pill);
     background: var(--mob-card);
-    backdrop-filter: var(--mob-glass-blur);
     -webkit-backdrop-filter: var(--mob-glass-blur);
+    backdrop-filter: var(--mob-glass-blur);
     box-shadow: var(--vc-shadow-rim), var(--vc-shadow-inset-edge), 0 4px 14px rgba(0, 0, 0, 0.06);
     color: var(--vc-ink);
     cursor: pointer;
@@ -363,8 +387,8 @@ html[data-vc-device="mobile"][data-vc-theme="light"] {
     border-radius: var(--vc-radius-pill);
     border: none;
     background: var(--mob-tabbar-bg);
-    backdrop-filter: var(--mob-glass-blur);
     -webkit-backdrop-filter: var(--mob-glass-blur);
+    backdrop-filter: var(--mob-glass-blur);
     box-shadow: var(--vc-shadow-rim-overlay);
     z-index: var(--vc-z-shell);
     transition: opacity var(--vc-dur-quick) var(--vc-ease-out), transform var(--vc-dur-quick) var(--vc-spring);
@@ -463,9 +487,19 @@ html[data-vc-device="mobile"][data-vc-theme="light"] {
 
   /* ── Settings Large Sheet (DESIGN.md §9, §16.7, §17.3 & M13-0) ── */
   .vc-mobile-settings-modal {
-    --border-radius: var(--vc-radius-sheet) var(--vc-radius-sheet) 0 0;
+    --height: calc(100% - var(--mob-large-title-block));
+    --border-radius: var(--vc-radius-sheet);
     --background: transparent;
+    --backdrop-opacity: 1;
     --box-shadow: var(--vc-shadow-overlay);
+  }
+
+  .vc-mobile-settings-modal::part(backdrop) {
+    background: var(--vc-scrim);
+  }
+
+  .vc-mobile-settings-modal .ion-page {
+    min-height: 0;
   }
 
   .vc-mobile-settings-sheet {
@@ -476,8 +510,8 @@ html[data-vc-device="mobile"][data-vc-theme="light"] {
     max-height: 100dvh;
     border-radius: var(--vc-radius-sheet) var(--vc-radius-sheet) 0 0;
     background: var(--mob-sheet-bg);
-    backdrop-filter: var(--mob-sheet-blur);
     -webkit-backdrop-filter: var(--mob-sheet-blur);
+    backdrop-filter: var(--mob-sheet-blur);
     box-shadow: var(--vc-shadow-rim-overlay);
     color: var(--vc-ink);
     overflow: hidden;
@@ -578,8 +612,8 @@ html[data-vc-device="mobile"][data-vc-theme="light"] {
     flex-direction: column;
     border-radius: var(--vc-radius-md);
     background: var(--mob-card);
-    backdrop-filter: var(--mob-glass-blur);
     -webkit-backdrop-filter: var(--mob-glass-blur);
+    backdrop-filter: var(--mob-glass-blur);
     box-shadow: var(--vc-shadow-rim), var(--vc-shadow-inset-edge);
     overflow: hidden;
   }
@@ -792,9 +826,9 @@ html[data-vc-device="mobile"][data-vc-theme="light"] {
 
   /* ── Landscape Adaptation ── */
   @media (orientation: landscape) and (max-height: 500px) {
-    .vc-mobile-primary-header {
-      padding-top: calc(6px + var(--ion-safe-area-top, env(safe-area-inset-top, 0px)));
-      padding-bottom: 6px;
+    html[data-vc-device="mobile"], html[data-vc-device="mobile"][data-vc-theme] {
+      --mob-header-pad-top: 6px;
+      --mob-header-pad-bottom: 6px;
     }
   }
 
