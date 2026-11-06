@@ -63,3 +63,15 @@ CM 修改既有 prepare 补丁以保留每条新记录对应的 conflict targets
 **答（Owner 2026-11-07）**：允许该 Go 函数的最小修正及直接回归。逐事实判断：任一来源因编辑、删除、遗忘、no_memory、无痕或权利屏障失效，该事实即清理；仅全部来源仍有效且已有 PG 发布投影的事实保留，宁可多删、不可漏删。来源清理也须保留有效事实仍依赖的来源。
 
 来源有效判断与清理在同一事务内完成，保持 `memory_write_barrier` 先于来源行锁。直接回归必须覆盖同批独立 A/B 忘 B 后恢复 A 留/B 清、联合依赖 A+B 忘任一清除、未发布记录清理、重复恢复幂等，以及恢复中并发遗忘不得使已忘内容重新出现在出站召回。不改 SQL 触发器、来源协议或锁序；依赖新签名部分仍等迁移合 main 后再合入。查询补全与检索计算复用不依赖该修正。
+
+### 部分清理完成的函数提案（须 SX 一并冻结）
+
+现 `vc.go_memorycore_cleaned(bigint,bigint)` 将 operation 标为 CLEANED 并清空 proposal。若恢复时保留了有效事实，仍调用它会失去这些事实后续编辑/删除时的失效追踪：既有 source fence 只处理 NEW/PROPOSED/PUBLISHED。因此只修改 Go 筛选仍不完整。
+
+建议在同次函数迁移中增加 `vc.go_memorycore_cleaned(p_owner bigint,p_job bigint,p_retained_record_ids text[]) RETURNS void` 重载；保留现两参数入口供无幸存记录的旧清理调用。新入口沿用 owner/EXECUTE/SECURITY DEFINER 约束，在同一事务中先 owner barrier 再锁 operation 与来源：
+
+- 仅处理 REVOKED；已经 PUBLISHED/CLEANED 的重复完成调用沿用幂等语义。非空 retained IDs 去重，必须严格等于该 operation 中已经发布且全部 evidence 仍有效的 PG 事实集合；不可保留未发布、已删、已替换、来源失效或缺少 evidence 的记录。Go 不提交重新编造的正文或 source refs。
+- 从已核验 PG evidence 得出幸存来源键并集，将原 proposal 收敛到幸存 record 与其实际 `source_message_ids`、`dependencies`，移除已清理正文、vectors、上下文和旧 targets。原子恢复 PUBLISHED，使未来任一幸存来源失效仍可被既有 source fence 发现；没有幸存则走既有 CLEANED 语义。
+- Go 的有效性判断、原生清理和完成调用都在同一个持有 owner barrier 的事务里；调用失败回滚 PG 状态，重复清理必须幂等。保留原生结果回读校验，不将“离开 allowlist”当成物理清理完成。
+
+这仍是待 SX 冻结的函数提案，CM 不编写迁移、不用应用角色直接改 operation、不改变 trigger，也不把 REVOKED 永久滞留以绕过状态缺口。原画像重建仍依赖既有合法锚点；当只剩其他来源支持的事实而原锚点失效时，不能把画像未重建报告为成功，本项不扩展画像重建流程。
