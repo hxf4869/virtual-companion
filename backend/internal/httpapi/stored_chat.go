@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/hxf4869/virtual-companion/internal/restoregate"
 	"github.com/hxf4869/virtual-companion/internal/store/postgres"
@@ -100,7 +101,7 @@ func (s *Server) handleListStoredMessages(w http.ResponseWriter, r *http.Request
 	}
 	chatID := strings.ToLower(r.PathValue("chatId"))
 	query, limit, ok := storedChatPageParams(r.URL.RawQuery)
-	if !ok || !stsource.ValidIdentity(chatID) {
+	if !ok || !stsource.ValidIdentity(chatID) || !utf8.ValidString(query.Get("q")) || utf8.RuneCountInString(query.Get("q")) > 200 {
 		s.writeStoreErr(w, postgres.ErrInvalid)
 		return
 	}

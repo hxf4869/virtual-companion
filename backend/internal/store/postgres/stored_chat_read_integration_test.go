@@ -26,6 +26,10 @@ func syntheticCandidateID(position int) string {
 }
 func seedStoredHistory(t *testing.T, c StoredChat, count int) {
 	t.Helper()
+	seedStoredHistoryWithMessageBytes(t, c, count, 0)
+}
+func seedStoredHistoryWithMessageBytes(t *testing.T, c StoredChat, count, bodyBytes int) {
+	t.Helper()
 	ctx := context.Background()
 	s := testEnv.store
 	conn, err := pgx.Connect(ctx, testEnv.superDSN)
@@ -48,6 +52,9 @@ func seedStoredHistory(t *testing.T, c StoredChat, count int) {
 		text := fmt.Sprintf("synthetic message %d", i)
 		if i == 1 || i == count-1 {
 			text += " Needle"
+		}
+		if bodyBytes > len(text) {
+			text += strings.Repeat("s", bodyBytes-len(text))
 		}
 		data, err := s.encodeChatJSON(ChatData{"mes": text, "extra": ChatData{"extension": "kept"}, "variables": ChatData{"value": i}})
 		if err != nil {

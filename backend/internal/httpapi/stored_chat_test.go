@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -312,6 +313,39 @@ func TestStoredChatReadStoreErrors(t *testing.T) {
 		if strings.Contains(rec.Body.String(), "synthetic-") {
 			t.Fatal("response leaked backend body or error detail")
 		}
+	}
+}
+
+func TestStoredMessageSearchQueryLength(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name, query string
+		want        int
+	}{
+		{"ASCII limit", strings.Repeat("x", 200), 200},
+		{"Unicode limit", strings.Repeat("界", 200), 200},
+		{"ASCII too long", strings.Repeat("x", 201), 400},
+		{"Unicode too long", strings.Repeat("界", 201), 400},
+		{"raw length before trimming", " " + strings.Repeat("界", 200), 400},
+		{"invalid Unicode", string([]byte{0xff}), 400},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			store := &recordingStoredChatReader{memStore: newMemStore()}
+			s := newCoreServer(t, "full", store)
+			path := testStoredChatsPath + "/" + testStoredChatID + "/messages?q=" + url.QueryEscape(tc.query)
+			rec := doJSON(t, s, http.MethodGet, path, "", 1)
+			if rec.Code != tc.want {
+				t.Fatalf("status=%d want=%d", rec.Code, tc.want)
+			}
+			if tc.want == 400 {
+				assertStoredChatError(t, rec, 400, "INVALID_REQUEST")
+				if len(store.calls) != 0 {
+					t.Fatal("invalid search reached encrypted storage")
+				}
+			} else if len(store.calls) != 1 || store.calls[0].messages.Q != tc.query {
+				t.Fatal("valid Unicode search was changed or not forwarded")
+			}
+		})
 	}
 }
 

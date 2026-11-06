@@ -12,7 +12,7 @@
 - [x] SX-2（2026-11-06）：聊天存储与分页历史接口契约经总调度审定后冻结进 OpenAPI / catalog（11 路径、15 操作、12 错误码，均 DEFER 待实现）：body `requestId` 幂等、keyset before/after 与 `anchorMessageId`、重排后 410、类型化 operations、`include=chat`。quick PASS。
 - [x] SX-3（2026-11-07）：新增 V287 加密聊天/候选/顺序与 metadata、权威 epoch、幂等回执及事务 outbox，补齐无痕/清空删除；Go 离线、store/http 集成、RLS PASS；提交 bf3ba14b。
 - [x] SX-4（2026-11-07）：五个聊天读接口、双向 keyset/changes/full/锚点及 Owner 批准的全聊 q；20k 无重漏，服务端分页 P95 41.74ms；Go/store/http/RLS/quick PASS；提交 787b48b4（契约 48439039）。
-- [ ] SX-5–SX-16：见 Backlog M 节；SX-5 过渡生成登记具体契约待 Owner 审阅 48439039 后实施依赖部分。
+- [ ] SX-5–SX-16：见 Backlog M 节；SX-5 过渡生成登记修订契约待 Owner 复审 5f55e4c6 后实施依赖部分；SX-4 补验 20k×2KiB 无命中 P95 600.25ms，Go 堆增量 2.78MiB（上限16MiB）PASS。
 
 ### 聊天与记忆质量（CM）
 
