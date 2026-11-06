@@ -1,0 +1,142 @@
+{
+  "testedCommit": "8750831b111643a5f200f948925afeda4409a1f4",
+  "command": "node integrations/sillytavern/scripts/accept-managed.mjs --filter catalog-admin,dr2-layout,dr2-mvu-new,dr2-settings,dr2-pages,nf-startup,nf-desktop,nf-chat,nf-operations,nf-prompts,nf-cards,nf-media,nf-tavern,nf-business,nf-settings,f2-browser,f2-native,mb2-shell,mb2-layout",
+  "environment": {
+    "dockerContext": "orbstack",
+    "nodeVersion": "22.23.1",
+    "goToolchain": "go1.26.10",
+    "browser": "Google Chrome",
+    "browserVersion": "156.0.8078.80",
+    "data": "isolated synthetic managed stack",
+    "buildArtifacts": "rebuilt from tested commit; no previous generated bundles copied"
+  },
+  "status": "PASS",
+  "exitCode": 0,
+  "startedAt": "2026-11-06T19:41:07.542Z",
+  "finishedAt": "2026-11-06T19:47:22.054Z",
+  "elapsedMs": 374512,
+  "selected": [
+    "catalog-admin",
+    "f2-native",
+    "f2-browser",
+    "nf-settings",
+    "dr2-layout",
+    "dr2-settings",
+    "dr2-pages",
+    "dr2-mvu-new",
+    "nf-startup",
+    "nf-desktop",
+    "nf-prompts",
+    "nf-chat",
+    "nf-operations",
+    "nf-media",
+    "nf-cards",
+    "nf-tavern",
+    "nf-business",
+    "mb2-shell",
+    "mb2-layout"
+  ],
+  "scenes": {
+    "catalog-admin": {
+      "status": "PASS",
+      "ms": 369
+    },
+    "f2-native": {
+      "status": "PASS",
+      "ms": 1066
+    },
+    "f2-browser": {
+      "status": "PASS",
+      "ms": 9927
+    },
+    "nf-settings": {
+      "status": "PASS",
+      "ms": 22446
+    },
+    "dr2-layout": {
+      "status": "PASS",
+      "ms": 38664
+    },
+    "dr2-settings": {
+      "status": "PASS",
+      "ms": 11958
+    },
+    "dr2-pages": {
+      "status": "PASS",
+      "ms": 20601
+    },
+    "dr2-mvu-new": {
+      "status": "PASS",
+      "ms": 5639
+    },
+    "nf-startup": {
+      "status": "PASS",
+      "ms": 7808
+    },
+    "nf-desktop": {
+      "status": "PASS",
+      "ms": 7408
+    },
+    "nf-prompts": {
+      "status": "PASS",
+      "ms": 21346
+    },
+    "nf-chat": {
+      "status": "PASS",
+      "ms": 28876
+    },
+    "nf-operations": {
+      "status": "PASS",
+      "ms": 15673
+    },
+    "nf-media": {
+      "status": "PASS",
+      "ms": 11041
+    },
+    "nf-cards": {
+      "status": "PASS",
+      "ms": 18630
+    },
+    "nf-tavern": {
+      "status": "PASS",
+      "ms": 25791
+    },
+    "nf-business": {
+      "status": "PASS",
+      "ms": 14018
+    },
+    "mb2-shell": {
+      "status": "PASS",
+      "ms": 25058
+    },
+    "mb2-layout": {
+      "status": "PASS",
+      "ms": 41139
+    }
+  },
+  "scenarioRetries": 0,
+  "notRunSelectedScenes": [],
+  "preparationIssues": [
+    {
+      "classification": "environment",
+      "stage": "before any scenario ran",
+      "error": "ERR_MODULE_NOT_FOUND: desktop/build/index.js imported from consent.js",
+      "resolution": "Ran the existing build:desktop entry point for the tested commit before acceptance."
+    },
+    {
+      "classification": "environment",
+      "stage": "before any scenario ran",
+      "error": "MemoryCore exited before readiness; direct upstream-api.mjs import reported ERR_MODULE_NOT_FOUND for crc-32.",
+      "resolution": "Placed the isolated managed runtime beneath the worktree integration directory so Node resolves its independent node_modules copy."
+    }
+  ],
+  "codeAssertionsAndThresholdsModified": false,
+  "performanceReport": "2026-11-07-managed-8750831b-mb2-shell-perf.json",
+  "cleanup": {
+    "portsReleased": true,
+    "temporaryContainersAndVolumesRemoved": true,
+    "temporaryWorktreesRuntimeDirectoriesAndCachesRemoved": true,
+    "existingDevelopmentServicesAndImagesPreserved": true
+  },
+  "artifactNote": "Scenario values are copied unchanged from accept-managed results.json. Temporary artifact directory and screenshot paths were omitted because those runtime artifacts were reclaimed."
+}

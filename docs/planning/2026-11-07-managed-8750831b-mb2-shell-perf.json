@@ -1,0 +1,249 @@
+{
+  "testedCommit": "8750831b111643a5f200f948925afeda4409a1f4",
+  "command": "VC_MB2_SHELL_PERF=1 node integrations/sillytavern/scripts/accept-managed.mjs --filter mb2-shell",
+  "environment": {
+    "dockerContext": "orbstack",
+    "nodeVersion": "22.23.1",
+    "goToolchain": "go1.26.10",
+    "browser": "Google Chrome",
+    "browserVersion": "156.0.8078.80",
+    "data": "isolated synthetic managed stack",
+    "buildArtifacts": "rebuilt from tested commit; no previous generated bundles copied",
+    "initialHostIdlePercent": 92.2,
+    "concurrentBuildOrAcceptanceTasks": false
+  },
+  "status": "PASS",
+  "exitCode": 0,
+  "startedAt": "2026-11-06T20:02:05.659Z",
+  "finishedAt": "2026-11-06T20:03:31.807Z",
+  "elapsedMs": 86148,
+  "selected": [
+    "catalog-admin",
+    "mb2-shell"
+  ],
+  "scenes": {
+    "catalog-admin": {
+      "status": "PASS",
+      "ms": 363
+    },
+    "mb2-shell": {
+      "status": "PASS",
+      "ms": 35072
+    }
+  },
+  "scenarioRetries": 0,
+  "surface": "mb2-shell-4x-cpu",
+  "scope": "mobile-shell-interaction-only（仅测量 /m/chat 新文档就绪后的壳层标签切换与设置 Sheet 开关交互，不宣称覆盖冷首屏加载、聊天历史或消息滚动）",
+  "cpuThrottlingRate": 4,
+  "motionMode": "no-preference",
+  "viewport": "390x844@2",
+  "phases": [
+    {
+      "phase": "cold-document-first-transition",
+      "frameCount": 296,
+      "rafP50Ms": 16.7,
+      "rafP95Ms": 16.7,
+      "rafMaxMs": 16.8,
+      "over16_7msCount": 73,
+      "over33_3msCount": 0,
+      "approxFps": 60.12,
+      "longtaskOver50msCount": 0,
+      "maxLongtaskMs": 0,
+      "longtasks": [],
+      "windows": [
+        {
+          "phase": "cold-document-first-transition",
+          "windowLabel": "cold-document-first-transition:mb2-shell-tab-switch",
+          "operation": "[cold-document-first-transition] 真实点击切换五个一级标签 (chat → characters → memory → inbox → story → chat)",
+          "startedAtPerfNow": 117.8,
+          "endedAtPerfNow": 3281.1,
+          "durationMs": 3163.3,
+          "frameCount": 190,
+          "rafP50Ms": 16.7,
+          "rafP95Ms": 16.8,
+          "rafMaxMs": 16.8,
+          "over16_7msCount": 58,
+          "over33_3msCount": 0,
+          "approxFps": 60.11,
+          "longtaskOver50msCount": 0,
+          "maxLongtaskMs": 0,
+          "longtasks": []
+        },
+        {
+          "phase": "cold-document-first-transition",
+          "windowLabel": "cold-document-first-transition:mb2-shell-settings-sheet",
+          "operation": "[cold-document-first-transition] 真实点击右上头像打开设置 IonModal Sheet、切换深/浅色单选项并点击完成关闭",
+          "startedAtPerfNow": 3282.7,
+          "endedAtPerfNow": 5047.5,
+          "durationMs": 1764.8,
+          "frameCount": 106,
+          "rafP50Ms": 16.7,
+          "rafP95Ms": 16.7,
+          "rafMaxMs": 16.8,
+          "over16_7msCount": 15,
+          "over33_3msCount": 0,
+          "approxFps": 60.13,
+          "longtaskOver50msCount": 0,
+          "maxLongtaskMs": 0,
+          "longtasks": []
+        }
+      ]
+    },
+    {
+      "phase": "warm-repeat",
+      "frameCount": 323,
+      "rafP50Ms": 16.7,
+      "rafP95Ms": 16.8,
+      "rafMaxMs": 16.8,
+      "over16_7msCount": 85,
+      "over33_3msCount": 0,
+      "approxFps": 60.08,
+      "longtaskOver50msCount": 0,
+      "maxLongtaskMs": 0,
+      "longtasks": [],
+      "windows": [
+        {
+          "phase": "warm-repeat",
+          "windowLabel": "warm-repeat:mb2-shell-tab-switch",
+          "operation": "[warm-repeat] 真实点击切换五个一级标签 (chat → characters → memory → inbox → story → chat)",
+          "startedAtPerfNow": 5049.1,
+          "endedAtPerfNow": 8213.6,
+          "durationMs": 3164.5,
+          "frameCount": 190,
+          "rafP50Ms": 16.7,
+          "rafP95Ms": 16.8,
+          "rafMaxMs": 16.8,
+          "over16_7msCount": 35,
+          "over33_3msCount": 0,
+          "approxFps": 60.07,
+          "longtaskOver50msCount": 0,
+          "maxLongtaskMs": 0,
+          "longtasks": []
+        },
+        {
+          "phase": "warm-repeat",
+          "windowLabel": "warm-repeat:mb2-shell-settings-sheet",
+          "operation": "[warm-repeat] 真实点击右上头像打开设置 IonModal Sheet、切换深/浅色单选项并点击完成关闭",
+          "startedAtPerfNow": 8214.9,
+          "endedAtPerfNow": 10431.3,
+          "durationMs": 2216.4,
+          "frameCount": 133,
+          "rafP50Ms": 16.7,
+          "rafP95Ms": 16.8,
+          "rafMaxMs": 16.8,
+          "over16_7msCount": 50,
+          "over33_3msCount": 0,
+          "approxFps": 60.08,
+          "longtaskOver50msCount": 0,
+          "maxLongtaskMs": 0,
+          "longtasks": []
+        }
+      ]
+    }
+  ],
+  "windows": [
+    {
+      "phase": "cold-document-first-transition",
+      "windowLabel": "cold-document-first-transition:mb2-shell-tab-switch",
+      "operation": "[cold-document-first-transition] 真实点击切换五个一级标签 (chat → characters → memory → inbox → story → chat)",
+      "startedAtPerfNow": 117.8,
+      "endedAtPerfNow": 3281.1,
+      "durationMs": 3163.3,
+      "frameCount": 190,
+      "rafP50Ms": 16.7,
+      "rafP95Ms": 16.8,
+      "rafMaxMs": 16.8,
+      "over16_7msCount": 58,
+      "over33_3msCount": 0,
+      "approxFps": 60.11,
+      "longtaskOver50msCount": 0,
+      "maxLongtaskMs": 0,
+      "longtasks": []
+    },
+    {
+      "phase": "cold-document-first-transition",
+      "windowLabel": "cold-document-first-transition:mb2-shell-settings-sheet",
+      "operation": "[cold-document-first-transition] 真实点击右上头像打开设置 IonModal Sheet、切换深/浅色单选项并点击完成关闭",
+      "startedAtPerfNow": 3282.7,
+      "endedAtPerfNow": 5047.5,
+      "durationMs": 1764.8,
+      "frameCount": 106,
+      "rafP50Ms": 16.7,
+      "rafP95Ms": 16.7,
+      "rafMaxMs": 16.8,
+      "over16_7msCount": 15,
+      "over33_3msCount": 0,
+      "approxFps": 60.13,
+      "longtaskOver50msCount": 0,
+      "maxLongtaskMs": 0,
+      "longtasks": []
+    },
+    {
+      "phase": "warm-repeat",
+      "windowLabel": "warm-repeat:mb2-shell-tab-switch",
+      "operation": "[warm-repeat] 真实点击切换五个一级标签 (chat → characters → memory → inbox → story → chat)",
+      "startedAtPerfNow": 5049.1,
+      "endedAtPerfNow": 8213.6,
+      "durationMs": 3164.5,
+      "frameCount": 190,
+      "rafP50Ms": 16.7,
+      "rafP95Ms": 16.8,
+      "rafMaxMs": 16.8,
+      "over16_7msCount": 35,
+      "over33_3msCount": 0,
+      "approxFps": 60.07,
+      "longtaskOver50msCount": 0,
+      "maxLongtaskMs": 0,
+      "longtasks": []
+    },
+    {
+      "phase": "warm-repeat",
+      "windowLabel": "warm-repeat:mb2-shell-settings-sheet",
+      "operation": "[warm-repeat] 真实点击右上头像打开设置 IonModal Sheet、切换深/浅色单选项并点击完成关闭",
+      "startedAtPerfNow": 8214.9,
+      "endedAtPerfNow": 10431.3,
+      "durationMs": 2216.4,
+      "frameCount": 133,
+      "rafP50Ms": 16.7,
+      "rafP95Ms": 16.8,
+      "rafMaxMs": 16.8,
+      "over16_7msCount": 50,
+      "over33_3msCount": 0,
+      "approxFps": 60.08,
+      "longtaskOver50msCount": 0,
+      "maxLongtaskMs": 0,
+      "longtasks": []
+    }
+  ],
+  "notRunBoundaries": {
+    "coldFirstScreen": "NOT_RUN（本采样在新文档 data-vc-app=\"ready\" 且字体/初始动画静止后开始，仅测壳层交互，不宣称覆盖冷首屏加载）",
+    "chatHistory": "NOT_RUN（真实聊天历史加载属于 MB2-6 接入后验收，本轮仅壳层交互）",
+    "messageScroll": "NOT_RUN（真实消息滚动属于 MB2-6 对话虚拟列表接入后验收，本轮仅壳层交互）",
+    "conversationListScroll": "NOT_RUN（真实会话列表滚动属于 MB2-6 接入后验收，本轮仅壳层交互）",
+    "engineRuntimeHeap": "NOT_RUN（本批首屏不启动引擎，净堆预算属于 MB2-6 / MB2-15）"
+  },
+  "firstScreenBundle": {
+    "jsFiles": [
+      "assets/mobile-lcEIpW9U.js",
+      "assets/p-Ct2aBEue-BLkn1g2E.js",
+      "assets/p-ZjP4CjeZ-DJ1DGIsW.js"
+    ],
+    "cssFiles": [
+      "assets/mobile-AXwicpA0.css"
+    ],
+    "jsGzipBytes": 196581,
+    "cssGzipBytes": 10229,
+    "unit": "gzip bytes",
+    "jsBudgetBytes": 300000,
+    "cssBudgetBytes": 60000,
+    "status": "PASS"
+  },
+  "codeAssertionsAndThresholdsModified": false,
+  "cleanup": {
+    "portsReleased": true,
+    "temporaryContainersAndVolumesRemoved": true,
+    "temporaryWorktreesRuntimeDirectoriesAndCachesRemoved": true,
+    "existingDevelopmentServicesAndImagesPreserved": true
+  },
+  "artifactNote": "Sampling fields are copied unchanged from mb2-shell-perf.json; scene statuses and durations come from the same run results.json. Bundle sizes come from verifyMobileBundleBudget on that run deployed mobile/app directory. Cold document phase means the first shell interaction after ready, not cold first-screen loading."
+}
