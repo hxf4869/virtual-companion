@@ -13,6 +13,7 @@ import (
 	"github.com/hxf4869/virtual-companion/internal/memorycore"
 	"github.com/hxf4869/virtual-companion/internal/observability"
 	modelprovider "github.com/hxf4869/virtual-companion/internal/provider"
+	"github.com/hxf4869/virtual-companion/internal/store/postgres"
 )
 
 const maxBodyBytes = 1 << 20
@@ -62,12 +63,25 @@ func New(cfg config.Config, log *slog.Logger, probes Probes, metrics *observabil
 			}
 		}
 		s.registerCore()
+		s.registerStoredChatWrites()
 	}
 	return s
 }
 
 func (s *Server) Handler() http.Handler {
-	return http.MaxBytesHandler(http.HandlerFunc(s.serve), maxBodyBytes)
+	serve := http.HandlerFunc(s.serve)
+	defaultLimit := http.MaxBytesHandler(serve, maxBodyBytes)
+	chatLimit := http.MaxBytesHandler(serve, postgres.StoredChatMutationBytes)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost || r.Method == http.MethodPatch || r.Method == http.MethodDelete {
+			handler, _ := s.mux.Handler(r)
+			if _, chatWrite := handler.(storedChatWriteHandler); chatWrite {
+				chatLimit.ServeHTTP(w, r)
+				return
+			}
+		}
+		defaultLimit.ServeHTTP(w, r)
+	})
 }
 
 func (s *Server) writeAPIError(w http.ResponseWriter, status int, code, message string) {
@@ -331,6 +345,18 @@ func operation(path string) string {
 				return "stored_chat_message"
 			case len(parts) == 2 && parts[1] == "changes":
 				return "stored_chat_changes"
+			case len(parts) == 2 && parts[1] == "metadata":
+				return "stored_chat_metadata"
+			case len(parts) == 2 && parts[1] == "operations":
+				return "stored_chat_operations"
+			case len(parts) == 2 && parts[1] == "forks":
+				return "stored_chat_forks"
+			}
+		}
+		if chatPath, ok := strings.CutPrefix(path, "/api/v1/service/chats/"); ok {
+			_, route, _ := strings.Cut(chatPath, "/")
+			if route == "generation-runs" {
+				return "service_stored_chat_generation"
 			}
 		}
 		if strings.HasPrefix(path, "/api/v1/voice-clips/") {

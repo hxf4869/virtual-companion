@@ -55,7 +55,7 @@ func (s *Store) loadStoredMessage(ctx context.Context, tx pgx.Tx, owner int64, c
 	if err = s.decodeChatJSON(data, &m.Data); err != nil {
 		return m, err
 	}
-	rows, err := tx.Query(ctx, `SELECT candidate_id::text,source_revision,source_generation,settled,data_cipher
+	rows, err := tx.Query(ctx, `SELECT candidate_id::text,source_revision,source_generation,settled,data_cipher,ever_selected
  FROM vc.stored_candidate WHERE owner_user_id=$1 AND chat_id=$2 AND message_id=$3 AND deleted_at IS NULL ORDER BY ordinal`, owner, chatID, messageID)
 	if err != nil {
 		return m, err
@@ -65,7 +65,7 @@ func (s *Store) loadStoredMessage(ctx context.Context, tx pgx.Tx, owner int64, c
 	for rows.Next() {
 		var c StoredCandidate
 		var b string
-		if err = rows.Scan(&c.CandidateID, &c.SourceRevision, &c.SourceGeneration, &c.settled, &b); err != nil {
+		if err = rows.Scan(&c.CandidateID, &c.SourceRevision, &c.SourceGeneration, &c.settled, &b, &c.everSelected); err != nil {
 			return m, err
 		}
 		if err = s.decodeChatJSON(b, &c.Data); err != nil {

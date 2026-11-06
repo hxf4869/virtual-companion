@@ -536,7 +536,9 @@ Owner 选择 React，要求保留现有正常 UI、优先复用成熟开源组�
 
 **SX-4 [问]（2026-11-07，已答）**：冻结 OpenAPI 的 `listStoredMessages` 没有正文搜索参数/路由，`listStoredChats.q` 明确只搜索标题/角色，无法按原契约完成“全聊搜索”。建议给 `GET /api/v1/chats/{chatId}/messages` 增加可选 `q`，搜索当前选中候选正文、复用消息分页响应并将查询绑定到游标。**答（Owner 2026-11-07）**：批准上述 `q` 扩展；先补 OpenAPI 再实现，不将当前页过滤充作全聊搜索。
 
-**SX-5 [问]（2026-11-07，接口方向已答、具体契约待审）**：`ChatGenerationCommit` 要求生成前已持久化的 run/输入版本栅栏，但现有 Go/插件没有该注册入口，冻结聊天 API 只有终态提交。建议新增仅现有 serviceToken 通道可调用的 `POST /api/v1/service/chats/{chatId}/generation-runs`，携带 `ownerAccountId`、`requestId`、`authorityEpoch`、`generationRunId`、上下文基线 `chatRevision`；Node 生成桥在出站前登记当前输入/候选及分支栅栏，Session 在原有终态结构中引用同一 run。公开 `/chats*` 终态语义不变；未经注册或已失效的 run 一律拒绝。**答（Owner 2026-11-07）**：批准仅 serviceToken 的过渡登记入口，沿用 model-usage reservations 的已核验 Owner/Origin 边界；必须绑定已保存输入 messageId/选中候选并拒绝过期 epoch，明确活动 run 数量、新 run 失效规则、TTL 与清理；先单独提交 OpenAPI/catalog/生成物供 Owner 审阅，审完才实施依赖登记的逻辑。Owner 复审要求已纳入修订：登记按相关变化校验基线，允许无关尾部追加；明确 continue/regenerate 输入及终态 Owner/chat 绑定，内部接口移除 428；正文 q 上限 200 并补无命中扫描测量。具体候选见退出计划 §4.4.1；修订契约仍待 Owner 再审，期间继续不依赖它的消息操作。
+**SX-5 [问]（2026-11-07，接口方向已答、具体契约待审）**：`ChatGenerationCommit` 要求生成前已持久化的 run/输入版本栅栏，但现有 Go/插件没有该注册入口，冻结聊天 API 只有终态提交。建议新增仅现有 serviceToken 通道可调用的 `POST /api/v1/service/chats/{chatId}/generation-runs`，携带 `ownerAccountId`、`requestId`、`authorityEpoch`、`generationRunId`、上下文基线 `chatRevision`；Node 生成桥在出站前登记当前输入/候选及分支栅栏，Session 在原有终态结构中引用同一 run。公开 `/chats*` 终态语义不变；未经注册或已失效的 run 一律拒绝。**答（Owner 2026-11-07）**：批准仅 serviceToken 的过渡登记入口，沿用 model-usage reservations 的已核验 Owner/Origin 边界；必须绑定已保存输入 messageId/选中候选并拒绝过期 epoch，明确活动 run 数量、新 run 失效规则、TTL 与清理；先单独提交 OpenAPI/catalog/生成物供 Owner 审阅，审完才实施依赖登记的逻辑。Owner 复审要求已纳入修订：登记按相关变化校验基线，允许无关尾部追加；明确 continue/regenerate 输入及终态 Owner/chat 绑定，内部接口移除 428；正文 q 上限 200 并补无命中扫描测量。具体候选见退出计划 §4.4.1；Owner 已复审通过 5f55e4c6，按修订契约实施。
+
+**SX-5 [问]（2026-11-07，零输出停止，已答）**：现有 append/edit/operations 均要求至少一项，登记后尚无任何输出就停止（包括登记 ACK 丢失）无法提交无消息的 `aborted`。建议不新增空操作或取消接口：零输出不做消息终态写入，原 run 沿用 15 分钟期限，后续新登记立即使其失效；有部分输出仍以原 run 提交 aborted。**答（Owner 2026-11-07）**：确认；Session 停止后丢弃迟到片段，不再用该 run 提交终态，取消上游并释放用量预留；过期未终结 run 在紧凑记录中标为内部 `expired`，不新增对外状态。
 
 ## N. 聊天与记忆质量（CM，2026-11-06 Owner 决定以指标驱动）
 

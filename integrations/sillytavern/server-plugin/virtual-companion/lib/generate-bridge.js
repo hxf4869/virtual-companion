@@ -15,7 +15,7 @@
 import crypto from 'node:crypto';
 import { BridgeError, writeErrorResponse, upstreamErrorText } from './errors.js';
 import { log } from './log.js';
-import { authSession, resolveModelPurpose } from './go-client.js';
+import { authSession, registerStoredChatGeneration, resolveModelPurpose } from './go-client.js';
 import { finalRequestUrl, nativeBaseUrl } from './url-normalize.js';
 import { checkContextBudget, resolveOutputTokens, writeBackOutputTokens } from './context-guard.js';
 import { refreshMemorySlot } from './memory-guard.js';
@@ -30,6 +30,101 @@ import { applyChatReasoning, unwrapChatCompletion } from './chat-completions.js'
 
 export const BRIDGE_SYMBOL = Symbol.for('virtual-companion.bridge');
 const PURPOSES_ALLOWED = new Set(['FOREGROUND_CHAT']);
+const STORED_CHAT_GENERATION_HEADER = 'x-vc-stored-chat-generation';
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const CHAT_DECIMAL = /^(0|[1-9][0-9]*)$/;
+const RFC3339 = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/;
+const STORED_CHAT_SCOPE = {
+    chatId: UUID,
+    requestId: UUID,
+    generationRunId: UUID,
+    authorityEpoch: CHAT_DECIMAL,
+    chatRevision: CHAT_DECIMAL,
+    inputMessageId: UUID,
+    inputCandidateId: UUID,
+};
+const STORED_CHAT_ACK = {
+    ...STORED_CHAT_SCOPE,
+    inputMessageRevision: CHAT_DECIMAL,
+    inputSourceRevision: CHAT_DECIMAL,
+    inputSourceGeneration: CHAT_DECIMAL,
+    metadataRevision: CHAT_DECIMAL,
+    orderRevision: CHAT_DECIMAL,
+    branchRoot: UUID,
+    registeredAt: RFC3339,
+    expiresAt: RFC3339,
+};
+const REGISTRATION_ERROR_CODES = new Set([
+    'CHAT_AUTHORITY_CHANGED', 'CHAT_GENERATION_FENCED', 'REVISION_CONFLICT',
+    'IDEMPOTENCY_KEY_REUSED', 'OPERATION_RESULT_EXPIRED', 'NOT_FOUND_OR_FORBIDDEN',
+    'ACCESS_DENIED', 'INVALID_REQUEST', 'AUTHENTICATION_REQUIRED', 'SCHEMA_UNAVAILABLE',
+]);
+
+function matchesFields(value, fields) {
+    return value !== null && typeof value === 'object'
+        && Object.keys(value).length === Object.keys(fields).length
+        && Object.entries(fields).every(([key, pattern]) => typeof value[key] === 'string' && pattern.test(value[key]));
+}
+
+function readStoredChatScope(raw) {
+    if (raw === undefined) return null;
+    let scope;
+    if (typeof raw === 'string') {
+        try { scope = JSON.parse(raw); } catch { /* 统一处理格式错误 */ }
+    }
+    if (!matchesFields(scope, STORED_CHAT_SCOPE)) {
+        throw new BridgeError(400, 'INVALID_REQUEST', '聊天生成登记标记无效');
+    }
+    return scope;
+}
+
+function clientDisconnected(request, response) {
+    return request.aborted || request.socket?.destroyed || response.destroyed;
+}
+
+async function registerGeneration(config, request, response, session, scope) {
+    // host-auth 已核验 ACTIVE 账号及页面预期身份。受控取用读到的会话必须与它一致。
+    const identity = request.vcIdentity;
+    if (!identity || identity.accountId !== session.accountId || identity.sessionId !== session.sessionId) {
+        throw new BridgeError(409, 'ACCOUNT_CONTEXT_CHANGED', '此页面的登录状态已变化，请重新打开聊天');
+    }
+    const controller = new AbortController();
+    const abort = () => controller.abort();
+    request.socket?.once('close', abort);
+    request.once?.('aborted', abort);
+    response.once?.('close', abort);
+    const checkClient = () => {
+        if (clientDisconnected(request, response)) abort();
+        controller.signal.throwIfAborted();
+    };
+    try {
+        checkClient();
+        const { chatId, ...payload } = scope;
+        const { status, json } = await registerStoredChatGeneration(config, chatId, {
+            ...payload,
+            ownerAccountId: session.accountId,
+        }, controller.signal);
+        checkClient();
+        if (status !== 201) {
+            const code = json?.code;
+            if (status >= 400 && REGISTRATION_ERROR_CODES.has(code)) {
+                throw new BridgeError(status, code, '聊天生成登记被拒绝');
+            }
+            throw new BridgeError(502, 'VC_CHAT_GENERATION_REGISTRATION_FAILED', '聊天生成登记失败');
+        }
+        if (!matchesFields(json, STORED_CHAT_ACK)
+            || !Object.entries(STORED_CHAT_SCOPE).every(([key, pattern]) => pattern === UUID
+                ? json[key].toLowerCase() === scope[key].toLowerCase()
+                : json[key] === scope[key])
+            || Date.parse(json.expiresAt) - Date.parse(json.registeredAt) !== 15 * 60 * 1000) {
+            throw new BridgeError(502, 'VC_CHAT_GENERATION_REGISTRATION_FAILED', '聊天生成登记回执无效');
+        }
+    } finally {
+        request.socket?.removeListener('close', abort);
+        request.removeListener?.('aborted', abort);
+        response.removeListener?.('close', abort);
+    }
+}
 
 function parseRevisionDigits(value) {
     if (value === null || value === undefined) return undefined;
@@ -376,11 +471,13 @@ export function createGenerateBridge({ config, continuationStore, counter, now =
             throw new BridgeError(400, 'VC_TEXT_COMPLETION_UNSUPPORTED', '受管三协议仅支持消息模式；文本补全模式（messages 为字符串）不在受控范围');
         }
 
+        const storedChatScope = readStoredChatScope(request.headers?.[STORED_CHAT_GENERATION_HEADER]);
         // 会话核验 + 受控取用（与 /status 共用）：ownerAccountId 只来自 Go 会话，绝不取浏览器自报值。
         const { session, resolved } = await resolveManagedBinding(config, {
             marker,
             cookieHeader: request.headers?.cookie ?? '',
         });
+        if (storedChatScope) await registerGeneration(config, request, response, session, storedChatScope);
         const user = `st:${request?.user?.profile?.handle ?? 'default-user'}|go:${session.accountId}`;
 
         continuationStore.sweep();
@@ -511,6 +608,10 @@ export function createGenerateBridge({ config, continuationStore, counter, now =
         const managed = request?.vcManaged;
         if (!managed) return false; // 非受管请求（受管宿主下不应出现）不干预
         try {
+            // 客户端可能在登记完成后、原生链订阅 socket close 前断开。
+            if (request.headers?.[STORED_CHAT_GENERATION_HEADER] !== undefined && clientDisconnected(request, response)) {
+                throw new BridgeError(504, 'VC_UPSTREAM_TIMEOUT', '上游模型服务响应超时');
+            }
             if (isStorySession(request.body)) {
                 await enforceStoryOutbound({
                     config, request, finalBody,

@@ -36,6 +36,19 @@ async function readJsonResponse(res) {
     return { status: res.status, ok: res.ok, json, text, headers: res.headers };
 }
 
+/** 过渡服务通道登记聊天生成。身份来自已核验的 Go 会话，客户端取消时中止等待。 */
+export async function registerStoredChatGeneration(config, chatId, payload, signal) {
+    const res = await goFetch(config, `/api/v1/service/chats/${encodeURIComponent(chatId)}/generation-runs`, {
+        method: 'POST',
+        headers: serviceHeaders(config),
+        body: JSON.stringify(payload),
+        redirect: 'manual',
+        signal,
+    });
+    const { status, json } = await readJsonResponse(res);
+    return { status, json };
+}
+
 /** 服务通道预留。返回状态与 JSON。调用方只接受契约 200。不携带 Origin。 */
 export async function reserveModelUsage(config, payload) {
     const res = await goFetch(config, '/api/v1/service/model-usage/reservations', {

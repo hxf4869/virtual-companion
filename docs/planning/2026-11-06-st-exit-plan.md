@@ -259,7 +259,7 @@
 也不宣称这些路由当前已存在。既有 `/conversations/...` 接口及 `listMessages` 保持不变。
 
 实施回填（SX-4，2026-11-07）：五个聊天 GET（会话列表/详情、消息页/完整单条、changes）已实现并经合成隔离验证，
-对应 catalog 转 KEEP；其余公开写入/导入导出继续 DEFER。§4.4.1 的内部生成登记另待 Owner 审阅，尚未实现。
+对应 catalog 转 KEEP。SX-5 实施回填：七个公开写接口及内部生成登记已实现，批次/回执/生成栅栏/inbox 去重同事务，转 KEEP；导入导出仍 DEFER。§4.4.1 修订契约 5f55e4c6 已经 Owner 复审通过。
 
 下表路径均以 `/api/v1` 为前缀：
 
@@ -335,10 +335,10 @@
 9. **后台 inbox**：以 eventId + chatId 唯一约束与前台共用追加事务；readback 确认后 ack。删除/回档后的旧投递不得再次补回（`inbox-bridge.js` 的 removed/invalidated 语义保留）。这消除“后台先全文件保存、前台随即 409”的常见冲突。
 10. **兼容旧 save**：过渡 `/api/chats/save` 收整份 JSON，若有可信读取基线可在服务端计算操作 diff 后逐目标校验；无法证明字段基线时保留严格版本拒绝。不能把旧快照盲覆盖新库，也不能宣称所有旧客户端冲突已消失。尽快将自有 Session 切到原生操作 API，兼容门面随后只服务必要脚本路径。
 
-### 4.4.1 SX-5 生成登记补充（2026-11-07，具体契约待 Owner 审阅）
+### 4.4.1 SX-5 生成登记补充（2026-11-07，Owner 已复审通过）
 
 Owner 批准增加过渡内部接口 `POST /api/v1/service/chats/{chatId}/generation-runs`，机器定义已写入 OpenAPI，
-catalog 暂为 DEFER。必须单独提交契约并经 Owner 审阅后，才实施依赖该接口的登记与 Node 调用。
+契约单独修订提交 5f55e4c6 已经 Owner 审阅通过；SX-5 实施登记与 Node 调用后，catalog 转 KEEP。
 
 - 鉴权只用现有 `serviceToken`，沿用 `/service/model-usage/reservations` 的“插件先核验 Owner”模式；拒绝浏览器 Origin，
   不接 Cookie-only 请求、不加入浏览器代理白名单，不放宽前台原有 CSRF/Origin/身份守卫。
@@ -352,8 +352,9 @@ catalog 暂为 DEFER。必须单独提交契约并经 Owner 审阅后，才实�
 - `continue` 的 `inputMessageId` 是被续写的助手消息，`inputCandidateId` 是它的选中候选；`regenerate` 的输入是
   被重新生成的回复之前的用户消息及其选中候选。嵌套 Helper/EJS/tool 共用原 run，不创造新的因果输入。
 - 每个 Owner/chat **最多 1 个活动逻辑 run**。新 requestId/runId 成功登记时，同事务将旧活动 run 标为 FENCED；
-  停止在原 run 上提交 aborted，重新生成另登记新 run。嵌套 Helper/EJS/tool 属于同一前台操作时共用原 run，不另争活动名额。
+  有部分输出的停止在原 run 上提交 aborted，重新生成另登记新 run。嵌套 Helper/EJS/tool 属于同一前台操作时共用原 run，不另争活动名额。
   这只控制存储终态，不自动重发或取消 provider 请求；既有生成与用量流程继续负责这些副作用。
+- Owner 已确认零输出停止不写消息、不新增接口：Session 取消上游请求并走既有流程释放预留，停止后丢弃迟到片段，不再用该 run 提交终态。未终结 run 由下一次登记失效或满 15 分钟过期；紧凑记录将过期标为 `expired`，与 `settled/aborted/fenced` 区分，不对外新增状态字段。
 - 登记按 Owner + 方法/资源 + requestId 幂等；相同请求返回最初 201 登记（原时间/版本），不重新激活或续期。
   仍先验证当前授权、epoch 与聊天删除屏障。同 requestId 不同内容为 `IDEMPOTENCY_KEY_REUSED`；不同 requestId
   复用同 runId 一律 `CHAT_GENERATION_FENCED`。登记 ACK 不能用作自动重发结果未知模型请求的依据。

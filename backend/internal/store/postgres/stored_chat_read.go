@@ -603,7 +603,7 @@ func asChatData(v any) ChatData {
 	case map[string]any:
 		return ChatData(d)
 	}
-	return ChatData{}
+	return nil
 }
 
 // Project a coherent ST message from its shared document and candidate rows.

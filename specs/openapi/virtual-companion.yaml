@@ -6414,8 +6414,7 @@ paths:
       operationId: registerStoredChatGeneration
       summary: Register a persisted chat input fence before a Node generation
       description: >-
-        SX-5 transitional contract, pending Owner review before implementation. DEFER until implemented and
-        verified. This is exclusively the existing serviceToken channel used by model-usage reservations:
+        SX-5 implemented transitional interface; Owner approved the revised contract 5f55e4c6. KEEP in the API catalog. This is exclusively the existing serviceToken channel used by model-usage reservations:
         the Node plugin supplies the Owner it has already verified through the Go session. Cookie authentication
         alone never authorizes this route, any browser Origin is refused, and the browser Go proxy must not expose
         it. Existing browser generation CSRF/Origin/expected-identity checks remain unchanged.
@@ -6439,8 +6438,11 @@ paths:
         atomically fences the previous active run; this supports an explicit new generation/regeneration after
         stopping the previous one and never grants the old run a second terminal commit. Nested Helper/EJS/tool
         calls that belong to the same foreground operation reuse its run and registration requestId; they do
-        not register competing runs. A stop commits aborted using the existing run when its causal fence is still
-        valid. Fencing a run does not by itself resend or cancel a provider request; existing generation/usage
+        not register competing runs. A stop with partial output commits aborted using the existing run when its causal fence is still
+        valid. A zero-output stop writes no message or terminal operation; the Session cancels the upstream
+        request, releases its usage reservation through the existing flow and discards late fragments, never
+        using the stopped run for a later terminal write. The unfinished run expires after 15 minutes or is
+        fenced by a new registration; cleanup retains expired as a distinct internal compact outcome. Fencing a run does not by itself resend or cancel a provider request; existing generation/usage
         controls remain responsible for those side effects.
         requestId is the sole registration idempotency key, scoped to owner + method + canonical resource.
         Same requestId and canonical payload returns the original 201 registration, including original timestamps,
@@ -8048,8 +8050,7 @@ paths:
     post:
       operationId: createStoredChat
       summary: Create an empty single or group chat
-      description: SX-2 frozen contract only; not implemented. DEFER in specs/catalog/go-v1-api-scope.yaml until SX-3–SX-6
-        implement and validate it. Owner/RLS scoped cookieAuth; expected account/session headers are preconditions,
+      description: SX-5 implemented and validated; KEEP in specs/catalog/go-v1-api-scope.yaml. Owner/RLS scoped cookieAuth; expected account/session headers are preconditions,
         never authorization. State-changing requests use existing CSRF and exact Origin checks. Server validates binding
         and issues stable identities. requestId and authorityEpoch are body fields; replay returns the original 201
         and canonical chat. No idempotency header.
@@ -8133,8 +8134,7 @@ paths:
     delete:
       operationId: deleteStoredChat
       summary: Delete chat with source and rights barriers
-      description: SX-2 frozen contract only; not implemented. DEFER in specs/catalog/go-v1-api-scope.yaml until SX-3–SX-6
-        implement and validate it. Owner/RLS scoped cookieAuth; expected account/session headers are preconditions,
+      description: SX-5 implemented and validated; KEEP in specs/catalog/go-v1-api-scope.yaml. Owner/RLS scoped cookieAuth; expected account/session headers are preconditions,
         never authorization. State-changing requests use existing CSRF and exact Origin checks. Required JSON body
         carries requestId, authorityEpoch and exact chatRevision. Complete deletion, source revocation and receipt
         atomically. deleted=true invalidates the entire client cache; the compact deletion receipt prevents identity
@@ -8272,8 +8272,7 @@ paths:
     post:
       operationId: appendStoredMessages
       summary: Append messages without whole-chat CAS
-      description: SX-2 frozen contract only; not implemented. DEFER in specs/catalog/go-v1-api-scope.yaml until SX-3–SX-6
-        implement and validate it. Owner/RLS scoped cookieAuth; expected account/session headers are preconditions,
+      description: SX-5 implemented and validated; KEEP in specs/catalog/go-v1-api-scope.yaml. Owner/RLS scoped cookieAuth; expected account/session headers are preconditions,
         never authorization. State-changing requests use existing CSRF and exact Origin checks. Equivalent to kind=append
         in operations. Unrelated chatRevision changes never reject an append. The server allocates order; same clientMessageId
         cannot duplicate/resurrect a message. Final/aborted generation output requires generation.generationRunId
@@ -8360,8 +8359,7 @@ paths:
     patch:
       operationId: editStoredMessage
       summary: Conditionally edit message or candidate fields
-      description: SX-2 frozen contract only; not implemented. DEFER in specs/catalog/go-v1-api-scope.yaml until SX-3–SX-6
-        implement and validate it. Owner/RLS scoped cookieAuth; expected account/session headers are preconditions,
+      description: SX-5 implemented and validated; KEEP in specs/catalog/go-v1-api-scope.yaml. Owner/RLS scoped cookieAuth; expected account/session headers are preconditions,
         never authorization. State-changing requests use existing CSRF and exact Origin checks. Convenience form of
         kind=edit. Old baseRevision can rebase only if every before value still matches; return rebased=true. Real
         semantic conflicts preserve the caller draft. Message deletion is ONLY kind=delete in operations.
@@ -8413,8 +8411,7 @@ paths:
     patch:
       operationId: editStoredChatMetadata
       summary: Conditionally edit title, header extensions and metadata
-      description: SX-2 frozen contract only; not implemented. DEFER in specs/catalog/go-v1-api-scope.yaml until SX-3–SX-6
-        implement and validate it. Owner/RLS scoped cookieAuth; expected account/session headers are preconditions,
+      description: SX-5 implemented and validated; KEEP in specs/catalog/go-v1-api-scope.yaml. Owner/RLS scoped cookieAuth; expected account/session headers are preconditions,
         never authorization. State-changing requests use existing CSRF and exact Origin checks. Convenience form of
         kind=metadata. baseRevision is metadataRevision; apply only named before/after paths, preserving unknown siblings
         and protecting server-owned fields.
@@ -8466,8 +8463,7 @@ paths:
     post:
       operationId: applyStoredChatOperations
       summary: Atomically apply typed chat commands
-      description: 'SX-2 frozen contract only; not implemented. DEFER in specs/catalog/go-v1-api-scope.yaml until
-        SX-3–SX-6 implement and validate it. Owner/RLS scoped cookieAuth; expected account/session headers are preconditions,
+      description: 'SX-5 implemented and validated; KEEP in specs/catalog/go-v1-api-scope.yaml. Owner/RLS scoped cookieAuth; expected account/session headers are preconditions,
         never authorization. State-changing requests use existing CSRF and exact Origin checks. Eight kind-discriminated
         variants: edit, append, delete, metadata, addSwipe, selectSwipe, removeSwipe, reorder. Every target, precondition
         and payload is typed and closed. Check all preconditions at transaction start; apply commands in order and
@@ -8578,8 +8574,7 @@ paths:
     post:
       operationId: forkStoredChat
       summary: Fork the current parent through a stable message ID
-      description: SX-2 frozen contract only; not implemented. DEFER in specs/catalog/go-v1-api-scope.yaml until SX-3–SX-6
-        implement and validate it. Owner/RLS scoped cookieAuth; expected account/session headers are preconditions,
+      description: SX-5 implemented and validated; KEEP in specs/catalog/go-v1-api-scope.yaml. Owner/RLS scoped cookieAuth; expected account/session headers are preconditions,
         never authorization. State-changing requests use existing CSRF and exact Origin checks. parentRevision is
         an exact current-state precondition. No historical fork reads; stale parentRevision is REVISION_CONFLICT.
         New branch inherits branchRoot, receives new chat/message/candidate/source identities, returns explicit mappings

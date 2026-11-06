@@ -221,6 +221,21 @@ func (s *Server) writeStoredChatError(w http.ResponseWriter, err error) {
 		case "CHAT_AUTHORITY_CHANGED":
 			s.writeAPIError(w, http.StatusConflict, "CHAT_AUTHORITY_CHANGED", "chat authority changed")
 			return
+		case "REVISION_CONFLICT", "IDEMPOTENCY_KEY_REUSED", "CHAT_ID_REUSED", "CHAT_GENERATION_FENCED":
+			s.writeAPIError(w, http.StatusConflict, chatErr.Code, "chat write conflict")
+			return
+		case "OPERATION_RESULT_EXPIRED":
+			s.writeAPIError(w, http.StatusGone, chatErr.Code, "operation result expired")
+			return
+		case "CHAT_PAYLOAD_TOO_LARGE":
+			s.writeAPIError(w, http.StatusRequestEntityTooLarge, chatErr.Code, "chat payload too large")
+			return
+		case "CHAT_INVALID_OPERATION":
+			s.writeAPIError(w, http.StatusUnprocessableEntity, chatErr.Code, "invalid chat operation")
+			return
+		case "CHAT_PRECONDITION_REQUIRED":
+			s.writeAPIError(w, http.StatusPreconditionRequired, chatErr.Code, "chat precondition required")
+			return
 		}
 	} else if errors.Is(err, postgres.ErrInvalid) || errors.Is(err, postgres.ErrNotFound) ||
 		errors.Is(err, postgres.ErrConflict) || errors.Is(err, postgres.ErrRateLimited) ||

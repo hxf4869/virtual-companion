@@ -141,6 +141,12 @@ func (s *Scheduler) RunOnce(ctx context.Context) error {
 		}
 	}
 	_ = store.RunRetentionCategory(ctx, "EXPORT_RESIDUE", true)
+	if chats, ok := store.(interface{ PruneStoredChatRuns(context.Context) error }); ok {
+		if err := chats.PruneStoredChatRuns(ctx); err != nil {
+			s.loop.log.Info("stored chat retention", slog.String("operation", "stored_chat_retention"),
+				slog.String("outcome", "error"), slog.String("error_code", "STORED_CHAT_RETENTION_FAILED"))
+		}
+	}
 	_ = s.loop.RecoverOnce(ctx)
 	if due, ok := store.(followUpDueStore); ok {
 		if err := RunFollowUpDue(ctx, due, time.Now()); err != nil {

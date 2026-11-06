@@ -57,6 +57,7 @@ type StoredCandidate struct {
 	SourceGeneration int64    `json:"sourceGeneration,string"`
 	Data             ChatData `json:"data"`
 	settled          bool
+	everSelected     bool
 }
 type StoredMessage struct {
 	MessageID           string            `json:"messageId"`
@@ -122,7 +123,7 @@ func chatDecode(data []byte, v any) error {
 
 // Request hashes implement the SX-2 idempotency contract, not content identity.
 func chatDigest(v any) ([]byte, error) {
-	data, err := chatJSON(v)
+	data, err := canonicalChatJSON(v)
 	if err != nil {
 		return nil, ErrInvalid
 	}
@@ -173,8 +174,11 @@ func (s *Store) storedChatWrite(ctx context.Context, owner int64, resource, requ
 	if s == nil || s.cipher == nil {
 		return result, errStore
 	}
-	if requestID == "" || epoch <= 0 {
+	if requestID == "" {
 		return result, chatError("CHAT_PRECONDITION_REQUIRED")
+	}
+	if epoch < 0 {
+		return result, ErrInvalid
 	}
 	if !stsource.ValidIdentity(requestID) {
 		return result, ErrInvalid
@@ -190,6 +194,9 @@ func (s *Store) storedChatWrite(ctx context.Context, owner int64, resource, requ
 		}
 		if authority != "GO" || current != epoch {
 			return chatError("CHAT_AUTHORITY_CHANGED")
+		}
+		if _, err := tx.Exec(ctx, `SELECT vc.expire_stored_chat_runs($1)`, owner); err != nil {
+			return err
 		}
 		// The owner memory barrier serializes receipt lookup with all chat writers.
 		var oldDigest []byte

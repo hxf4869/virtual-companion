@@ -372,7 +372,7 @@ func (s *Server) corePrincipalWithUnavailableCode(w http.ResponseWriter, r *http
 	if write && r.URL.Path != "/api/v1/auth/account" && r.URL.Path != "/api/v1/auth/logout" && r.URL.Path != "/api/v1/exports/recover" {
 		deleting, err := s.core.Store.DeletionIntentActive(r.Context(), p.AccountID)
 		if err != nil {
-			s.writeStoreErr(w, err)
+			s.writeStoreErrWithUnavailableCode(w, err, unavailableCode)
 			return nil
 		}
 		if deleting {
@@ -484,6 +484,10 @@ func (s *Server) writeJSON(w http.ResponseWriter, status int, body any) {
 }
 
 func (s *Server) writeStoreErr(w http.ResponseWriter, err error) {
+	s.writeStoreErrWithUnavailableCode(w, err, "INVALID_REQUEST")
+}
+
+func (s *Server) writeStoreErrWithUnavailableCode(w http.ResponseWriter, err error, unavailableCode string) {
 	switch {
 	case err == nil:
 		return
@@ -500,7 +504,7 @@ func (s *Server) writeStoreErr(w http.ResponseWriter, err error) {
 	case errors.Is(err, postgres.ErrOwnerContextRejected):
 		s.writeAPIError(w, http.StatusUnauthorized, "AUTHENTICATION_REQUIRED", "authentication required")
 	default:
-		s.writeAPIError(w, http.StatusServiceUnavailable, "INVALID_REQUEST", "temporarily unavailable")
+		s.writeAPIError(w, http.StatusServiceUnavailable, unavailableCode, "temporarily unavailable")
 	}
 }
 
