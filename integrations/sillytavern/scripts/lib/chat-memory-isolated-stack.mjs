@@ -34,6 +34,15 @@ const CODES = new Set([
 ]);
 const fail = code => new Error(code);
 
+export function createEvaluationStClient({ baseUrl, session, fetchImpl = fetch }) {
+    // Browser POSTs include Origin. The final memory guard forwards it to
+    // Go's cookie-authenticated endpoint, which rejects an absent origin.
+    return createStClient({ baseUrl, expectedIdentity: session,
+        fetchImpl: (url, options = {}) => fetchImpl(url, { ...options,
+            headers: { ...options.headers, Origin: new URL(baseUrl).origin } }),
+        extraCookies: `vc_session=${session.vcSession}; vc_csrf=${session.vcCsrf}` });
+}
+
 function run(command, args, { code, env = DOCKER_ENV, input } = {}) {
     const result = spawnSync(command, args, { cwd: ROOT, env, input, encoding: 'utf8', maxBuffer: 16 * 1024 * 1024,
         stdio: ['pipe', 'pipe', 'ignore'] });
@@ -397,8 +406,7 @@ await (${seedManagedProfiles.toString()})('/srv/vc-managed/data','/opt/vc/${INTE
                 const { ok } = await admin.call('PUT', '/api/v1/consents', { consentType, version: 'accept-managed', granted: true });
                 if (!ok) throw fail(stage);
             }
-            const st = createStClient({ baseUrl: stBase, expectedIdentity: session,
-                extraCookies: `vc_session=${session.vcSession}; vc_csrf=${session.vcCsrf}` });
+            const st = createEvaluationStClient({ baseUrl: stBase, session });
             return { admin, st, session, password: secrets.password };
         }
         const owner = await client(secrets.session);

@@ -13,6 +13,33 @@ import { startEngineObservationProxy } from '../scripts/lib/chat-memory-engine-p
 import { generateChatMemoryDataset } from '../../../scripts/lib/chat-memory-dataset.mjs';
 import { createRoundArtifacts } from '../../../scripts/lib/chat-memory-artifacts.mjs';
 import { instrumentEvaluationBuild } from '../scripts/lib/chat-memory-observation-build.mjs';
+import { createEvaluationStClient } from '../scripts/lib/chat-memory-isolated-stack.mjs';
+import { refreshMemorySlot } from '../server-plugin/virtual-companion/lib/memory-guard.js';
+
+test('evaluation native generation forwards browser origin through final memory recheck', async () => {
+    const baseUrl = 'http://127.0.0.1:18420';
+    let checked = false;
+    const client = createEvaluationStClient({ baseUrl,
+        session: { accountId: '7', sessionId: '9', vcSession: 'synthetic-session', vcCsrf: 'synthetic-csrf' },
+        fetchImpl: async (url, options) => {
+            if (url.endsWith('/csrf-token')) return Response.json({ token: 'synthetic-st-csrf' });
+            const request = { body: JSON.parse(options.body), headers: Object.fromEntries(new Headers(options.headers)) };
+            await refreshMemorySlot({ config: { goBaseUrl: 'http://go.test', timeoutMs: 1000 }, request,
+                response: { setHeader() {} }, finalBody: structuredClone(request.body), fetchImpl: async (_url, forwarded) => {
+                    const headers = new Headers(forwarded.headers);
+                    assert.equal(headers.get('origin'), baseUrl);
+                    assert.equal(headers.get('x-csrf-token'), 'synthetic-csrf');
+                    assert.equal(headers.get('x-vc-expected-account-id'), '7');
+                    assert.equal(headers.get('x-vc-expected-session-id'), '9');
+                    checked = true;
+                    return Response.json({ status: 'skipped', block: '', memoryIds: [], summaryIds: [], sources: [] });
+                } });
+            return new Response('data: [DONE]\n\n');
+        } });
+    await client.generate({ stream: true, messages: [{ role: 'user', content: '合成查询' }],
+        vc_memory: { chatIdentity: '00000000-0000-4000-8000-000000000001', revision: 1, enabled: true, budgetTokens: 128, block: '' } });
+    assert.equal(checked, true);
+});
 
 test('evaluation query and antecedents remain readable and unsettled after native storage', async () => {
     const testCase = generateChatMemoryDataset().cases.find(row => row.recentMessages.length > 0);
