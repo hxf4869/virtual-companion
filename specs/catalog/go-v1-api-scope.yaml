@@ -1737,7 +1737,10 @@ operations:
   decision: DEFER
   replacementOrImpact: 'SX-5 transitional serviceToken-only registration of a persisted input fence. Owner approved
     adding the interface on 2026-11-07; the concrete contract awaits Owner review before implementation. The plugin
-    supplies its verified Owner; browser proxy/CSRF/Origin protections remain unchanged. SX-9/SX-10 internalize
+    supplies its verified Owner; browser proxy/CSRF/Origin protections remain unchanged. chatRevision is a context
+    baseline: relevant causal changes conflict, while unrelated tail appends do not. Continue uses the selected
+    assistant input; regenerate uses the preceding user input. Terminal commits bind both Owner and chatId.
+    SX-9/SX-10 internalize
     registration in Go and SX-15 removes the Node-facing route.'
 undeclaredLegacyOperations:
 - path: /api/v1/auth/admin/invites

@@ -6419,10 +6419,20 @@ paths:
         the Node plugin supplies the Owner it has already verified through the Go session. Cookie authentication
         alone never authorizes this route, any browser Origin is refused, and the browser Go proxy must not expose
         it. Existing browser generation CSRF/Origin/expected-identity checks remain unchanged.
-        In one owner-bound transaction, check GO authority and exact authorityEpoch/chatRevision, then require
+        In one owner-bound transaction, check GO authority and exact authorityEpoch, then require
         inputMessageId and inputCandidateId to identify a currently persisted, live, selected candidate in this
-        same owned chat. Missing/unpersisted input, a deselected candidate or stale chatRevision is 409
-        REVISION_CONFLICT, with no registration; stale/frozen/ST authority is 409 CHAT_AUTHORITY_CHANGED.
+        same owned chat. chatRevision is the baseline used to assemble the client context, not an exact current
+        revision precondition. Compare that baseline with the same relevant-change fence used at finalization:
+        changed/deleted input, input selection changes, source-signature/selection changes within the history
+        prefix already present at the baseline, and metadata/order/branch changes reject registration with 409
+        REVISION_CONFLICT. Missing/unpersisted input, a deselected input candidate or an unprovable/future baseline
+        also returns REVISION_CONFLICT, with no registration. Stale/frozen/ST authority is 409 CHAT_AUTHORITY_CHANGED.
+        Unrelated tail appends, including background inbox or another device, do not reject registration or
+        extend its original history prefix. For example, save the user input at revision 10, append an inbox
+        message at revision 11, then register with chatRevision 10 and that saved input: registration succeeds.
+        For continue, inputMessageId is the assistant message being continued and inputCandidateId its selected
+        candidate. For regenerate, inputMessageId is the user message preceding the reply being regenerated,
+        with that user's selected candidate. Neither operation uses an unsaved synthetic input.
         Capture the input message/source revisions and generation, branchRoot, metadata/order revisions and
         the existing history boundary, without persisting input text in the run record.
         At most ONE active logical storage run exists per owner/chat. A successfully registered fresh run
@@ -6441,7 +6451,8 @@ paths:
         is CHAT_GENERATION_FENCED. Registration and its receipt commit atomically.
         The active run expires 15 minutes after its first successful registration (server clock; no renewal).
         Its only terminal storage transition is settled or aborted through ChatGenerationCommit. Before that
-        transition, expired/superseded runs, changed/deleted input, changed input selection, changes to existing
+        transition, a run whose owner or chatId differs from the committing owner/chat, expired/superseded runs,
+        changed/deleted input, changed input selection, changes to existing
         history source signatures/selections, metadata/order changes, branch changes or an authority change
         fence the run. Unrelated tail appends do not invalidate the captured history prefix. All guards and the
         terminal transition share the message transaction. A terminal retry with the same successful write
@@ -6489,8 +6500,6 @@ paths:
           $ref: '#/components/responses/ChatConflict'
         '410':
           $ref: '#/components/responses/ChatResultExpired'
-        '428':
-          $ref: '#/components/responses/ChatPreconditionRequired'
         '503':
           description: INVALID_REQUEST when the existing service channel is not configured; SCHEMA_UNAVAILABLE for
             chat storage or restore-gate unavailability. No registration ACK before durable commit.
@@ -8222,8 +8231,11 @@ paths:
         required: false
         schema:
           type: string
+          maxLength: 200
         description: Trimmed, Unicode case-insensitive substring of the current selected candidate's mes across the
-          full chat. Empty means no filter. Bound to cursors; applies to anchor and page-existence flags too.
+          full chat. The supplied value is at most 200 Unicode code points before trimming; longer queries return
+          400 INVALID_REQUEST. Empty means no filter. Bound to cursors; applies to anchor and page-existence flags too.
+          Stored bodies remain application-encrypted; matching requires a bounded Go decryption scan, not a database text index.
       - $ref: '#/components/parameters/ChatPageLimit'
       - $ref: '#/components/parameters/ChatView'
       - name: include
@@ -9277,10 +9289,12 @@ components:
           description: Stable logical foreground storage run, shared by nested calls of that operation.
         chatRevision:
           $ref: '#/components/schemas/ChatRevision'
+          description: Context-assembly baseline. Relevant changes since this revision conflict; unrelated tail appends do not.
         inputMessageId:
           type: string
           format: uuid
-          description: Already-saved causal input; never a pending client-only message.
+          description: Already-saved causal input. Continue uses the assistant message being continued; regenerate
+            uses the user message preceding the reply being regenerated. Never a pending client-only message.
         inputCandidateId:
           type: string
           format: uuid
@@ -9314,6 +9328,7 @@ components:
           $ref: '#/components/schemas/ChatRevision'
         chatRevision:
           $ref: '#/components/schemas/ChatRevision'
+          description: The accepted client context baseline, retained unchanged when unrelated tail appends preceded registration.
         metadataRevision:
           $ref: '#/components/schemas/ChatRevision'
         orderRevision:
@@ -9329,7 +9344,8 @@ components:
         expiresAt:
           type: string
           format: date-time
-      description: Immutable registration facts, no message body and no claim that the run is still active on replay.
+      description: Immutable registration facts including the accepted context baseline. The server retains that
+        baseline's original history boundary internally. No message body and no claim that the run is still active on replay.
         expiresAt is registeredAt plus 15 minutes. Replaying this response does not renew or reactivate the run.
     ChatGenerationCommit:
       type: object
@@ -9347,7 +9363,9 @@ components:
           - settled
           - aborted
       description: Required for generated final/partial assistant output, including append, addSwipe or edit of a generated
-        reply. Same run has exactly one terminal commit. The server validates the run and its persisted input message/candidate
+        reply. Same run has exactly one terminal commit. The server first verifies that both the run's owner and
+        chatId match the submitting owner and target chat; either mismatch is CHAT_GENERATION_FENCED. It validates
+        the run and its persisted input message/candidate
         revisions, branch and authority fence; stale/changed/deleted input or a second terminal operation is CHAT_GENERATION_FENCED.
         Keep that output as a draft. No token-by-token chat writes; tools/MVU/EJS must finish before settled evidence
         becomes eligible. Replaying the same successful requestId returns its receipt before reapplying terminal-run

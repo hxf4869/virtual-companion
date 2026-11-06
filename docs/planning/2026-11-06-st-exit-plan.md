@@ -319,7 +319,7 @@
 - **一次打开**：`GET /chats/{chatId}/messages?include=chat` 从同一次读取返回显示页及完整 header、metadata、各域版本；省略 include 时不带 chat。默认 `view=display`，`view=full` 返回全部候选、变量及未知字段。单消息 GET 始终 full。
 - **删除优先**：删除/权利撤销屏障高于任何游标；删除账号/会话后读取立即拒绝，已删除消息永不由旧游标返回正文。changes 返回删除 ID/整聊失效信息，客户端立即剔除缓存；404 不区分不存在或非本人。
 - **过期与锚点**：游标有效 15 分钟。到期/重排后用 `anchorMessageId` 重新读取包含该锚点、以其结束的一页（最多 limit-1 条更早消息），不传 before/after；锚点也被删则收到 404，回到末页。changes 保留 7 天，过期返回 410 `CHAT_CHANGES_EXPIRED` 并重建当前页；不得跨 orderRevision 盲拼页面。changes 的 throughRevision 为最后完整事务，hasMore=true 时继续追平，不拆事务。
-- **列表与搜索**：会话列表按 `(updatedAt DESC, chatId DESC)` 的排他 keyset 排序，cursor 绑定 Owner、过滤及到期时间，不维持列表快照。更新可能导致行移动，客户端按 chatId 去重并刷新首屏；不承诺并发更新期间无跳项。列表直接给摘要/条数及账号 authorityEpoch，不扫描正文；列表的 `q` 只搜标题/角色。Owner 2026-11-07 批准 SX-4 在消息分页增加 `q`：trim 后对整聊当前选中候选的 `mes` 做 Unicode 大小写不敏感子串搜索，游标绑定查询，方向/锚点/has* 均按同一过滤集合；锚点不匹配返回 404。不搜索未选候选，不把当前页查找冒充全聊搜索。
+- **列表与搜索**：会话列表按 `(updatedAt DESC, chatId DESC)` 的排他 keyset 排序，cursor 绑定 Owner、过滤及到期时间，不维持列表快照。更新可能导致行移动，客户端按 chatId 去重并刷新首屏；不承诺并发更新期间无跳项。列表直接给摘要/条数及账号 authorityEpoch，不扫描正文；列表的 `q` 只搜标题/角色。Owner 2026-11-07 批准 SX-4 在消息分页增加 `q`：原值最多 200 个 Unicode 码点（超长 400 `INVALID_REQUEST`），trim 后对整聊当前选中候选的 `mes` 做 Unicode 大小写不敏感子串搜索，游标绑定查询，方向/锚点/has* 均按同一过滤集合；锚点不匹配返回 404。正文保持应用层加密，只能在 Go 有界解密扫描；不搜索未选候选，不把当前页查找冒充全聊搜索。SX-4 验收包含 20,000 条合成消息无命中全量扫描的单页 P95 和请求期间堆内存增量上限，测试口径、上限与实测值记入 NOTES。
 - **容量**：页 default=50/max=200，响应软目标 ≤256 KiB；full 可按字节提早结束并给下一 cursor，至少返回一条符合条件的消息，**不能截断一条消息**。完整单消息（含候选）/操作上限建议 1 MiB/8 MiB；超限显式 413 `CHAT_PAYLOAD_TOO_LARGE`。导入预检报告旧数据超限，不丢字段；multipart 文件采用独立 256 MiB 上限。这是已冻结的实施参数，尚非当前服务已实施限制。
 
 ### 4.4 幂等、并发及生成提交
@@ -343,9 +343,14 @@ catalog 暂为 DEFER。必须单独提交契约并经 Owner 审阅后，才实�
 - 鉴权只用现有 `serviceToken`，沿用 `/service/model-usage/reservations` 的“插件先核验 Owner”模式；拒绝浏览器 Origin，
   不接 Cookie-only 请求、不加入浏览器代理白名单，不放宽前台原有 CSRF/Origin/身份守卫。
 - 必填 `ownerAccountId/requestId/authorityEpoch/generationRunId/chatRevision/inputMessageId/inputCandidateId`。
-  输入必须已保存且候选当前选中；输入不存在/未保存、候选已切换、chatRevision 过旧均 409，不产生登记。
-  epoch 过旧或非 Go 写权威为 409 `CHAT_AUTHORITY_CHANGED`。服务端记录输入消息/来源版本、generation、branchRoot、
-  metadata/order 版本和已存在历史边界；run 中不保存对话正文。
+  输入必须已保存且候选当前选中；`chatRevision` 是客户端组装上下文的基线，不要求与登记时当前版本精确相等。
+  按终态相同的相关变化核验：输入消息改/删、输入候选切换、基线时已有历史前缀的来源签名/选择变化，以及
+  metadata/order/branch 变化，均 409 `REVISION_CONFLICT`；输入不存在/未保存、候选已切换或无法证明/来自未来的基线同样拒绝。
+  epoch 过旧或非 Go 写权威为 409 `CHAT_AUTHORITY_CHANGED`。无关尾部追加（inbox/他端）允许登记，且不扩大原历史前缀。
+  例如用户消息保存为 revision 10，登记前 inbox 追加使当前为 11，以 `chatRevision=10` 和该已保存输入登记仍成功。
+  服务端记录接受的原始基线、输入消息/来源版本、generation、branchRoot、metadata/order 版本和基线已有历史边界；run 中不保存正文。
+- `continue` 的 `inputMessageId` 是被续写的助手消息，`inputCandidateId` 是它的选中候选；`regenerate` 的输入是
+  被重新生成的回复之前的用户消息及其选中候选。嵌套 Helper/EJS/tool 共用原 run，不创造新的因果输入。
 - 每个 Owner/chat **最多 1 个活动逻辑 run**。新 requestId/runId 成功登记时，同事务将旧活动 run 标为 FENCED；
   停止在原 run 上提交 aborted，重新生成另登记新 run。嵌套 Helper/EJS/tool 属于同一前台操作时共用原 run，不另争活动名额。
   这只控制存储终态，不自动重发或取消 provider 请求；既有生成与用量流程继续负责这些副作用。
@@ -353,7 +358,8 @@ catalog 暂为 DEFER。必须单独提交契约并经 Owner 审阅后，才实�
   仍先验证当前授权、epoch 与聊天删除屏障。同 requestId 不同内容为 `IDEMPOTENCY_KEY_REUSED`；不同 requestId
   复用同 runId 一律 `CHAT_GENERATION_FENCED`。登记 ACK 不能用作自动重发结果未知模型请求的依据。
 - run 从首次成功登记起 **15 分钟过期、不续期**。输入改/删、输入候选切换、已存在历史的来源签名/选择变化、metadata/order/
-  branch/authority 变化使它失效；无关尾部追加不改变已登记历史前缀。settled/aborted 只有一次，终态校验与消息写入同事务；
+  branch/authority 变化使它失效；无关尾部追加不改变已登记历史前缀。终态先核对 run 的 Owner 和 chatId 均与提交方及目标聊天一致，
+  任一不符为 `CHAT_GENERATION_FENCED`。settled/aborted 只有一次，终态校验与消息写入同事务；
   过期/失效提交为 `CHAT_GENERATION_FENCED`，Session 保留最终或部分输出为待处理草稿。
 - 登记、终态入口和现有 retention worker 清理逾期活动状态；同步 deadline 检查不依赖清理是否已跑。7 天后清除回执正文和历史
   栅栏明细；紧凑 runId/requestId/摘要/结果记录至少保留至聊天删除与权利屏障完成，账号删除级联清除，过期不能重启旧 run。

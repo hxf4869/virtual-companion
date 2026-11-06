@@ -3247,7 +3247,7 @@
             "method": "POST",
             "operationId": "registerStoredChatGeneration",
             "path": "/api/v1/service/chats/{chatId}/generation-runs",
-            "replacementOrImpact": "SX-5 transitional serviceToken-only registration of a persisted input fence. Owner approved adding the interface on 2026-11-07; the concrete contract awaits Owner review before implementation. The plugin supplies its verified Owner; browser proxy/CSRF/Origin protections remain unchanged. SX-9/SX-10 internalize registration in Go and SX-15 removes the Node-facing route."
+            "replacementOrImpact": "SX-5 transitional serviceToken-only registration of a persisted input fence. Owner approved adding the interface on 2026-11-07; the concrete contract awaits Owner review before implementation. The plugin supplies its verified Owner; browser proxy/CSRF/Origin protections remain unchanged. chatRevision is a context baseline: relevant causal changes conflict, while unrelated tail appends do not. Continue uses the selected assistant input; regenerate uses the preceding user input. Terminal commits bind both Owner and chatId. SX-9/SX-10 internalize registration in Go and SX-15 removes the Node-facing route."
           }
         ],
         "runtimeAfterCutover": "Go companiond serves the KEEP/SIMPLIFY surface after the 2026-08-30 cutover; DEFER/RETIRE operations are not runtime fallbacks.",
@@ -3284,7 +3284,7 @@
           }
         ]
       },
-      "sha256": "5041e856fab9b8c1d84d993ac778308d9f52d915195c9543c0fe3e86f9425051"
+      "sha256": "4dc700f3a29d3bfecbe8f17a2b28ff9d0a9d26c73cfc12b8ffaf6a8023458711"
     },
     "memory-candidate-statuses.yaml": {
       "document": {
