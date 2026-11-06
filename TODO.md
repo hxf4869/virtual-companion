@@ -1667,7 +1667,7 @@ N-00～N-08（对应评审发现 F-01～F-08）为在途修复，逐项状态与
 
 ### MB2 手机端 React 重建（2026-11-06 起；方案 `docs/planning/2026-11-06-mobile-react-rebuild-plan.md`）
 
-- [ ] MB2-0–MB2-15：待 Owner 批准 [ADR-0012](docs/decisions/0012-mobile-react-shared-engine.md)；批准前只执行 MB2-0、MB2-1。条目与验收见 [Backlog L](docs/planning/2026-10-31-handoff-backlog.md) L 节。
+- [ ] MB2-0–MB2-15：[ADR-0012](docs/decisions/0012-mobile-react-shared-engine.md) 已获 Owner 批准（2026-11-06，React + Capacitor，安卓与 iOS 同时）；MB2-1 报告为固定停点。条目与验收见 [Backlog L](docs/planning/2026-10-31-handoff-backlog.md) L 节。
 
 ### NF 电脑端前端替换（2026-11-03）
 

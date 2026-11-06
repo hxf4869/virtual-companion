@@ -477,12 +477,12 @@ Owner 选择 React，要求保留现有正常 UI、优先复用成熟开源组�
 
 新增原因：电脑端 DR2 合入 main 后功能远多于 `mb-mobile` 的 uni-app 手机端；Owner 决定手机端重做并接受大面积调整。
 方案为手机与电脑端共用 React 代码与独立引擎，放弃 uni-app 界面与隐藏 ST 引擎，见 [ADR-0012](../decisions/0012-mobile-react-shared-engine.md)（Proposed）
-与 [MB2 计划](2026-11-06-mobile-react-rebuild-plan.md)。ADR-0012 批准前只执行 MB2-0、MB2-1。`MB-*`（ADR-0011 路线）不再推进。
+与 [MB2 计划](2026-11-06-mobile-react-rebuild-plan.md)。ADR-0012 已于 2026-11-06 获 Owner 批准（React + Capacitor，安卓与 iOS 同时交付）；MB2-1 Spike 报告为固定停点，Owner 确认组件选型与性能预算后继续。`MB-*`（ADR-0011 路线）不再推进。
 
 | ID | P | 内容 | 验收要点 |
 | --- | --- | --- | --- |
-| MB2-0 | P1 | 批准 ADR-0012，修订 DESIGN.md 第 17 节，登记待出图页面 | 文档一致性、`git diff --check` |
-| MB2-1 | P1 | Spike：独立引擎手机性能基线与 Android 壳（Capacitor）可行性 | 计划第 3.6 节指标、ADR-0011 App 验证项、插件许可 |
+| MB2-0 | P1 | 修订 DESIGN.md 第 17 节；出图、Claude 审核、Owner 选图 | 文档一致性、`.review-queue/MB2-0/` 图与 `PICKS.md` |
+| MB2-1 | P1 | Spike：性能基线、组件选型（Ionic vs 无样式组合）、安卓与 iOS 壳可行性 | 计划第 3.6 节严格档指标、第 3.9 节评估、App 验证项与插件许可 |
 | MB2-2 | P1 | 迁移 `mb-mobile` 后端与契约：MDL-2（V285）、角色来电（V284） | 迁移重排编号、Go 集成、RLS、受管 `hl-proactive` / `voice-chat` |
 | MB2-3 | P1 | 手机入口构建与 `/m/` 同源托管 | host-auth 单测、两端构建、电脑端不回归 |
 | MB2-4 | P1 | 共享业务逻辑抽取（电脑端零行为变化） | 电脑端 Vitest、离线全量、受影响受管场景 |
@@ -494,6 +494,6 @@ Owner 选择 React，要求保留现有正常 UI、优先复用成熟开源组�
 | MB2-10 | P1 | 剧情 | `mb2-pages` 剧情段 |
 | MB2-11 | P1 | 设置与酒馆九类配置 | `mb2-settings` |
 | MB2-12 | P1/P2 | 语音、通话与来电 | `mb2-voice`、`mb2-call` |
-| MB2-13 | P2 | Android 薄壳与系统能力 | MuMu + adb 记录，真机项标注 |
-| MB2-14 | P1 | 手机入口切换与旧宿主清理（逐项确认） | 两端受管整组、`check.sh` |
+| MB2-13 | P2 | 安卓与 iOS App 壳及系统能力 | 安卓模拟器 + adb、iOS 模拟器 + 真机逐项记录 |
+| MB2-14 | P1 | 电脑端“打开手机版”入口；`/native/` 移除（MB2-15 通过且 Owner 确认后） | 两端受管整组、`check.sh` |
 | MB2-15 | P1 | 全量验收、视觉终审与合并准备 | Mac 参考环境整组、性能预算、截图终审 |
