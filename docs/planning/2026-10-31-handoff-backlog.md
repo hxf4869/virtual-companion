@@ -540,6 +540,8 @@ Owner 选择 React，要求保留现有正常 UI、优先复用成熟开源组�
 
 **SX-5 [问]（2026-11-07，零输出停止，已答）**：现有 append/edit/operations 均要求至少一项，登记后尚无任何输出就停止（包括登记 ACK 丢失）无法提交无消息的 `aborted`。建议不新增空操作或取消接口：零输出不做消息终态写入，原 run 沿用 15 分钟期限，后续新登记立即使其失效；有部分输出仍以原 run 提交 aborted。**答（Owner 2026-11-07）**：确认；Session 停止后丢弃迟到片段，不再用该 run 提交终态，取消上游并释放用量预留；过期未终结 run 在紧凑记录中标为内部 `expired`，不新增对外状态。
 
+**SX-6 [问]（2026-11-07，权威发现与旧门面阶段边界，方向已答）**：现有 `GET /api/v1/auth/session`/宿主 HTML 只有账号、会话身份；`GET /chats` 在 ST 权威时与故障同为 503，不能以失败回退 ST。建议给已认证 session 增加 `chatStorage: {mode: ST|GO|FROZEN, authorityEpoch: 十进制字符串}`，宿主从已核验响应注入页面和请求上下文；查询失败不默认 ST。旧 native 的文件名解析、新建/分支预分配 ID 与 F2 同 ID/+1 ACK 则缺少 Go 别名/原子全聊 CAS 契约（`stored_chat` 尚无别名；普通 operations 允许并发尾部追加，不能先读再伪装严格 whole-save）。建议本项先完成 Go 共享 Session/脚本全史与增量持久化；GO/FROZEN 权威下旧 ST 聊天入口明确拒绝且不触碰旧盘。完整旧文件名/新建/fork 门面随 SX-8 别名与迁移契约一起实施并作为切换前置。若 Owner 要求 SX-6 即具备完整 native GO 门面，先补别名、创建身份及仅 serviceToken 的严格 revision 兼容 operations 契约再实现；不以新 epoch 重新标记旧页面。**答（Owner 2026-11-07）**：同意先完成共享 Session/脚本并拒绝旧入口、native 完整门面归 SX-8 的边界；字段名用 `mode`。先独立提交 OpenAPI/生成物供 Owner 复审，再实施依赖逻辑。字段仅提示，写入仍查当前权威；409 后重读 session 留稿且不自动重发；FROZEN 提示“正在迁移”、只读、本地留稿、不回退或排队。SX-8 前置全部完成且 Owner 授权切换前，真实账号不得置为 GO/FROZEN，测试覆盖旧入口拒绝且零触盘。
+
 ## N. 聊天与记忆质量（CM，2026-11-06 Owner 决定以指标驱动）
 
 计划与量化验收见 [聊天与记忆质量计划](2026-11-06-chat-memory-quality-plan.md) §5。真实模型评测每轮硬上限 ¥100；

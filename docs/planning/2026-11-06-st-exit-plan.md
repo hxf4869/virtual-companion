@@ -368,6 +368,14 @@ Owner 批准增加过渡内部接口 `POST /api/v1/service/chats/{chatId}/genera
 
 ### 4.5 Session 与读取整段聊天的脚本兼容
 
+**SX-6 Owner 补充边界（2026-11-07，字段契约待单独复审）**：已认证 `GET /api/v1/auth/session` 增加
+`chatStorage: {mode: ST|GO|FROZEN, authorityEpoch}`，由已核验会话送入页面/请求上下文。它仅用于选择存储，
+服务端每次写仍校验当前权威与 epoch；查询失败不默认 ST。409 `CHAT_AUTHORITY_CHANGED` 后只重新读取 session、
+保留草稿，不自动重发；FROZEN 显示“正在迁移”，界面只读、本地留稿，不回退 ST、不排队写入。
+SX-6 的 Go 共享 Session 与脚本走原生操作 API；GO/FROZEN 下旧 ST 聊天入口明确拒绝且不得触盘。
+完整旧 native 文件名别名、新建/fork 门面和迁移契约归 SX-8，均完成且 Owner 另行授权前，真实账号不得置为
+GO/FROZEN；本轮这两种模式只出现在隔离测试库。会话字段先独立提交契约供 Owner 审阅，再实施依赖逻辑。
+
 把现有 `S/session.js:109` 的整聊 payload 边界替换为一个共享 ChatStore 适配器，由服务端迁移线拥有接口与实现；MB2 使用 `D/runtime/session-bridge.ts` 的窗口化只读投影，不另造手机保存链。显示页、引擎上下文、完整脚本快照三个状态显式区分。
 
 - React 先渲染 `display` 末页，不需初始化 Helper/EJS/MVU，不把卡片 pending 占位记为卡片就绪。阅读位置使用 messageId + 像素锚点，分页 prepend/reorder 不依赖数组索引。swipe 详情按 ID 获取 full 消息；UI index 仅作某个已知快照中的兼容楼层映射。

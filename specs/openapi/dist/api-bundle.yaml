@@ -4292,8 +4292,16 @@ paths:
     get:
       operationId: getAuthSession
       summary: Restore the current authenticated account state
-      description: Returns ACTIVE only for a live opaque vc_session. This is the sole page refresh source for account, role
-        and authenticator state; clients must not infer admission from local storage.
+      description: 'Returns ACTIVE only for a live opaque vc_session. This is the sole page refresh source for account, role
+        and authenticator state; clients must not infer admission from local storage. SX-6 addition pending Owner review:
+        chatStorage is an owner-scoped storage-selection hint, never authorization. It reports the persisted ST/GO/FROZEN
+        mode and authorityEpoch; a missing authority row has the defined initial ST/1 value. Lookup failures return 503 rather
+        than inventing ST or using an availability failure as a storage fallback. Each write still checks the current server
+        authority and epoch. After 409 CHAT_AUTHORITY_CHANGED, clients re-read this endpoint with the same page identity,
+        retain the draft and never automatically resend the rejected write. FROZEN is read-only: display the approved "正在迁移"
+        notice, keep drafts locally, and do not fall back to ST or queue automatic writes. GO/FROZEN may be exercised only
+        in isolated test databases until SX-8 native filename aliases, create/fork compatibility and migration contracts are
+        complete and the Owner separately authorizes cutover.'
       security:
       - cookieAuth: []
       responses:
@@ -4302,9 +4310,16 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/AuthSessionResponse'
+                $ref: '#/components/schemas/AuthSessionContextResponse'
         '401':
           description: No live opaque session
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '503':
+          description: SCHEMA_UNAVAILABLE when the chatStorage lookup fails; existing session-state unavailability may use
+            INVALID_REQUEST. Never return a guessed storage mode or a successful response without the hint.
           content:
             application/json:
               schema:
@@ -13968,6 +13983,33 @@ components:
           type: integer
           format: int64
           minimum: 1
+    ChatStorageState:
+      type: object
+      additionalProperties: false
+      required:
+      - mode
+      - authorityEpoch
+      properties:
+        mode:
+          type: string
+          enum:
+          - ST
+          - GO
+          - FROZEN
+        authorityEpoch:
+          $ref: '#/components/schemas/ChatAuthorityEpoch'
+      description: Server-read selection hint for the authenticated Owner. It grants no write permission and never replaces
+        per-request authority/epoch validation. FROZEN forbids automatic writes and storage fallback.
+    AuthSessionContextResponse:
+      allOf:
+      - $ref: '#/components/schemas/AuthSessionResponse'
+      - type: object
+        required:
+        - chatStorage
+        properties:
+          chatStorage:
+            $ref: '#/components/schemas/ChatStorageState'
+      description: GET /auth/session adds the required storage hint; login/challenge response shapes remain unchanged.
     AuthenticatorSetupResponse:
       type: object
       required:
