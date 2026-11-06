@@ -557,3 +557,4 @@ Owner 选择 React，要求保留现有正常 UI、优先复用成熟开源组�
 
 - CM-4 Owner 补充边界（2026-11-07）：允许修改 `jobs/memorycore_extract.go`、`store/postgres/st_memory*.go`、Node `lib/memory-guard.js` 的记忆质量逻辑及直接回归；新窗口/查询逻辑集中到独立函数或文件，原入口最小调用。来源读取、stsource reader、ST 读回、source_ref / generation / 屏障归 SX-7，不修改。CM-4 推送后通知 Owner，由 Claude 审计并先合 main，SX-7 开工前同步该 main；CM 线不自行合入 main。
 - CM-4 Owner 补充授权（2026-11-07）：允许在 `store/postgres/memorycore_runtime.go` 的 `ValidateEngineProposal` 增加支持来源校验；每条派生事实至少有一个已核验用户主来源，拒绝纯助手提案，助手只限同会话、提取窗口内、当前选中候选。保持函数开头 `vc.memory_write_barrier` 先于来源行锁，新增校验在其后；不改来源协议、source_ref 格式、generation、屏障或表结构。直接回归覆盖助手支持来源编辑/删除/候选切换导致失效，no_memory/无痕不得作为来源、纯助手拒绝，并保持 `memorycore_proposal_lock_integration_test` 通过；提交说明列明此文件范围供 SX-7 合并。
+- CM-4 Owner 决定（2026-11-07）：逐事实来源发布的函数迁移由 Owner 转交 SX，需求见 [迁移交接](2026-11-07-cm4-source-publication-handoff.md)。CM 获准补 prepare 逐记录目标映射及 Go 校验/发布参数；迁移合 main 前只交查询补全与检索计算复用，依赖新入口的窗口候选不能合 main。联合验收覆盖独立 A/B 不连带遗忘、真实 A+B 任一失效即撤回、助手逐事实生效及遗忘后真实出站零召回。

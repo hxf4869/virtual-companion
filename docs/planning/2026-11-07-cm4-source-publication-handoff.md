@@ -1,0 +1,57 @@
+# CM-4 → SX：逐事实来源发布迁移需求
+
+Owner 2026-11-07 已批准，由 Owner 转交 server-sx。迁移只由 SX 编写；CM 负责 prepare 补丁、Go 逐记录校验与调用参数。此文是待双方冻结的接口提案，不代表迁移已经存在。
+
+## 问题与范围
+
+现 `vc.go_publish_memorycore(bigint,bigint,text,text,jsonb,text[])` 定义于 `V149__memorycore_production_projection.sql`，将同一 `p_refs` 写给每条记录。把提取窗口直接并入该列表后，遗忘独立事实 B 会抑制无关事实 A 的来源，并触发原生记录清理。必须把“模型看过的上下文”与“每条事实真正依赖的来源”分开。
+
+只调整现有发布函数族，不新增表，不修改 source_ref 格式、来源读取协议、generation、屏障或既有权限边界。保留 `vc.memory_write_barrier` 先于来源行锁，以及 operation、scope、claim、来源和目标版本的现有校验顺序。不要改写 V149；迁移版本由 SX 从自己的最新版本顺延。
+
+## 建议 SQL 契约
+
+保留原六参数入口，新增同名七参数重载：
+
+```sql
+vc.go_publish_memorycore(
+  p_owner bigint, p_job bigint, p_token text, p_fence text,
+  p_proposal jsonb, p_refs text[], p_record_refs jsonb
+) RETURNS void
+```
+
+`p_record_refs` 由 Go 从已核验来源生成，以本次 record ID 为键、稳定 source_ref 数组为值；不接受浏览器或模型直接提供的完整 source_ref。例如以下只是形状占位，不是可执行来源：
+
+```json
+{
+  "record-a": ["<A 的已核验 source_ref>"],
+  "record-b": ["<B 的已核验 source_ref>", "<B 的助手支持 source_ref>"]
+}
+```
+
+- `p_refs` 是所有记录真实来源的去重并集，继续使用现有逐来源 guard 和 scope 校验。
+- 新入口要求映射键与 `p_proposal.records` 的唯一 ID 集合严格相等；每个非空记录的来源数组非空、无重复且无额外来源；全部数组的并集与 `p_refs` 相等。空输出沿用既有空提案流程。
+- 每条记录至少含已核验的用户主来源。Go 逐条核对真实 `source_message_ids`，不能以聚合 metadata 替代；助手支持限定为该用户锚点同会话、窗口内、当前候选且符合隐私门禁的来源。
+- 发布循环只把该 record 对应的数组写入 `memory_evidence`。保持同一 operation 内全部记录原子发布，不能逐条拆 operation 或重复调用绕过 `PUBLISHED` 幂等返回。
+- `p_proposal` 保存每条事实的实际 source keys 和逐条 conflict target 对应关系；上下文窗口只参与在途核验，不自动成为每条事实的持久 evidence。实际引用的旧 target evidence 必须继承，不能为缩小来源而丢失。
+- 保留既有 owner/role EXECUTE 授权及 SECURITY DEFINER/search_path 约束，不授予应用直接写 evidence 的权限。
+
+## 过渡与合入顺序
+
+1. SX 保留六参数旧入口的现有行为；可由旧入口构造“每条记录共用旧 p_refs”的映射后委托新实现。旧 Go 与已持久化旧提案仍可续跑，不给既有记录批量改写 evidence。
+2. SX 先提交迁移与 SQL/RLS 回归，经其流程合入 main；交给 CM 实际迁移版本、函数契约及测试结果。
+3. CM 同步该 main 后才启用七参数调用和提取窗口。新调用不回退六参数：新函数缺失时应明确失败，不能静默丢失逐事实语义。
+4. 迁移落 main 前，CM 只交付查询补全和原生检索计算复用；依赖新入口的代码保留在隔离候选，不能作为可合 main 的完整 CM-4 提交。
+5. 迁移与新调用均保留同一个 operation 的 claim/fence、事务和幂等语义；重复发布不重复插入事实或 evidence。旧入口移除不属于本任务。
+
+## CM 配套与联合验收
+
+CM 修改既有 prepare 补丁以保留每条新记录对应的 conflict targets，并调整 Node/Go：分别维护实际上下文核验集合、逐事实来源、真正继承的旧证据。Go 的 `memorycore_runtime.go` 改动范围将明确列在提交说明中，供 SX-7 合并。
+
+必须在同一稳定候选上验证：
+
+1. 相邻独立事实 A、B：遗忘 B 后，A 的 PG 来源、原生记录、召回与真实出站均保留；B 不再出站。
+2. 一个事实确实联合依赖 A、B：任一来源被遗忘、删除或失效后，该事实均不再召回或出站，不能只留另一来源继续发布。
+3. 助手支持按每条事实生效：支持句编辑、删除、切换候选使对应事实失效；no_memory、无痕、跨会话、窗口外助手不可成为支持来源；纯助手引用即使伪装聚合 metadata 也被 Go 拒绝。
+4. 原生 gate 过滤用户主来源时，不得只把助手上下文交给模型产生事实。
+5. 原 `memorycore_proposal_lock_integration_test` 继续通过；覆盖模型执行期间来源变化、并发遗忘与发布、旧六参数调用、旧提案恢复、新七参数调用及重复发布。
+6. CM-3 同一数据集比较查询、提取、候选、最终排序、实际注入、回答和 token；失败与未覆盖项保留分母。迁移尚未完成前不声明上述联合验收通过。
