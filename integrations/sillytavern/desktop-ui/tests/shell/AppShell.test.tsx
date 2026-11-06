@@ -619,7 +619,7 @@ describe('AppShell layout, portal host & reduced motion', () => {
 
       // Check Aurora.css uses canonical calc() spot coordinates and has no fictional paper/smoke rules
       const auroraCss = readFileSync(
-        resolve(__dirname, '../../src/shell/Aurora.css'),
+        resolve(__dirname, '../../src/design/theme/Aurora.css'),
         'utf8',
       );
       expect(auroraCss).toContain('calc(15vw - 30vmax)');

@@ -50,6 +50,7 @@ import { desktopBusinessScene } from './desktop-business-accept.mjs';
 
 import { mbEngineScene } from './mb-engine-accept.mjs';
 import { mbChatScene } from './mb-chat-accept.mjs';
+import { mb2ShellScene, mb2LayoutScene } from './mobile-shell-accept.mjs';
 
 export const ACCEPT_SCENES = [
     memoryRealModelScene,
@@ -129,4 +130,6 @@ export const ACCEPT_SCENES = [
     desktopPerformanceScene,
     mbEngineScene,
     mbChatScene,
+    mb2ShellScene,
+    mb2LayoutScene,
 ];

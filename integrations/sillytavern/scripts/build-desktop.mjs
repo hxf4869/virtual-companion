@@ -153,12 +153,16 @@ export async function buildDesktop() {
                 if (!clean.startsWith(path.join(INTEGRATION, 'node_modules/'))) continue;
                 let directory = path.dirname(clean);
                 while (directory.includes(`${path.sep}node_modules${path.sep}`)) {
+                    const parent = path.dirname(directory);
+                    const isPackageRoot =
+                        path.basename(parent) === 'node_modules' ||
+                        (path.basename(parent).startsWith('@') && path.basename(path.dirname(parent)) === 'node_modules');
                     const pkgPath = path.join(directory, 'package.json');
-                    if (fs.existsSync(pkgPath) && JSON.parse(fs.readFileSync(pkgPath, 'utf8')).name) {
+                    if (isPackageRoot && fs.existsSync(pkgPath) && JSON.parse(fs.readFileSync(pkgPath, 'utf8')).name) {
                         packages.add(directory);
                         break;
                     }
-                    directory = path.dirname(directory);
+                    directory = parent;
                 }
             }
         }
@@ -166,8 +170,15 @@ export async function buildDesktop() {
     const notices = [...packages].sort().map(directory => {
         const info = JSON.parse(fs.readFileSync(path.join(directory, 'package.json'), 'utf8'));
         const license = fs.readdirSync(directory).find(name => /^licen[sc]e(?:\.(?:md|txt))?$/i.test(name));
-        if (!license) throw new Error(`缺少 bundle 依赖许可：${info.name}`);
-        return `${info.name}@${info.version}\n\n${fs.readFileSync(path.join(directory, license), 'utf8')}`;
+        let licensePath = license ? path.join(directory, license) : null;
+        if (!licensePath && info.name?.startsWith('@ionic/') && info.license === 'MIT') {
+            const ionicCoreLicense = path.join(path.dirname(directory), 'core', 'LICENSE');
+            if (fs.existsSync(ionicCoreLicense)) {
+                licensePath = ionicCoreLicense;
+            }
+        }
+        if (!licensePath) throw new Error(`缺少 bundle 依赖许可：${info.name}`);
+        return `${info.name}@${info.version}\n\n${fs.readFileSync(licensePath, 'utf8')}`;
     });
     notices.push(sourceNotices.trimEnd());
     notices.push(fs.readFileSync(path.join(INTEGRATION, 'desktop-ui/THIRD_PARTY_LICENSES.txt'), 'utf8'));

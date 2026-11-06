@@ -7,11 +7,21 @@ import '../../design/base.css';
 
 type BootState = 'booting' | 'ready' | 'error';
 
+export type MountedMobileRoot = Root & {
+    destroy: () => void;
+};
+
 export function MobileBootstrapApp({
     client: externalClient,
     queryClient,
     sessionBridge,
     children,
+    initialPath,
+    slots,
+    badges,
+    unreadDots,
+    userName,
+    userAvatarUrl,
 }: MobileAppProps = {}) {
     const clientRef = useRef<AppClient | null>(externalClient ?? null);
     if (externalClient && clientRef.current !== externalClient) {
@@ -25,8 +35,10 @@ export function MobileBootstrapApp({
     const [bootState, setBootState] = useState<BootState>('booting');
     const [errorMessage, setErrorMessage] = useState<string>('');
     const bootTokenRef = useRef(0);
+    const destroyedRef = useRef(false);
 
     const runBootstrap = useCallback(async () => {
+        if (destroyedRef.current) return;
         const token = ++bootTokenRef.current;
         setBootState('booting');
         setErrorMessage('');
@@ -36,16 +48,16 @@ export function MobileBootstrapApp({
         }
         try {
             await client.initialize();
-            if (bootTokenRef.current !== token) return;
+            if (destroyedRef.current || bootTokenRef.current !== token) return;
             await client.go.captureSessionContext();
-            if (bootTokenRef.current !== token) return;
+            if (destroyedRef.current || bootTokenRef.current !== token) return;
             if (typeof document !== 'undefined' && document.documentElement) {
                 document.documentElement.dataset.vcDevice = 'mobile';
                 document.documentElement.dataset.vcApp = 'ready';
             }
             setBootState('ready');
         } catch (err) {
-            if (bootTokenRef.current !== token) return;
+            if (destroyedRef.current || bootTokenRef.current !== token) return;
             if (typeof document !== 'undefined' && document.documentElement) {
                 document.documentElement.dataset.vcDevice = 'mobile';
                 document.documentElement.dataset.vcApp = 'error';
@@ -56,8 +68,10 @@ export function MobileBootstrapApp({
     }, [client]);
 
     useEffect(() => {
+        destroyedRef.current = false;
         void runBootstrap();
         return () => {
+            destroyedRef.current = true;
             bootTokenRef.current += 1;
         };
     }, [runBootstrap]);
@@ -82,6 +96,12 @@ export function MobileBootstrapApp({
             client={client}
             queryClient={queryClient}
             sessionBridge={sessionBridge}
+            initialPath={initialPath}
+            slots={slots}
+            badges={badges}
+            unreadDots={unreadDots}
+            userName={userName}
+            userAvatarUrl={userAvatarUrl}
         >
             {children}
         </MobileApp>
@@ -93,13 +113,26 @@ export function mountMobileApp(
         ? document.getElementById('root')
         : null,
     props?: MobileAppProps,
-): Root | null {
+): MountedMobileRoot | null {
     if (typeof document !== 'undefined' && document.documentElement) {
         document.documentElement.dataset.vcDevice = 'mobile';
         document.documentElement.dataset.vcApp = 'booting';
     }
     if (!container) return null;
-    const root = createRoot(container);
+    const root = createRoot(container) as MountedMobileRoot;
+    let destroyed = false;
+    const origUnmount = root.unmount.bind(root);
+    const cleanup = () => {
+        if (destroyed) return;
+        destroyed = true;
+        origUnmount();
+        if (typeof document !== 'undefined' && document.documentElement) {
+            delete document.documentElement.dataset.vcDevice;
+            delete document.documentElement.dataset.vcApp;
+        }
+    };
+    root.destroy = cleanup;
+    root.unmount = cleanup;
     root.render(<MobileBootstrapApp {...props} />);
     return root;
 }

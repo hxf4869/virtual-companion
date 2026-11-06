@@ -171,6 +171,8 @@ const appPackages = {
     'design/components/Textarea.tsx': ['@base-ui/react/field', 'react'],
     'design/components/Toast.tsx': ['@base-ui/react/toast'],
     'design/portal-host.tsx': ['react'],
+    'design/theme/Aurora.tsx': ['react'],
+    'design/theme/usePreferences.ts': ['zustand'],
     'features/characters/CharacterDetail.tsx': ['react'],
     'features/characters/CharacterGrid.tsx': ['react'],
     'features/characters/CharactersRoute.tsx': ['react'],
@@ -235,6 +237,9 @@ const appPackages = {
     'features/tavern/TavernRoute.tsx': ['react'],
     'mobile/app/MobileApp.tsx': ['@tanstack/react-query', 'react'],
     'mobile/app/main.tsx': ['react', 'react-dom/client'],
+    'mobile/components/MobileIcon.tsx': ['react'],
+    'mobile/shell/MobileSettingsSheet.tsx': ['@ionic/react', 'react'],
+    'mobile/shell/MobileShell.tsx': ['@ionic/react', '@ionic/react-router', '@ionic/react/css/core.css', 'react', 'react-router-dom'],
     'runtime/session-bridge.ts': ['@tanstack/react-query', 'react'],
     'shell/AppShell.tsx': ['react'],
     'shell/Aurora.tsx': ['react'],
@@ -263,9 +268,17 @@ function allowsDesktopExternal(importer, specifier) {
 }
 
 export function desktopResolvedGraph() {
+    const ionicComponentsDir = `${path.join(npmDir, '@ionic/core/components')}${path.sep}`;
     return {
         name: 'vc-desktop-resolved-graph',
         enforce: 'pre',
+        transform(code, id) {
+            const clean = id?.split('?')[0];
+            if (clean?.startsWith(ionicComponentsDir)) {
+                return { code, moduleSideEffects: false };
+            }
+            return null;
+        },
         resolveId(specifier, importer) {
             const file = importer?.split('?')[0];
             if (!isFirstPartyModule(file)) return null;
@@ -309,6 +322,9 @@ export function desktopResolvedGraph() {
                         const targetRel = toPosix(path.relative(desktopSrc, targetFile));
                         if ((targetRel === 'mobile' || targetRel.startsWith('mobile/')) && !importerIsMobile) {
                             this.error(`Unexpected desktop-imports-mobile ${targetRel} from ${file}`);
+                        }
+                        if (importerIsMobile && (targetRel === 'shell' || targetRel.startsWith('shell/') || targetRel === 'app/router.tsx')) {
+                            this.error(`Unexpected mobile-imports-desktop-shell ${targetRel} from ${file}`);
                         }
                     }
                     // Rolldown exposes external modules as graph nodes with no loaded code.

@@ -197,6 +197,15 @@ export async function analyzeDesktopImportBoundary({
                 });
                 continue;
             }
+            if (importerIsMobile && (relToDesktop === 'shell' || relToDesktop.startsWith('shell/') || relToDesktop === 'app/router.tsx')) {
+                violations.push({
+                    type: 'mobile-imports-desktop-shell',
+                    specifier,
+                    target: relToDesktop,
+                    chain: nextChain,
+                });
+                continue;
+            }
 
             const relToExtension = toPosix(path.relative(extensionRoot, actual));
             const insideExtension = !relToExtension.startsWith('..') && !path.isAbsolute(relToExtension);
@@ -569,6 +578,19 @@ test('mobile 入口纳入边界检查，且禁止桌面模块反向引用 mobile
         });
         assert.deepEqual(report.violations.map(v => `${v.type}:${v.target}`), [
             'desktop-imports-mobile:mobile/app/MobileApp.tsx',
+        ]);
+
+        fs.mkdirSync(path.join(fakeSrc, 'shell'), { recursive: true });
+        fs.writeFileSync(path.join(fakeSrc, 'shell', 'AppShell.tsx'), 'export const AppShell = () => null;\n');
+        const badMobile = path.join(fakeSrc, 'mobile', 'app', 'badMobile.tsx');
+        fs.writeFileSync(badMobile, "import { AppShell } from '../../shell/AppShell';\nexport const y = AppShell;\n");
+        const mobileReport = await analyzeDesktopImportBoundary({
+            entryFiles: [badMobile],
+            desktopSrcRoot: fakeSrc,
+            extensionRoot: fakeExt,
+        });
+        assert.deepEqual(mobileReport.violations.map(v => `${v.type}:${v.target}`), [
+            'mobile-imports-desktop-shell:shell/AppShell.tsx',
         ]);
     } finally {
         fs.rmSync(tmpDir, { recursive: true, force: true });
