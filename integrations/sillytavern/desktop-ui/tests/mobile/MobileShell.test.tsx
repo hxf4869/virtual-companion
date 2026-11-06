@@ -36,8 +36,11 @@ describe('MB2-5 MobileShell (Ionic React 9 + Router 6)', () => {
     useDesignPreferences.getState().resetForTest?.();
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     cleanup();
+    // Flush Stencil's async componentDidLoad microtasks and ion-app.js's 32ms rIC
+    // setTimeout + dynamic module imports before Happy DOM tears down window.
+    await new Promise((resolve) => setTimeout(resolve, 80));
     vi.restoreAllMocks();
   });
 
