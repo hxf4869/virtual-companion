@@ -29,10 +29,10 @@ vc.go_publish_memorycore(
 ```
 
 - `p_refs` 是所有记录真实来源的去重并集，继续使用现有逐来源 guard 和 scope 校验。
-- 新入口要求映射键与 `p_proposal.records` 的唯一 ID 集合严格相等；每个非空记录的来源数组非空、无重复且无额外来源；全部数组的并集与 `p_refs` 相等。空输出沿用既有空提案流程。
+- 新入口要求映射键与 `p_proposal.records` 的唯一 ID 集合严格相等；每个非空记录的来源数组非空、无重复且无额外来源；有记录时全部数组的并集与 `p_refs` 相等。空输出沿用既有空提案流程：映射为 `{}`，`p_refs` 仍含已核验的当前用户锚点（V149 明确拒绝空 `p_refs`）；无事实 evidence 写入，不为满足并集条件取消锚点 guard。
 - 每条记录至少含已核验的用户主来源。Go 逐条核对真实 `source_message_ids`，不能以聚合 metadata 替代；助手支持限定为该用户锚点同会话、窗口内、当前候选且符合隐私门禁的来源。
 - 发布循环只把该 record 对应的数组写入 `memory_evidence`。保持同一 operation 内全部记录原子发布，不能逐条拆 operation 或重复调用绕过 `PUBLISHED` 幂等返回。
-- `p_proposal` 保存每条事实的实际 source keys 和逐条 conflict target 对应关系；上下文窗口只参与在途核验，不自动成为每条事实的持久 evidence。实际引用的旧 target evidence 必须继承，不能为缩小来源而丢失。
+- `p_proposal` 保存每条事实的实际 source keys 和逐条 conflict target 对应关系（候选字段 `conflictTargetIds`）；上下文窗口只参与在途核验，不自动成为每条事实的持久 evidence。实际引用的旧 target evidence 必须继承，不能为缩小来源而丢失。
 - 保留既有 owner/role EXECUTE 授权及 SECURITY DEFINER/search_path 约束，不授予应用直接写 evidence 的权限。
 
 ## 过渡与合入顺序
@@ -55,3 +55,9 @@ CM 修改既有 prepare 补丁以保留每条新记录对应的 conflict targets
 4. 原生 gate 过滤用户主来源时，不得只把助手上下文交给模型产生事实。
 5. 原 `memorycore_proposal_lock_integration_test` 继续通过；覆盖模型执行期间来源变化、并发遗忘与发布、旧六参数调用、旧提案恢复、新七参数调用及重复发布。
 6. CM-3 同一数据集比较查询、提取、候选、最终排序、实际注入、回答和 token；失败与未覆盖项保留分母。迁移尚未完成前不声明上述联合验收通过。
+
+## 恢复清理的待授权边界
+
+**[问]（2026-11-07）**：V149 的 `memorycore_source_fence` 会在来源失效时把关联的已发布 operation 标为 REVOKED；Go `memorycore_profile.go::RecoverEngineOperations` 随后收集该 operation 全部 record/source IDs 并清理。同一批次的事实有不同助手支持或不同旧 target 证据时，只修逐事实发布仍会误删有效的兄弟事实。
+
+已向 Owner 请求将该 Go 函数及直接回归纳入 CM-4：清理时保留来源仍有效且已有 PG 发布投影的事实，未发布或失效记录继续清理；来源清理也须保留有效事实仍依赖的来源。当前尚未获批，不改 SQL 触发器、来源协议、锁序或恢复函数。此缺口解决前，不声明同批逐事实遗忘验收完成；查询补全与检索计算复用不依赖该修正。
