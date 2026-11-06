@@ -229,30 +229,21 @@ async function startManagedMinio(secrets) {
             return false;
         }
     }, { timeoutMs: 60000, label: `受管 MinIO 就绪（容器 ${MINIO_CONTAINER}，随机 127.0.0.1:${minioPort}）` });
-    // mc 引导建桶：共享 MinIO 网络命名空间（容器内 127.0.0.1:9000），凭据走只读 bind 的
-    // config.json（version 10 别名格式，同 e2e-stack），mc 辅助目录落在临时容器层。
+    // mc 引导建桶：共享 MinIO 网络命名空间（容器内 127.0.0.1:9000）。凭据经 0600 env 文件的
+    // MC_HOST 别名传递：由 docker 客户端读取，不进 argv，也不要求 daemon（含 rootless）读宿主文件。
     fs.mkdirSync(RUN_DIR, { recursive: true });
-    const mcConfig = path.join(RUN_DIR, 'mc-config.json');
-    fs.writeFileSync(mcConfig, JSON.stringify({
-        version: '10',
-        aliases: {
-            w03: {
-                url: 'http://127.0.0.1:9000',
-                accessKey, secretKey,
-                api: 'S3v4', path: 'auto',
-            },
-        },
-    }), { mode: 0o600 });
+    const mcEnv = path.join(RUN_DIR, 'mc.env');
+    fs.writeFileSync(mcEnv, `MC_HOST_w03=http://${accessKey}:${secretKey}@127.0.0.1:9000\n`, { mode: 0o600 });
     try {
         docker([
             'run', '--rm', '--entrypoint', '/bin/mc',
             '--network', `container:${MINIO_CONTAINER}`,
             '-e', 'MC_UPDATE=off', '-e', 'MINIO_UPDATE=off',
-            '-v', `${mcConfig}:/mc-config/config.json:ro`,
-            MINIO_IMAGE, '--config-dir', '/mc-config', 'mb', '--ignore-existing', `w03/${S3_BUCKET}`,
-        ], { label: 'mc 建桶（合成凭据经只读 bind 传递）' });
+            '--env-file', mcEnv,
+            MINIO_IMAGE, '--config-dir', '/tmp/mc', 'mb', '--ignore-existing', `w03/${S3_BUCKET}`,
+        ], { label: 'mc 建桶（合成凭据经 0600 env 文件传递）' });
     } finally {
-        fs.rmSync(mcConfig, { force: true });
+        fs.rmSync(mcEnv, { force: true });
     }
     secrets.s3 = {
         endpoint: `http://127.0.0.1:${minioPort}`,

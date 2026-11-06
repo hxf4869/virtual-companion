@@ -297,12 +297,18 @@ func followSourceRefs(t *testing.T) []string {
 
 func enableDuePolicy(t *testing.T, relationship int64, start, end, zone *string, limit, recent int) {
 	t.Helper()
-	_, err := testEnv.store.PutProactivePolicy(context.Background(), 1, relationship, ProactivePolicyWrite{
+	// New relationships default to CLOSE_FRIEND, which an enabled-only update
+	// preserves. These tests exercise the FOLLOW_UP due pass, not the judgment engine.
+	mode := "FOLLOW_UP"
+	got, err := testEnv.store.PutProactivePolicy(context.Background(), 1, relationship, ProactivePolicyWrite{
 		Enabled: true, QuietHoursStart: start, QuietHoursEnd: end, QuietHoursTimezone: zone,
-		DailyLimit: limit, RecentInteractionMinutes: recent, AllowedModes: []string{"COMPANION"},
+		DailyLimit: limit, RecentInteractionMinutes: recent, AllowedModes: []string{"COMPANION"}, Mode: &mode,
 	})
 	if err != nil {
 		t.Fatal(err)
+	}
+	if !got.Enabled || got.Mode != "FOLLOW_UP" {
+		t.Fatalf("due policy enabled=%t mode=%q, want enabled FOLLOW_UP", got.Enabled, got.Mode)
 	}
 }
 
