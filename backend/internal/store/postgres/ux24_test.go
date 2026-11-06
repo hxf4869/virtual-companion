@@ -24,6 +24,31 @@ func TestDiaryDueUsesHourBeforeQuietStart(t *testing.T) {
 	}
 }
 
+func TestDiaryDueEarlyMorningWindowsUseEvening(t *testing.T) {
+	loc := time.FixedZone("local", 8*3600)
+	for _, c := range []struct {
+		quiet string
+		hour  int
+		min   int
+	}{
+		{"00:00", 22, 0}, {"00:30", 22, 0}, {"01:00", 22, 0},
+		{"05:59", 22, 0}, {"06:00", 22, 0}, {"06:59", 22, 0},
+		{"07:00", 6, 0}, {"07:01", 6, 1},
+		{"21:30", 20, 30}, {"23:00", 22, 0},
+		{"", 22, 0}, {"invalid", 22, 0}, {"24:00", 22, 0}, {"23:60", 22, 0},
+	} {
+		t.Run(c.quiet, func(t *testing.T) {
+			due := c.hour*60 + c.min
+			for _, minute := range []int{0, 1, 359, 360, due - 1, due, due + 1, 1439} {
+				local := time.Date(2026, 11, 5, minute/60, minute%60, 0, 0, loc)
+				if got, want := diaryDue(local, c.quiet), minute >= due; got != want {
+					t.Errorf("diaryDue(%s, %q) = %v, want %v", local.Format("15:04"), c.quiet, got, want)
+				}
+			}
+		})
+	}
+}
+
 func TestPinMemoriesFirstKeepsAllowlistAndLimit(t *testing.T) {
 	allowed := map[string]Memory{
 		"r1": {ID: 1, Summary: "a"}, "r2": {ID: 2, Summary: "b"}, "r3": {ID: 3, Summary: "c"},

@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"errors"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -143,11 +144,21 @@ type DueReminder struct {
 // reminderFreshness: a reminder later than this is consumed without a message.
 const reminderFreshness = 2 * time.Hour
 
-// NextDueReminder returns the oldest still-fresh due reminder. Reminders that
-// are already older than reminderFreshness are consumed silently on the way.
+const reminderRetryGap = 10 * time.Minute
+
+func reminderCooldownKey(id int64) string {
+	// V271 permits only letters, colons and underscores; encode digits as a..j.
+	return "reminder:" + strings.Map(func(r rune) rune { return 'a' + r - '0' }, strconv.FormatInt(id, 10))
+}
+
+// NextDueReminder returns the oldest still-fresh due reminder outside retry
+// cooldown. Older reminders are consumed silently, even during cooldown.
 func (s *Store) NextDueReminder(ctx context.Context, owner, relationshipID int64, now time.Time) (*DueReminder, error) {
 	var found *DueReminder
 	err := s.WithOwner(ctx, owner, func(ctx context.Context, tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx, `SELECT vc.prune_reminder_cooldowns($1,$2,$3)`, owner, relationshipID, now); err != nil {
+			return err
+		}
 		rows, err := tx.Query(ctx, `SELECT out_id, out_text, out_remind_at FROM vc.due_reminders($1,$2,$3)`, owner, relationshipID, now)
 		if err != nil {
 			return err
@@ -165,11 +176,18 @@ func (s *Store) NextDueReminder(ctx context.Context, owner, relationshipID int64
 		if err := rows.Err(); err != nil {
 			return err
 		}
+		cooldowns, err := loadCooldownsTx(ctx, tx, owner, relationshipID)
+		if err != nil {
+			return err
+		}
 		for _, r := range due {
 			if now.Sub(r.RemindAt) > reminderFreshness {
 				if _, err := tx.Exec(ctx, `SELECT vc.consume_reminder($1,$2,$3)`, owner, r.ID, now); err != nil {
 					return err
 				}
+				continue
+			}
+			if now.Before(cooldowns[reminderCooldownKey(r.ID)]) {
 				continue
 			}
 			if found == nil {
@@ -189,6 +207,38 @@ func (s *Store) NextDueReminder(ctx context.Context, owner, relationshipID int64
 		return nil
 	})
 	return found, mapStoreErr(err)
+}
+
+// BeginReminderAttempt records cooldown before the model call, including failed
+// or cancelled calls. Concurrent passes may start only one attempt per gap.
+func (s *Store) BeginReminderAttempt(ctx context.Context, owner, relationshipID, reminderID int64, now time.Time) (bool, error) {
+	if reminderID <= 0 {
+		return false, ErrInvalid
+	}
+	key := reminderCooldownKey(reminderID)
+	started := false
+	err := s.WithOwner(ctx, owner, func(ctx context.Context, tx pgx.Tx) error {
+		lockKey := strconv.FormatInt(owner, 10) + ":" + strconv.FormatInt(relationshipID, 10) + ":" + key
+		if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1,0))`, lockKey); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, `SELECT vc.prune_reminder_cooldowns($1,$2,$3)`, owner, relationshipID, now); err != nil {
+			return err
+		}
+		cooldowns, err := loadCooldownsTx(ctx, tx, owner, relationshipID)
+		if err != nil {
+			return err
+		}
+		if now.Before(cooldowns[key]) {
+			return nil
+		}
+		if _, err := tx.Exec(ctx, `SELECT vc.save_proactive_cooldown($1,$2,$3,$4)`, owner, relationshipID, key, now.Add(reminderRetryGap)); err != nil {
+			return err
+		}
+		started = true
+		return nil
+	})
+	return started, mapStoreErr(err)
 }
 
 // SaveReminderMessage files the generated body as a READY proactive message and
@@ -342,6 +392,7 @@ func (s *Store) LoadDiaryInput(ctx context.Context, owner, relationshipID int64,
 }
 
 // diaryDue: one hour before the quiet window starts, or 22:00 without one.
+// A slot before 06:00 belongs to the previous night; use the evening default.
 func diaryDue(local time.Time, quietStart string) bool {
 	hour, minute := 22, 0
 	if h, m, ok := parseClock(quietStart); ok {
@@ -351,8 +402,8 @@ func diaryDue(local time.Time, quietStart string) bool {
 			minute += 60
 			hour--
 		}
-		if hour < 0 {
-			hour, minute = 22, 0 // a window opening just after midnight: use the default evening slot
+		if hour < 6 {
+			hour, minute = 22, 0
 		}
 	}
 	return local.Hour()*60+local.Minute() >= hour*60+minute
@@ -502,23 +553,45 @@ func (s *Store) ListActiveReminders(ctx context.Context, owner, relationshipID i
 		if !exists {
 			return ErrNotFound
 		}
-		rows, err := tx.Query(ctx, `
-			SELECT out_id, out_relationship_id, out_text, out_remind_at, out_recurrence, out_status, out_created_at, out_updated_at
-			  FROM vc.list_reminders($1,$2,0,100)`, owner, relationshipID)
-		if err != nil {
-			return err
-		}
-		defer rows.Close()
-		for rows.Next() {
-			var r Reminder
-			if err := rows.Scan(&r.ID, &r.RelationshipID, &r.Text, &r.RemindAt, &r.Recurrence, &r.Status, &r.CreatedAt, &r.UpdatedAt); err != nil {
+		// vc_api has no table SELECT grant. Page the owner-checked function;
+		// later ids may be sooner, so inspect every page while retaining limit.
+		for after := int64(0); ; {
+			rows, err := tx.Query(ctx, `
+				SELECT out_id, out_relationship_id, out_text, out_remind_at, out_recurrence, out_status, out_created_at, out_updated_at
+				  FROM vc.list_reminders($1,$2,$3,100)`, owner, relationshipID, after)
+			if err != nil {
 				return err
 			}
-			if r.Status == "ACTIVE" && len(out) < limit {
-				out = append(out, r)
+			count := 0
+			for rows.Next() {
+				var r Reminder
+				if err := rows.Scan(&r.ID, &r.RelationshipID, &r.Text, &r.RemindAt, &r.Recurrence, &r.Status, &r.CreatedAt, &r.UpdatedAt); err != nil {
+					rows.Close()
+					return err
+				}
+				after = r.ID
+				count++
+				if r.Status == "ACTIVE" {
+					out = append(out, r)
+				}
+			}
+			rows.Close()
+			if err := rows.Err(); err != nil {
+				return err
+			}
+			sort.Slice(out, func(i, j int) bool {
+				if out[i].RemindAt.Equal(out[j].RemindAt) {
+					return out[i].ID < out[j].ID
+				}
+				return out[i].RemindAt.Before(out[j].RemindAt)
+			})
+			if len(out) > limit {
+				out = out[:limit]
+			}
+			if count < 100 {
+				return nil
 			}
 		}
-		return rows.Err()
 	})
 	return out, mapStoreErr(err)
 }

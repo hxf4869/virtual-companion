@@ -86,10 +86,13 @@ func (l *Loop) SuggestReplies(ctx context.Context, owner, relationshipID int64, 
 
 // deliverDueReminder turns the oldest fresh due reminder into a READY message
 // and returns true when one was filed. Model trouble leaves the reminder
-// ACTIVE for the next pass; it is dropped once it is older than two hours.
+// ACTIVE for a retry after ten minutes; it is dropped once older than two hours.
 func (l *Loop) deliverDueReminder(ctx context.Context, store *postgres.Store, owner, relationshipID int64, now time.Time) (bool, error) {
 	due, err := store.NextDueReminder(ctx, owner, relationshipID, now)
 	if err != nil || due == nil {
+		return false, err
+	}
+	if started, err := store.BeginReminderAttempt(ctx, owner, relationshipID, due.ID, now); err != nil || !started {
 		return false, err
 	}
 	body, reason, err := l.CompleteBackground(ctx, owner, relationshipID, proactive.ReminderPrompt(due.CharName, due.UserName, due.Text), reminderMaxTokens)
