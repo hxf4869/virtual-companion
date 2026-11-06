@@ -30,11 +30,15 @@ import {
     type CharactersRouteProps,
 } from '../features/characters/CharactersRoute';
 import { useLeaveGuard } from '../shell/useLeaveGuard';
-import { InboxRoute } from '../features/inbox/InboxRoute';
 import {
     MemoryRoute,
     type MemoryRouteProps,
 } from '../features/memory/MemoryRoute';
+import {
+    InboxRoute,
+    type InboxRouteProps,
+} from '../features/inbox/InboxRoute';
+import { InboxRouteAdapter } from './InboxRouteAdapter';
 import {
     SettingsRoute,
     type SettingsRouteProps,
@@ -54,6 +58,7 @@ export type {
     ChatRouteProps,
     CharactersRouteProps,
     MemoryRouteProps,
+    InboxRouteProps,
     StoryRouteProps,
     SettingsRouteProps,
 };
@@ -69,7 +74,7 @@ export interface DesktopRouteComponents {
     chat?: React.ComponentType<ChatRouteProps>;
     characters?: React.ComponentType<CharactersRouteProps>;
     memory?: React.ComponentType<MemoryRouteProps>;
-    inbox?: React.ComponentType;
+    inbox?: React.ComponentType<InboxRouteProps>;
     story?: React.ComponentType<StoryRouteProps>;
     settings?: React.ComponentType<SettingsRouteProps>;
     tavernSettings?: React.ComponentType<TavernSettingsRouteProps>;
@@ -525,7 +530,7 @@ export function createDesktopRouter(
         getParentRoute: () => rootRoute,
         path: '/inbox',
         component: function InboxPage() {
-            return <InboxComp />;
+            return <InboxRouteAdapter View={InboxComp} />;
         },
     });
 

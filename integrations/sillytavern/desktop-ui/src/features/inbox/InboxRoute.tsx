@@ -1,58 +1,53 @@
-import { useEffect, useState } from 'react';
-import { useRelationships } from '../../data/queries/memory';
+import { useState } from 'react';
 import { AlertDialog } from '../../design/components/AlertDialog';
 import { Select } from '../../design/components/Select';
 import { Switch } from '../../design/components/Switch';
-import { useChatSnapshot } from '../../runtime/session-bridge';
-import { relationshipLabel } from '../../../../extension/vc-model-settings/memory-logic.js';
 import {
   notifySupported,
   requestNotifyPermission,
   systemNotifyEnabled,
   writeSystemNotifyEnabled,
 } from '../../../../extension/vc-model-settings/inbox-logic.js';
-import { PolicyForm } from './PolicyForm';
+import { PolicyForm, type LeaveGuardProp } from './PolicyForm';
 import { FollowUps } from './FollowUps';
-import { InboxList } from './InboxList';
+import { InboxList, type OpenInboxConversationHandler } from './InboxList';
 import { ChannelSheet } from './ChannelSheet';
 import { Deliveries } from './Deliveries';
+import {
+  useInboxRelationship,
+  type InboxRelationshipOption,
+  type UseInboxRelationshipOptions,
+} from './useInbox';
 import './inbox.css';
+
+export {
+  useInboxRelationship,
+  type InboxRelationshipOption,
+  type UseInboxRelationshipOptions,
+};
 
 export interface InboxRouteProps {
   initialRelationshipId?: string | null;
+  onOpenConversation: OpenInboxConversationHandler;
+  guard?: LeaveGuardProp;
 }
 
-export function InboxRoute({ initialRelationshipId = null }: InboxRouteProps) {
-  const activeChatRelId = useChatSnapshot((s) => s.relationshipId);
-  const relationshipsQuery = useRelationships();
-  const relationships = relationshipsQuery.data ?? [];
+export function InboxRoute({
+  initialRelationshipId = null,
+  onOpenConversation,
+  guard,
+}: InboxRouteProps) {
+  const {
+    relOptions,
+    selectedRelId,
+    setPolicyDirty,
+    confirmDiscardOpen,
+    selectRelationship,
+    confirmSwitchRelationship,
+    cancelSwitchRelationship,
+  } = useInboxRelationship({ initialRelationshipId });
 
-  const [selectedRelId, setSelectedRelId] = useState<string | null>(
-    initialRelationshipId ?? (activeChatRelId ? String(activeChatRelId) : null),
-  );
-  const [policyDirty, setPolicyDirty] = useState(false);
-  const [pendingRelId, setPendingRelId] = useState<string | null>(null);
   const [desktopNotify, setDesktopNotify] = useState<boolean>(() => systemNotifyEnabled());
-
-  useEffect(() => {
-    if (relationships.length === 0) return;
-    if (!selectedRelId || !relationships.some((rel) => String(rel.relationshipId) === selectedRelId)) {
-      const fromChat =
-        activeChatRelId &&
-        relationships.some((rel) => String(rel.relationshipId) === String(activeChatRelId))
-          ? String(activeChatRelId)
-          : String(relationships[0].relationshipId);
-      setSelectedRelId(fromChat);
-    }
-  }, [relationships, selectedRelId, activeChatRelId]);
-
-  const relOptions = relationships.map((rel) => {
-    const id = String(rel.relationshipId);
-    return {
-      value: id,
-      label: relationshipLabel(rel, relationships),
-    };
-  });
 
   const handleToggleNotify = async (next: boolean) => {
     if (next && notifySupported()) {
@@ -75,14 +70,7 @@ export function InboxRoute({ initialRelationshipId = null }: InboxRouteProps) {
               aria-label="选择角色关系"
               value={selectedRelId ?? ''}
               options={relOptions}
-              onValueChange={(val) => {
-                if (val === selectedRelId) return;
-                if (policyDirty) {
-                  setPendingRelId(val);
-                  return;
-                }
-                setSelectedRelId(val);
-              }}
+              onValueChange={selectRelationship}
             />
           ) : null}
         </div>
@@ -102,9 +90,10 @@ export function InboxRoute({ initialRelationshipId = null }: InboxRouteProps) {
             key={selectedRelId ?? 'none'}
             relId={selectedRelId}
             onDirtyChange={setPolicyDirty}
+            guard={guard}
           />
           <FollowUps relId={selectedRelId} />
-          <InboxList />
+          <InboxList onOpenConversation={onOpenConversation} />
         </div>
         <aside className="vc-inbox-route__aside">
           <ChannelSheet relId={selectedRelId} />
@@ -113,10 +102,10 @@ export function InboxRoute({ initialRelationshipId = null }: InboxRouteProps) {
       </div>
 
       <AlertDialog
-        open={pendingRelId !== null}
+        open={confirmDiscardOpen}
         onOpenChange={(open) => {
           if (!open) {
-            setPendingRelId(null);
+            cancelSwitchRelationship();
           }
         }}
         title="放弃更改？"
@@ -124,13 +113,7 @@ export function InboxRoute({ initialRelationshipId = null }: InboxRouteProps) {
         confirmLabel="放弃"
         cancelLabel="继续编辑"
         danger
-        onConfirm={() => {
-          if (pendingRelId !== null) {
-            setPolicyDirty(false);
-            setSelectedRelId(pendingRelId);
-            setPendingRelId(null);
-          }
-        }}
+        onConfirm={confirmSwitchRelationship}
       />
     </div>
   );

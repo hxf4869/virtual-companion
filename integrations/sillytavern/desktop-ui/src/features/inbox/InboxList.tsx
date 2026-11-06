@@ -1,117 +1,48 @@
-import { useEffect, useRef, useState } from 'react';
-import { useNavigate } from '@tanstack/react-router';
-import { useAppClient } from '../../app/providers';
-import { normalizeConversationKey } from '../../data/queries/chat';
 import {
-  useInbox,
-  useMarkInboxRead,
   type InboxEvent,
   type InboxFilter,
 } from '../../data/queries/inbox';
 import { Button } from '../../design/components/Button';
 import { EmptyState } from '../../design/components/EmptyState';
 import { Segment } from '../../design/components/Segment';
-import { resolveDesktopConversation } from '../../../../extension/vc-model-settings/desktop/standalone/business.js';
-import { FILTERS, previewOf, writeLabel } from '../../../../extension/vc-model-settings/inbox-logic.js';
+import { previewOf, writeLabel } from '../../../../extension/vc-model-settings/inbox-logic.js';
+import {
+  INBOX_FILTER_OPTIONS,
+  useInboxList,
+  type OpenInboxConversationHandler,
+  type UseInboxListOptions,
+} from './useInbox';
 
-const FILTER_OPTIONS = FILTERS.map(([value, label]) => ({
-  value: String(value),
-  label: String(label),
-}));
+export {
+  INBOX_FILTER_OPTIONS,
+  useInboxList,
+  type OpenInboxConversationHandler,
+  type UseInboxListOptions,
+};
 
 export interface InboxListProps {
   initialFilter?: InboxFilter;
+  onOpenConversation: OpenInboxConversationHandler;
   onOpenEvent?: (event: InboxEvent) => void | Promise<void>;
 }
 
-export function InboxList({ initialFilter = 'all', onOpenEvent }: InboxListProps) {
-  const client = useAppClient();
-  const navigate = useNavigate();
-  const [filter, setFilter] = useState<InboxFilter>(initialFilter);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const inboxQuery = useInbox(filter);
-  const markReadMutation = useMarkInboxRead();
-
-  const mountedRef = useRef(true);
-  const openTicketRef = useRef(0);
-
-  useEffect(() => {
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-      openTicketRef.current += 1;
-    };
-  }, []);
-
-  const events = inboxQuery.data ?? [];
-
-  const handleOpen = async (event: InboxEvent) => {
-    if (event.linkStatus !== 'present') return;
-    const ticket = ++openTicketRef.current;
-    setErrorMessage(null);
-
-    if (!event.read) {
-      try {
-        await markReadMutation.mutateAsync(event.eventId);
-      } catch {
-        if (mountedRef.current && openTicketRef.current === ticket) {
-          setErrorMessage('没有记下已读，请重试。');
-        }
-        return;
-      }
-      if (!mountedRef.current || openTicketRef.current !== ticket) {
-        return;
-      }
-    }
-
-    let conversationKey = event.conversationKey ? String(event.conversationKey) : '';
-    if (!conversationKey) {
-      if (!event.relationshipId && !event.conversationId) {
-        if (mountedRef.current && openTicketRef.current === ticket) {
-          setErrorMessage('聊天没有加载出来，请重试。');
-        }
-        return;
-      }
-      try {
-        const rows = await client.recent();
-        if (!mountedRef.current || openTicketRef.current !== ticket) {
-          return;
-        }
-        const resolved = resolveDesktopConversation(Array.isArray(rows) ? rows : [], {
-          relationshipId: event.relationshipId,
-          conversationId: event.conversationId,
-        });
-        if (resolved?.avatar && resolved?.file) {
-          conversationKey = normalizeConversationKey(resolved.avatar, resolved.file);
-        }
-      } catch {
-        if (mountedRef.current && openTicketRef.current === ticket) {
-          setErrorMessage('聊天没有加载出来，请重试。');
-        }
-        return;
-      }
-    }
-
-    if (!mountedRef.current || openTicketRef.current !== ticket) {
-      return;
-    }
-
-    if (!conversationKey) {
-      setErrorMessage('聊天没有加载出来，请重试。');
-      return;
-    }
-
-    await navigate({
-      to: '/chat/$conversationKey',
-      params: { conversationKey },
-    });
-
-    if (!mountedRef.current || openTicketRef.current !== ticket) {
-      return;
-    }
-
-    await onOpenEvent?.(event);
-  };
+export function InboxList({
+  initialFilter = 'all',
+  onOpenConversation,
+  onOpenEvent,
+}: InboxListProps) {
+  const {
+    filter,
+    setFilter,
+    filterOptions,
+    errorMessage,
+    events,
+    handleOpen,
+  } = useInboxList({
+    initialFilter,
+    onOpenConversation,
+    onOpenEvent,
+  });
 
   return (
     <section className="vc-inbox-card vc-inbox-list" aria-label="收件箱消息">
@@ -120,7 +51,7 @@ export function InboxList({ initialFilter = 'all', onOpenEvent }: InboxListProps
         <Segment
           aria-label="收件箱筛选"
           value={filter}
-          options={FILTER_OPTIONS}
+          options={filterOptions}
           onValueChange={(next) => setFilter(next)}
         />
       </div>

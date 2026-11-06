@@ -1,6 +1,3 @@
-import { useState } from 'react';
-import { useChannels, useSaveChannel, type Channel } from '../../data/queries/inbox';
-import { useRelationships } from '../../data/queries/memory';
 import { Button } from '../../design/components/Button';
 import { Checkbox } from '../../design/components/Checkbox';
 import { Dialog } from '../../design/components/Dialog';
@@ -8,30 +5,20 @@ import { Field } from '../../design/components/Field';
 import { Switch } from '../../design/components/Switch';
 import { TextInput } from '../../design/components/TextInput';
 import { toast } from '../../design/components/Toast';
-import {
-  credentialPlaceholder,
-  draftsFromChannels,
-} from '../../../../extension/vc-model-settings/inbox-logic.js';
-import { relationshipLabel } from '../../../../extension/vc-model-settings/memory-logic.js';
+import { credentialPlaceholder } from '../../../../extension/vc-model-settings/inbox-logic.js';
 import { ReauthDialog } from './ReauthDialog';
+import {
+  CHANNEL_TITLES,
+  useChannelSheet,
+  type ChannelDraft,
+  type UseChannelSheetOptions,
+} from './useInbox';
 
-interface ChannelDraft {
-  key: string;
-  channelId: string;
-  channel: 'EMAIL' | 'FEISHU' | string;
-  exists: boolean;
-  enabled: boolean;
-  configuredTarget: string;
-  previewBody: boolean;
-  relationshipIds: string[];
-  credential: string;
-  credentialMode: 'keep' | 'set' | 'clear';
-  credentialState: 'configured' | 'withheld' | 'missing';
-}
-
-const CHANNEL_TITLES: Record<string, string> = {
-  EMAIL: '邮箱通知',
-  FEISHU: '飞书通知',
+export {
+  CHANNEL_TITLES,
+  useChannelSheet,
+  type ChannelDraft,
+  type UseChannelSheetOptions,
 };
 
 export interface ChannelSheetProps {
@@ -39,92 +26,26 @@ export interface ChannelSheetProps {
 }
 
 export function ChannelSheet({ relId }: ChannelSheetProps) {
-  const channelsQuery = useChannels();
-  const relationshipsQuery = useRelationships();
-  const relationships = relationshipsQuery.data ?? [];
-  const saveChannelMutation = useSaveChannel();
-
-  const [activeDraft, setActiveDraft] = useState<ChannelDraft | null>(null);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [reauthOpen, setReauthOpen] = useState(false);
-
-  const rows = (channelsQuery.data ?? []) as Channel[];
-  const drafts = draftsFromChannels(rows, relId || '') as ChannelDraft[];
-  const relationshipOptions = new Map(
-    relationships.map((rel) => [
-      String(rel.relationshipId),
-      relationshipLabel(rel, relationships),
-    ]),
-  );
-  const savedChannel = drafts.find((draft) => draft.channel === activeDraft?.channel);
-  for (const id of savedChannel?.relationshipIds ?? []) {
-    if (!relationshipOptions.has(id)) relationshipOptions.set(id, id);
-  }
-
-  const updateActiveDraft = (patch: Partial<ChannelDraft>) => {
-    setActiveDraft((draft) => {
-      if (!draft) return null;
-      const next = { ...draft, ...patch };
-      if (patch.credential !== undefined && patch.credentialMode === undefined) {
-        next.credentialMode = patch.credential ? 'set' : draft.credentialMode === 'clear' ? 'clear' : 'keep';
-      }
-      return next;
-    });
-  };
-
-  const toggleRelationship = (id: string, checked: boolean) => {
-    if (!activeDraft) return;
-    const currentIds = activeDraft.relationshipIds;
-    const nextIds = checked
-      ? currentIds.includes(id)
-        ? currentIds
-        : [...currentIds, id]
-      : currentIds.filter((item) => item !== id);
-    updateActiveDraft({ relationshipIds: nextIds });
-  };
-
-  const handleCloseSheet = (open: boolean) => {
-    if (!open) {
-      setActiveDraft(null);
-      setErrorMessage(null);
-    }
-  };
-
-  const executeSaveChannel = async () => {
-    if (!activeDraft) return;
-    const target = activeDraft.configuredTarget.trim();
-    if (target.toLowerCase().includes('://')) {
-      setErrorMessage('地址不能是链接。');
-      return;
-    }
-    if (!target || target.length > 320) {
-      setErrorMessage('请填写收件地址或群名称。');
-      return;
-    }
-
-    setErrorMessage(null);
-    try {
-      await saveChannelMutation.mutateAsync({
-        channel: activeDraft.channel,
-        enabled: activeDraft.enabled,
-        configuredTarget: target,
-        previewBody: activeDraft.previewBody,
-        relationshipIds: activeDraft.relationshipIds,
-        ...(activeDraft.credentialMode === 'set' ? { credential: activeDraft.credential } : {}),
-        ...(activeDraft.credentialMode === 'clear' ? { credential: null } : {}),
-      });
+  const {
+    saveChannelMutation,
+    drafts,
+    relationshipOptions,
+    activeDraft,
+    errorMessage,
+    reauthOpen,
+    setReauthOpen,
+    openDraft,
+    updateActiveDraft,
+    setClearCredential,
+    toggleRelationship,
+    handleCloseSheet,
+    executeSaveChannel,
+  } = useChannelSheet({
+    relId,
+    onSaved: () => {
       toast.show({ title: '已保存通知渠道', kind: 'success' });
-      handleCloseSheet(false);
-    } catch (err) {
-      const status = (err as { status?: number })?.status;
-      const kind = (err as { kind?: string })?.kind;
-      if (status === 401 || status === 403 || kind === 'forbidden') {
-        setReauthOpen(true);
-        return;
-      }
-      setErrorMessage(err instanceof Error ? err.message : '没有保存，请重试。');
-    }
-  };
+    },
+  });
 
   return (
     <section className="vc-inbox-card vc-channel-sheet" aria-label="外部通知渠道">
@@ -148,10 +69,7 @@ export function ChannelSheet({ relId }: ChannelSheetProps) {
               <Button
                 variant="gray"
                 size="sm"
-                onClick={() => {
-                  setErrorMessage(null);
-                  setActiveDraft(draft);
-                }}
+                onClick={() => openDraft(draft)}
               >
                 配置
               </Button>
@@ -229,12 +147,7 @@ export function ChannelSheet({ relId }: ChannelSheetProps) {
               <Switch
                 aria-label="清除凭据"
                 checked={activeDraft.credentialMode === 'clear'}
-                onCheckedChange={(checked) =>
-                  updateActiveDraft({
-                    credential: '',
-                    credentialMode: checked ? 'clear' : 'keep',
-                  })
-                }
+                onCheckedChange={setClearCredential}
               />
             </Field>
             {errorMessage ? (

@@ -246,7 +246,7 @@ describe('PolicyForm', () => {
 
     const router = createDesktopRouter({
       routeOverrides: {
-        inbox: () => <InboxRoute />,
+        inbox: (props) => <InboxRoute {...props} />,
       },
     });
 

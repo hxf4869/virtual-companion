@@ -1,222 +1,78 @@
-import { useEffect, useRef, useState } from 'react';
-import { useForm } from 'react-hook-form';
-import { z } from 'zod';
-import { ConflictError } from '../../data/client';
-import {
-  normalizeProactivePolicy,
-  useProactivePolicy,
-  useSavePolicy,
-  type ProactivePolicy,
-} from '../../data/queries/inbox';
-import { useLeaveGuard } from '../../shell/useLeaveGuard';
+import { type ReactNode } from 'react';
+import { type ProactivePolicy } from '../../data/queries/inbox';
 import { Button } from '../../design/components/Button';
 import { Field } from '../../design/components/Field';
 import { Segment } from '../../design/components/Segment';
 import { Switch } from '../../design/components/Switch';
 import { TextInput } from '../../design/components/TextInput';
 import { toast } from '../../design/components/Toast';
-import {
-  PROACTIVE_LABELS,
-  readProactivePolicy,
-  validatePolicy,
-} from '../../../../extension/vc-model-settings/inbox-logic.js';
 import { ReauthDialog } from './ReauthDialog';
+import {
+  POLICY_MODE_OPTIONS,
+  policyFormSchema,
+  toPolicyFormValues,
+  usePolicyForm,
+  type PolicyFormValues,
+  type UsePolicyFormOptions,
+} from './useInbox';
 
-const policyFormSchema = z
-  .object({
-    relationshipId: z.string(),
-    enabled: z.boolean(),
-    supportsMode: z.boolean(),
-    supportsCheckIn: z.boolean(),
-    mode: z.string(),
-    checkInAfterMinutes: z.number().nullable(),
-    quietHoursStart: z.string(),
-    quietHoursEnd: z.string(),
-    quietHoursTimezone: z.string(),
-    dailyLimit: z.number(),
-    recentInteractionMinutes: z.number(),
-    allowedModes: z.array(z.string()),
-    offlineCapable: z.boolean(),
-  })
-  .superRefine((val, ctx) => {
-    const message = validatePolicy(val);
-    if (message) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message,
-      });
-    }
-  });
+export {
+  POLICY_MODE_OPTIONS,
+  policyFormSchema,
+  toPolicyFormValues,
+  usePolicyForm,
+  type PolicyFormValues,
+  type UsePolicyFormOptions,
+};
 
-export type PolicyFormValues = z.infer<typeof policyFormSchema>;
-
-function toFormValues(policy: ProactivePolicy): PolicyFormValues {
-  return {
-    relationshipId: policy.relationshipId,
-    enabled: policy.enabled,
-    supportsMode: policy.supportsMode,
-    supportsCheckIn: policy.supportsCheckIn,
-    mode: policy.mode,
-    checkInAfterMinutes: policy.checkInAfterMinutes,
-    quietHoursStart: policy.quietHoursStart,
-    quietHoursEnd: policy.quietHoursEnd,
-    quietHoursTimezone: policy.quietHoursTimezone,
-    dailyLimit: policy.dailyLimit,
-    recentInteractionMinutes: policy.recentInteractionMinutes,
-    allowedModes: policy.allowedModes.length > 0 ? [...policy.allowedModes] : ['COMPANION'],
-    offlineCapable: policy.offlineCapable,
-  };
-}
-
-const MODE_OPTIONS = [
-  { value: 'OFF', label: PROACTIVE_LABELS.OFF || '关闭' },
-  { value: 'FOLLOW_UP', label: PROACTIVE_LABELS.FOLLOW_UP || '跟进' },
-  { value: 'DAILY', label: PROACTIVE_LABELS.DAILY || '日常' },
-  { value: 'CLOSE_FRIEND', label: PROACTIVE_LABELS.CLOSE_FRIEND || '亲近' },
-] as const;
+export type LeaveGuardProp = ReactNode | ((dirty: boolean) => ReactNode);
 
 export interface PolicyFormProps {
   relId: string | null;
   onSaved?: (policy: ProactivePolicy) => void;
   onDirtyChange?: (isDirty: boolean) => void;
+  guard?: LeaveGuardProp;
 }
 
-export function PolicyForm({ relId, onSaved, onDirtyChange }: PolicyFormProps) {
-  const policyQuery = useProactivePolicy(relId);
-  const saveMutation = useSavePolicy(relId);
-  const activeRelRef = useRef<string | null>(relId);
-  activeRelRef.current = relId;
-  const prevRelIdRef = useRef<string | null>(relId);
-
-  const [conflictLatest, setConflictLatest] = useState<ProactivePolicy | null>(null);
-  const [formError, setFormError] = useState<string | null>(null);
-  const [reauthOpen, setReauthOpen] = useState(false);
-
-  const form = useForm<PolicyFormValues>({
-    defaultValues: toFormValues(readProactivePolicy({}, relId ?? '') as ProactivePolicy),
-  });
-
+export function PolicyForm({
+  relId,
+  onSaved,
+  onDirtyChange,
+  guard,
+}: PolicyFormProps) {
   const {
-    watch,
-    setValue,
-    reset,
-    getValues,
-    formState: { isDirty },
-  } = form;
-
-  const values = watch();
-  const leaveGuardDialog = useLeaveGuard(isDirty);
-  const isPolicyReady =
-    Boolean(relId) &&
-    Boolean(policyQuery.data) &&
-    (!policyQuery.data?.relationshipId || policyQuery.data.relationshipId === relId) &&
-    !policyQuery.isLoading &&
-    !policyQuery.isPending &&
-    !policyQuery.isError &&
-    !policyQuery.error;
-
-  useEffect(() => {
-    onDirtyChange?.(isDirty);
-  }, [isDirty, onDirtyChange]);
-
-  // Reset form when relationship changes
-  useEffect(() => {
-    if (prevRelIdRef.current === relId) return;
-    prevRelIdRef.current = relId;
-    setConflictLatest(null);
-    setFormError(null);
-    setReauthOpen(false);
-    if (isPolicyReady && policyQuery.data) {
-      reset(toFormValues(policyQuery.data));
-    } else {
-      reset(toFormValues(readProactivePolicy({}, relId ?? '') as ProactivePolicy));
-    }
-  }, [relId, isPolicyReady, policyQuery.data, reset]);
-
-  // Populate form when initial server policy arrives (and don't overwrite user's dirty draft on conflict)
-  useEffect(() => {
-    if (!isPolicyReady || !policyQuery.data) return;
-    if (isDirty || conflictLatest) return;
-    reset(toFormValues(policyQuery.data));
-  }, [isPolicyReady, policyQuery.data, isDirty, conflictLatest, reset]);
-
-  const executeSave = async () => {
-    if (!relId || !isPolicyReady || prevRelIdRef.current !== relId) return;
-    const capturedRelId = relId;
-    const rawValues = getValues();
-    if (rawValues.relationshipId && rawValues.relationshipId !== capturedRelId) return;
-    const parsed = policyFormSchema.safeParse({
-      ...rawValues,
-      relationshipId: capturedRelId,
-      dailyLimit: Number(rawValues.dailyLimit),
-      recentInteractionMinutes: Number(rawValues.recentInteractionMinutes),
-      checkInAfterMinutes:
-        rawValues.supportsCheckIn && rawValues.checkInAfterMinutes !== null
-          ? Number(rawValues.checkInAfterMinutes)
-          : null,
-    });
-
-    if (!parsed.success) {
-      const msg = parsed.error.issues[0]?.message ?? '请检查表单输入';
-      setFormError(msg);
-      return;
-    }
-
-    setFormError(null);
-    try {
-      const saved = await saveMutation.mutateAsync(parsed.data);
-      if (activeRelRef.current !== capturedRelId) return;
-      reset(toFormValues(saved));
-      setConflictLatest(null);
+    values,
+    isDirty,
+    isPolicyReady,
+    isSaving,
+    conflictLatest,
+    formError,
+    reauthOpen,
+    setReauthOpen,
+    executeSave,
+    handleLoadLatest,
+    handleKeepDraft,
+    setEnabled,
+    setMode,
+    setCheckInAfterMinutes,
+    setDailyLimit,
+    setRecentInteractionMinutes,
+    toggleAllowedMode,
+    setQuietHoursStart,
+    setQuietHoursEnd,
+    setQuietHoursTimezone,
+    setOfflineCapable,
+  } = usePolicyForm({
+    relId,
+    onDirtyChange,
+    onSaved: (saved) => {
       toast.show({ title: '已保存主动陪伴策略', kind: 'success' });
       onSaved?.(saved);
-    } catch (err) {
-      if (activeRelRef.current !== capturedRelId) return;
-      const status = (err as { status?: number })?.status;
-      const kind = (err as { kind?: string })?.kind;
-      if (err instanceof ConflictError || status === 409 || kind === 'conflict-revision') {
-        const detailsCurrent = (err as { details?: { current?: Record<string, unknown> } })?.details?.current;
-        if (detailsCurrent) {
-          setConflictLatest(normalizeProactivePolicy(detailsCurrent, capturedRelId));
-        } else {
-          const refetched = await policyQuery.refetch();
-          if (activeRelRef.current === capturedRelId && refetched.data) {
-            setConflictLatest(refetched.data);
-          }
-        }
-        setFormError('版本冲突 (409)：该策略已在别处更新，你的草稿已保留。');
-        return;
-      }
-      if (status === 401 || status === 403 || kind === 'forbidden') {
-        setReauthOpen(true);
-        return;
-      }
-      setFormError(err instanceof Error ? err.message : '没有保存，请重试。');
-    }
-  };
+    },
+  });
 
-  const handleLoadLatest = () => {
-    if (!conflictLatest) return;
-    reset(toFormValues(conflictLatest));
-    setConflictLatest(null);
-    setFormError(null);
-  };
-
-  const handleKeepDraft = () => {
-    setConflictLatest(null);
-    setFormError(null);
-  };
-
-  const toggleAllowedMode = (modeKey: 'COMPANION' | 'STORY') => {
-    const set = new Set(values.allowedModes);
-    if (set.has(modeKey)) {
-      if (set.size <= 1) return;
-      set.delete(modeKey);
-    } else {
-      set.add(modeKey);
-    }
-    setValue('allowedModes', [...set], { shouldDirty: true });
-  };
+  const leaveGuardDialog =
+    typeof guard === 'function' ? guard(isDirty) : (guard ?? null);
 
   if (!relId) {
     return null;
@@ -229,16 +85,7 @@ export function PolicyForm({ relId, onSaved, onDirtyChange }: PolicyFormProps) {
         <Switch
           aria-label="允许主动关怀"
           checked={values.enabled}
-          onCheckedChange={(checked) => {
-            setValue('enabled', checked, { shouldDirty: true });
-            if (values.supportsMode) {
-              if (!checked && values.mode !== 'OFF') {
-                setValue('mode', 'OFF', { shouldDirty: true });
-              } else if (checked && values.mode === 'OFF') {
-                setValue('mode', 'DAILY', { shouldDirty: true });
-              }
-            }
-          }}
+          onCheckedChange={setEnabled}
         />
       </div>
 
@@ -284,11 +131,8 @@ export function PolicyForm({ relId, onSaved, onDirtyChange }: PolicyFormProps) {
             <Segment
               aria-label="关怀频率"
               value={values.mode || 'OFF'}
-              options={MODE_OPTIONS}
-              onValueChange={(nextMode) => {
-                setValue('mode', nextMode, { shouldDirty: true });
-                setValue('enabled', nextMode !== 'OFF', { shouldDirty: true });
-              }}
+              options={POLICY_MODE_OPTIONS}
+              onValueChange={setMode}
             />
           </Field>
         ) : null}
@@ -301,12 +145,7 @@ export function PolicyForm({ relId, onSaved, onDirtyChange }: PolicyFormProps) {
               min={120}
               max={4320}
               value={values.checkInAfterMinutes != null ? String(values.checkInAfterMinutes) : ''}
-              onValueChange={(val) => {
-                const num = val.trim() === '' ? null : Number(val);
-                setValue('checkInAfterMinutes', num !== null && !Number.isNaN(num) ? num : null, {
-                  shouldDirty: true,
-                });
-              }}
+              onValueChange={setCheckInAfterMinutes}
             />
           </Field>
         ) : null}
@@ -318,10 +157,7 @@ export function PolicyForm({ relId, onSaved, onDirtyChange }: PolicyFormProps) {
             min={0}
             max={48}
             value={String(values.dailyLimit)}
-            onValueChange={(val) => {
-              const num = val.trim() === '' ? 0 : Number(val);
-              setValue('dailyLimit', Number.isNaN(num) ? 0 : num, { shouldDirty: true });
-            }}
+            onValueChange={setDailyLimit}
           />
         </Field>
 
@@ -332,10 +168,7 @@ export function PolicyForm({ relId, onSaved, onDirtyChange }: PolicyFormProps) {
             min={0}
             max={10080}
             value={String(values.recentInteractionMinutes)}
-            onValueChange={(val) => {
-              const num = val.trim() === '' ? 0 : Number(val);
-              setValue('recentInteractionMinutes', Number.isNaN(num) ? 0 : num, { shouldDirty: true });
-            }}
+            onValueChange={setRecentInteractionMinutes}
           />
         </Field>
 
@@ -366,7 +199,7 @@ export function PolicyForm({ relId, onSaved, onDirtyChange }: PolicyFormProps) {
               aria-label="静默开始"
               placeholder="23:00"
               value={values.quietHoursStart}
-              onValueChange={(val) => setValue('quietHoursStart', val, { shouldDirty: true })}
+              onValueChange={setQuietHoursStart}
             />
           </Field>
           <Field label="静默结束">
@@ -374,7 +207,7 @@ export function PolicyForm({ relId, onSaved, onDirtyChange }: PolicyFormProps) {
               aria-label="静默结束"
               placeholder="07:00"
               value={values.quietHoursEnd}
-              onValueChange={(val) => setValue('quietHoursEnd', val, { shouldDirty: true })}
+              onValueChange={setQuietHoursEnd}
             />
           </Field>
           <Field label="静默时区">
@@ -382,7 +215,7 @@ export function PolicyForm({ relId, onSaved, onDirtyChange }: PolicyFormProps) {
               aria-label="静默时区"
               placeholder="Asia/Shanghai"
               value={values.quietHoursTimezone}
-              onValueChange={(val) => setValue('quietHoursTimezone', val, { shouldDirty: true })}
+              onValueChange={setQuietHoursTimezone}
             />
           </Field>
         </div>
@@ -391,7 +224,7 @@ export function PolicyForm({ relId, onSaved, onDirtyChange }: PolicyFormProps) {
           <Switch
             aria-label="离线跟进"
             checked={values.offlineCapable}
-            onCheckedChange={(checked) => setValue('offlineCapable', checked, { shouldDirty: true })}
+            onCheckedChange={setOfflineCapable}
           />
         </Field>
 
@@ -406,7 +239,7 @@ export function PolicyForm({ relId, onSaved, onDirtyChange }: PolicyFormProps) {
             type="submit"
             variant="filled"
             disabled={!isPolicyReady}
-            pending={saveMutation.isPending}
+            pending={isSaving}
           >
             保存策略
           </Button>
