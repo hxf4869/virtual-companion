@@ -184,10 +184,25 @@
     "getVoiceClip",
     "previewVoice",
     "transcribeVoice",
-    "getVoiceClipAudio"
+    "getVoiceClipAudio",
+    "listStoredChats",
+    "createStoredChat",
+    "getStoredChat",
+    "deleteStoredChat",
+    "listStoredMessages",
+    "appendStoredMessages",
+    "getStoredMessage",
+    "editStoredMessage",
+    "editStoredChatMetadata",
+    "applyStoredChatOperations",
+    "listStoredChatChanges",
+    "forkStoredChat",
+    "importStoredChat",
+    "getStoredChatImport",
+    "exportStoredChat"
   ],
   "source": {
     "path": "specs/openapi/virtual-companion.yaml",
-    "sha256": "42b8211f452d4bc783e4ed5f75b997f5e69746e1a71f885b4909522044f76110"
+    "sha256": "9c8697b39b8a0be91f74a39b7c4b0e7469b98af7b4c5d69742e600583ccd78de"
   }
 }

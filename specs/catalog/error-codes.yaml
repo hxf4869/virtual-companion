@@ -55,3 +55,27 @@ entries:
   order: 25
 - code: MEMORY_VERSION_CONFLICT
   order: 26
+- code: CHAT_AUTHORITY_CHANGED
+  order: 27
+- code: CHAT_CURSOR_EXPIRED
+  order: 28
+- code: CHAT_CHANGES_EXPIRED
+  order: 29
+- code: IDEMPOTENCY_KEY_REUSED
+  order: 30
+- code: OPERATION_RESULT_EXPIRED
+  order: 31
+- code: CHAT_ID_REUSED
+  order: 32
+- code: CHAT_GENERATION_FENCED
+  order: 33
+- code: CHAT_PAYLOAD_TOO_LARGE
+  order: 34
+- code: CHAT_INVALID_OPERATION
+  order: 35
+- code: CHAT_PRECONDITION_REQUIRED
+  order: 36
+- code: CHAT_IMPORT_INVALID
+  order: 37
+- code: CHAT_IMPORT_EXPIRED
+  order: 38

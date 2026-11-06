@@ -236,11 +236,11 @@
 
 第 29/30 项在此基线不存在，须总调度确认是否来自其他分支/不同统计口径。MemoryCore 的 `index.json` 和其条目继续独立管理；把它们混入凑数会错误扩大退出范围。`desktop-source-modules.mjs` 的 AST 选择/替换、`ejs-editor.mjs` 的资源提取虽不是这 28 个 JSON，也属于需要保留锁、许可和回归的派生规则。
 
-## 4. 聊天存储与分页历史契约草案
+## 4. 聊天存储与分页历史契约（SX-2 冻结）
 
 ### 4.1 数据模型和统一边界
 
-建议 PostgreSQL 为聊天在线权威：conversation 关联新的 chat/message/candidate/order/document/operation 数据结构，消息保留 ST 兼容 JSON（包含未知键）；blobstore 存 PNG/媒体/大型交换文件，不逐次保存一份整聊对象。具体表名与迁移版本在实施时决定，本稿不指定 SQL 版本，不修改现有 `specs/`。
+采用 PostgreSQL 为聊天在线权威：conversation 关联新的 chat/message/candidate/order/document/operation 数据结构，消息保留 ST 兼容 JSON（包含未知键）；blobstore 存 PNG/媒体/大型交换文件，不逐次保存一份整聊对象。具体表名与迁移版本在 SX-3 实施时决定。本节按总调度审定意见冻结进 [OpenAPI](../../specs/openapi/virtual-companion.yaml)，本轮只有契约，未实现接口、迁移或切换权威。
 
 - `chatId` 是稳定 UUID，可信迁移等于旧 `vc_f2.id`；Go `conversationId/relationshipId` 保持已有十进制字符串，绝不把 JS Number 作为 bigint 载体。文件名、角色 avatar 是别名，改名不改 ID。
 - `messageId` 保持 `vc_message_id`；`candidateId` 保持各 swipe 的 `extra.vc_source.id`。顺序由独立 `position` 与 `orderRevision` 描述，不能用数组 index 作为身份。追加的逻辑序号与展示排序分开；重排只修改受影响区间及 orderRevision。
@@ -251,375 +251,84 @@
 
 单聊和群聊通过 `kind` 区分；群聊保持现有 F2 数据/说话者语义，不把 GROUP 塞进已有只允许 COMPANION/STORY 的 Go 绑定模式。尚无 Go conversation/relationship 绑定的旧群聊允许这些字段为 null；迁移不自动赋予它日常记忆共享权限。
 
-### 4.2 OpenAPI 片段（仅在本文评审）
+### 4.2 机器真源与接口清单
 
-下面是拟新增的应用同源接口。Schema 用 `data` 包住兼容 ST 消息，明确未知字段可往返；操作的精确校验规则见紧随其后的规范段。没有把现有整文件 save 重命名成增量 API。
+机器真源为 `specs/openapi/virtual-companion.yaml`；本节不再保留第二份 YAML 草案。新增操作在
+`specs/catalog/go-v1-api-scope.yaml` 登记为 **DEFER**（现有 catalog 无独立实现状态字段），逐项注明
+“SX-2 已冻结、尚未实现，由 SX-3–SX-6 实现并验证后转 KEEP”。这不表示撤回 ADR-0013 的迁出决定，
+也不宣称这些路由当前已存在。既有 `/conversations/...` 接口及 `listMessages` 保持不变。
 
-```yaml
-openapi: 3.1.0
-info: { title: Chat storage draft, version: 0.1.0-proposed }
-servers: [{ url: /api/v1 }]
-security: [{ ownerSession: [] }]
-paths:
-  /chats:
-    get:
-      summary: 按更新时间倒序列出会话，返回摘要，不扫描正文
-      parameters:
-        - { name: cursor, in: query, schema: { type: string } }
-        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 30 } }
-        - { name: characterRef, in: query, schema: { type: string } }
-        - { name: relationshipId, in: query, schema: { type: string } }
-        - { name: q, in: query, schema: { type: string } }
-      responses:
-        '200':
-          description: items 为会话摘要；snapshot 防止翻页期间更新时间变化导致跳项
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [items, snapshot, nextCursor]
-                properties:
-                  items: { type: array, items: { $ref: '#/components/schemas/Chat' } }
-                  snapshot: { type: string }
-                  nextCursor: { type: [string, 'null'] }
-    post:
-      summary: 新建空会话，绑定由服务端核验
-      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [clientOperationId, kind]
-              properties:
-                clientOperationId: { type: string, format: uuid }
-                kind: { type: string, enum: [SINGLE, GROUP] }
-                characterRef: { type: string }
-                groupRef: { type: string }
-                mode: { type: string, enum: [COMPANION, STORY] }
-                title: { type: string }
-              oneOf:
-                - required: [characterRef, mode]
-                  properties: { kind: { const: SINGLE } }
-                  not: { required: [groupRef] }
-                - required: [groupRef]
-                  properties: { kind: { const: GROUP } }
-                  not: { anyOf: [{ required: [characterRef] }, { required: [mode] }] }
-      responses:
-        '201': { description: 已创建, content: { application/json: { schema: { $ref: '#/components/schemas/Chat' } } } }
-  /chats/{chatId}:
-    parameters: [{ $ref: '#/components/parameters/ChatId' }]
-    get:
-      summary: 会话摘要、完整头部/metadata 与各域版本
-      responses:
-        '200': { description: 会话, content: { application/json: { schema: { $ref: '#/components/schemas/Chat' } } } }
-    delete:
-      summary: 删除会话并同步落来源/权利屏障
-      parameters:
-        - { $ref: '#/components/parameters/IdempotencyKey' }
-        - { $ref: '#/components/parameters/Epoch' }
-        - { name: If-Match, in: header, required: true, schema: { type: string }, description: chatRevision 的 ETag }
-      responses:
-        '200': { $ref: '#/components/responses/Committed' }
-        '409': { $ref: '#/components/responses/Conflict' }
-  /chats/{chatId}/messages:
-    parameters: [{ $ref: '#/components/parameters/ChatId' }]
-    get:
-      summary: 同一快照的双向游标分页；items 始终按显示顺序升序
-      parameters:
-        - { name: cursor, in: query, schema: { type: string }, description: 排他边界，禁止自行拼 seq/offset }
-        - { name: direction, in: query, schema: { type: string, enum: [backward, forward], default: backward } }
-        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }
-        - { name: view, in: query, schema: { type: string, enum: [display, full], default: display } }
-      responses:
-        '200': { description: 一页, content: { application/json: { schema: { $ref: '#/components/schemas/MessagePage' } } } }
-        '410': { description: CHAT_CURSOR_EXPIRED；从新快照恢复位置，不混用旧页 }
-    post:
-      summary: 追加一批消息，不要求整个聊天版本不变
-      parameters:
-        - { $ref: '#/components/parameters/IdempotencyKey' }
-        - { $ref: '#/components/parameters/Epoch' }
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [clientOperationId, messages]
-              properties:
-                clientOperationId: { type: string, format: uuid }
-                messages:
-                  type: array
-                  minItems: 1
-                  maxItems: 100
-                  items:
-                    type: object
-                    required: [clientMessageId, data]
-                    properties:
-                      clientMessageId: { type: string, format: uuid }
-                      data: { type: object, additionalProperties: true }
-                generationRunId: { type: string, description: 助手最终提交须验证 run 及输入来源栅栏 }
-      responses:
-        '201': { $ref: '#/components/responses/Committed' }
-        '409': { $ref: '#/components/responses/Conflict' }
-  /chats/{chatId}/messages/{messageId}:
-    parameters:
-      - { $ref: '#/components/parameters/ChatId' }
-      - { name: messageId, in: path, required: true, schema: { type: string, format: uuid } }
-    get:
-      summary: 按稳定 ID 读取完整消息/全部 swipe，不依赖当前页
-      responses:
-        '200': { description: 完整消息, content: { application/json: { schema: { $ref: '#/components/schemas/Message' } } } }
-    patch:
-      summary: 按旧值条件编辑文本、extra 或指定 candidateId 的内容/变量
-      parameters:
-        - { $ref: '#/components/parameters/IdempotencyKey' }
-        - { $ref: '#/components/parameters/Epoch' }
-      requestBody:
-        required: true
-        content: { application/json: { schema: { $ref: '#/components/schemas/Edit' } } }
-      responses:
-        '200': { $ref: '#/components/responses/Committed' }
-        '409': { $ref: '#/components/responses/Conflict' }
-    delete:
-      summary: 删除指定消息；版本不符不能删除另一设备刚编辑的消息
-      parameters:
-        - { $ref: '#/components/parameters/IdempotencyKey' }
-        - { $ref: '#/components/parameters/Epoch' }
-        - { name: If-Match, in: header, required: true, schema: { type: string }, description: messageRevision 的 ETag }
-      responses:
-        '200': { $ref: '#/components/responses/Committed' }
-        '409': { $ref: '#/components/responses/Conflict' }
-  /chats/{chatId}/metadata:
-    parameters: [{ $ref: '#/components/parameters/ChatId' }]
-    patch:
-      summary: title、header 扩展字段和 metadata 局部修改
-      parameters:
-        - { $ref: '#/components/parameters/IdempotencyKey' }
-        - { $ref: '#/components/parameters/Epoch' }
-      requestBody:
-        required: true
-        content: { application/json: { schema: { $ref: '#/components/schemas/Edit' } } }
-      responses:
-        '200': { $ref: '#/components/responses/Committed' }
-        '409': { $ref: '#/components/responses/Conflict' }
-  /chats/{chatId}/operations:
-    parameters: [{ $ref: '#/components/parameters/ChatId' }]
-    post:
-      summary: 原子批量编辑、添加/切换/移除 swipe、删除、重排、MVU 消息与聊天变量联动
-      parameters:
-        - { $ref: '#/components/parameters/IdempotencyKey' }
-        - { $ref: '#/components/parameters/Epoch' }
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [clientOperationId, operations]
-              properties:
-                clientOperationId: { type: string, format: uuid }
-                operations:
-                  type: array
-                  minItems: 1
-                  maxItems: 100
-                  items:
-                    type: object
-                    required: [kind, target, preconditions, value]
-                    properties:
-                      kind: { type: string, enum: [edit, append, delete, metadata, addSwipe, selectSwipe, removeSwipe, reorder] }
-                      target: { type: object, description: messageId/candidateId；metadata 为会话根 }
-                      preconditions: { type: object, description: 目标版本、旧值或 orderRevision；详见规范 }
-                      value: { description: 操作载荷；删除传 null }
-      responses:
-        '200': { $ref: '#/components/responses/Committed' }
-        '409': { $ref: '#/components/responses/Conflict' }
-  /chats/{chatId}/changes:
-    parameters: [{ $ref: '#/components/parameters/ChatId' }]
-    get:
-      summary: 追平快照后的变更，不把翻页当实时订阅
-      parameters:
-        - { name: afterRevision, in: query, required: true, schema: { $ref: '#/components/schemas/Revision' } }
-        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 200, default: 100 } }
-      responses:
-        '200': { description: 按 revision 排序的事务事件、删除 ID、变更 ID、throughRevision、hasMore；完整事务不能分割 }
-        '410': { description: 变更窗口已过期，重新取当前快照 }
-  /chats/{chatId}/forks:
-    parameters: [{ $ref: '#/components/parameters/ChatId' }]
-    post:
-      summary: 在明确父 revision/楼层创建分支，不借用最新父状态
-      parameters:
-        - { $ref: '#/components/parameters/IdempotencyKey' }
-        - { $ref: '#/components/parameters/Epoch' }
-      requestBody:
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [clientOperationId, parentRevision, throughMessageId]
-              properties:
-                clientOperationId: { type: string, format: uuid }
-                parentRevision: { $ref: '#/components/schemas/Revision' }
-                throughMessageId: { type: string, format: uuid }
-      responses:
-        '201': { description: 新 chatId、branchRoot、身份映射与版本 }
-        '409': { $ref: '#/components/responses/Conflict' }
-  /chats/imports:
-    post:
-      summary: 用户 JSONL 导入为新会话，异步解析、完整校验后发布
-      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
-      requestBody:
-        content:
-          multipart/form-data:
-            schema:
-              type: object
-              required: [file, characterRef]
-              properties:
-                file: { type: string, format: binary }
-                characterRef: { type: string }
-      responses:
-        '202': { description: importId/statusUrl；失败有行号及固定错误码，不回显正文 }
-  /chats/imports/{importId}:
-    parameters: [{ name: importId, in: path, required: true, schema: { type: string, format: uuid } }]
-    get:
-      responses:
-        '200': { description: PENDING/FAILED/DONE、校验统计及已发布 chatId }
-  /chats/{chatId}/export:
-    parameters: [{ $ref: '#/components/parameters/ChatId' }]
-    get:
-      summary: 在一个 revision 导出完整 JSONL，不限制为已加载页
-      parameters: [{ name: revision, in: query, schema: { $ref: '#/components/schemas/Revision' } }]
-      responses:
-        '200':
-          description: 首行 header，随后消息，UTF-8，LF；Content-Disposition 附件
-          content: { application/x-ndjson: { schema: { type: string } } }
-        '410': { description: 请求的历史快照已不可用 }
-components:
-  securitySchemes:
-    ownerSession: { type: apiKey, in: cookie, name: vc_session }
-  parameters:
-    ChatId: { name: chatId, in: path, required: true, schema: { type: string, format: uuid } }
-    IdempotencyKey: { name: Idempotency-Key, in: header, required: true, schema: { type: string, format: uuid } }
-    Epoch: { name: X-Chat-Authority-Epoch, in: header, required: true, schema: { $ref: '#/components/schemas/Revision' } }
-  schemas:
-    Revision: { type: string, pattern: '^(0|[1-9][0-9]*)$' }
-    Chat:
-      type: object
-      required: [chatId, kind, chatRevision, metadataRevision, orderRevision, authorityEpoch, title, messageCount]
-      properties:
-        chatId: { type: string, format: uuid }
-        kind: { type: string, enum: [SINGLE, GROUP] }
-        conversationId: { type: [string, 'null'] }
-        relationshipId: { type: [string, 'null'] }
-        characterRef: { type: [string, 'null'] }
-        branchRoot: { type: string, format: uuid }
-        chatRevision: { $ref: '#/components/schemas/Revision' }
-        metadataRevision: { $ref: '#/components/schemas/Revision' }
-        orderRevision: { $ref: '#/components/schemas/Revision' }
-        authorityEpoch: { $ref: '#/components/schemas/Revision' }
-        title: { type: string }
-        messageCount: { type: integer, minimum: 0 }
-        updatedAt: { type: string, format: date-time }
-        header: { type: object, additionalProperties: true }
-        metadata: { type: object, additionalProperties: true }
-    Message:
-      type: object
-      required: [messageId, messageRevision, position, view, data]
-      properties:
-        messageId: { type: string, format: uuid }
-        messageRevision: { $ref: '#/components/schemas/Revision' }
-        position: { type: string }
-        view: { type: string, enum: [display, full] }
-        selectedCandidateId: { type: string, format: uuid }
-        data: { type: object, additionalProperties: true, description: ST 字段；full 包含全部 swipe/extra/variables }
-    MessagePage:
-      type: object
-      required: [chatId, authorityEpoch, items, snapshotRevision, orderRevision, beforeCursor, afterCursor, hasOlder, hasNewer]
-      properties:
-        chatId: { type: string, format: uuid }
-        authorityEpoch: { $ref: '#/components/schemas/Revision' }
-        items: { type: array, items: { $ref: '#/components/schemas/Message' } }
-        snapshotRevision: { $ref: '#/components/schemas/Revision' }
-        orderRevision: { $ref: '#/components/schemas/Revision' }
-        beforeCursor: { type: [string, 'null'] }
-        afterCursor: { type: [string, 'null'] }
-        hasOlder: { type: boolean }
-        hasNewer: { type: boolean }
-    Value:
-      type: object
-      required: [exists]
-      properties:
-        exists: { type: boolean }
-        value: { description: 任意 JSON；exists=false 时不得携带 }
-    Edit:
-      type: object
-      required: [clientOperationId, baseRevision, changes]
-      properties:
-        clientOperationId: { type: string, format: uuid }
-        baseRevision: { $ref: '#/components/schemas/Revision' }
-        candidateId: { type: string, format: uuid }
-        changes:
-          type: array
-          minItems: 1
-          items:
-            type: object
-            required: [path, before, after]
-            properties:
-              path: { type: array, items: { type: string } }
-              before: { $ref: '#/components/schemas/Value' }
-              after: { $ref: '#/components/schemas/Value' }
-    Commit:
-      type: object
-      required: [operationId, chatRevision, authorityEpoch, changed, deletedIds]
-      properties:
-        operationId: { type: string, format: uuid }
-        rebased: { type: boolean, description: 旧目标版本下的全部字段条件仍成立，已安全应用到当前对象 }
-        chatRevision: { $ref: '#/components/schemas/Revision' }
-        authorityEpoch: { $ref: '#/components/schemas/Revision' }
-        changed: { type: array, items: { $ref: '#/components/schemas/Message' } }
-        deletedIds: { type: array, items: { type: string, format: uuid } }
-        metadataRevision: { $ref: '#/components/schemas/Revision' }
-        orderRevision: { $ref: '#/components/schemas/Revision' }
-  responses:
-    Committed:
-      description: 数据、来源屏障、操作回执同事务提交；重试返回同一回执
-      content: { application/json: { schema: { $ref: '#/components/schemas/Commit' } } }
-    Conflict:
-      description: 不自动覆盖；仅返回错误码、冲突目标/路径及当前版本，不回显整聊正文
-      content:
-        application/json:
-          schema:
-            type: object
-            required: [code, message]
-            properties:
-              code: { type: string }
-              message: { type: string }
-              currentRevision: { $ref: '#/components/schemas/Revision' }
-              conflictingPaths: { type: array, items: { type: array, items: { type: string } } }
-```
+下表路径均以 `/api/v1` 为前缀：
 
-所有写接口还必须经过现有 Go CSRF、Origin、期望 account/session 身份头及 RLS；片段复用已有中间件约定，不表示仅持 Cookie 即可写。共同错误：401/403 身份或权利、404 不泄露他人资源、409 条件/epoch/幂等冲突、413 容量超限、422 结构/候选关系非法、428 缺前置条件、429 限流、503 暂不可用。认证失败不能自动切账号重放。
+| 路径 | 方法 / operationId | 请求与响应 schema |
+|---|---|---|
+| `/chats` | GET `listStoredChats`；POST `createStoredChat` | `StoredChatPage`；`ChatCreateRequest` → `StoredChat` |
+| `/chats/{chatId}` | GET `getStoredChat`；DELETE `deleteStoredChat` | `StoredChat`；`ChatDeleteRequest` → `ChatCommit` |
+| `/chats/{chatId}/messages` | GET `listStoredMessages`；POST `appendStoredMessages` | `StoredMessagePage`；`ChatAppendRequest` → `ChatCommit` |
+| `/chats/{chatId}/messages/{messageId}` | GET `getStoredMessage`；PATCH `editStoredMessage` | `StoredMessage`（full）；`ChatMessageEditRequest` → `ChatCommit` |
+| `/chats/{chatId}/metadata` | PATCH `editStoredChatMetadata` | `ChatMetadataEditRequest` → `ChatCommit` |
+| `/chats/{chatId}/operations` | POST `applyStoredChatOperations` | `ChatOperationsRequest` → `ChatCommit` |
+| `/chats/{chatId}/changes` | GET `listStoredChatChanges` | `ChatChangesPage` |
+| `/chats/{chatId}/forks` | POST `forkStoredChat` | `ChatForkRequest` → `ChatForkResult` |
+| `/chats/imports` | POST `importStoredChat` | multipart `ChatImportRequest` → `ChatImportAccepted`（202） |
+| `/chats/imports/{importId}` | GET `getStoredChatImport` | `ChatImportResult` |
+| `/chats/{chatId}/export` | GET `exportStoredChat` | 完整 `application/x-ndjson`，响应头 `X-Chat-Revision` |
+
+消息删除只有 `operations.kind=delete`，没有新 `/chats/.../messages/...` DELETE 路由。
+所有写入只用 body `requestId`（UUID）去重，body `authorityEpoch` 校验权威；会话删除另外带 body
+`chatRevision` 精确前置条件。导入的这两个字段也在 multipart body，不设置幂等请求头或双份键。
+创建/导入前可从空会话列表响应读取账号级 `authorityEpoch`。
+
+所有新接口显式复用现有 `cookieAuth`。写入复用 `StoryCSRF`、`StoryExpectedAccount`、
+`StoryExpectedSession` 参数及既有 Origin 精确白名单规则；读取在身份头存在时比对。Cookie 身份始终是
+唯一授权来源，身份头和 epoch 只是前置条件。认证失败不得自动切账号重放，资源不存在/非本人一律隐藏存在性。
+
+`ChatOperation` 按 kind 使用 `oneOf` / discriminator，8 个分支的 envelope、target、preconditions、payload
+均为关闭未知字段的类型化对象（无载荷的 delete/selectSwipe 为 null）。`data` 与字段值槽保留任意 JSON，
+以兼容 ST 未知字段；这不允许扩展操作协议或修改受保护身份。
+
+| kind / schema | target | preconditions | payload |
+|---|---|---|---|
+| edit / `ChatEditOperation` | messageId，可选 candidateId | baseRevision（messageRevision）；旧字段值在 changes.before | changes[{path,before,after}] |
+| append / `ChatAppendOperation` | 会话根 `{}` | `{}`，不校验无关 chatRevision | messages[{clientMessageId,data}] |
+| delete / `ChatDeleteOperation` | messageId | 精确 messageRevision | null |
+| metadata / `ChatMetadataOperation` | 会话根 `{}` | baseRevision（metadataRevision）；旧字段值在 changes.before | changes，路径以 title/header/metadata 开头 |
+| addSwipe / `ChatAddSwipeOperation` | messageId | 精确 messageRevision | candidate{candidateId,data}，默认保留旧选择 |
+| selectSwipe / `ChatSelectSwipeOperation` | messageId + candidateId | 精确 messageRevision + observed selectedCandidateId | null |
+| removeSwipe / `ChatRemoveSwipeOperation` | messageId + candidateId | 精确 messageRevision + observed selectedCandidateId | replacementCandidateId（移除当前选择必须给存活替代；否则为 null） |
+| reorder / `ChatReorderOperation` | firstMessageId + lastMessageId 的连续区间 | 精确 orderRevision | messageIds，恰为该区间 ID 的排列 |
+
+所有批次前置条件对事务开始状态校验，载荷依序应用，结束时检查候选/字段不变量；同一批 add+select 可共用
+观测版本，不必猜中间 revision。新创建的 candidateId 可用于后续选择；edit/delete 目标及 reorder 区间须在
+事务开始时存在。重叠字段、矛盾删除或指向已删除对象的操作拒绝；任一失败整批回滚。各变更域每事务只推进一次。
+
+错误响应复用 `ErrorEnvelope`；409 的可选 details 按 `ChatConflictDetails` 给出目标/路径/版本，不回显正文。
+新增 catalog 错误码：`CHAT_AUTHORITY_CHANGED`、`CHAT_CURSOR_EXPIRED`、`CHAT_CHANGES_EXPIRED`、
+`IDEMPOTENCY_KEY_REUSED`、`OPERATION_RESULT_EXPIRED`、`CHAT_ID_REUSED`、`CHAT_GENERATION_FENCED`、
+`CHAT_PAYLOAD_TOO_LARGE`、`CHAT_INVALID_OPERATION`、`CHAT_PRECONDITION_REQUIRED`、`CHAT_IMPORT_INVALID`、
+`CHAT_IMPORT_EXPIRED`。其余复用 `INVALID_REQUEST`、`REVISION_CONFLICT`、身份/权利/限流/不可用错误码。
+错误码 catalog 现有 entries 只有 code/order，无中文用户文案字段；本轮沿用该结构。
 
 ### 4.3 游标与可观测版本
 
-- **方向**：不传 cursor 时，backward 返回末页，forward 返回第一页；传 beforeCursor+backward 取严格早于边界的一页，afterCursor+forward 取严格晚于边界的一页。items 两方向都升序，边界排他。空会话返回空数组、两 cursor=null、两 has*=false，不伪造 header 消息。
-- **一致性**：首个请求确定 snapshotRevision。签名 opaque cursor 绑定 Owner、chatId、快照、排序边界、view/过滤条件及到期时间；不能跨账号/会话/方向重用。并发追加不混入旧快照；用 changes API 追平。并发编辑/删除/重排不会让旧游标重复/漏页，实施需要短期版本化读取或快照索引，不能只加 `WHERE id < cursor` 就声称快照一致。
-- **删除优先**：删除/权利撤销屏障高于快照；删除账号/会话立即拒绝旧 cursor，已删除消息在旧快照中也不再返回正文。返回删除 ID/变更事件用于缓存剔除；不能借快照保留读取权利。
-- **过期**：建议游标有效 15 分钟，版本读窗口覆盖该时间；过期 410，客户端用稳定 messageId/阅读锚点重新取页，不拼接新旧快照。changes 保留建议 7 天，过期同样重新校准。具体容量/期限待 Owner 确认。
-- **列表**：排序 `(updatedAt,chatId)`，游标同样绑定列表快照与过滤；元数据索引直接给摘要/条数/最后消息预览。`q` 在列表只搜标题/角色；正文查找需要全会话搜索/命中 messageId 定位端口（SX-4 补齐），不能把当前页的查找冒充全聊搜索。
-- **容量**：建议普通页 default=50/max=200，响应软目标 ≤256 KiB；full 单页可更大，按字节提早结束并给下一 cursor，**不能截断一条消息**。单消息/操作建议上限 1 MiB/8 MiB，超过限制显式错误；历史超限数据在导入预检报告并决定大对象策略，不能丢字段。这里的参数不是已实施限制。
+- **方向**：消息页不传 before/after 时取末页；before 取严格早于边界的最近一页，after 取严格晚于边界的最近一页，与现有 `listMessages` 方向一致。两者互斥，同时传返回 400 `INVALID_REQUEST`；items 始终按展示顺序升序。非空页返回首/末消息的 beforeCursor/afterCursor，即使已到边界也可保留它们；空会话返回空数组、两 cursor=null、两 has*=false，不伪造 header 消息。
+- **一致性**：使用当前状态 keyset，**不做版本化快照读取，不提供 snapshotRevision 或列表 snapshot**。opaque cursor 绑定 Owner、chatId、authorityEpoch、orderRevision、排序边界、view/过滤条件及到期时间。普通尾部追加、编辑、删除不推进 orderRevision；显式重排/插入推进它，使旧游标返回 410 `CHAT_CURSOR_EXPIRED`。每页 chatRevision 是 changes 追平起点，不是固定历史读取令牌；并发编辑/删除/追加通过 changes 对账。
+- **一次打开**：`GET /chats/{chatId}/messages?include=chat` 从同一次读取返回显示页及完整 header、metadata、各域版本；省略 include 时不带 chat。默认 `view=display`，`view=full` 返回全部候选、变量及未知字段。单消息 GET 始终 full。
+- **删除优先**：删除/权利撤销屏障高于任何游标；删除账号/会话后读取立即拒绝，已删除消息永不由旧游标返回正文。changes 返回删除 ID/整聊失效信息，客户端立即剔除缓存；404 不区分不存在或非本人。
+- **过期与锚点**：游标有效 15 分钟。到期/重排后用 `anchorMessageId` 重新读取包含该锚点、以其结束的一页（最多 limit-1 条更早消息），不传 before/after；锚点也被删则收到 404，回到末页。changes 保留 7 天，过期返回 410 `CHAT_CHANGES_EXPIRED` 并重建当前页；不得跨 orderRevision 盲拼页面。changes 的 throughRevision 为最后完整事务，hasMore=true 时继续追平，不拆事务。
+- **列表**：按 `(updatedAt DESC, chatId DESC)` 的排他 keyset 排序，cursor 绑定 Owner、过滤及到期时间，不维持列表快照。更新可能导致行移动，客户端按 chatId 去重并刷新首屏；不承诺并发更新期间无跳项。列表直接给摘要/条数及账号 authorityEpoch，不扫描正文。`q` 只搜标题/角色；全聊正文搜索仍由 SX-4 后续补齐，不能把当前页查找冒充全聊搜索。
+- **容量**：页 default=50/max=200，响应软目标 ≤256 KiB；full 可按字节提早结束并给下一 cursor，至少返回一条符合条件的消息，**不能截断一条消息**。完整单消息（含候选）/操作上限建议 1 MiB/8 MiB；超限显式 413 `CHAT_PAYLOAD_TOO_LARGE`。导入预检报告旧数据超限，不丢字段；multipart 文件采用独立 256 MiB 上限。这是已冻结的实施参数，尚非当前服务已实施限制。
 
 ### 4.4 幂等、并发及生成提交
 
-1. 写操作有不可复用的 `clientOperationId`（若有 body，必须等于 Idempotency-Key；DELETE 用 header），去重范围是 Owner + HTTP 方法/资源 + 操作 ID。服务端保存 canonical 请求摘要及回执；同 ID 同 payload 返回同状态/版本，不再次追加、不再次计费；同 ID 不同 payload 返回 `IDEMPOTENCY_KEY_REUSED`。创建/导入的去重键归于 Owner 集合而非尚不存在的 chatId。
+1. 写操作只有请求体 `requestId`（UUID）作为不可复用的幂等键；会话 DELETE 也有 body，导入为 multipart body。去重范围是 Owner + HTTP 方法/规范资源 + requestId。服务端保存 canonical 请求摘要及回执；同 ID 同 payload 返回同状态/版本，不再次追加、不再次计费；同 ID 不同 payload 返回 `IDEMPOTENCY_KEY_REUSED`。创建/导入的去重键归于 Owner 集合而非尚不存在的 chatId。
 2. 操作回执与数据、来源撤销、事务 outbox 一起提交；断线只重试**同操作**。建议回执正文保留 7 天，随后保留紧凑操作 ID/摘要/结果版本至会话删除及删除屏障完成；过期结果返回 `OPERATION_RESULT_EXPIRED` 并要求读回，不能重新执行。删除会话后的重复请求不能创建新身份。每次重放先重新验证当前授权/epoch，撤销后不回缓存正文。
 3. **追加**：不同 `clientMessageId` 的用户追加在服务端分配顺序，同一会话事务序列化即可，不拿旧 chatRevision 拒绝无关追加。重试同 clientMessageId 不重复建消息；相同 ID 不同内容拒绝。客户端按响应位置和稳定 ID 修正乐观顺序。
-4. **编辑/metadata**：baseRevision 是目标消息或 metadata 的版本。版本相符正常提交；版本落后但所有 `before` 值（包括不存在）仍吻合，可以将指定字段应用到最新对象并返回 `rebased` 结果。不能提交重叠路径或用全根替换绕过保护字段。数组是整值比较；消息/candidate 的选择先按 ID，不能沿旧下标修改错误的 swipe。不同 extra 键互不覆盖。
+4. **编辑/metadata**：baseRevision 是目标消息或 metadata 的版本。版本相符正常提交；版本落后但所有 `before` 值（包括不存在）仍吻合，可以将指定字段应用到最新对象并返回 `rebased` 结果。不能提交重叠路径或用全根替换绕过保护字段。数组是整值比较；消息/candidate 的选择先按 ID，不能沿旧下标修改错误的 swipe。不同 extra 键互不覆盖。候选正文 mes 及候选 extra/variables 必须显式携带 candidateId，不从旧 swipe 下标或当前选择推断；已识别的 MVU/变量/剧情状态树按整棵子树比较替换，不合并同一树的并发叶子修改。
 5. **真实冲突**：同一 mes、选中候选、同一变量树、删除已被改过的消息不自动合并；409 包含冲突 ID/路径/版本，UI 保留局部草稿，提供读回比较/复制为新消息/明确重做，不冻结整个无关会话。原 ADR 禁止自动合并 MVU/swipe/剧情的边界仍有效。
-6. **候选操作**：addSwipe 使用新候选 ID（客户端候选请求 ID 用于幂等）；selectSwipe 带 observed selectedCandidateId + messageRevision；removeSwipe 明确目标及替代选择，不允许没有有效选中候选。选中变化同步撤销旧来源可用性；extra/variables 与候选一起提交。批量 operations 任一前置条件失败整批不落地。
-7. **重排/批量删除/fork**：reorder 带 orderRevision、稳定 ID 区间与目标顺序；任意历史 rotate 或插入必须显式事务，不自动改变证据身份。fork 带 parentRevision/throughMessageId；服务端生成新 chatId 并保留 branchRoot，不能把 sibling 来源混进记忆。用持久轻量分支映射或复制实现，物理方案不改变外部 ID 语义。
-8. **流式生成**：token 流只在内存/有界临时生成状态累积，不逐 token 保存整聊；已保存用户输入是生成的因果来源。最终回复或停止后的部分回复以一个幂等操作提交、标明 settled/aborted。同一生成 run 只能有一个终态；输入消息被改/删除、swipe/分支变化或 run 失效时保存为待处理草稿，不把旧输出自动附到新上下文。工具结果、MVU/EJS 完成及“可用于记忆”的 settled 状态按现有边界发布，不能提前入队提取。
+6. **候选操作**：addSwipe 使用客户端生成的新 candidateId（操作幂等仍只用 requestId）；selectSwipe 带 observed selectedCandidateId + messageRevision；removeSwipe 明确目标及替代选择，不允许没有有效选中候选。选中变化同步撤销旧来源可用性；extra/variables 与候选一起提交。批量 operations 任一前置条件失败整批不落地。
+7. **重排/批量删除/fork**：reorder 带 orderRevision、稳定 ID 区间与目标顺序；任意历史 rotate 或插入必须显式事务，不自动改变证据身份。fork 带 parentRevision/throughMessageId，只在 parentRevision 精确等于当前 chatRevision 时复制包含锚点的前缀，版本过旧返回 409 `REVISION_CONFLICT`；不读取历史版本。服务端生成新 chatId、消息/候选/来源身份并返回映射，保留 branchRoot，不能把 sibling 来源混进记忆。用持久轻量分支映射或复制实现，物理方案不改变外部 ID 语义。
+8. **流式生成**：token 流只在内存/有界临时生成状态累积，不逐 token 保存整聊；已保存用户输入是生成的因果来源。最终回复或停止后的部分回复以一个幂等操作提交，携带 `generation: {generationRunId, state: settled|aborted}`；该字段也适用于生成结果通过 edit/addSwipe 提交。同一生成 run 只能有一个终态；同 requestId 的成功重试返回原回执，其他终态操作或因果栅栏失效返回 409 `CHAT_GENERATION_FENCED`；输入消息被改/删除、swipe/分支变化或 run 失效时保存为待处理草稿，不把旧输出自动附到新上下文。工具结果、MVU/EJS 完成及“可用于记忆”的 settled 状态按现有边界发布，不能提前入队提取。
 9. **后台 inbox**：以 eventId + chatId 唯一约束与前台共用追加事务；readback 确认后 ack。删除/回档后的旧投递不得再次补回（`inbox-bridge.js` 的 removed/invalidated 语义保留）。这消除“后台先全文件保存、前台随即 409”的常见冲突。
 10. **兼容旧 save**：过渡 `/api/chats/save` 收整份 JSON，若有可信读取基线可在服务端计算操作 diff 后逐目标校验；无法证明字段基线时保留严格版本拒绝。不能把旧快照盲覆盖新库，也不能宣称所有旧客户端冲突已消失。尽快将自有 Session 切到原生操作 API，兼容门面随后只服务必要脚本路径。
 
@@ -628,7 +337,7 @@ components:
 把现有 `S/session.js:109` 的整聊 payload 边界替换为一个共享 ChatStore 适配器，由服务端迁移线拥有接口与实现；MB2 使用 `D/runtime/session-bridge.ts` 的窗口化只读投影，不另造手机保存链。显示页、引擎上下文、完整脚本快照三个状态显式区分。
 
 - React 先渲染 `display` 末页，不需初始化 Helper/EJS/MVU，不把卡片 pending 占位记为卡片就绪。阅读位置使用 messageId + 像素锚点，分页 prepend/reorder 不依赖数组索引。swipe 详情按 ID 获取 full 消息；UI index 仅作某个已知快照中的兼容楼层映射。
-- `getChatMessages(range)`、`SillyTavern.chat`、宏/模板任意索引、MVU replay 有同步全量语义。**不能把同步函数改为返回 Promise，也不能塞稀疏数组/空占位假装已经加载完整历史**。在脚本/完整历史消费者启动前，适配器按同一 snapshotRevision 拉齐 `view=full` 并确认变更追平，建立原顺序数组；期间不给旧脚本执行/写权限。切会话立即使旧 epoch/任务失效。
+- `getChatMessages(range)`、`SillyTavern.chat`、宏/模板任意索引、MVU replay 有同步全量语义。**不能把同步函数改为返回 Promise，也不能塞稀疏数组/空占位假装已经加载完整历史**。在脚本/完整历史消费者启动前，适配器先记录当前页 chatRevision/orderRevision，沿 keyset 拉齐 `view=full`，再用 changes 逐事务追平（变更 ID 按 full 读回、删除 ID 剔除、重排重建顺序），并读回当前域版本确认基线一致后建立完整数组；并发写持续发生时重试或等待，不声称获取了固定历史快照；期间不给旧脚本执行/写权限。切会话立即使旧 epoch/任务失效。
 - async `getChatHistoryDetail` / `RawCharacter.getChatsFromFiles` 保留其跨会话全量结果语义；内部以有界并发分页聚合，提供取消/进度。当前 `Promise.all` 扫多个完整会话不宜原样搬进手机。全量请求超过预算时明确等待或报错，不能悄悄只返回前 N 条。
 - 对不使用脚本/全史 API 的普通聊天，提示词窗口计算可按最近完整用户回合加载所需范围；不能擅自将未知卡判为“安全分页”。未声明依赖的脚本按需要完整快照处理。完整卡仍可能 O(n)；后续只在兼容测试证明等价后允许按需状态/checkpoint 优化。
 - 同步脚本修改完成后，基于**稳定 ID 与读取快照**计算变更集合，保存 changed messages/candidates/metadata，不把未加载数据视为删除。直接改 `chat` 的旧脚本也经快照 diff 收口；未知键保留。MVU 的一次消息变量+chat 变量变更用同一批操作，来源守卫在异步前后均校验。
@@ -646,9 +355,9 @@ components:
 
 消息编辑、切候选、删除、no_memory、分支变化须在同一事务先提交来源撤销/版本屏障；异步 outbox 可负责补充派生/提取，检索和 MemoryCore commit 必须看到最新屏障，不能等待异步镜像更新后才禁止旧记忆。未更改来源签名的纯 UI extra/标题改动不推进 sourceRevision；签名按已有文本、说话者、hidden/type/no_memory、候选 variables 及时间规则保持。可信迁移保留所有 revision/generation 和遗忘状态；来源未知返回 UNAVAILABLE，不能当 DELETED。
 
-JSONL 新 API 导出一个 revision 的**完整**头部与全部消息/candidates/extra/variables/未知字段，UTF-8+LF；当前 MVU 的 `/api/chats/export` 兼容门面仍返回 `{message,result}`。JSONL 行语义往返，不承诺重新序列化后的逐字节相同；原始备份另保留原字节哈希。
+JSONL 新 API 在一个一致的当前读取中导出**完整**头部与全部消息/candidates/extra/variables/未知字段；可选 revision 只作当前 chatRevision 的精确前置条件，过旧返回 409 `REVISION_CONFLICT`，不提供历史版本下载，UTF-8+LF；当前 MVU 的 `/api/chats/export` 兼容门面仍返回 `{message,result}`。JSONL 行语义往返，不承诺重新序列化后的逐字节相同；原始备份另保留原字节哈希。
 
-用户导入是新会话：流式解析、有界总量（建议暂存上限 256 MiB、24 小时到期、每账号同时 1 个导入）、逐行校验、全文件成功才发布；新 Owner/绑定/身份由服务端确定，输入的 vc_f2、binding、branchRoot 不能接管已有会话。候选/消息 ID 需要重映射并重建内部引用，无法识别的扩展引用保留并报告。导入失败提供行号/固定错误码，无原文日志；超限显式报错，不截断。内部可信迁移使用独立 manifest+checkpoint 通道，允许保留旧 ID/版本，不能拿公开上传接口做身份恢复。
+用户导入是新会话：流式解析、有界总量（建议暂存上限 256 MiB、24 小时到期、每账号同时 1 个导入）、逐行校验、全文件成功才发布；新 Owner/绑定/身份由服务端确定，输入的 vc_f2、binding、branchRoot 不能接管已有会话。候选/消息 ID 需要重映射并重建内部引用，无法识别的扩展引用保留并报告。异步返回 importId/statusUrl，状态 PENDING/FAILED/DONE；发布前再次校验 authorityEpoch。导入失败最多提供 100 个行号/固定错误原因及 issuesTruncated 标记，无原文日志；超限显式报错，不截断。暂存/状态结果 24h 到期清理，requestId 的紧凑去重保留长于状态结果，结果过期不能再次发布。内部可信迁移使用独立 manifest+checkpoint 通道，允许保留旧 ID/版本，不能拿公开上传接口做身份恢复。
 
 原始 JSONL、PNG 卡、世界书、预设和 blob 的备份/回退步骤按 ADR-0013 §4；完整账号导出不能继续受旧 ST 域 64 MiB 上限阻挡大历史，应采用有界分片/流式任务，保留一次性鉴权下载和删除屏障。本轮没有改变任何已实现容量限制。
 

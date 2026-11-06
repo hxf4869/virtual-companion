@@ -96,7 +96,19 @@
       "REVISION_CONFLICT",
       "MODEL_PROFILE_IN_USE",
       "ACCOUNT_DELETION_PENDING",
-      "MEMORY_VERSION_CONFLICT"
+      "MEMORY_VERSION_CONFLICT",
+      "CHAT_AUTHORITY_CHANGED",
+      "CHAT_CURSOR_EXPIRED",
+      "CHAT_CHANGES_EXPIRED",
+      "IDEMPOTENCY_KEY_REUSED",
+      "OPERATION_RESULT_EXPIRED",
+      "CHAT_ID_REUSED",
+      "CHAT_GENERATION_FENCED",
+      "CHAT_PAYLOAD_TOO_LARGE",
+      "CHAT_INVALID_OPERATION",
+      "CHAT_PRECONDITION_REQUIRED",
+      "CHAT_IMPORT_INVALID",
+      "CHAT_IMPORT_EXPIRED"
     ],
     "FollowUpStatus": [
       "NEEDS_CLARIFICATION",
@@ -942,11 +954,59 @@
           {
             "code": "MEMORY_VERSION_CONFLICT",
             "order": 26
+          },
+          {
+            "code": "CHAT_AUTHORITY_CHANGED",
+            "order": 27
+          },
+          {
+            "code": "CHAT_CURSOR_EXPIRED",
+            "order": 28
+          },
+          {
+            "code": "CHAT_CHANGES_EXPIRED",
+            "order": 29
+          },
+          {
+            "code": "IDEMPOTENCY_KEY_REUSED",
+            "order": 30
+          },
+          {
+            "code": "OPERATION_RESULT_EXPIRED",
+            "order": 31
+          },
+          {
+            "code": "CHAT_ID_REUSED",
+            "order": 32
+          },
+          {
+            "code": "CHAT_GENERATION_FENCED",
+            "order": 33
+          },
+          {
+            "code": "CHAT_PAYLOAD_TOO_LARGE",
+            "order": 34
+          },
+          {
+            "code": "CHAT_INVALID_OPERATION",
+            "order": 35
+          },
+          {
+            "code": "CHAT_PRECONDITION_REQUIRED",
+            "order": 36
+          },
+          {
+            "code": "CHAT_IMPORT_INVALID",
+            "order": 37
+          },
+          {
+            "code": "CHAT_IMPORT_EXPIRED",
+            "order": 38
           }
         ],
         "schemaVersion": 1
       },
-      "sha256": "afe46d29dfe2ff2e9dc46beb3bca5764dd5d2bb9c279c414b6c7f5467e255c9f"
+      "sha256": "f146ffa102203629508cb60302da952263a4f4560d3662cc0e97d204bc271a55"
     },
     "follow-up-statuses.yaml": {
       "document": {
@@ -1142,7 +1202,7 @@
         "adr": "docs/decisions/0007-go-companion-runtime.md",
         "catalogId": "go-v1-api-scope",
         "counts": {
-          "DEFER": 12,
+          "DEFER": 27,
           "KEEP": 125,
           "RETIRE": 42,
           "SIMPLIFY": 5
@@ -3040,6 +3100,126 @@
             "operationId": "getVoiceUsage",
             "path": "/api/v1/voice/usage",
             "replacementOrImpact": "VO-10 account/data page shows only the authenticated owner's retained voice bytes and duration."
+          },
+          {
+            "currentH5Callers": [],
+            "decision": "DEFER",
+            "method": "GET",
+            "operationId": "listStoredChats",
+            "path": "/api/v1/chats",
+            "replacementOrImpact": "SX-2 / ADR-0013: frozen planned contract only, NOT implemented or routed. SX-3–SX-6 must implement and validate before promoting this operation to KEEP; DEFER records implementation deferral, not rejection of the approved ST-exit direction."
+          },
+          {
+            "currentH5Callers": [],
+            "decision": "DEFER",
+            "method": "POST",
+            "operationId": "createStoredChat",
+            "path": "/api/v1/chats",
+            "replacementOrImpact": "SX-2 / ADR-0013: frozen planned contract only, NOT implemented or routed. SX-3–SX-6 must implement and validate before promoting this operation to KEEP; DEFER records implementation deferral, not rejection of the approved ST-exit direction."
+          },
+          {
+            "currentH5Callers": [],
+            "decision": "DEFER",
+            "method": "GET",
+            "operationId": "getStoredChat",
+            "path": "/api/v1/chats/{chatId}",
+            "replacementOrImpact": "SX-2 / ADR-0013: frozen planned contract only, NOT implemented or routed. SX-3–SX-6 must implement and validate before promoting this operation to KEEP; DEFER records implementation deferral, not rejection of the approved ST-exit direction."
+          },
+          {
+            "currentH5Callers": [],
+            "decision": "DEFER",
+            "method": "DELETE",
+            "operationId": "deleteStoredChat",
+            "path": "/api/v1/chats/{chatId}",
+            "replacementOrImpact": "SX-2 / ADR-0013: frozen planned contract only, NOT implemented or routed. SX-3–SX-6 must implement and validate before promoting this operation to KEEP; DEFER records implementation deferral, not rejection of the approved ST-exit direction."
+          },
+          {
+            "currentH5Callers": [],
+            "decision": "DEFER",
+            "method": "GET",
+            "operationId": "listStoredMessages",
+            "path": "/api/v1/chats/{chatId}/messages",
+            "replacementOrImpact": "SX-2 / ADR-0013: frozen planned contract only, NOT implemented or routed. SX-3–SX-6 must implement and validate before promoting this operation to KEEP; DEFER records implementation deferral, not rejection of the approved ST-exit direction."
+          },
+          {
+            "currentH5Callers": [],
+            "decision": "DEFER",
+            "method": "POST",
+            "operationId": "appendStoredMessages",
+            "path": "/api/v1/chats/{chatId}/messages",
+            "replacementOrImpact": "SX-2 / ADR-0013: frozen planned contract only, NOT implemented or routed. SX-3–SX-6 must implement and validate before promoting this operation to KEEP; DEFER records implementation deferral, not rejection of the approved ST-exit direction."
+          },
+          {
+            "currentH5Callers": [],
+            "decision": "DEFER",
+            "method": "GET",
+            "operationId": "getStoredMessage",
+            "path": "/api/v1/chats/{chatId}/messages/{messageId}",
+            "replacementOrImpact": "SX-2 / ADR-0013: frozen planned contract only, NOT implemented or routed. SX-3–SX-6 must implement and validate before promoting this operation to KEEP; DEFER records implementation deferral, not rejection of the approved ST-exit direction."
+          },
+          {
+            "currentH5Callers": [],
+            "decision": "DEFER",
+            "method": "PATCH",
+            "operationId": "editStoredMessage",
+            "path": "/api/v1/chats/{chatId}/messages/{messageId}",
+            "replacementOrImpact": "SX-2 / ADR-0013: frozen planned contract only, NOT implemented or routed. SX-3–SX-6 must implement and validate before promoting this operation to KEEP; DEFER records implementation deferral, not rejection of the approved ST-exit direction."
+          },
+          {
+            "currentH5Callers": [],
+            "decision": "DEFER",
+            "method": "PATCH",
+            "operationId": "editStoredChatMetadata",
+            "path": "/api/v1/chats/{chatId}/metadata",
+            "replacementOrImpact": "SX-2 / ADR-0013: frozen planned contract only, NOT implemented or routed. SX-3–SX-6 must implement and validate before promoting this operation to KEEP; DEFER records implementation deferral, not rejection of the approved ST-exit direction."
+          },
+          {
+            "currentH5Callers": [],
+            "decision": "DEFER",
+            "method": "POST",
+            "operationId": "applyStoredChatOperations",
+            "path": "/api/v1/chats/{chatId}/operations",
+            "replacementOrImpact": "SX-2 / ADR-0013: frozen planned contract only, NOT implemented or routed. SX-3–SX-6 must implement and validate before promoting this operation to KEEP; DEFER records implementation deferral, not rejection of the approved ST-exit direction."
+          },
+          {
+            "currentH5Callers": [],
+            "decision": "DEFER",
+            "method": "GET",
+            "operationId": "listStoredChatChanges",
+            "path": "/api/v1/chats/{chatId}/changes",
+            "replacementOrImpact": "SX-2 / ADR-0013: frozen planned contract only, NOT implemented or routed. SX-3–SX-6 must implement and validate before promoting this operation to KEEP; DEFER records implementation deferral, not rejection of the approved ST-exit direction."
+          },
+          {
+            "currentH5Callers": [],
+            "decision": "DEFER",
+            "method": "POST",
+            "operationId": "forkStoredChat",
+            "path": "/api/v1/chats/{chatId}/forks",
+            "replacementOrImpact": "SX-2 / ADR-0013: frozen planned contract only, NOT implemented or routed. SX-3–SX-6 must implement and validate before promoting this operation to KEEP; DEFER records implementation deferral, not rejection of the approved ST-exit direction."
+          },
+          {
+            "currentH5Callers": [],
+            "decision": "DEFER",
+            "method": "POST",
+            "operationId": "importStoredChat",
+            "path": "/api/v1/chats/imports",
+            "replacementOrImpact": "SX-2 / ADR-0013: frozen planned contract only, NOT implemented or routed. SX-3–SX-6 must implement and validate before promoting this operation to KEEP; DEFER records implementation deferral, not rejection of the approved ST-exit direction."
+          },
+          {
+            "currentH5Callers": [],
+            "decision": "DEFER",
+            "method": "GET",
+            "operationId": "getStoredChatImport",
+            "path": "/api/v1/chats/imports/{importId}",
+            "replacementOrImpact": "SX-2 / ADR-0013: frozen planned contract only, NOT implemented or routed. SX-3–SX-6 must implement and validate before promoting this operation to KEEP; DEFER records implementation deferral, not rejection of the approved ST-exit direction."
+          },
+          {
+            "currentH5Callers": [],
+            "decision": "DEFER",
+            "method": "GET",
+            "operationId": "exportStoredChat",
+            "path": "/api/v1/chats/{chatId}/export",
+            "replacementOrImpact": "SX-2 / ADR-0013: frozen planned contract only, NOT implemented or routed. SX-3–SX-6 must implement and validate before promoting this operation to KEEP; DEFER records implementation deferral, not rejection of the approved ST-exit direction."
           }
         ],
         "runtimeAfterCutover": "Go companiond serves the KEEP/SIMPLIFY surface after the 2026-08-30 cutover; DEFER/RETIRE operations are not runtime fallbacks.",
@@ -3076,7 +3256,7 @@
           }
         ]
       },
-      "sha256": "538be67090b8745b3debafb253ccb7f294f047a671a509bfea187ab783635682"
+      "sha256": "a18363ef8f359e65813d80c28692802801589852bd5a5fe96ab0092ef38b9ad7"
     },
     "memory-candidate-statuses.yaml": {
       "document": {

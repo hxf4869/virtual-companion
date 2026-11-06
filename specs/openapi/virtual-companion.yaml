@@ -7882,6 +7882,790 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/chats:
+    get:
+      operationId: listStoredChats
+      summary: List chat summaries by descending update keyset
+      description: 'SX-2 frozen contract only; not implemented. DEFER in specs/catalog/go-v1-api-scope.yaml until
+        SX-3–SX-6 implement and validate it. Owner/RLS scoped cookieAuth; expected account/session headers are preconditions,
+        never authorization. State-changing requests use existing CSRF and exact Origin checks. Sort by (updatedAt
+        DESC, chatId DESC). cursor is an exclusive opaque tuple bound to owner/filter/expiry, not a snapshot. No body
+        scans. Concurrent updates may move rows between pages: deduplicate by chatId and refresh the head. authorityEpoch
+        is always returned, including for an empty account, for first create/import.'
+      security:
+      - cookieAuth: []
+      parameters:
+      - $ref: '#/components/parameters/ChatExpectedAccount'
+      - $ref: '#/components/parameters/ChatExpectedSession'
+      - name: cursor
+        in: query
+        required: false
+        schema:
+          $ref: '#/components/schemas/ChatKeysetCursor'
+        description: Exclusive next-page keyset returned as nextCursor.
+      - $ref: '#/components/parameters/ChatPageLimit'
+      - name: characterRef
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Optional character filter.
+      - name: relationshipId
+        in: query
+        required: false
+        schema:
+          type: string
+          pattern: ^[1-9][0-9]*$
+        description: Optional bound relationship filter.
+      - name: q
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Title/character-name search only, never a search limited to loaded message bodies.
+      responses:
+        '200':
+          description: List chat summaries by descending update keyset
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StoredChatPage'
+        '400':
+          $ref: '#/components/responses/ChatBadRequest'
+        '401':
+          $ref: '#/components/responses/ChatUnauthorized'
+        '403':
+          $ref: '#/components/responses/ChatForbidden'
+        '404':
+          $ref: '#/components/responses/ChatNotFound'
+        '409':
+          $ref: '#/components/responses/ChatConflict'
+        '429':
+          $ref: '#/components/responses/ChatRateLimited'
+        '503':
+          $ref: '#/components/responses/ChatUnavailable'
+        '410':
+          $ref: '#/components/responses/ChatCursorExpired'
+    post:
+      operationId: createStoredChat
+      summary: Create an empty single or group chat
+      description: SX-2 frozen contract only; not implemented. DEFER in specs/catalog/go-v1-api-scope.yaml until SX-3–SX-6
+        implement and validate it. Owner/RLS scoped cookieAuth; expected account/session headers are preconditions,
+        never authorization. State-changing requests use existing CSRF and exact Origin checks. Server validates binding
+        and issues stable identities. requestId and authorityEpoch are body fields; replay returns the original 201
+        and canonical chat. No idempotency header.
+      security:
+      - cookieAuth: []
+      parameters:
+      - $ref: '#/components/parameters/StoryCSRF'
+      - $ref: '#/components/parameters/StoryExpectedAccount'
+      - $ref: '#/components/parameters/StoryExpectedSession'
+      - $ref: '#/components/parameters/ChatOrigin'
+      responses:
+        '201':
+          description: Create an empty single or group chat
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StoredChat'
+        '400':
+          $ref: '#/components/responses/ChatBadRequest'
+        '401':
+          $ref: '#/components/responses/ChatUnauthorized'
+        '403':
+          $ref: '#/components/responses/ChatForbidden'
+        '404':
+          $ref: '#/components/responses/ChatNotFound'
+        '409':
+          $ref: '#/components/responses/ChatConflict'
+        '429':
+          $ref: '#/components/responses/ChatRateLimited'
+        '503':
+          $ref: '#/components/responses/ChatUnavailable'
+        '410':
+          $ref: '#/components/responses/ChatResultExpired'
+        '413':
+          $ref: '#/components/responses/ChatTooLarge'
+        '422':
+          $ref: '#/components/responses/ChatInvalidOperation'
+        '428':
+          $ref: '#/components/responses/ChatPreconditionRequired'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChatCreateRequest'
+  /api/v1/chats/{chatId}:
+    parameters:
+    - $ref: '#/components/parameters/ChatId'
+    get:
+      operationId: getStoredChat
+      summary: Read full chat header, metadata and versions
+      description: SX-2 frozen contract only; not implemented. DEFER in specs/catalog/go-v1-api-scope.yaml until SX-3–SX-6
+        implement and validate it. Owner/RLS scoped cookieAuth; expected account/session headers are preconditions,
+        never authorization. State-changing requests use existing CSRF and exact Origin checks. Current state only;
+        protected binding/source fields remain server-owned.
+      security:
+      - cookieAuth: []
+      parameters:
+      - $ref: '#/components/parameters/ChatExpectedAccount'
+      - $ref: '#/components/parameters/ChatExpectedSession'
+      responses:
+        '200':
+          description: Read full chat header, metadata and versions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StoredChat'
+        '400':
+          $ref: '#/components/responses/ChatBadRequest'
+        '401':
+          $ref: '#/components/responses/ChatUnauthorized'
+        '403':
+          $ref: '#/components/responses/ChatForbidden'
+        '404':
+          $ref: '#/components/responses/ChatNotFound'
+        '409':
+          $ref: '#/components/responses/ChatConflict'
+        '429':
+          $ref: '#/components/responses/ChatRateLimited'
+        '503':
+          $ref: '#/components/responses/ChatUnavailable'
+    delete:
+      operationId: deleteStoredChat
+      summary: Delete chat with source and rights barriers
+      description: SX-2 frozen contract only; not implemented. DEFER in specs/catalog/go-v1-api-scope.yaml until SX-3–SX-6
+        implement and validate it. Owner/RLS scoped cookieAuth; expected account/session headers are preconditions,
+        never authorization. State-changing requests use existing CSRF and exact Origin checks. Required JSON body
+        carries requestId, authorityEpoch and exact chatRevision. Complete deletion, source revocation and receipt
+        atomically. deleted=true invalidates the entire client cache; the compact deletion receipt prevents identity
+        resurrection. No If-Match or idempotency header.
+      security:
+      - cookieAuth: []
+      parameters:
+      - $ref: '#/components/parameters/StoryCSRF'
+      - $ref: '#/components/parameters/StoryExpectedAccount'
+      - $ref: '#/components/parameters/StoryExpectedSession'
+      - $ref: '#/components/parameters/ChatOrigin'
+      responses:
+        '200':
+          description: Delete chat with source and rights barriers
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatCommit'
+        '400':
+          $ref: '#/components/responses/ChatBadRequest'
+        '401':
+          $ref: '#/components/responses/ChatUnauthorized'
+        '403':
+          $ref: '#/components/responses/ChatForbidden'
+        '404':
+          $ref: '#/components/responses/ChatNotFound'
+        '409':
+          $ref: '#/components/responses/ChatConflict'
+        '429':
+          $ref: '#/components/responses/ChatRateLimited'
+        '503':
+          $ref: '#/components/responses/ChatUnavailable'
+        '410':
+          $ref: '#/components/responses/ChatResultExpired'
+        '413':
+          $ref: '#/components/responses/ChatTooLarge'
+        '422':
+          $ref: '#/components/responses/ChatInvalidOperation'
+        '428':
+          $ref: '#/components/responses/ChatPreconditionRequired'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChatDeleteRequest'
+  /api/v1/chats/{chatId}/messages:
+    parameters:
+    - $ref: '#/components/parameters/ChatId'
+    get:
+      operationId: listStoredMessages
+      summary: Read current message history with before/after keysets
+      description: 'SX-2 frozen contract only; not implemented. DEFER in specs/catalog/go-v1-api-scope.yaml until
+        SX-3–SX-6 implement and validate it. Owner/RLS scoped cookieAuth; expected account/session headers are preconditions,
+        never authorization. State-changing requests use existing CSRF and exact Origin checks. Same direction semantics
+        as existing listMessages: no before/after returns the LAST limit messages; before returns the nearest strictly
+        older page, after returns the nearest strictly later page. Rows ALWAYS ascend in display order; before/after
+        are mutually exclusive (400). Cursors bind owner, chatId, authorityEpoch, orderRevision, view, boundary and
+        15-minute expiry. Ordinary tail append/edit/delete does not invalidate orderRevision; reorder/explicit insertion
+        does and old cursors return 410 CHAT_CURSOR_EXPIRED. No snapshotRevision or historical reads. Track chatRevision
+        with changes for concurrent edits/deletes/appends. anchorMessageId is a fresh current read ending at and including
+        that stable message, with up to limit-1 older messages; mutually exclusive with before/after. Deleted/foreign
+        anchor is 404; clients then reopen the tail. include=chat returns full header/metadata and domain versions
+        from the SAME read for one-request first opening. Empty chats return an empty page, not a header-as-message.'
+      security:
+      - cookieAuth: []
+      parameters:
+      - $ref: '#/components/parameters/ChatExpectedAccount'
+      - $ref: '#/components/parameters/ChatExpectedSession'
+      - name: before
+        in: query
+        required: false
+        schema:
+          $ref: '#/components/schemas/ChatKeysetCursor'
+        description: Exclusive older-page cursor; mutually exclusive with after/anchorMessageId.
+      - name: after
+        in: query
+        required: false
+        schema:
+          $ref: '#/components/schemas/ChatKeysetCursor'
+        description: Exclusive newer-page cursor; mutually exclusive with before/anchorMessageId.
+      - name: anchorMessageId
+        in: query
+        required: false
+        schema:
+          type: string
+          format: uuid
+        description: Fresh page ending at and including this stable message after cursor expiration; excludes before/after.
+      - $ref: '#/components/parameters/ChatPageLimit'
+      - $ref: '#/components/parameters/ChatView'
+      - name: include
+        in: query
+        required: false
+        schema:
+          type: string
+          enum:
+          - chat
+        description: Include the full chat header, metadata and domain versions with the message page.
+      responses:
+        '200':
+          description: Read current message history with before/after keysets
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StoredMessagePage'
+        '400':
+          $ref: '#/components/responses/ChatBadRequest'
+        '401':
+          $ref: '#/components/responses/ChatUnauthorized'
+        '403':
+          $ref: '#/components/responses/ChatForbidden'
+        '404':
+          $ref: '#/components/responses/ChatNotFound'
+        '409':
+          $ref: '#/components/responses/ChatConflict'
+        '429':
+          $ref: '#/components/responses/ChatRateLimited'
+        '503':
+          $ref: '#/components/responses/ChatUnavailable'
+        '410':
+          $ref: '#/components/responses/ChatCursorExpired'
+    post:
+      operationId: appendStoredMessages
+      summary: Append messages without whole-chat CAS
+      description: SX-2 frozen contract only; not implemented. DEFER in specs/catalog/go-v1-api-scope.yaml until SX-3–SX-6
+        implement and validate it. Owner/RLS scoped cookieAuth; expected account/session headers are preconditions,
+        never authorization. State-changing requests use existing CSRF and exact Origin checks. Equivalent to kind=append
+        in operations. Unrelated chatRevision changes never reject an append. The server allocates order; same clientMessageId
+        cannot duplicate/resurrect a message. Final/aborted generation output requires generation.generationRunId
+        and state; validate persisted input/run fences before commit.
+      security:
+      - cookieAuth: []
+      parameters:
+      - $ref: '#/components/parameters/StoryCSRF'
+      - $ref: '#/components/parameters/StoryExpectedAccount'
+      - $ref: '#/components/parameters/StoryExpectedSession'
+      - $ref: '#/components/parameters/ChatOrigin'
+      responses:
+        '201':
+          description: Append messages without whole-chat CAS
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatCommit'
+        '400':
+          $ref: '#/components/responses/ChatBadRequest'
+        '401':
+          $ref: '#/components/responses/ChatUnauthorized'
+        '403':
+          $ref: '#/components/responses/ChatForbidden'
+        '404':
+          $ref: '#/components/responses/ChatNotFound'
+        '409':
+          $ref: '#/components/responses/ChatConflict'
+        '429':
+          $ref: '#/components/responses/ChatRateLimited'
+        '503':
+          $ref: '#/components/responses/ChatUnavailable'
+        '410':
+          $ref: '#/components/responses/ChatResultExpired'
+        '413':
+          $ref: '#/components/responses/ChatTooLarge'
+        '422':
+          $ref: '#/components/responses/ChatInvalidOperation'
+        '428':
+          $ref: '#/components/responses/ChatPreconditionRequired'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChatAppendRequest'
+  /api/v1/chats/{chatId}/messages/{messageId}:
+    parameters:
+    - $ref: '#/components/parameters/ChatId'
+    - $ref: '#/components/parameters/ChatMessageId'
+    get:
+      operationId: getStoredMessage
+      summary: Read one full message by stable ID
+      description: SX-2 frozen contract only; not implemented. DEFER in specs/catalog/go-v1-api-scope.yaml until SX-3–SX-6
+        implement and validate it. Owner/RLS scoped cookieAuth; expected account/session headers are preconditions,
+        never authorization. State-changing requests use existing CSRF and exact Origin checks. Always view=full with
+        all candidates, variables and unknown fields; independent of current page. A deleted message never returns
+        retained body data.
+      security:
+      - cookieAuth: []
+      parameters:
+      - $ref: '#/components/parameters/ChatExpectedAccount'
+      - $ref: '#/components/parameters/ChatExpectedSession'
+      responses:
+        '200':
+          description: Read one full message by stable ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StoredMessage'
+        '400':
+          $ref: '#/components/responses/ChatBadRequest'
+        '401':
+          $ref: '#/components/responses/ChatUnauthorized'
+        '403':
+          $ref: '#/components/responses/ChatForbidden'
+        '404':
+          $ref: '#/components/responses/ChatNotFound'
+        '409':
+          $ref: '#/components/responses/ChatConflict'
+        '429':
+          $ref: '#/components/responses/ChatRateLimited'
+        '503':
+          $ref: '#/components/responses/ChatUnavailable'
+    patch:
+      operationId: editStoredMessage
+      summary: Conditionally edit message or candidate fields
+      description: SX-2 frozen contract only; not implemented. DEFER in specs/catalog/go-v1-api-scope.yaml until SX-3–SX-6
+        implement and validate it. Owner/RLS scoped cookieAuth; expected account/session headers are preconditions,
+        never authorization. State-changing requests use existing CSRF and exact Origin checks. Convenience form of
+        kind=edit. Old baseRevision can rebase only if every before value still matches; return rebased=true. Real
+        semantic conflicts preserve the caller draft. Message deletion is ONLY kind=delete in operations.
+      security:
+      - cookieAuth: []
+      parameters:
+      - $ref: '#/components/parameters/StoryCSRF'
+      - $ref: '#/components/parameters/StoryExpectedAccount'
+      - $ref: '#/components/parameters/StoryExpectedSession'
+      - $ref: '#/components/parameters/ChatOrigin'
+      responses:
+        '200':
+          description: Conditionally edit message or candidate fields
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatCommit'
+        '400':
+          $ref: '#/components/responses/ChatBadRequest'
+        '401':
+          $ref: '#/components/responses/ChatUnauthorized'
+        '403':
+          $ref: '#/components/responses/ChatForbidden'
+        '404':
+          $ref: '#/components/responses/ChatNotFound'
+        '409':
+          $ref: '#/components/responses/ChatConflict'
+        '429':
+          $ref: '#/components/responses/ChatRateLimited'
+        '503':
+          $ref: '#/components/responses/ChatUnavailable'
+        '410':
+          $ref: '#/components/responses/ChatResultExpired'
+        '413':
+          $ref: '#/components/responses/ChatTooLarge'
+        '422':
+          $ref: '#/components/responses/ChatInvalidOperation'
+        '428':
+          $ref: '#/components/responses/ChatPreconditionRequired'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChatMessageEditRequest'
+  /api/v1/chats/{chatId}/metadata:
+    parameters:
+    - $ref: '#/components/parameters/ChatId'
+    patch:
+      operationId: editStoredChatMetadata
+      summary: Conditionally edit title, header extensions and metadata
+      description: SX-2 frozen contract only; not implemented. DEFER in specs/catalog/go-v1-api-scope.yaml until SX-3–SX-6
+        implement and validate it. Owner/RLS scoped cookieAuth; expected account/session headers are preconditions,
+        never authorization. State-changing requests use existing CSRF and exact Origin checks. Convenience form of
+        kind=metadata. baseRevision is metadataRevision; apply only named before/after paths, preserving unknown siblings
+        and protecting server-owned fields.
+      security:
+      - cookieAuth: []
+      parameters:
+      - $ref: '#/components/parameters/StoryCSRF'
+      - $ref: '#/components/parameters/StoryExpectedAccount'
+      - $ref: '#/components/parameters/StoryExpectedSession'
+      - $ref: '#/components/parameters/ChatOrigin'
+      responses:
+        '200':
+          description: Conditionally edit title, header extensions and metadata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatCommit'
+        '400':
+          $ref: '#/components/responses/ChatBadRequest'
+        '401':
+          $ref: '#/components/responses/ChatUnauthorized'
+        '403':
+          $ref: '#/components/responses/ChatForbidden'
+        '404':
+          $ref: '#/components/responses/ChatNotFound'
+        '409':
+          $ref: '#/components/responses/ChatConflict'
+        '429':
+          $ref: '#/components/responses/ChatRateLimited'
+        '503':
+          $ref: '#/components/responses/ChatUnavailable'
+        '410':
+          $ref: '#/components/responses/ChatResultExpired'
+        '413':
+          $ref: '#/components/responses/ChatTooLarge'
+        '422':
+          $ref: '#/components/responses/ChatInvalidOperation'
+        '428':
+          $ref: '#/components/responses/ChatPreconditionRequired'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChatMetadataEditRequest'
+  /api/v1/chats/{chatId}/operations:
+    parameters:
+    - $ref: '#/components/parameters/ChatId'
+    post:
+      operationId: applyStoredChatOperations
+      summary: Atomically apply typed chat commands
+      description: 'SX-2 frozen contract only; not implemented. DEFER in specs/catalog/go-v1-api-scope.yaml until
+        SX-3–SX-6 implement and validate it. Owner/RLS scoped cookieAuth; expected account/session headers are preconditions,
+        never authorization. State-changing requests use existing CSRF and exact Origin checks. Eight kind-discriminated
+        variants: edit, append, delete, metadata, addSwipe, selectSwipe, removeSwipe, reorder. Every target, precondition
+        and payload is typed and closed. Check all preconditions at transaction start; apply commands in order and
+        validate final invariants. Whole batch succeeds or fails, including source barriers/outbox/receipt. Allows
+        one atomic MVU message-variable plus metadata-variable change. 8 MiB maximum request, 1 MiB maximum stored
+        full message.'
+      security:
+      - cookieAuth: []
+      parameters:
+      - $ref: '#/components/parameters/StoryCSRF'
+      - $ref: '#/components/parameters/StoryExpectedAccount'
+      - $ref: '#/components/parameters/StoryExpectedSession'
+      - $ref: '#/components/parameters/ChatOrigin'
+      responses:
+        '200':
+          description: Atomically apply typed chat commands
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatCommit'
+        '400':
+          $ref: '#/components/responses/ChatBadRequest'
+        '401':
+          $ref: '#/components/responses/ChatUnauthorized'
+        '403':
+          $ref: '#/components/responses/ChatForbidden'
+        '404':
+          $ref: '#/components/responses/ChatNotFound'
+        '409':
+          $ref: '#/components/responses/ChatConflict'
+        '429':
+          $ref: '#/components/responses/ChatRateLimited'
+        '503':
+          $ref: '#/components/responses/ChatUnavailable'
+        '410':
+          $ref: '#/components/responses/ChatResultExpired'
+        '413':
+          $ref: '#/components/responses/ChatTooLarge'
+        '422':
+          $ref: '#/components/responses/ChatInvalidOperation'
+        '428':
+          $ref: '#/components/responses/ChatPreconditionRequired'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChatOperationsRequest'
+  /api/v1/chats/{chatId}/changes:
+    parameters:
+    - $ref: '#/components/parameters/ChatId'
+    get:
+      operationId: listStoredChatChanges
+      summary: Catch up complete chat transactions by revision
+      description: SX-2 frozen contract only; not implemented. DEFER in specs/catalog/go-v1-api-scope.yaml until SX-3–SX-6
+        implement and validate it. Owner/RLS scoped cookieAuth; expected account/session headers are preconditions,
+        never authorization. State-changing requests use existing CSRF and exact Origin checks. Use the chatRevision
+        from an initial current page as afterRevision, then follow throughRevision until caught up. Read changed IDs
+        in full and remove deleted IDs; order changes invalidate cursor order. Responses do not retain old message
+        bodies. Future afterRevision is 400 INVALID_REQUEST. Events survive 7 days. A full-history script baseline
+        is runnable only after reconciliation with current revisions; retry/rebuild if reorder or concurrent writes
+        prevent a coherent baseline.
+      security:
+      - cookieAuth: []
+      parameters:
+      - $ref: '#/components/parameters/ChatExpectedAccount'
+      - $ref: '#/components/parameters/ChatExpectedSession'
+      - name: afterRevision
+        in: query
+        required: true
+        schema:
+          $ref: '#/components/schemas/ChatRevision'
+        description: Exclusive changes high-water mark from a prior page/commit/changes response.
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 200
+          default: 50
+        description: Maximum complete transactions, not message count; never split one atomic event.
+      responses:
+        '200':
+          description: Catch up complete chat transactions by revision
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatChangesPage'
+        '400':
+          $ref: '#/components/responses/ChatBadRequest'
+        '401':
+          $ref: '#/components/responses/ChatUnauthorized'
+        '403':
+          $ref: '#/components/responses/ChatForbidden'
+        '404':
+          $ref: '#/components/responses/ChatNotFound'
+        '409':
+          $ref: '#/components/responses/ChatConflict'
+        '429':
+          $ref: '#/components/responses/ChatRateLimited'
+        '503':
+          $ref: '#/components/responses/ChatUnavailable'
+        '410':
+          $ref: '#/components/responses/ChatChangesExpired'
+  /api/v1/chats/{chatId}/forks:
+    parameters:
+    - $ref: '#/components/parameters/ChatId'
+    post:
+      operationId: forkStoredChat
+      summary: Fork the current parent through a stable message ID
+      description: SX-2 frozen contract only; not implemented. DEFER in specs/catalog/go-v1-api-scope.yaml until SX-3–SX-6
+        implement and validate it. Owner/RLS scoped cookieAuth; expected account/session headers are preconditions,
+        never authorization. State-changing requests use existing CSRF and exact Origin checks. parentRevision is
+        an exact current-state precondition. No historical fork reads; stale parentRevision is REVISION_CONFLICT.
+        New branch inherits branchRoot, receives new chat/message/candidate/source identities, returns explicit mappings
+        and cannot borrow sibling memory evidence.
+      security:
+      - cookieAuth: []
+      parameters:
+      - $ref: '#/components/parameters/StoryCSRF'
+      - $ref: '#/components/parameters/StoryExpectedAccount'
+      - $ref: '#/components/parameters/StoryExpectedSession'
+      - $ref: '#/components/parameters/ChatOrigin'
+      responses:
+        '201':
+          description: Fork the current parent through a stable message ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatForkResult'
+        '400':
+          $ref: '#/components/responses/ChatBadRequest'
+        '401':
+          $ref: '#/components/responses/ChatUnauthorized'
+        '403':
+          $ref: '#/components/responses/ChatForbidden'
+        '404':
+          $ref: '#/components/responses/ChatNotFound'
+        '409':
+          $ref: '#/components/responses/ChatConflict'
+        '429':
+          $ref: '#/components/responses/ChatRateLimited'
+        '503':
+          $ref: '#/components/responses/ChatUnavailable'
+        '410':
+          $ref: '#/components/responses/ChatResultExpired'
+        '413':
+          $ref: '#/components/responses/ChatTooLarge'
+        '422':
+          $ref: '#/components/responses/ChatInvalidOperation'
+        '428':
+          $ref: '#/components/responses/ChatPreconditionRequired'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChatForkRequest'
+  /api/v1/chats/imports:
+    post:
+      operationId: importStoredChat
+      summary: Stage an asynchronous JSONL import as a new chat
+      description: SX-2 frozen contract only; not implemented. DEFER in specs/catalog/go-v1-api-scope.yaml until SX-3–SX-6
+        implement and validate it. Owner/RLS scoped cookieAuth; expected account/session headers are preconditions,
+        never authorization. State-changing requests use existing CSRF and exact Origin checks. requestId and authorityEpoch
+        are multipart BODY fields. Return 202 and owner-scoped statusUrl. Validate the complete UTF-8 JSONL file before
+        publication, remap protected identities, preserve unknown fields/references and report counts. Recheck epoch
+        at publication. At most one active import per owner, 256 MiB staged file, 24h expiry/cleanup; the 8 MiB JSON
+        operation limit does not cap the multipart file. This public endpoint never restores trusted migration identity.
+      security:
+      - cookieAuth: []
+      parameters:
+      - $ref: '#/components/parameters/StoryCSRF'
+      - $ref: '#/components/parameters/StoryExpectedAccount'
+      - $ref: '#/components/parameters/StoryExpectedSession'
+      - $ref: '#/components/parameters/ChatOrigin'
+      responses:
+        '202':
+          description: Stage an asynchronous JSONL import as a new chat
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatImportAccepted'
+        '400':
+          $ref: '#/components/responses/ChatBadRequest'
+        '401':
+          $ref: '#/components/responses/ChatUnauthorized'
+        '403':
+          $ref: '#/components/responses/ChatForbidden'
+        '404':
+          $ref: '#/components/responses/ChatNotFound'
+        '409':
+          $ref: '#/components/responses/ChatConflict'
+        '429':
+          $ref: '#/components/responses/ChatRateLimited'
+        '503':
+          $ref: '#/components/responses/ChatUnavailable'
+        '410':
+          $ref: '#/components/responses/ChatResultExpired'
+        '413':
+          $ref: '#/components/responses/ChatTooLarge'
+        '422':
+          $ref: '#/components/responses/ChatInvalidOperation'
+        '428':
+          $ref: '#/components/responses/ChatPreconditionRequired'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ChatImportRequest'
+  /api/v1/chats/imports/{importId}:
+    parameters:
+    - $ref: '#/components/parameters/ChatImportId'
+    get:
+      operationId: getStoredChatImport
+      summary: Read asynchronous import status and bounded diagnostics
+      description: SX-2 frozen contract only; not implemented. DEFER in specs/catalog/go-v1-api-scope.yaml until SX-3–SX-6
+        implement and validate it. Owner/RLS scoped cookieAuth; expected account/session headers are preconditions,
+        never authorization. State-changing requests use existing CSRF and exact Origin checks. PENDING, FAILED or
+        DONE. Failure reports line numbers and fixed reasons, never input text. Result retention is 24h, independent
+        of longer compact requestId deduplication.
+      security:
+      - cookieAuth: []
+      parameters:
+      - $ref: '#/components/parameters/ChatExpectedAccount'
+      - $ref: '#/components/parameters/ChatExpectedSession'
+      responses:
+        '200':
+          description: Read asynchronous import status and bounded diagnostics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatImportResult'
+        '400':
+          $ref: '#/components/responses/ChatBadRequest'
+        '401':
+          $ref: '#/components/responses/ChatUnauthorized'
+        '403':
+          $ref: '#/components/responses/ChatForbidden'
+        '404':
+          $ref: '#/components/responses/ChatNotFound'
+        '409':
+          $ref: '#/components/responses/ChatConflict'
+        '429':
+          $ref: '#/components/responses/ChatRateLimited'
+        '503':
+          $ref: '#/components/responses/ChatUnavailable'
+        '410':
+          $ref: '#/components/responses/ChatImportExpired'
+  /api/v1/chats/{chatId}/export:
+    parameters:
+    - $ref: '#/components/parameters/ChatId'
+    get:
+      operationId: exportStoredChat
+      summary: Export complete current chat as UTF-8 JSONL
+      description: SX-2 frozen contract only; not implemented. DEFER in specs/catalog/go-v1-api-scope.yaml until SX-3–SX-6
+        implement and validate it. Owner/RLS scoped cookieAuth; expected account/session headers are preconditions,
+        never authorization. State-changing requests use existing CSRF and exact Origin checks. One internally consistent
+        current read includes original header, all messages/candidates, hidden data, variables and unknown fields.
+        Optional revision is a precondition for the CURRENT chatRevision, never a request for old data; mismatch is
+        409 REVISION_CONFLICT. Do not mix revisions during streaming (use a bounded database read transaction/staging
+        and apply rights barriers). Full chat regardless of loaded pages, UTF-8 with LF; semantic JSONL round trip,
+        not byte-identical serialization. Recheck current authorization/deletion barriers.
+      security:
+      - cookieAuth: []
+      parameters:
+      - $ref: '#/components/parameters/ChatExpectedAccount'
+      - $ref: '#/components/parameters/ChatExpectedSession'
+      - name: revision
+        in: query
+        required: false
+        schema:
+          $ref: '#/components/schemas/ChatRevision'
+        description: Optional exact current chatRevision precondition; old revisions return 409, no retained snapshot
+          reads.
+      responses:
+        '200':
+          description: Complete current JSONL attachment. X-Chat-Revision identifies the exported current revision.
+          headers:
+            Content-Disposition:
+              required: true
+              schema:
+                type: string
+              description: attachment; filename="chat.jsonl"
+            X-Chat-Revision:
+              required: true
+              schema:
+                $ref: '#/components/schemas/ChatRevision'
+          content:
+            application/x-ndjson:
+              schema:
+                type: string
+        '400':
+          $ref: '#/components/responses/ChatBadRequest'
+        '401':
+          $ref: '#/components/responses/ChatUnauthorized'
+        '403':
+          $ref: '#/components/responses/ChatForbidden'
+        '404':
+          $ref: '#/components/responses/ChatNotFound'
+        '409':
+          $ref: '#/components/responses/ChatConflict'
+        '429':
+          $ref: '#/components/responses/ChatRateLimited'
+        '503':
+          $ref: '#/components/responses/ChatUnavailable'
 components:
   securitySchemes:
     bearerAuth:
@@ -7931,6 +8715,1363 @@ components:
         request carrying an Origin header is refused, and the token grants no
         administrator session (the /api/v1/admin surface ignores it).
   schemas:
+    ChatRevision:
+      type: string
+      pattern: ^(0|[1-9][0-9]*)$
+      description: Monotonic decimal string; never a JSON number. Domain revisions and authorityEpoch are independent
+        counters.
+    ChatKeysetCursor:
+      type: string
+      minLength: 1
+      description: Opaque authenticated keyset cursor; clients must not decode, construct or use an offset. Expires
+        after 15 minutes.
+    ChatCompatData:
+      type: object
+      additionalProperties: true
+      description: ST-compatible JSON. Preserve unknown fields in full reads and round trips. Protected vc_f2/vc_binding/vc_branch_root/vc_source/vc_message_id
+        identities are server-owned; public writes cannot mint authority. The service validates mes/swipes/swipe_id/swipe_info/extra/variables
+        consistency. One message including all candidates is limited to 1 MiB of UTF-8 JSON; never truncate a field.
+    StoredChatSummary:
+      type: object
+      additionalProperties: false
+      required:
+      - chatId
+      - kind
+      - conversationId
+      - relationshipId
+      - characterRef
+      - groupRef
+      - branchRoot
+      - chatRevision
+      - metadataRevision
+      - orderRevision
+      - authorityEpoch
+      - title
+      - messageCount
+      - updatedAt
+      properties:
+        chatId:
+          type: string
+          format: uuid
+        kind:
+          type: string
+          enum:
+          - SINGLE
+          - GROUP
+        conversationId:
+          type:
+          - string
+          - 'null'
+          pattern: ^[1-9][0-9]*$
+        relationshipId:
+          type:
+          - string
+          - 'null'
+          pattern: ^[1-9][0-9]*$
+        characterRef:
+          type:
+          - string
+          - 'null'
+        groupRef:
+          type:
+          - string
+          - 'null'
+        branchRoot:
+          type: string
+          format: uuid
+        chatRevision:
+          $ref: '#/components/schemas/ChatRevision'
+        metadataRevision:
+          $ref: '#/components/schemas/ChatRevision'
+        orderRevision:
+          $ref: '#/components/schemas/ChatRevision'
+        authorityEpoch:
+          $ref: '#/components/schemas/ChatRevision'
+        title:
+          type: string
+        messageCount:
+          type: integer
+          minimum: 0
+        updatedAt:
+          type: string
+          format: date-time
+      description: Stable chatId equals vc_f2.id on trusted migration; rename never changes identity. List rows use
+        indexed metadata, not a body scan. SINGLE binds characterRef and COMPANION/STORY through server validation;
+        GROUP keeps its existing speaker semantics and may have null conversationId/relationshipId without memory-sharing
+        permission. A new root has branchRoot=chatId.
+    StoredChat:
+      type: object
+      additionalProperties: false
+      required:
+      - chatId
+      - kind
+      - conversationId
+      - relationshipId
+      - characterRef
+      - groupRef
+      - branchRoot
+      - chatRevision
+      - metadataRevision
+      - orderRevision
+      - authorityEpoch
+      - title
+      - messageCount
+      - updatedAt
+      - header
+      - metadata
+      properties:
+        chatId:
+          type: string
+          format: uuid
+        kind:
+          type: string
+          enum:
+          - SINGLE
+          - GROUP
+        conversationId:
+          type:
+          - string
+          - 'null'
+          pattern: ^[1-9][0-9]*$
+        relationshipId:
+          type:
+          - string
+          - 'null'
+          pattern: ^[1-9][0-9]*$
+        characterRef:
+          type:
+          - string
+          - 'null'
+        groupRef:
+          type:
+          - string
+          - 'null'
+        branchRoot:
+          type: string
+          format: uuid
+        chatRevision:
+          $ref: '#/components/schemas/ChatRevision'
+        metadataRevision:
+          $ref: '#/components/schemas/ChatRevision'
+        orderRevision:
+          $ref: '#/components/schemas/ChatRevision'
+        authorityEpoch:
+          $ref: '#/components/schemas/ChatRevision'
+        title:
+          type: string
+        messageCount:
+          type: integer
+          minimum: 0
+        updatedAt:
+          type: string
+          format: date-time
+        header:
+          type: object
+          additionalProperties: true
+          description: Complete original JSONL header, including unknown extension fields; protected identity/binding
+            fields remain server-owned.
+        metadata:
+          type: object
+          additionalProperties: true
+          description: Complete chat metadata including unknown extension fields and variables.
+      description: Full chat header, metadata and domain versions. Included atomically with a message page when include=chat.
+    StoredChatPage:
+      type: object
+      additionalProperties: false
+      required:
+      - items
+      - nextCursor
+      - authorityEpoch
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/StoredChatSummary'
+        nextCursor:
+          type:
+          - string
+          - 'null'
+          minLength: 1
+        authorityEpoch:
+          $ref: '#/components/schemas/ChatAuthorityEpoch'
+      description: Descending (updatedAt, chatId) keyset over current indexed rows. No list snapshot. Concurrent updates
+        can move rows; clients deduplicate by chatId and refresh the first page. Cursor binds owner, filters, last tuple
+        and expiry; null nextCursor means no later page at read time. authorityEpoch is always the account chat-authority
+        fence, including an empty list, so first create/import requires no separate endpoint.
+    StoredMessageCandidate:
+      type: object
+      additionalProperties: false
+      required:
+      - candidateId
+      - sourceRevision
+      - sourceGeneration
+      - data
+      properties:
+        candidateId:
+          type: string
+          format: uuid
+        sourceRevision:
+          $ref: '#/components/schemas/ChatRevision'
+        sourceGeneration:
+          $ref: '#/components/schemas/ChatRevision'
+        data:
+          $ref: '#/components/schemas/ChatCompatData'
+      description: Stable candidateId matches extra.vc_source.id in trusted migration. sourceRevision/sourceGeneration
+        identify memory evidence, independently of chatRevision; source_ref retains st:<chatId>:<messageId>:<candidateId>:<sourceRevision>:<sourceGeneration>.
+    StoredMessage:
+      type: object
+      additionalProperties: false
+      required:
+      - messageId
+      - messageRevision
+      - position
+      - view
+      - selectedCandidateId
+      - candidateCount
+      - candidates
+      - data
+      properties:
+        messageId:
+          type: string
+          format: uuid
+        messageRevision:
+          $ref: '#/components/schemas/ChatRevision'
+        position:
+          type: string
+          description: Opaque order identity returned by the service. Use response array order, not lexical client sorting;
+            orderRevision determines whether cached ordering is usable.
+        view:
+          type: string
+          enum:
+          - display
+          - full
+        selectedCandidateId:
+          type: string
+          format: uuid
+        candidateCount:
+          type: integer
+          minimum: 1
+        candidates:
+          type: array
+          items:
+            $ref: '#/components/schemas/StoredMessageCandidate'
+          minItems: 1
+        data:
+          $ref: '#/components/schemas/ChatCompatData'
+      description: messageId preserves vc_message_id on trusted migration; position is an opaque server-assigned order
+        key, never identity or a client-sortable number. display contains only the selected candidate, visible extra
+        and display data; full includes every candidate, all variables and unknown ST fields. candidateCount is the
+        total in either view. data and candidates are canonical consistent projections of one stored message, not independent
+        writable sources. A display object must never replace full data. At least one valid candidate remains selected.
+    StoredMessagePage:
+      type: object
+      additionalProperties: false
+      required:
+      - chatId
+      - chatRevision
+      - metadataRevision
+      - orderRevision
+      - authorityEpoch
+      - items
+      - beforeCursor
+      - afterCursor
+      - hasOlder
+      - hasNewer
+      properties:
+        chatId:
+          type: string
+          format: uuid
+        chatRevision:
+          $ref: '#/components/schemas/ChatRevision'
+        metadataRevision:
+          $ref: '#/components/schemas/ChatRevision'
+        orderRevision:
+          $ref: '#/components/schemas/ChatRevision'
+        authorityEpoch:
+          $ref: '#/components/schemas/ChatRevision'
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/StoredMessage'
+        beforeCursor:
+          type:
+          - string
+          - 'null'
+          minLength: 1
+        afterCursor:
+          type:
+          - string
+          - 'null'
+          minLength: 1
+        hasOlder:
+          type: boolean
+          description: For a nonempty page, whether an accessible message exists strictly before its first row at this
+            read.
+        hasNewer:
+          type: boolean
+          description: For a nonempty page, whether an accessible message exists strictly after its last row at this
+            read.
+        chat:
+          $ref: '#/components/schemas/StoredChat'
+      description: A current read, not versioned history. Rows always ascend in display order. Nonempty pages return
+        exclusive first/last boundary cursors even at an edge; empty pages return null cursors and false flags. chat
+        is present exactly when include=chat and shares this read and all domain versions. chatRevision is the changes
+        high-water mark for this page, not a snapshot token. orderRevision changes on explicit reorder/insertion, not
+        ordinary tail append, edit or deletion.
+    ChatFieldValue:
+      type: object
+      additionalProperties: false
+      required:
+      - exists
+      properties:
+        exists:
+          type: boolean
+        value:
+          description: Any JSON value, including null; omitted exactly when exists=false.
+      description: Distinguishes absent fields from JSON null.
+      oneOf:
+      - properties:
+          exists:
+            const: true
+        required:
+        - value
+      - properties:
+          exists:
+            const: false
+        not:
+          required:
+          - value
+    ChatFieldChange:
+      type: object
+      additionalProperties: false
+      required:
+      - path
+      - before
+      - after
+      properties:
+        path:
+          type: array
+          items:
+            type: string
+          minItems: 1
+        before:
+          $ref: '#/components/schemas/ChatFieldValue'
+        after:
+          $ref: '#/components/schemas/ChatFieldValue'
+      description: Literal object-key segments, not JSON Pointer escaping. No empty/root path, overlapping/ancestor
+        paths, array-index traversal or protected fields. Arrays compare/replace as whole values. before must match
+        including existence; applying after never discards unknown siblings. Message paths are relative to its data
+        (or the target candidate data); metadata paths start with title, header or metadata. mes and candidate text
+        are kept canonical; swipe identities/selection go through typed candidate operations. Recognized MVU/variables/story
+        state trees compare and replace the entire state subtree, not independently merged leaves; all before guards
+        must hold. Do not silently merge concurrent changes to the same variable tree.
+    ChatMessageTarget:
+      type: object
+      additionalProperties: false
+      required:
+      - messageId
+      properties:
+        messageId:
+          type: string
+          format: uuid
+    ChatCandidateTarget:
+      type: object
+      additionalProperties: false
+      required:
+      - messageId
+      - candidateId
+      properties:
+        messageId:
+          type: string
+          format: uuid
+        candidateId:
+          type: string
+          format: uuid
+    ChatEditTarget:
+      oneOf:
+      - $ref: '#/components/schemas/ChatMessageTarget'
+      - $ref: '#/components/schemas/ChatCandidateTarget'
+      description: Message-only targets may change shared message fields. Candidate-backed text (mes), candidate extra/variables
+        and other candidate data MUST name candidateId explicitly, even for the selected candidate. Never infer it from
+        a stale swipe index or a current implicit selection. Whole swipes/swipe_info arrays and swipe_id cannot be edited
+        through field paths; use typed candidate commands.
+    ChatRootTarget:
+      type: object
+      additionalProperties: false
+      required: []
+      properties: {}
+      description: The chat identified by the URL. No second chatId may be supplied.
+    ChatEditPreconditions:
+      type: object
+      additionalProperties: false
+      required:
+      - baseRevision
+      properties:
+        baseRevision:
+          $ref: '#/components/schemas/ChatRevision'
+      description: Observed messageRevision for edit or metadataRevision for metadata. Equal revisions apply normally;
+        an older revision may rebase only if every before value still matches. A future revision or any mismatched before
+        is 409 REVISION_CONFLICT. Variable-tree/MVU/story and selected-candidate conflicts never silently merge. A missing/deleted
+        candidate is a conflict, even when equal text would otherwise pass a before comparison.
+    ChatMessagePreconditions:
+      type: object
+      additionalProperties: false
+      required:
+      - messageRevision
+      properties:
+        messageRevision:
+          $ref: '#/components/schemas/ChatRevision'
+      description: Exact current target messageRevision; stale values are 409 REVISION_CONFLICT.
+    ChatSelectionPreconditions:
+      type: object
+      additionalProperties: false
+      required:
+      - messageRevision
+      - selectedCandidateId
+      properties:
+        messageRevision:
+          $ref: '#/components/schemas/ChatRevision'
+        selectedCandidateId:
+          type: string
+          format: uuid
+      description: Both the exact messageRevision and observed selection must match; no rebasing candidate selection/removal.
+    ChatEditPayload:
+      type: object
+      additionalProperties: false
+      required:
+      - changes
+      properties:
+        changes:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChatFieldChange'
+          minItems: 1
+    ChatAppendMessage:
+      type: object
+      additionalProperties: false
+      required:
+      - clientMessageId
+      - data
+      properties:
+        clientMessageId:
+          type: string
+          format: uuid
+        data:
+          $ref: '#/components/schemas/ChatCompatData'
+      description: clientMessageId becomes the stable messageId. The server assigns order and candidate identities,
+        preserving a canonical mapping in the returned full message. Same ID and same initial content never creates
+        a second message; reuse for different content is CHAT_ID_REUSED. Tombstoned IDs cannot resurrect messages.
+    ChatGenerationCommit:
+      type: object
+      additionalProperties: false
+      required:
+      - generationRunId
+      - state
+      properties:
+        generationRunId:
+          type: string
+          format: uuid
+        state:
+          type: string
+          enum:
+          - settled
+          - aborted
+      description: Required for generated final/partial assistant output, including append, addSwipe or edit of a generated
+        reply. Same run has exactly one terminal commit. The server validates the run and its persisted input message/candidate
+        revisions, branch and authority fence; stale/changed/deleted input or a second terminal operation is CHAT_GENERATION_FENCED.
+        Keep that output as a draft. No token-by-token chat writes; tools/MVU/EJS must finish before settled evidence
+        becomes eligible. Replaying the same successful requestId returns its receipt before reapplying terminal-run
+        checks; a different terminal requestId is fenced.
+    ChatAppendPayload:
+      type: object
+      additionalProperties: false
+      required:
+      - messages
+      properties:
+        messages:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChatAppendMessage'
+          minItems: 1
+          maxItems: 100
+    ChatNewCandidate:
+      type: object
+      additionalProperties: false
+      required:
+      - candidateId
+      - data
+      properties:
+        candidateId:
+          type: string
+          format: uuid
+        data:
+          $ref: '#/components/schemas/ChatCompatData'
+      description: Caller-generated stable UUID for this new candidate; reuse for different content is CHAT_ID_REUSED.
+        Server controls source revisions/generations and validates/synchronizes ST fields.
+    ChatAddSwipePayload:
+      type: object
+      additionalProperties: false
+      required:
+      - candidate
+      properties:
+        candidate:
+          $ref: '#/components/schemas/ChatNewCandidate'
+    ChatRemoveSwipePayload:
+      type: object
+      additionalProperties: false
+      required:
+      - replacementCandidateId
+      properties:
+        replacementCandidateId:
+          type:
+          - string
+          - 'null'
+          format: uuid
+    ChatReorderTarget:
+      type: object
+      additionalProperties: false
+      required:
+      - firstMessageId
+      - lastMessageId
+      properties:
+        firstMessageId:
+          type: string
+          format: uuid
+        lastMessageId:
+          type: string
+          format: uuid
+    ChatOrderPreconditions:
+      type: object
+      additionalProperties: false
+      required:
+      - orderRevision
+      properties:
+        orderRevision:
+          $ref: '#/components/schemas/ChatRevision'
+    ChatReorderPayload:
+      type: object
+      additionalProperties: false
+      required:
+      - messageIds
+      properties:
+        messageIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+          minItems: 1
+          uniqueItems: true
+    ChatEditOperation:
+      type: object
+      additionalProperties: false
+      required:
+      - kind
+      - target
+      - preconditions
+      - payload
+      properties:
+        kind:
+          type: string
+          const: edit
+        target:
+          $ref: '#/components/schemas/ChatEditTarget'
+        preconditions:
+          $ref: '#/components/schemas/ChatEditPreconditions'
+        payload:
+          $ref: '#/components/schemas/ChatEditPayload'
+      description: Apply conditional before/after edits to a message or a stable candidate. Candidate targeting never
+        uses swipe indices.
+    ChatAppendOperation:
+      type: object
+      additionalProperties: false
+      required:
+      - kind
+      - target
+      - preconditions
+      - payload
+      properties:
+        kind:
+          type: string
+          const: append
+        target:
+          $ref: '#/components/schemas/ChatRootTarget'
+        preconditions:
+          type: object
+          additionalProperties: false
+          required: []
+          properties: {}
+        payload:
+          $ref: '#/components/schemas/ChatAppendPayload'
+      description: Append to the current tail. Empty preconditions deliberately exclude chatRevision; unrelated writes
+        cannot reject this append. The server serializes position assignment.
+    ChatDeleteOperation:
+      type: object
+      additionalProperties: false
+      required:
+      - kind
+      - target
+      - preconditions
+      - payload
+      properties:
+        kind:
+          type: string
+          const: delete
+        target:
+          $ref: '#/components/schemas/ChatMessageTarget'
+        preconditions:
+          $ref: '#/components/schemas/ChatMessagePreconditions'
+        payload:
+          type: 'null'
+      description: Delete one message with its source/rights barrier; payload is null. Batch deletes use multiple operations
+        in the same transaction.
+    ChatMetadataOperation:
+      type: object
+      additionalProperties: false
+      required:
+      - kind
+      - target
+      - preconditions
+      - payload
+      properties:
+        kind:
+          type: string
+          const: metadata
+        target:
+          $ref: '#/components/schemas/ChatRootTarget'
+        preconditions:
+          $ref: '#/components/schemas/ChatEditPreconditions'
+        payload:
+          $ref: '#/components/schemas/ChatEditPayload'
+      description: Conditionally edit title, header extensions or metadata; baseRevision refers to metadataRevision.
+    ChatAddSwipeOperation:
+      type: object
+      additionalProperties: false
+      required:
+      - kind
+      - target
+      - preconditions
+      - payload
+      properties:
+        kind:
+          type: string
+          const: addSwipe
+        target:
+          $ref: '#/components/schemas/ChatMessageTarget'
+        preconditions:
+          $ref: '#/components/schemas/ChatMessagePreconditions'
+        payload:
+          $ref: '#/components/schemas/ChatAddSwipePayload'
+      description: Add a fresh candidate without implicitly changing selection; select it with a selectSwipe operation
+        if needed.
+    ChatSelectSwipeOperation:
+      type: object
+      additionalProperties: false
+      required:
+      - kind
+      - target
+      - preconditions
+      - payload
+      properties:
+        kind:
+          type: string
+          const: selectSwipe
+        target:
+          $ref: '#/components/schemas/ChatCandidateTarget'
+        preconditions:
+          $ref: '#/components/schemas/ChatSelectionPreconditions'
+        payload:
+          type: 'null'
+      description: Select target.candidateId, synchronizing display fields and revoking the old selected source before
+        commit. payload is null.
+    ChatRemoveSwipeOperation:
+      type: object
+      additionalProperties: false
+      required:
+      - kind
+      - target
+      - preconditions
+      - payload
+      properties:
+        kind:
+          type: string
+          const: removeSwipe
+        target:
+          $ref: '#/components/schemas/ChatCandidateTarget'
+        preconditions:
+          $ref: '#/components/schemas/ChatSelectionPreconditions'
+        payload:
+          $ref: '#/components/schemas/ChatRemoveSwipePayload'
+      description: Remove target.candidateId. If selected, replacementCandidateId must be a different surviving candidate;
+        otherwise it must be null. Removing the last candidate is invalid.
+    ChatReorderOperation:
+      type: object
+      additionalProperties: false
+      required:
+      - kind
+      - target
+      - preconditions
+      - payload
+      properties:
+        kind:
+          type: string
+          const: reorder
+        target:
+          $ref: '#/components/schemas/ChatReorderTarget'
+        preconditions:
+          $ref: '#/components/schemas/ChatOrderPreconditions'
+        payload:
+          $ref: '#/components/schemas/ChatReorderPayload'
+      description: Reorder one contiguous interval identified by first/last stable messageId at the supplied orderRevision.
+        payload lists exactly those IDs once, in the desired order; no omission, insertion or cross-chat IDs. Increment
+        orderRevision; preserve message/candidate evidence identity.
+    ChatOperation:
+      oneOf:
+      - $ref: '#/components/schemas/ChatEditOperation'
+      - $ref: '#/components/schemas/ChatAppendOperation'
+      - $ref: '#/components/schemas/ChatDeleteOperation'
+      - $ref: '#/components/schemas/ChatMetadataOperation'
+      - $ref: '#/components/schemas/ChatAddSwipeOperation'
+      - $ref: '#/components/schemas/ChatSelectSwipeOperation'
+      - $ref: '#/components/schemas/ChatRemoveSwipeOperation'
+      - $ref: '#/components/schemas/ChatReorderOperation'
+      discriminator:
+        propertyName: kind
+        mapping:
+          edit: '#/components/schemas/ChatEditOperation'
+          append: '#/components/schemas/ChatAppendOperation'
+          delete: '#/components/schemas/ChatDeleteOperation'
+          metadata: '#/components/schemas/ChatMetadataOperation'
+          addSwipe: '#/components/schemas/ChatAddSwipeOperation'
+          selectSwipe: '#/components/schemas/ChatSelectSwipeOperation'
+          removeSwipe: '#/components/schemas/ChatRemoveSwipeOperation'
+          reorder: '#/components/schemas/ChatReorderOperation'
+      description: Closed, typed atomic commands. Validate all preconditions against the transaction-start state; apply
+        payloads in array order and validate the final candidate/data invariants. Multiple commands may share the same
+        observed messageRevision (e.g. add+select) without guessing intermediate revisions. New IDs created earlier
+        in this batch may be payload/selection references, but edit/delete targets and reorder interval membership must
+        exist at transaction start. Contradictory deletes, duplicate edits/overlapping paths or commands targeting deleted
+        objects are rejected. Each changed domain increments once per transaction. Any failure rolls back the complete
+        batch, barriers and receipt.
+    ChatCreateRequest:
+      type: object
+      additionalProperties: false
+      required:
+      - requestId
+      - authorityEpoch
+      - kind
+      properties:
+        requestId:
+          $ref: '#/components/schemas/ChatRequestId'
+        authorityEpoch:
+          $ref: '#/components/schemas/ChatAuthorityEpoch'
+        kind:
+          type: string
+          enum:
+          - SINGLE
+          - GROUP
+        characterRef:
+          type: string
+          minLength: 1
+        groupRef:
+          type: string
+          minLength: 1
+        mode:
+          type: string
+          enum:
+          - COMPANION
+          - STORY
+        title:
+          type: string
+      description: See ChatRequestId for body-only idempotency, replay and retention. Binding is validated by the server.
+        kind=GROUP never extends the existing Go COMPANION/STORY enum.
+      oneOf:
+      - properties:
+          kind:
+            const: SINGLE
+        required:
+        - characterRef
+        - mode
+        not:
+          required:
+          - groupRef
+      - properties:
+          kind:
+            const: GROUP
+        required:
+        - groupRef
+        not:
+          anyOf:
+          - required:
+            - characterRef
+          - required:
+            - mode
+    ChatDeleteRequest:
+      type: object
+      additionalProperties: false
+      required:
+      - requestId
+      - authorityEpoch
+      - chatRevision
+      properties:
+        requestId:
+          $ref: '#/components/schemas/ChatRequestId'
+        authorityEpoch:
+          $ref: '#/components/schemas/ChatAuthorityEpoch'
+        chatRevision:
+          $ref: '#/components/schemas/ChatRevision'
+      description: Delete preconditions and idempotency live in the JSON body; chatRevision must match exactly. See
+        ChatRequestId for body-only idempotency, replay and retention.
+    ChatAppendRequest:
+      type: object
+      additionalProperties: false
+      required:
+      - requestId
+      - authorityEpoch
+      - messages
+      properties:
+        requestId:
+          $ref: '#/components/schemas/ChatRequestId'
+        authorityEpoch:
+          $ref: '#/components/schemas/ChatAuthorityEpoch'
+        messages:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChatAppendMessage'
+          minItems: 1
+          maxItems: 100
+        generation:
+          $ref: '#/components/schemas/ChatGenerationCommit'
+      description: Same semantics as an append operation. No chatRevision precondition. Generation output requires generation.
+        See ChatRequestId for body-only idempotency, replay and retention.
+    ChatMessageEditRequest:
+      type: object
+      additionalProperties: false
+      required:
+      - requestId
+      - authorityEpoch
+      - baseRevision
+      - changes
+      properties:
+        requestId:
+          $ref: '#/components/schemas/ChatRequestId'
+        authorityEpoch:
+          $ref: '#/components/schemas/ChatAuthorityEpoch'
+        baseRevision:
+          $ref: '#/components/schemas/ChatRevision'
+        candidateId:
+          type: string
+          format: uuid
+        changes:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChatFieldChange'
+          minItems: 1
+        generation:
+          $ref: '#/components/schemas/ChatGenerationCommit'
+      description: Single-message convenience form of kind=edit. baseRevision is messageRevision; candidateId narrows
+        data paths to one stable candidate. Conditional before/after rebasing follows ChatEditPreconditions. See ChatRequestId
+        for body-only idempotency, replay and retention. Candidate-backed mes/extra/variables require candidateId exactly
+        as ChatEditTarget does; otherwise reject with CHAT_INVALID_OPERATION.
+    ChatMetadataEditRequest:
+      type: object
+      additionalProperties: false
+      required:
+      - requestId
+      - authorityEpoch
+      - baseRevision
+      - changes
+      properties:
+        requestId:
+          $ref: '#/components/schemas/ChatRequestId'
+        authorityEpoch:
+          $ref: '#/components/schemas/ChatAuthorityEpoch'
+        baseRevision:
+          $ref: '#/components/schemas/ChatRevision'
+        changes:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChatFieldChange'
+          minItems: 1
+      description: Convenience form of kind=metadata; baseRevision is metadataRevision. See ChatRequestId for body-only
+        idempotency, replay and retention.
+    ChatOperationsRequest:
+      type: object
+      additionalProperties: false
+      required:
+      - requestId
+      - authorityEpoch
+      - operations
+      properties:
+        requestId:
+          $ref: '#/components/schemas/ChatRequestId'
+        authorityEpoch:
+          $ref: '#/components/schemas/ChatAuthorityEpoch'
+        operations:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChatOperation'
+          minItems: 1
+          maxItems: 100
+        generation:
+          $ref: '#/components/schemas/ChatGenerationCommit'
+      description: At most 100 commands and 100 newly appended messages across the batch, at most 8 MiB UTF-8 JSON.
+        One optional generation describes the terminal run for the whole transaction; required whenever it commits generated
+        output. See ChatRequestId for body-only idempotency, replay and retention.
+    ChatCommit:
+      type: object
+      additionalProperties: false
+      required:
+      - requestId
+      - operationId
+      - chatId
+      - rebased
+      - chatRevision
+      - metadataRevision
+      - orderRevision
+      - authorityEpoch
+      - changed
+      - deletedIds
+      - deleted
+      properties:
+        requestId:
+          $ref: '#/components/schemas/ChatRequestId'
+        operationId:
+          type: string
+          format: uuid
+        chatId:
+          type: string
+          format: uuid
+        rebased:
+          type: boolean
+        chatRevision:
+          $ref: '#/components/schemas/ChatRevision'
+        metadataRevision:
+          $ref: '#/components/schemas/ChatRevision'
+        orderRevision:
+          $ref: '#/components/schemas/ChatRevision'
+        authorityEpoch:
+          $ref: '#/components/schemas/ChatAuthorityEpoch'
+        changed:
+          type: array
+          items:
+            $ref: '#/components/schemas/StoredMessage'
+        deletedIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+          uniqueItems: true
+        chat:
+          $ref: '#/components/schemas/StoredChat'
+        deleted:
+          type: boolean
+      description: Canonical transaction receipt; changed contains full messages and their complete candidate identity
+        mapping. operationId is server-issued and stable on replay; requestId echoes the sole caller idempotency key.
+        chat is present for metadata edits, absent for deletion; deleted=true is the chat tombstone and lets clients
+        evict all cached messages without an unbounded deletedIds array. chatRevision is also the changes cursor/high-water
+        mark. All source/rights barriers are committed before success. rebased is true if any conditional edit applied
+        safely from an older target revision.
+    ChatChange:
+      type: object
+      additionalProperties: false
+      required:
+      - operationId
+      - chatRevision
+      - metadataRevision
+      - orderRevision
+      - authorityEpoch
+      - changedIds
+      - deletedIds
+      - metadataChanged
+      - orderChanged
+      - deleted
+      properties:
+        operationId:
+          type: string
+          format: uuid
+        chatRevision:
+          $ref: '#/components/schemas/ChatRevision'
+        metadataRevision:
+          $ref: '#/components/schemas/ChatRevision'
+        orderRevision:
+          $ref: '#/components/schemas/ChatRevision'
+        authorityEpoch:
+          $ref: '#/components/schemas/ChatRevision'
+        changedIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+          uniqueItems: true
+        deletedIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+          uniqueItems: true
+        metadataChanged:
+          type: boolean
+        orderChanged:
+          type: boolean
+        deleted:
+          type: boolean
+      description: One complete committed transaction; no body text. Read changed IDs as current full messages; 404
+        removes them if subsequently deleted. orderChanged requires rebuilding page order. deleted=true evicts the entire
+        chat; deletion/rights barriers dominate all reads.
+    ChatChangesPage:
+      type: object
+      additionalProperties: false
+      required:
+      - chatId
+      - authorityEpoch
+      - items
+      - throughRevision
+      - currentRevision
+      - hasMore
+      properties:
+        chatId:
+          type: string
+          format: uuid
+        authorityEpoch:
+          $ref: '#/components/schemas/ChatRevision'
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChatChange'
+        throughRevision:
+          $ref: '#/components/schemas/ChatRevision'
+        currentRevision:
+          $ref: '#/components/schemas/ChatRevision'
+        hasMore:
+          type: boolean
+      description: Events ascend by chatRevision strictly after afterRevision, never split a transaction. throughRevision
+        is the last complete event included (or afterRevision for an empty result); use it for the next request. currentRevision
+        is the high-water mark observed by this request. At caught-up state throughRevision=currentRevision. Keep events
+        7 days; 410 CHAT_CHANGES_EXPIRED requires rebuilding current pages. No retained message snapshots; successive
+        reads may observe newer data. Revoked/deleted chats return 404 and require whole-chat cache eviction.
+    ChatForkRequest:
+      type: object
+      additionalProperties: false
+      required:
+      - requestId
+      - authorityEpoch
+      - parentRevision
+      - throughMessageId
+      properties:
+        requestId:
+          $ref: '#/components/schemas/ChatRequestId'
+        authorityEpoch:
+          $ref: '#/components/schemas/ChatAuthorityEpoch'
+        parentRevision:
+          $ref: '#/components/schemas/ChatRevision'
+        throughMessageId:
+          type: string
+          format: uuid
+      description: Fork through an inclusive current parent message. parentRevision must equal the current chatRevision;
+        older revisions fail 409 REVISION_CONFLICT, not a historical read. Copy the complete prefix, current header/metadata
+        and candidate data atomically to a new chatId. Preserve branchRoot; issue fresh message/candidate/source identities
+        in the child with explicit mapping and never mix sibling evidence. See ChatRequestId for body-only idempotency,
+        replay and retention.
+    ChatForkMessageMapping:
+      type: object
+      additionalProperties: false
+      required:
+      - parentMessageId
+      - messageId
+      - candidates
+      properties:
+        parentMessageId:
+          type: string
+          format: uuid
+        messageId:
+          type: string
+          format: uuid
+        candidates:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required:
+            - parentCandidateId
+            - candidateId
+            properties:
+              parentCandidateId:
+                type: string
+                format: uuid
+              candidateId:
+                type: string
+                format: uuid
+          minItems: 1
+    ChatForkResult:
+      type: object
+      additionalProperties: false
+      required:
+      - requestId
+      - operationId
+      - chat
+      - identityMapping
+      properties:
+        requestId:
+          $ref: '#/components/schemas/ChatRequestId'
+        operationId:
+          type: string
+          format: uuid
+        chat:
+          $ref: '#/components/schemas/StoredChat'
+        identityMapping:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChatForkMessageMapping'
+      description: New chat and explicit per-message/candidate identity mapping for the inclusive copied prefix.
+    ChatImportRequest:
+      type: object
+      additionalProperties: false
+      required:
+      - requestId
+      - authorityEpoch
+      - file
+      - kind
+      properties:
+        requestId:
+          $ref: '#/components/schemas/ChatRequestId'
+        authorityEpoch:
+          $ref: '#/components/schemas/ChatAuthorityEpoch'
+        file:
+          type: string
+          format: binary
+        kind:
+          type: string
+          enum:
+          - SINGLE
+          - GROUP
+        characterRef:
+          type: string
+          minLength: 1
+        groupRef:
+          type: string
+          minLength: 1
+        mode:
+          type: string
+          enum:
+          - COMPANION
+          - STORY
+      description: Multipart body fields, including requestId UUID and decimal authorityEpoch. Stream JSONL UTF-8, 256
+        MiB staged-file limit, one active import per owner, 24h staging/result expiry; clean on success/failure/cancellation/expiry,
+        no unbounded temporary objects. Whole file must validate before publishing a new chat. Public imports remap
+        all message/candidate IDs and recognized internal references; preserve and report unknown extension references.
+        Never trust input owner, binding, revision or branchRoot; trusted migration is a separate private channel. The
+        canonical replay digest includes the file content hash, not its upload filename. See ChatRequestId for body-only
+        idempotency, replay and retention.
+      oneOf:
+      - properties:
+          kind:
+            const: SINGLE
+        required:
+        - characterRef
+        - mode
+        not:
+          required:
+          - groupRef
+      - properties:
+          kind:
+            const: GROUP
+        required:
+        - groupRef
+        not:
+          anyOf:
+          - required:
+            - characterRef
+          - required:
+            - mode
+    ChatImportAccepted:
+      type: object
+      additionalProperties: false
+      required:
+      - requestId
+      - importId
+      - status
+      - statusUrl
+      - expiresAt
+      properties:
+        requestId:
+          $ref: '#/components/schemas/ChatRequestId'
+        importId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum:
+          - PENDING
+        statusUrl:
+          type: string
+          description: Owner-scoped relative URL /api/v1/chats/imports/{importId}; contains no bearer capability.
+        expiresAt:
+          type: string
+          format: date-time
+    ChatImportIssue:
+      type: object
+      additionalProperties: false
+      required:
+      - line
+      - code
+      - reason
+      properties:
+        line:
+          type: integer
+          minimum: 1
+        code:
+          type: string
+          enum:
+          - CHAT_IMPORT_INVALID
+          - CHAT_PAYLOAD_TOO_LARGE
+        reason:
+          type: string
+          enum:
+          - INVALID_UTF8
+          - INVALID_JSON
+          - INVALID_HEADER
+          - INVALID_MESSAGE
+          - DUPLICATE_ID
+          - INVALID_REFERENCE
+          - MESSAGE_TOO_LARGE
+          - FILE_TOO_LARGE
+      description: Fixed diagnostic and 1-based JSONL line only; no raw text, extension values or sensitive identifiers
+        in logs/errors.
+    ChatImportResult:
+      type: object
+      additionalProperties: false
+      required:
+      - importId
+      - status
+      - chatId
+      - validatedMessages
+      - validatedCandidates
+      - unresolvedExtensionReferences
+      - issues
+      - issuesTruncated
+      - expiresAt
+      - failureCode
+      properties:
+        importId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum:
+          - PENDING
+          - FAILED
+          - DONE
+        chatId:
+          type:
+          - string
+          - 'null'
+          format: uuid
+        validatedMessages:
+          type: integer
+          minimum: 0
+        validatedCandidates:
+          type: integer
+          minimum: 0
+        unresolvedExtensionReferences:
+          type: integer
+          minimum: 0
+        issues:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChatImportIssue'
+          maxItems: 100
+        issuesTruncated:
+          type: boolean
+        expiresAt:
+          type: string
+          format: date-time
+        failureCode:
+          anyOf:
+          - type: string
+            enum:
+            - CHAT_IMPORT_INVALID
+            - CHAT_PAYLOAD_TOO_LARGE
+            - CHAT_AUTHORITY_CHANGED
+          - type: 'null'
+      description: All-or-nothing publication. DONE requires a non-null new chatId and no issues. PENDING/FAILED have
+        null chatId. At most 100 issues; issuesTruncated reports additional failures without publishing partial data.
+        Recheck authorization and epoch at publication; a changed epoch fails with CHAT_AUTHORITY_CHANGED and publishes
+        nothing. This result expires after 24h; requestId compact deduplication must outlive the result so expiry never
+        starts another import.
+      oneOf:
+      - properties:
+          status:
+            const: DONE
+          chatId:
+            type: string
+            format: uuid
+          failureCode:
+            type: 'null'
+          issues:
+            maxItems: 0
+      - properties:
+          status:
+            const: PENDING
+          chatId:
+            type: 'null'
+          failureCode:
+            type: 'null'
+      - properties:
+          status:
+            const: FAILED
+          chatId:
+            type: 'null'
+          failureCode:
+            type: string
+            enum:
+            - CHAT_IMPORT_INVALID
+            - CHAT_PAYLOAD_TOO_LARGE
+            - CHAT_AUTHORITY_CHANGED
+    ChatConflictDetails:
+      type: object
+      additionalProperties: false
+      required: []
+      properties:
+        chatId:
+          type: string
+          format: uuid
+        messageId:
+          type: string
+          format: uuid
+        candidateId:
+          type: string
+          format: uuid
+        currentRevision:
+          $ref: '#/components/schemas/ChatRevision'
+        authorityEpoch:
+          $ref: '#/components/schemas/ChatRevision'
+        conflictingPaths:
+          type: array
+          items:
+            type: array
+            items:
+              type: string
+            minItems: 1
+      description: Optional safe details on the existing ErrorEnvelope. Return only IDs/paths/versions, never current/before/after
+        body values or full chat data; only after owner authorization. currentRevision identifies the conflicting target
+        domain.
+    ChatRequestId:
+      type: string
+      format: uuid
+      description: All writes use only the body requestId UUID. Scope is owner + HTTP method + canonical resource +
+        requestId (create/import use the owner collection). Same canonical payload returns the original status/receipt,
+        different payload is 409 IDEMPOTENCY_KEY_REUSED. Receipt, data, source revocation and outbox commit atomically.
+        Check current authorization and authorityEpoch before replay; revoked access never returns cached bodies. Retain
+        receipt bodies 7 days, then a compact key/hash/result-version until chat deletion and its deletion barrier complete;
+        after body expiry return 410 OPERATION_RESULT_EXPIRED and read back, never execute again. Deletion retries cannot
+        recreate identity. authorityEpoch is an account migration fence, not a device lease; obtain it from an authenticated
+        chat read/list (including an empty list). A successful replay does not advance revisions or settle a generation
+        again. Non-import JSON write bodies are limited to 8 MiB.
+    ChatAuthorityEpoch:
+      $ref: '#/components/schemas/ChatRevision'
+      description: Account-wide persistent chat-authority fence read from StoredChatPage or StoredChat; required on
+        every write, including create/import. A mismatch is 409 CHAT_AUTHORITY_CHANGED. It is not a device lease and
+        never authorizes access.
     ErrorEnvelope:
       type: object
       description: >-
@@ -7980,6 +10121,18 @@ components:
         - MODEL_PROFILE_IN_USE
         - ACCOUNT_DELETION_PENDING
         - MEMORY_VERSION_CONFLICT
+        - CHAT_AUTHORITY_CHANGED
+        - CHAT_CURSOR_EXPIRED
+        - CHAT_CHANGES_EXPIRED
+        - IDEMPOTENCY_KEY_REUSED
+        - OPERATION_RESULT_EXPIRED
+        - CHAT_ID_REUSED
+        - CHAT_GENERATION_FENCED
+        - CHAT_PAYLOAD_TOO_LARGE
+        - CHAT_INVALID_OPERATION
+        - CHAT_PRECONDITION_REQUIRED
+        - CHAT_IMPORT_INVALID
+        - CHAT_IMPORT_EXPIRED
     ServiceModeStatus:
       type: object
       description: Current generation-service mode (FR-RES-005).
@@ -14251,6 +16404,76 @@ components:
           type: string
           description: ACTIVE at creation
   parameters:
+    ChatId:
+      name: chatId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    ChatMessageId:
+      name: messageId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    ChatImportId:
+      name: importId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    ChatOrigin:
+      name: Origin
+      in: header
+      required: true
+      schema:
+        type: string
+      description: 'Existing cookieAuth Origin rule: exact configured same-origin allowlist match; missing or mismatched
+        Origin is rejected.'
+    ChatExpectedAccount:
+      name: X-VC-Expected-Account-ID
+      in: header
+      required: false
+      schema:
+        type: string
+        pattern: ^[1-9][0-9]{0,18}$
+      description: Read-side existing identity precondition, compared when present; mismatch is 409 ACCOUNT_CONTEXT_CHANGED.
+        Cookie identity is the only authorization source.
+    ChatExpectedSession:
+      name: X-VC-Expected-Session-ID
+      in: header
+      required: false
+      schema:
+        type: string
+        pattern: ^[1-9][0-9]{0,18}$
+      description: Read-side existing identity precondition, compared when present; mismatch is 409 ACCOUNT_CONTEXT_CHANGED.
+        Cookie identity is the only authorization source.
+    ChatPageLimit:
+      name: limit
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 200
+        default: 50
+      description: 'Maximum rows: default 50, maximum 200. Aim for 256 KiB per page; full pages may end earlier at a
+        message boundary, always returning at least one eligible message and usable cursors. Never truncate a message.'
+    ChatView:
+      name: view
+      in: query
+      required: false
+      schema:
+        type: string
+        enum:
+        - display
+        - full
+        default: display
+      description: display returns only display data and the selected candidate; full preserves all candidates, variables
+        and unknown ST fields.
     StoryRunId:
       name: runId
       in: path
@@ -14432,3 +16655,119 @@ components:
         export responses (single-use, single-issuance). The authenticated
         status response never carries a token — poll it to learn the request
         state, and recover to re-issue if the token was lost.
+  responses:
+    ChatBadRequest:
+      description: 'INVALID_REQUEST: malformed query/body, unknown command fields, mutually exclusive cursors/anchor,
+        cursor tampering or cursor bound to another chat/view/filter. Never interpret cursor bytes as an ID.'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    ChatUnauthorized:
+      description: 'AUTHENTICATION_REQUIRED: valid cookie session required.'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    ChatForbidden:
+      description: 'ACCESS_DENIED or PASSWORD_CHANGE_REQUIRED: Origin/CSRF, rights or password-change gate rejected
+        the request.'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    ChatNotFound:
+      description: 'NOT_FOUND_OR_FORBIDDEN: absent, deleted or foreign chat/message/candidate/import; do not disclose
+        existence. Evict deleted/inaccessible cached objects.'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    ChatConflict:
+      description: ACCOUNT_CONTEXT_CHANGED for expected identity mismatch; CHAT_AUTHORITY_CHANGED for the account migration
+        fence; REVISION_CONFLICT for a target/order/parent/export revision or before-value mismatch; IDEMPOTENCY_KEY_REUSED
+        for the same body requestId with a different canonical payload; CHAT_ID_REUSED for a reused message/candidate
+        ID; CHAT_GENERATION_FENCED for invalid run/input/terminal state. details follows ChatConflictDetails; keep drafts
+        and never blindly retry with a new requestId/epoch.
+      content:
+        application/json:
+          schema:
+            allOf:
+            - $ref: '#/components/schemas/ErrorEnvelope'
+            - type: object
+              properties:
+                details:
+                  $ref: '#/components/schemas/ChatConflictDetails'
+    ChatResultExpired:
+      description: 'OPERATION_RESULT_EXPIRED: compact deduplication still exists but receipt body has expired. Read
+        back current state; do not execute the action again.'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    ChatTooLarge:
+      description: 'CHAT_PAYLOAD_TOO_LARGE: message exceeds 1 MiB including candidates, operation exceeds 8 MiB UTF-8
+        JSON, or staged import file exceeds 256 MiB. Reject explicitly; never truncate unknown fields or a message.'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    ChatInvalidOperation:
+      description: 'CHAT_INVALID_OPERATION: protected fields, overlapping paths, inconsistent ST/candidate relationships,
+        invalid selection, interval or final batch invariants. CHAT_IMPORT_INVALID: invalid import binding/file shape;
+        asynchronous row diagnostics are in ChatImportResult.'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    ChatPreconditionRequired:
+      description: 'CHAT_PRECONDITION_REQUIRED: missing authorityEpoch, target revision, observed selection or required
+        before values. Missing expected account/session headers follows existing 409 ACCOUNT_CONTEXT_CHANGED; missing
+        requestId is 400 INVALID_REQUEST.'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    ChatRateLimited:
+      description: 'RATE_LIMITED: retry after the advertised interval; includes the one-active-import-per-owner limit.'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+      headers:
+        Retry-After:
+          description: Seconds before retry.
+          schema:
+            type: integer
+            minimum: 1
+    ChatUnavailable:
+      description: 'SCHEMA_UNAVAILABLE: chat authority/storage/restore gate temporarily unavailable. No success acknowledgment
+        before the transaction is durable.'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    ChatCursorExpired:
+      description: 'CHAT_CURSOR_EXPIRED (410): the 15-minute keyset cursor expired, its embedded orderRevision no longer
+        matches after reorder/insertion, or its authorityEpoch is stale. Re-read using anchorMessageId and reconcile
+        changes; a deleted anchor yields 404, then reopen the tail. Never merge pages across order revisions without
+        reconciliation.'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    ChatChangesExpired:
+      description: 'CHAT_CHANGES_EXPIRED (410): afterRevision is older than the retained 7-day changes window. Rebuild
+        current pages and full-script baseline; no historical snapshots are retained.'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    ChatImportExpired:
+      description: 'CHAT_IMPORT_EXPIRED (410): the owner-authorized import status/result has expired after 24 hours.
+        Deduplication survives; resending the old requestId must not publish another chat. Foreign or unknown IDs remain
+        404.'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
