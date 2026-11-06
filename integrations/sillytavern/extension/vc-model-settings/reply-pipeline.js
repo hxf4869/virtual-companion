@@ -241,11 +241,124 @@ export function rewriteHint(violations) {
     return `上一句没有发出。原因：${labels.join('、')}。请换一种说法重写，不要解释原因。`;
 }
 
-export function planReplyAction({ text, rewritten = false } = {}) {
+export function planReplyAction({ text, rewritten = false, metrics, sample } = {}) {
     const processed = postProcess(text);
     const hard = processed.violations.some((item) => item.hard);
-    if (!rewritten && hard) return { action: 'rewrite', processed, hint: rewriteHint(processed.violations) };
-    return { action: 'keep', processed, hint: '' };
+    const action = !rewritten && hard ? 'rewrite' : 'keep';
+    if (metrics && processed.text) {
+        // Observe the existing formatting rules as well as style violations;
+        // removed asides must not disappear from the measurement denominator.
+        const original = String(text ?? ''), withoutThink = stripThink(original);
+        const withoutLists = protectStickers(withoutThink, stripLists);
+        const withoutAsides = protectStickers(withoutLists, stripAsides);
+        const cleanup = [
+            ['think-markup', original !== withoutThink],
+            ['list-markup', withoutThink !== withoutLists],
+            ['action-aside', withoutLists !== withoutAsides],
+        ].filter(([, hit]) => hit).map(([code]) => ({ code, hard: false }));
+        metrics.observe(sample, { violations: [...processed.violations, ...cleanup], action, rewritten });
+    }
+    return { action, processed, hint: action === 'rewrite' ? rewriteHint(processed.violations) : '' };
+}
+
+export const REPLY_QUALITY_RULE_CODES = Object.freeze(['courtesy', 'as-ai', 'stock', 'aphorism', 'turns', 'questions', 'think-markup', 'list-markup', 'action-aside']);
+
+function ruleHits(violations) {
+    const hard = [];
+    const soft = [];
+    for (const code of REPLY_QUALITY_RULE_CODES) {
+        if (violations.some((hit) => hit?.code === code && hit.hard === true)) hard.push(code);
+        else if (violations.some((hit) => hit?.code === code && hit.hard === false)) soft.push(code);
+    }
+    return { hard, soft };
+}
+
+function* replyTrigrams(text) {
+    let first = '';
+    let second = '';
+    for (const char of text) {
+        if (first) yield first + second + char;
+        first = second;
+        second = char;
+    }
+}
+
+// Share of the final reply's distinct Unicode code point trigrams found in any
+// of the preceding three assistant replies. Whitespace and punctuation count.
+function recentReplyOverlap(text, previousReplies) {
+    const unmatched = new Set(replyTrigrams(text));
+    const total = unmatched.size;
+    if (!total) return null;
+    let comparable = false;
+    for (const prior of previousReplies.slice(-3)) {
+        if (typeof prior !== 'string') continue;
+        for (const gram of replyTrigrams(prior)) {
+            comparable = true;
+            unmatched.delete(gram);
+        }
+        if (!unmatched.size) break;
+    }
+    return comparable ? (total - unmatched.size) / total : null;
+}
+
+// Opt in per measurement run. The caller owns logical turn boundaries and
+// passes prior replies from the same conversation, oldest first, excluding
+// all candidates for the current reply. No chat reference or text is retained.
+export function createReplyQualityMetrics({ now = () => performance.now(), capacity = 256 } = {}) {
+    if (!Number.isSafeInteger(capacity) || capacity < 1) throw new RangeError('capacity must be a positive integer');
+    const pending = new Map();
+    const samples = [];
+    let sequence = 0;
+    let dropped = 0;
+    return {
+        start() {
+            if (pending.size >= capacity) {
+                dropped += 1;
+                return null;
+            }
+            const sample = ++sequence;
+            pending.set(sample, { rawFirstRules: null, rewrittenRules: null, rewriteStarted: null, rewriteExtraMs: null });
+            return sample;
+        },
+        observe(sample, { violations = [], action, rewritten = false } = {}) {
+            const state = pending.get(sample);
+            if (!state) return;
+            if (!rewritten && !state.rawFirstRules) {
+                state.rawFirstRules = ruleHits(violations);
+                if (action === 'rewrite') state.rewriteStarted = now();
+            } else if (rewritten && action === 'keep' && state.rewriteStarted !== null && !state.rewrittenRules) {
+                state.rewriteExtraMs = now() - state.rewriteStarted;
+                state.rewrittenRules = ruleHits(violations);
+            }
+        },
+        finish(sample, { outcome, text, previousReplies = [] } = {}) {
+            const state = pending.get(sample);
+            if (!state) return;
+            pending.delete(sample);
+            const ok = outcome === 'ok' && typeof text === 'string' && Boolean(text.trim());
+            const rewriteRequested = state.rawFirstRules ? state.rewriteStarted !== null : null;
+            const rewriteCompleted = state.rawFirstRules ? ok && Boolean(state.rewrittenRules) : null;
+            if (samples.length === capacity) {
+                samples.shift();
+                dropped += 1;
+            }
+            samples.push({
+                sample,
+                outcome: ok ? 'ok' : outcome === 'cancelled' ? 'cancelled' : 'failed',
+                rawFirstRules: state.rawFirstRules,
+                finalRules: ok ? (rewriteRequested ? state.rewrittenRules : state.rawFirstRules) : null,
+                rewriteRequested,
+                rewriteCompleted,
+                rewriteExtraMs: rewriteCompleted ? state.rewriteExtraMs : null,
+                overlap: ok ? recentReplyOverlap(text, previousReplies) : null,
+            });
+        },
+        drain() {
+            const output = { samples: samples.splice(0), dropped, pending: pending.size };
+            dropped = 0;
+            return output;
+        },
+    };
 }
 
 export function pickLengthTier(userText, { random = Math.random } = {}) {

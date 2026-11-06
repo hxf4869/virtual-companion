@@ -1,0 +1,175 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>CM-1 collector fixture</title>
+<style>
+    body { font: 16px system-ui; margin: 20px; }
+    #chat { height: 440px; overflow-y: auto; border: 1px solid; }
+    .mes_text { margin: 8px; }
+    [aria-hidden="true"], [data-reasoning] { display: none; }
+</style>
+<button id="open">打开</button>
+<button id="send" disabled>发送</button>
+<main id="chat"></main>
+<script>
+    const probe = window.__vcChatMemoryProbe;
+    const chat = document.querySelector('#chat');
+    const openButton = document.querySelector('#open');
+    const sendButton = document.querySelector('#send');
+    let setup;
+    let cached;
+    let historyCount;
+    let frameMs;
+
+    function message(text = '') {
+        const body = document.createElement('p');
+        body.className = 'mes_text';
+        body.textContent = text;
+        return body;
+    }
+
+    async function readHistory(size) {
+        const response = await fetch('/history/' + size);
+        if (!response.ok) throw new Error('FIXTURE_HISTORY_ERROR');
+        return response.json();
+    }
+
+    window.fixtureSetup = async args => {
+        setup = args;
+        if (['warm', 'search'].includes(args.cache) && cached?.size !== args.historyMessages) {
+            cached = { size: args.historyMessages, records: await readHistory(args.historyMessages) };
+        }
+        frameMs = await new Promise(resolve => requestAnimationFrame(first => requestAnimationFrame(second => resolve(second - first))));
+    };
+
+    async function openChat() {
+        const done = probe.beginOpen(setup.index);
+        sendButton.disabled = true;
+        chat.replaceChildren();
+        try {
+            const records = ['warm', 'search'].includes(setup.cache)
+                ? cached.records : await readHistory(setup.historyMessages);
+            historyCount = records.length;
+            const lastIndex = setup.cache === 'search'
+                ? records.findIndex(record => record.text === `第${Math.ceil(records.length / 2)}条合成聊天消息`)
+                : records.length - 1;
+            if (records.length && lastIndex < 0) throw new Error('FIXTURE_SEARCH_MISS');
+            const visible = records.slice(Math.max(0, lastIndex - 39), lastIndex + 1).map(record => message(record.text));
+            if (!visible.length) visible.push(message('空会话'));
+            chat.append(...visible);
+            chat.scrollTop = chat.scrollHeight;
+            probe.watchOpen(visible.at(-1));
+            sendButton.disabled = false;
+            probe.markReady();
+            probe.finish();
+        } catch {
+            probe.finish('http_error');
+        }
+        return done;
+    }
+
+    async function save(expected, signal) {
+        const response = await fetch('/save/' + expected, { method: 'POST', signal });
+        return response.status === 200 && (await response.json()).revision === expected + 1;
+    }
+
+    async function stream(signal, onEvent) {
+        const response = await fetch('/stream/' + (setup.fault || 'normal'), { signal });
+        if (!response.ok) return 'http_error';
+        const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
+        let pending = '';
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) return 'stream_error';
+            const receivedAt = performance.now();
+            pending += value;
+            let end;
+            while ((end = pending.indexOf('\n\n')) !== -1) {
+                const event = pending.slice(0, end);
+                pending = pending.slice(end + 2);
+                if (!event.startsWith('data: ')) continue;
+                const data = JSON.parse(event.slice(6));
+                if (data.done) {
+                    void reader.cancel().catch(() => {});
+                    return 'ok';
+                }
+                onEvent(data, receivedAt);
+            }
+        }
+    }
+
+    async function sendChat() {
+        const start = performance.now();
+        const done = probe.beginSend(setup.index, setup.fault === 'timeout' ? 300 : 10000);
+        const controller = new AbortController();
+        const { signal } = controller;
+        void done.then(() => controller.abort());
+        const user = message('合成发送');
+        const assistant = message();
+        chat.append(user, assistant);
+        chat.scrollTop = chat.scrollHeight;
+        probe.watchEcho(user);
+        probe.watchReply(assistant);
+
+        let firstBodyMs = null;
+        let lastBodyMs = null;
+        let receivedBodyDeltas = 0;
+        let body = '';
+        try {
+            if (!await save(0, signal)) {
+                probe.finish('save_error');
+            } else {
+                probe.markAck();
+                if (setup.fault === 'cancelled') {
+                    probe.finish('cancelled');
+                } else {
+                    const outcome = await stream(signal, (event, receivedAt) => {
+                        if (event.reasoning) {
+                            const reasoning = document.createElement('span');
+                            reasoning.dataset.reasoning = '';
+                            reasoning.textContent = event.reasoning;
+                            const hidden = document.createElement('span');
+                            hidden.setAttribute('aria-hidden', 'true');
+                            hidden.textContent = event.hidden;
+                            assistant.append(reasoning, hidden);
+                        }
+                        if (event.body) {
+                            receivedBodyDeltas++;
+                            firstBodyMs ??= receivedAt - start;
+                            lastBodyMs = receivedAt - start;
+                            probe.markBodyDelta();
+                            body += event.body;
+                            assistant.append(document.createTextNode(event.body));
+                            chat.scrollTop = chat.scrollHeight;
+                        }
+                    });
+                    if (outcome !== 'ok') {
+                        probe.finish(outcome);
+                    } else if (!receivedBodyDeltas) {
+                        probe.finish('empty_reply');
+                    } else {
+                        assistant.textContent = body;
+                        probe.generationEnd(assistant);
+                        if (await save(1, signal)) {
+                            probe.markDurable();
+                            probe.finish();
+                        } else {
+                            probe.finish('save_error');
+                        }
+                    }
+                }
+            }
+        } catch {
+            if (!signal.aborted) probe.finish('stream_error');
+        }
+        await done;
+        return { rows: probe.drain(), firstBodyMs, lastBodyMs, receivedBodyDeltas, historyCount, frameMs };
+    }
+
+    openButton.addEventListener('click', () => { window.fixtureDone = openChat(); });
+    sendButton.addEventListener('click', () => { window.fixtureDone = sendChat(); });
+    window.fixtureUnavailable = () => {
+        const done = probe.beginSend(setup.index);
+        probe.finish('not_run');
+        window.fixtureDone = done.then(() => ({ rows: probe.drain(), historyCount, frameMs }));
+    };
+</script>

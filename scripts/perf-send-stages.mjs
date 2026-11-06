@@ -2,16 +2,18 @@
 // Prints and writes milliseconds and counts only. Never writes query text,
 // document text, identifiers, credentials, or response bodies.
 //
-// Usage (from the repo root, after sourcing .vc-wt.env):
-//   node scripts/perf-send-stages.mjs --label baseline
-//   node scripts/perf-send-stages.mjs --label after --idle-ms 300000
+// Browser calibration: --mode browser --round round-cm1-calibration
+// Numeric pipeline samples: --mode pipeline --dataset samples.jsonl [--baseline previous.jsonl]
+// Dedicated local models only: --mode local-model --dedicated-local-models --label baseline
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { fileURLToPath } from 'node:url';
+import { execFileSync } from 'node:child_process';
+import { validateSample, summarizeSamples, compareSamples, comparisonMarkdown } from './lib/chat-memory-metrics.mjs';
+import { createRoundArtifacts } from './lib/chat-memory-artifacts.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const outDir = path.join(repoRoot, 'integrations/sillytavern/.local/perf-send-stages');
 const QUERY = '合成问题甲。合成问题乙';
 const DOCS = ['合成资料甲', '合成资料乙', '合成资料丙', '合成资料丁', '合成资料戊', '合成资料己', '合成资料庚', '合成资料辛'];
 
@@ -152,7 +154,8 @@ async function portOpen(url) {
     return hit.ok ? 1 : 0;
 }
 
-async function main() {
+async function localModelMain() {
+    if (!process.argv.includes('--dedicated-local-models')) throw new Error('DEDICATED_LOCAL_MODELS_REQUIRED');
     const label = String(arg('--label', 'run')).replace(/[^a-z0-9_-]/gi, '') || 'run';
     const idleMs = Number(arg('--idle-ms', '0'));
     const report = {
@@ -221,8 +224,65 @@ async function main() {
 }
 
 async function write(label, report) {
-    await fs.mkdir(outDir, { recursive: true, mode: 0o700 });
-    await fs.writeFile(path.join(outDir, `${label}.json`), `${JSON.stringify(report, null, 2)}\n`, { mode: 0o600 });
+    const artifacts = await createRoundArtifacts(arg('--output', path.join(repoRoot, 'integrations/sillytavern/.local/chat-memory-quality')), {
+        round: `round-local-${label.toLowerCase().replaceAll('_', '-').slice(0, 32)}-${Date.now()}`,
+    });
+    try { await artifacts.write('summary.json', report); }
+    finally { await artifacts.close(); }
+}
+
+async function main() {
+    const mode = arg('--mode', '');
+    if (mode === 'local-model') return localModelMain();
+    if (!['browser', 'pipeline'].includes(mode)) throw new Error('PERF_MODE_REQUIRED');
+    const round = arg('--round', `round-${new Date().toISOString().replace(/[^0-9]/g, '')}`);
+    const artifacts = await createRoundArtifacts(arg('--output', path.join(repoRoot, 'integrations/sillytavern/.local/chat-memory-quality')), { round });
+    const controller = new AbortController();
+    const interrupt = () => controller.abort();
+    process.once('SIGINT', interrupt); process.once('SIGTERM', interrupt);
+    let rows = [], calibration = null;
+    try {
+        if (mode === 'browser') {
+            const { runBrowserCalibration } = await import('./lib/chat-memory-browser.mjs');
+            const result = await runBrowserCalibration({
+                warmSamples: Number(arg('--warm-runs', '50')), coldSamples: Number(arg('--cold-runs', '30')),
+                histories: String(arg('--histories', '0,20,200,2000,20000')).split(',').map(Number),
+                signal: controller.signal,
+            });
+            rows = result.samples; calibration = result.checks;
+        } else {
+            const source = arg('--dataset', '');
+            if (!source) throw new Error('PERF_DATASET_REQUIRED');
+            rows = (await fs.readFile(source, 'utf8')).trim().split('\n').filter(Boolean).map(line => validateSample(JSON.parse(line)));
+        }
+        const baselineFile = arg('--baseline', '');
+        const baseline = baselineFile ? (await fs.readFile(baselineFile, 'utf8')).trim().split('\n').filter(Boolean)
+            .map(line => validateSample({ ...JSON.parse(line), variant: 'baseline' })) : [];
+        rows = rows.map(validateSample);
+        const summary = summarizeSamples(rows);
+        const comparison = baseline.length ? compareSamples(baseline, rows.map(row => ({ ...row, variant: 'candidate' }))) : [];
+        const manifest = { schemaVersion: 1, mode, commit: execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repoRoot, encoding: 'utf8' }).trim(),
+            worktreeDirty: Boolean(execFileSync('git', ['status', '--porcelain', '--untracked-files=no'], { cwd: repoRoot, encoding: 'utf8' }).trim()),
+            nodeVersion: process.version, platform: process.platform, arch: process.arch,
+            seed: 20261106, planned: rows.length, completed: rows.filter(row => row.outcome === 'ok').length,
+            actualCostCny: mode === 'browser' ? 0 : null, modelCalls: mode === 'browser' ? 0 : null,
+            status: comparison.some(row => row.status === 'FAIL') || calibration?.status === 'FAIL' ? 'FAIL'
+                : !rows.length || rows.some(row => row.outcome !== 'ok') || comparison.some(row => row.status === 'INCOMPLETE') ? 'INCOMPLETE' : 'PASS',
+            browserCalibrationOnly: mode === 'browser', calibration };
+        await artifacts.write('manifest.json', manifest);
+        await artifacts.write('samples.jsonl', rows.map(row => JSON.stringify(row)).join('\n') + '\n');
+        await artifacts.write('summary.json', { ...summary, comparison });
+        await artifacts.write('comparison.md', comparisonMarkdown(summary, comparison));
+        if (mode === 'browser') await artifacts.write('budget.json', { actualMicroCny: 0, calls: 0, paidRequestsAllowed: false });
+        console.log(JSON.stringify({ ...manifest, groups: summary.groups.length }));
+        if (manifest.status !== 'PASS') process.exitCode = 1;
+    } catch (error) {
+        await artifacts.write('summary.json', { schemaVersion: 1, status: 'INCOMPLETE', completed: rows.length });
+        throw error;
+    } finally {
+        process.removeListener('SIGINT', interrupt); process.removeListener('SIGTERM', interrupt);
+        await artifacts.close();
+    }
 }
 
 main().catch((error) => {
