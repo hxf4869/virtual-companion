@@ -4294,16 +4294,29 @@ paths:
       summary: Restore the current authenticated account state
       description: 'Returns ACTIVE only for a live opaque vc_session. This is the sole page refresh source for account, role
         and authenticator state; clients must not infer admission from local storage. SX-6 addition pending Owner review:
-        chatStorage is an owner-scoped storage-selection hint, never authorization. It reports the persisted ST/GO/FROZEN
-        mode and authorityEpoch; a missing authority row has the defined initial ST/1 value. Lookup failures return 503 rather
-        than inventing ST or using an availability failure as a storage fallback. Each write still checks the current server
-        authority and epoch. After 409 CHAT_AUTHORITY_CHANGED, clients re-read this endpoint with the same page identity,
-        retain the draft and never automatically resend the rejected write. FROZEN is read-only: display the approved "正在迁移"
-        notice, keep drafts locally, and do not fall back to ST or queue automatic writes. GO/FROZEN may be exercised only
-        in isolated test databases until SX-8 native filename aliases, create/fork compatibility and migration contracts are
-        complete and the Owner separately authorizes cutover.'
+        only include=chatStorage adds the owner-scoped chatStorage hint; without include the response and ordinary plugin
+        Owner verification stay unchanged and MUST NOT query storage authority. The hint is never authorization. It reports
+        the persisted ST/GO/FROZEN mode and authorityEpoch; a missing authority row has the defined initial ST/1 value. Only
+        an included hint lookup can fail this read with 503 SCHEMA_UNAVAILABLE. Clients treat that failure as temporarily
+        unavailable, retain their identity and drafts, and retry later; they must not infer logout or fall back to ST. Each
+        write still checks the current server authority and epoch. Host page bootstrap injection and Session initialization
+        request the include; routine per-request plugin session checks do not. After 409 CHAT_AUTHORITY_CHANGED, clients re-read
+        this endpoint with the same page identity, retain the draft and never automatically resend the rejected write. FROZEN
+        is read-only: display the approved "正在迁移" notice, keep drafts locally, and do not fall back to ST or queue automatic
+        writes. GO/FROZEN may be exercised only in isolated test databases until SX-8 native filename aliases, create/fork
+        compatibility and migration contracts are complete and the Owner separately authorizes cutover.'
       security:
       - cookieAuth: []
+      parameters:
+      - name: include
+        in: query
+        required: false
+        schema:
+          type: string
+          enum:
+          - chatStorage
+        description: Opt in to the storage hint for page bootstrap or Session initialization; omitted for ordinary session
+          verification.
       responses:
         '200':
           description: Current authenticated account state
@@ -4317,9 +4330,15 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+        '400':
+          description: INVALID_REQUEST for an unsupported or repeated include parameter
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
         '503':
-          description: SCHEMA_UNAVAILABLE when the chatStorage lookup fails; existing session-state unavailability may use
-            INVALID_REQUEST. Never return a guessed storage mode or a successful response without the hint.
+          description: SCHEMA_UNAVAILABLE from a chatStorage lookup only when include=chatStorage was requested; existing
+            session-state unavailability may use INVALID_REQUEST. An included hint may not be guessed or omitted on success.
           content:
             application/json:
               schema:
@@ -14004,12 +14023,12 @@ components:
       allOf:
       - $ref: '#/components/schemas/AuthSessionResponse'
       - type: object
-        required:
-        - chatStorage
         properties:
           chatStorage:
             $ref: '#/components/schemas/ChatStorageState'
-      description: GET /auth/session adds the required storage hint; login/challenge response shapes remain unchanged.
+            description: Present exactly when include=chatStorage; omitted otherwise.
+      description: GET /auth/session preserves its original response by default. With include=chatStorage it must return the
+        hint or fail with 503; login/challenge response shapes remain unchanged.
     AuthenticatorSetupResponse:
       type: object
       required:

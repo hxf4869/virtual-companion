@@ -368,13 +368,16 @@ Owner 批准增加过渡内部接口 `POST /api/v1/service/chats/{chatId}/genera
 
 ### 4.5 Session 与读取整段聊天的脚本兼容
 
-**SX-6 Owner 补充边界（2026-11-07，字段契约待单独复审）**：已认证 `GET /api/v1/auth/session` 增加
-`chatStorage: {mode: ST|GO|FROZEN, authorityEpoch}`，由已核验会话送入页面/请求上下文。它仅用于选择存储，
+**SX-6 Owner 补充边界（2026-11-07，字段契约待单独复审）**：已认证 `GET /api/v1/auth/session?include=chatStorage` 按需增加
+`chatStorage: {mode: ST|GO|FROZEN, authorityEpoch}`；不带 include 的响应与每请求插件核验保持原样，不查询存储权威。
+只有宿主页面启动注入与 Session 初始化请求 include；其查询失败为 503，客户端视为暂时不可用，保留身份与草稿，稍后重试，不当作登出。
+它仅用于选择存储，
 服务端每次写仍校验当前权威与 epoch；查询失败不默认 ST。409 `CHAT_AUTHORITY_CHANGED` 后只重新读取 session、
 保留草稿，不自动重发；FROZEN 显示“正在迁移”，界面只读、本地留稿，不回退 ST、不排队写入。
 SX-6 的 Go 共享 Session 与脚本走原生操作 API；GO/FROZEN 下旧 ST 聊天入口明确拒绝且不得触盘。
 完整旧 native 文件名别名、新建/fork 门面和迁移契约归 SX-8，均完成且 Owner 另行授权前，真实账号不得置为
 GO/FROZEN；本轮这两种模式只出现在隔离测试库。会话字段先独立提交契约供 Owner 审阅，再实施依赖逻辑。
+验收必须故障注入或计数证明：权威查询失败时，普通 `/auth/session` 不调用该查询且仍返回 200。
 
 把现有 `S/session.js:109` 的整聊 payload 边界替换为一个共享 ChatStore 适配器，由服务端迁移线拥有接口与实现；MB2 使用 `D/runtime/session-bridge.ts` 的窗口化只读投影，不另造手机保存链。显示页、引擎上下文、完整脚本快照三个状态显式区分。
 
