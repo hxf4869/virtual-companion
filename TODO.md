@@ -37,6 +37,7 @@
 - [ ] MB2-5（2026-11-07，Owner限定子范围已交付）：Ionic五标签/大标题/页面栈、设置大sheet和共享主题极光已接入，首屏引擎idle；复用共享主题store与Lucide图标、库路由/模态生命周期，未实现业务页面。PASS：组件全量首轮192/194，修复图标登记与无效token后受影响3文件15/15；Node1189/1189、类型/双构建/导入边界、quick、mb2-shell/mb2-layout。最终首屏JS196159B/CSS10229B。独立4×CPU正常动画下首次交互与热重复共619帧，P50/P95为16.7ms、最大16.8ms，>33.3ms帧0、>50ms长任务0；范围仅壳层转场，不含真实消息滚动/历史/冷首屏/引擎净堆。8张390/1440浅深截图与选图并排，自查差异见.review-queue/MB2-5/NOTES.md；实际极光与sheet边距不宣称像素相同。表单返回保护公开API限制见Backlog L；业务页面/原生安全区键盘/系统字体/折叠双栏及待选图部分未完成，整条保持未勾选。提交：本条目feat(MB2-5)。
 - [x] MB2-DB2（2026-11-06）：`ValidateEngineProposal` 先取 owner barrier 再锁来源行，消除与遗忘的反向锁序（基准既有问题）。修复前双事务回归 40P01，修复后遗忘成功、校验返回既有冲突；Go store/httpapi 全组 PASS；未改迁移。
 - [x] MB2-5F（2026-11-06）：全屏卡片路由统一为 `/m/chat/:conversationKey/card?message=`，与服务端入口白名单一致；同模式参数化页面改由 Context 取动态值，不再持有过期 props；导入边界检查覆盖手机入口的间接引用并移除过期白名单。PASS：修复前回归失败、修复后手机 Vitest 11/11、host-auth 11/11、边界 8/8、Node 1189/1189、两端构建与首屏预算、`mb2-shell`/`mb2-layout`。遗留：插槽分发为七层嵌套三元，MB2-6 接线时改为映射表；设置 sheet 全高时顶部透出底层大标题，按 M13-0 留出顶部间距（MB2-6 修正）。提交 9b62d94a 及本条。
+- [x] 合并 main（2026-11-07）：`mobile-react-rebuild` 快进合入 main。被测提交 `8750831b`：本机 check.sh 全量、Go store/httpapi、RLS、`mb2-shell`/`mb2-layout` PASS；Mac 参考环境桌面与手机受管整组 19/19 PASS（0 重试），4×CPU 壳层采样 P95 16.7 ms、长任务 0、首屏 JS 196.6 KB / CSS 10.2 KB。结果见 `docs/history/2026-11-07-mb2-merge/`。之后仅文档变更。
 - [ ] MB2-6–MB2-15：本轮未开始。[ADR-0012](docs/decisions/0012-mobile-react-shared-engine.md) 已获 Owner 批准（2026-11-06，React + Capacitor，安卓与 iOS 同时）；后续条目与验收见 [Backlog L](docs/planning/2026-10-31-handoff-backlog.md) L 节。
 
 
