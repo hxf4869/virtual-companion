@@ -509,3 +509,45 @@ Owner 选择 React，要求保留现有正常 UI、优先复用成熟开源组�
 - MB2-DB1（Owner 2026-11-06 授权）：MB2-4 受管 dr2-pages 中记忆删除返回 503；静态检查发现 memory_forget_begin 先 owner barrier 后 work_item，而 go_prepare_memorycore_call 先 work_item 后 owner barrier。先在隔离库确认，再只统一现有锁顺序、增加一个顺延迁移和直接并发回归；不改外部接口、生产数据或引入新机制。修复并通过相关验证后继续受阻的 MB2-4 页面验收。
 
 - **[问] MB2-5 / MB2-11（2026-11-06）**：锁定 `@ionic/react-router@9.0.10` 的 `IonReactRouter` 使用 React Router `BrowserRouter`，公开 `useIonRouter` 没有 SPA 导航 blocker；`react-router@6.30.4` 的 `useBlocker` 要求 data router，`IonModal.canDismiss` 只保护模态关闭，不能阻止浏览器路由返回。真实手机表单接入前须确定公开支持的离开保护方案；不采用手写历史栈或 `popstate` 补偿。本轮 Owner 限定的标签栏、大标题、页面栈、设置大 sheet 与极光背景仍可独立交付，尚无手机表单消费者，离开保护验收保持未完成，不用仅供测试的 dirty/save 接口代替。
+
+## M. 服务端迁出 SillyTavern（SX，2026-11-06 Owner 决定全部迁出）
+
+决策 [ADR-0013](../decisions/0013-leave-sillytavern-server.md)，计划与逐项完成条件、验证入口见
+[ST 退出计划](2026-11-06-st-exit-plan.md) §6。SX-2 契约审定后，手机 MB2-6 与本线、CM 线并行；数据库迁移同一时间只有一个写入 owner。
+
+| ID | 优先级 | 范围 |
+|---|---|---|
+| SX-1 | P0 | 调用面、补丁职责与阶段 0 合成测量归档（已随计划交付） |
+| SX-2 | P0 | 聊天存储与分页历史接口契约审定并冻结，之后同步 specs |
+| SX-3 | P0 | Go 聊天 / 候选 / 顺序 / metadata 存储、身份与 authority epoch、RLS、回执与 outbox |
+| SX-4 | P0 | 会话索引、双向快照分页、changes、按 messageId 定位与全聊搜索 |
+| SX-5 | P0 | 消息批量操作、幂等、重排 / fork、生成终态与 inbox 去重 |
+| SX-6 | P0 | 共享 Session ChatStore、原生与卡片脚本兼容、完整历史屏障与窗口投影 |
+| SX-7 | P1 | Go 来源镜像切权威、source_ref / generation 同事务、inbox / 语音 / 收藏 / 记忆来源适配 |
+| SX-8 | P1 | JSONL 导入导出、可信迁移与 checkpoint、群聊 / 分支、按账号一次切换（回滚窗口 7 天） |
+| SX-9 | P1 | Go 三协议生成请求 / 响应 / SSE / 停止适配，tokenizer / bias 与浏览器预算端口 |
+| SX-10 | P1 | 最终来源 / ActorView / 预算、防旁路、工具续接、usage 预留与结算、run fencing |
+| SX-11 | P1 | 角色卡 / 世界书 / 预设 / 设置 / 群组 JSON 文档与字段级提交 |
+| SX-12 | P1 | blobstore：PNG 元数据与原图、头像 / 背景 / 表情 / 附件、旧 URL 别名 |
+| SX-13 | P2 | Go auth / 静态入口 / 管理桥别名、备份新域、恢复门与容量清理 |
+| SX-14 | P2 | 资源权威切换与反向导出演练，停止 ST 内资源写入 |
+| SX-15 | P2 | ST 完全不启动跑全链；按 ADR-0012 退出 `/native/`；移除核心补丁与插件装配 |
+| SX-16 | P2 | 退役运行手册、发布 / 回滚制品、最终备份演练、OP-11 定向清理（真实操作另行授权） |
+
+## N. 聊天与记忆质量（CM，2026-11-06 Owner 决定以指标驱动）
+
+计划与量化验收见 [聊天与记忆质量计划](2026-11-06-chat-memory-quality-plan.md) §5。真实模型评测每轮硬上限 ¥100；
+验收看指标与评测结果，不以新增受管场景代替。依赖 Go+PG 的部分（CM-9）在 SX-4 / SX-5 之后。
+
+| ID | 优先级 | 范围 |
+|---|---|---|
+| CM-1 | P0 | 统一阶段打点与指标脚本（首字、末字、打开聊天、发送到显示、错误率），成对对比输出 |
+| CM-2 | P0 | 评测配置引用、计量与 CNY 预算预留 / 熔断 |
+| CM-3 | P0 | 固定种子合成事实图与 core 140 题，真实提取→检索→出站→回答→评审的首轮基线 |
+| CM-4 | P1 | 按归因修复指代 / 跨会话与提取上下文缺口（含 M09-direct） |
+| CM-5 | P1 | 纠正 / 遗忘 / 来源更新到真实出站的闭环，补缓存与画像失效 |
+| CM-6 | P1 | 首字关键路径优化，去重复计算与不必要的界面等待 |
+| CM-7 | P1 | 暖开聊天缓存、消息 pending / failed / ACK 状态与失败恢复 |
+| CM-8 | P1 | 长列表窗口渲染、按数据定位搜索、锚点稳定，富卡正确卸载 |
+| CM-9 | P2 | 接入服务端聊天存储迁移后的多端一致性与迁移前后对比 |
+| CM-10 | P2 | 扩大长历史与独立种子、评审校准与长期趋势 |
