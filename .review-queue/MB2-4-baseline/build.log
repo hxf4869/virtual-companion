@@ -1,0 +1,109 @@
+
+> vc-sillytavern-integration@0.1.0 build:desktop
+> node scripts/build-desktop.mjs
+
+vite v8.3.5 building client environment for production...
+transforming...
+✓ 495 modules transformed.
+rendering chunks...
+computing gzip size...
+extension/vc-model-settings/desktop/build/index.js  892.06 kB │ gzip: 216.10 kB
+
+✓ built in 93ms
+vite v8.3.5 building client environment for production...
+transforming...
+
+new URL("/scripts/extensions/third-party/vc-model-settings/", import.meta.url) doesn't exist at build time, it will remain unchanged to be resolved at runtime. If this is intended, you can use the /* @vite-ignore */ comment to suppress this warning.
+✓ 1152 modules transformed.
+rendering chunks...
+computing gzip size...
+server-plugin/virtual-companion/desktop/app/index.html                                  0.96 kB │ gzip:     0.47 kB
+server-plugin/virtual-companion/desktop/app/assets/lucide-Nzqc42Di.svg                 16.03 kB │ gzip:     3.72 kB
+server-plugin/virtual-companion/desktop/app/assets/Switch-D5AJVYPy.css                  1.01 kB │ gzip:     0.44 kB
+server-plugin/virtual-companion/desktop/app/assets/aurora-C-xw8s5p.css                  9.36 kB │ gzip:     2.55 kB
+server-plugin/virtual-companion/desktop/app/assets/lxgwwenkai-regular-BzxzQ-Cq.css    105.35 kB │ gzip:    32.94 kB
+server-plugin/virtual-companion/desktop/app/assets/index-0jFwp9Jy.css                 157.66 kB │ gzip:    23.67 kB
+server-plugin/virtual-companion/desktop/app/assets/defineProperty-BbfpZ9Tg.js           0.70 kB │ gzip:     0.39 kB
+server-plugin/virtual-companion/desktop/app/assets/rolldown-runtime-XKyaHtl9.js         0.72 kB │ gzip:     0.42 kB
+server-plugin/virtual-companion/desktop/app/assets/NotificationSection-kEm-AIrN.js      1.18 kB │ gzip:     0.65 kB
+server-plugin/virtual-companion/desktop/app/assets/helper-config-DfkBXtlg.js            2.59 kB │ gzip:     0.94 kB
+server-plugin/virtual-companion/desktop/app/assets/helper-computation-JHmXW4ar.js      16.57 kB │ gzip:     5.99 kB
+server-plugin/virtual-companion/desktop/app/assets/Switch-DuQ9Xq8o.js                  25.86 kB │ gzip:    10.24 kB
+server-plugin/virtual-companion/desktop/app/assets/Formatting-DsVvDlAc.js              47.21 kB │ gzip:    15.60 kB
+server-plugin/virtual-companion/desktop/app/assets/index-C9_umYGe.js                2,214.91 kB │ gzip:   651.31 kB
+server-plugin/virtual-companion/desktop/app/assets/ports-hCRD9EUt.js                2,348.80 kB │ gzip:   704.69 kB
+server-plugin/virtual-companion/desktop/app/assets/desktop-C8rZw0SJ.js              3,066.67 kB │ gzip: 1,023.20 kB
+
+[plugin builtin:vite-reporter]
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+[EVAL] Use of direct `eval` function is strongly discouraged as it poses security risks and may cause issues with minification.
+     ╭─[ extension/vc-model-settings/desktop/locked-source/ejs/desktop.js:930:17 ]
+     │
+ 930 │           return void eval("throw \"STOP\"; (function () { " + src + "\n})()");
+     │                       ──┬─
+     │                         ╰─── Use of direct `eval` here.
+     │
+     │ Help: Consider using indirect eval. For more information, check the documentation: https://rolldown.rs/guide/troubleshooting#avoiding-direct-eval
+─────╯
+
+[IMPORT_IS_UNDEFINED] Import `nai_settings` will always be undefined because there is no matching export in 'extension/vc-model-settings/desktop/standalone/cards/ejs-host.js'
+      ╭─[ extension/vc-model-settings/desktop/locked-source/ejs/desktop.js:5974:23 ]
+      │
+ 5974 │        nai_settings: () => __WEBPACK_EXTERNAL_MODULE__script_js_588e7203__.nai_settings,
+      │                            ──────────────────────────────┬─────────────────────────────
+      │                                                          ╰───────────────────────────────
+──────╯
+
+[IMPORT_IS_UNDEFINED] Import `online_status` will always be undefined because there is no matching export in 'extension/vc-model-settings/desktop/standalone/cards/ejs-host.js'
+      ╭─[ extension/vc-model-settings/desktop/locked-source/ejs/desktop.js:5977:24 ]
+      │
+ 5977 │        online_status: () => __WEBPACK_EXTERNAL_MODULE__script_js_588e7203__.online_status,
+      │                             ──────────────────────────────┬──────────────────────────────
+      │                                                           ╰────────────────────────────────
+──────╯
+
+[IMPORT_IS_UNDEFINED] Import `renderExtensionTemplateAsync` will always be undefined because there is no matching export in 'extension/vc-model-settings/desktop/standalone/cards/ejs-host.js'
+      ╭─[ extension/vc-model-settings/desktop/locked-source/ejs/desktop.js:6035:39 ]
+      │
+ 6035 │        renderExtensionTemplateAsync: () => __WEBPACK_EXTERNAL_MODULE__extensions_js_e625da88__.renderExtensionTemplateAsync
+      │                                            ────────────────────────────────────────┬───────────────────────────────────────
+      │                                                                                    ╰─────────────────────────────────────────
+──────╯
+
+[IMPORT_IS_UNDEFINED] Import `POPUP_TYPE` will always be undefined because there is no matching export in 'extension/vc-model-settings/desktop/standalone/cards/ejs-host.js'
+       ╭─[ extension/vc-model-settings/desktop/locked-source/ejs/desktop.js:21870:21 ]
+       │
+ 21870 │        POPUP_TYPE: () => __WEBPACK_EXTERNAL_MODULE__popup_js_755810aa__.POPUP_TYPE,
+       │                          ────────────────────────────┬────────────────────────────
+       │                                                      ╰──────────────────────────────
+───────╯
+
+[IMPORT_IS_UNDEFINED] Import `callGenericPopup` will always be undefined because there is no matching export in 'extension/vc-model-settings/desktop/standalone/cards/ejs-host.js'
+       ╭─[ extension/vc-model-settings/desktop/locked-source/ejs/desktop.js:21871:27 ]
+       │
+ 21871 │        callGenericPopup: () => __WEBPACK_EXTERNAL_MODULE__popup_js_755810aa__.callGenericPopup
+       │                                ───────────────────────────────┬───────────────────────────────
+       │                                                               ╰─────────────────────────────────
+───────╯
+
+[IMPORT_IS_UNDEFINED] Import `Portal` will always be undefined because there is no matching export in 'node_modules/cmdk/node_modules/@radix-ui/react-dialog/dist/index.mjs'
+ -  in node_modules/cmdk/dist/index.mjs at 8988..8996
+
+[IMPORT_IS_UNDEFINED] Import `Overlay` will always be undefined because there is no matching export in 'node_modules/cmdk/node_modules/@radix-ui/react-dialog/dist/index.mjs'
+ -  in node_modules/cmdk/dist/index.mjs at 9027..9036
+
+[IMPORT_IS_UNDEFINED] Import `Content` will always be undefined because there is no matching export in 'node_modules/cmdk/node_modules/@radix-ui/react-dialog/dist/index.mjs'
+ -  in node_modules/cmdk/dist/index.mjs at 9086..9095
+
+[INEFFECTIVE_DYNAMIC_IMPORT] extension/vc-model-settings/api.js is dynamically imported by extension/vc-model-settings/companion-prompt.js but also statically imported by desktop-ui/src/data/client.ts, desktop-ui/src/features/chat/MessageList.tsx, extension/vc-model-settings/desktop/standalone/engine/runtime.js, extension/vc-model-settings/desktop/standalone/runtime.js, extension/vc-model-settings/desktop/standalone/session.js, ..., dynamic import will not move module into another chunk.
+
+[INEFFECTIVE_DYNAMIC_IMPORT] extension/vc-model-settings/reply-pipeline.js is dynamically imported by extension/vc-model-settings/companion-prompt.js, extension/vc-model-settings/stickers-logic.js but also statically imported by extension/vc-model-settings/chat-logic.js, extension/vc-model-settings/memory-injection-logic.js, extension/vc-model-settings/reply-planner.js, dynamic import will not move module into another chunk.
+
+[INEFFECTIVE_DYNAMIC_IMPORT] extension/vc-model-settings/stickers-logic.js is dynamically imported by extension/vc-model-settings/companion-prompt.js but also statically imported by desktop-ui/src/features/chat/EmojiPicker.tsx, desktop-ui/src/features/settings/StickerSettings.tsx, extension/vc-model-settings/desktop/standalone/engine/runtime.js, extension/vc-model-settings/desktop/standalone/runtime.js, extension/vc-model-settings/voice-logic.js, dynamic import will not move module into another chunk.
+
+[INEFFECTIVE_DYNAMIC_IMPORT] extension/vc-model-settings/desktop/standalone/engine/helper-types.js is dynamically imported by extension/vc-model-settings/desktop/standalone/engine/runtime.js but also statically imported by extension/vc-model-settings/desktop/standalone/cards/index.js, extension/vc-model-settings/desktop/standalone/engine/helper-computation.js, dynamic import will not move module into another chunk.
+
+✓ built in 596ms

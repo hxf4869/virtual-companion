@@ -1,0 +1,48 @@
+
+> vc-sillytavern-integration@0.1.0 pretest
+> npm run build:desktop
+
+
+> vc-sillytavern-integration@0.1.0 build:desktop
+> node scripts/build-desktop.mjs
+
+vite v8.3.5 building client environment for production...
+transforming...
+✓ 495 modules transformed.
+rendering chunks...
+computing gzip size...
+extension/vc-model-settings/desktop/build/index.js  892.06 kB │ gzip: 216.10 kB
+
+✓ built in 98ms
+vite v8.3.5 building client environment for production...
+transforming...
+
+new URL("/scripts/extensions/third-party/vc-model-settings/", import.meta.url) doesn't exist at build time, it will remain unchanged to be resolved at runtime. If this is intended, you can use the /* @vite-ignore */ comment to suppress this warning.
+✓ 1153 modules transformed.
+✗ Build failed in 276ms
+node:internal/modules/run_main:123
+    triggerUncaughtException(
+    ^
+
+Build failed with 1 error:
+
+[plugin vc-desktop-resolved-graph]
+RolldownError: Unexpected desktop import react from <original-mac-worktree>/integrations/sillytavern/desktop-ui/src/features/characters/useCharactersState.ts
+    at error (file://<original-mac-worktree>/integrations/sillytavern/node_modules/rolldown/dist/shared/logs-DyTyzzWG.mjs:164:24)
+    at PluginContextImpl.error (file://<original-mac-worktree>/integrations/sillytavern/node_modules/rolldown/dist/shared/bindingify-input-options-CM8bmcLg.mjs:286:10)
+    at PluginContextImpl.resolveId (file://<original-mac-worktree>/integrations/sillytavern/node_modules/.vite-temp/vite.config.mjs.timestamp-1793966129174-8d99b5f0a86e5.mjs:1386:9)
+    at PluginContextImpl.handler (file://<original-mac-worktree>/integrations/sillytavern/node_modules/vite/dist/node/chunks/node.js:35073:13)
+    at plugin (file://<original-mac-worktree>/integrations/sillytavern/node_modules/rolldown/dist/shared/bindingify-input-options-CM8bmcLg.mjs:1678:30)
+    at file://<original-mac-worktree>/integrations/sillytavern/node_modules/rolldown/dist/shared/bindingify-input-options-CM8bmcLg.mjs:2146:21
+    at plugin.<computed> (file://<original-mac-worktree>/integrations/sillytavern/node_modules/rolldown/dist/shared/bindingify-input-options-CM8bmcLg.mjs:2343:18)
+    at aggregateBindingErrorsIntoJsError (file://<original-mac-worktree>/integrations/sillytavern/node_modules/rolldown/dist/shared/error-BJ9uQLIS.mjs:50:18)
+    at unwrapBindingResult (file://<original-mac-worktree>/integrations/sillytavern/node_modules/rolldown/dist/shared/error-BJ9uQLIS.mjs:20:128)
+    at #build (file://<original-mac-worktree>/integrations/sillytavern/node_modules/rolldown/dist/shared/rolldown-DWd2aEL4.mjs:146:34)
+    at async buildEnvironment (file://<original-mac-worktree>/integrations/sillytavern/node_modules/vite/dist/node/chunks/node.js:34849:66)
+    at async Object.build (file://<original-mac-worktree>/integrations/sillytavern/node_modules/vite/dist/node/chunks/node.js:35270:19)
+    at async buildDesktop (file://<original-mac-worktree>/integrations/sillytavern/scripts/build-desktop.mjs:21:22)
+    at async file://<original-mac-worktree>/integrations/sillytavern/scripts/build-desktop.mjs:56:90 {
+  errors: [Getter/Setter]
+}
+
+Node.js v22.23.1

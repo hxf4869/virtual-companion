@@ -1,0 +1,180 @@
+[accept] ✓ 端口归属检查通过：ST=28972 fixture=28973 Go=28276 均空闲
+(node:82304) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+[accept] ✓ 受管 PG 就绪：127.0.0.1:34088（DSN 仅进子进程环境，不打印）
+[accept] ✓ 迁移完成（backend/internal/migrate 全量 SQL）
+[accept] ✓ owner binding secret 已按应用原生路径种子（与 Go 服务 env 同值）
+[accept] ✓ 受管 MinIO 就绪：127.0.0.1:34089 桶 vc03m-accept 已建（凭据只在容器 env 与已删的临时 config）
+[accept] ✓ Go 服务就绪 http://127.0.0.1:28276（pid=82541）
+[accept] ✓ 合成 Owner 真实密码、TOTP 设置与重新认证完成（不输出凭据、验证码或恢复码）
+[accept] ✓ fixture provider 就绪 http://127.0.0.1:28973（pid=82546，expectKey 只在进程间传递）
+
+new URL("/scripts/extensions/third-party/vc-model-settings/", import.meta.url) doesn't exist at build time, it will remain unchanged to be resolved at runtime. If this is intended, you can use the /* @vite-ignore */ comment to suppress this warning.
+[plugin builtin:vite-reporter]
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+[EVAL] Use of direct `eval` function is strongly discouraged as it poses security risks and may cause issues with minification.
+     ╭─[ extension/vc-model-settings/desktop/locked-source/ejs/desktop.js:930:17 ]
+     │
+ 930 │           return void eval("throw \"STOP\"; (function () { " + src + "\n})()");
+     │                       ──┬─
+     │                         ╰─── Use of direct `eval` here.
+     │
+     │ Help: Consider using indirect eval. For more information, check the documentation: https://rolldown.rs/guide/troubleshooting#avoiding-direct-eval
+─────╯
+
+[IMPORT_IS_UNDEFINED] Import `nai_settings` will always be undefined because there is no matching export in 'extension/vc-model-settings/desktop/standalone/cards/ejs-host.js'
+      ╭─[ extension/vc-model-settings/desktop/locked-source/ejs/desktop.js:5974:23 ]
+      │
+ 5974 │        nai_settings: () => __WEBPACK_EXTERNAL_MODULE__script_js_588e7203__.nai_settings,
+      │                            ──────────────────────────────┬─────────────────────────────
+      │                                                          ╰───────────────────────────────
+──────╯
+
+[IMPORT_IS_UNDEFINED] Import `online_status` will always be undefined because there is no matching export in 'extension/vc-model-settings/desktop/standalone/cards/ejs-host.js'
+      ╭─[ extension/vc-model-settings/desktop/locked-source/ejs/desktop.js:5977:24 ]
+      │
+ 5977 │        online_status: () => __WEBPACK_EXTERNAL_MODULE__script_js_588e7203__.online_status,
+      │                             ──────────────────────────────┬──────────────────────────────
+      │                                                           ╰────────────────────────────────
+──────╯
+
+[IMPORT_IS_UNDEFINED] Import `renderExtensionTemplateAsync` will always be undefined because there is no matching export in 'extension/vc-model-settings/desktop/standalone/cards/ejs-host.js'
+      ╭─[ extension/vc-model-settings/desktop/locked-source/ejs/desktop.js:6035:39 ]
+      │
+ 6035 │        renderExtensionTemplateAsync: () => __WEBPACK_EXTERNAL_MODULE__extensions_js_e625da88__.renderExtensionTemplateAsync
+      │                                            ────────────────────────────────────────┬───────────────────────────────────────
+      │                                                                                    ╰─────────────────────────────────────────
+──────╯
+
+[IMPORT_IS_UNDEFINED] Import `POPUP_TYPE` will always be undefined because there is no matching export in 'extension/vc-model-settings/desktop/standalone/cards/ejs-host.js'
+       ╭─[ extension/vc-model-settings/desktop/locked-source/ejs/desktop.js:21870:21 ]
+       │
+ 21870 │        POPUP_TYPE: () => __WEBPACK_EXTERNAL_MODULE__popup_js_755810aa__.POPUP_TYPE,
+       │                          ────────────────────────────┬────────────────────────────
+       │                                                      ╰──────────────────────────────
+───────╯
+
+[IMPORT_IS_UNDEFINED] Import `callGenericPopup` will always be undefined because there is no matching export in 'extension/vc-model-settings/desktop/standalone/cards/ejs-host.js'
+       ╭─[ extension/vc-model-settings/desktop/locked-source/ejs/desktop.js:21871:27 ]
+       │
+ 21871 │        callGenericPopup: () => __WEBPACK_EXTERNAL_MODULE__popup_js_755810aa__.callGenericPopup
+       │                                ───────────────────────────────┬───────────────────────────────
+       │                                                               ╰─────────────────────────────────
+───────╯
+
+[IMPORT_IS_UNDEFINED] Import `Portal` will always be undefined because there is no matching export in 'node_modules/cmdk/node_modules/@radix-ui/react-dialog/dist/index.mjs'
+ -  in node_modules/cmdk/dist/index.mjs at 8988..8996
+
+[IMPORT_IS_UNDEFINED] Import `Overlay` will always be undefined because there is no matching export in 'node_modules/cmdk/node_modules/@radix-ui/react-dialog/dist/index.mjs'
+ -  in node_modules/cmdk/dist/index.mjs at 9027..9036
+
+[IMPORT_IS_UNDEFINED] Import `Content` will always be undefined because there is no matching export in 'node_modules/cmdk/node_modules/@radix-ui/react-dialog/dist/index.mjs'
+ -  in node_modules/cmdk/dist/index.mjs at 9086..9095
+
+[INEFFECTIVE_DYNAMIC_IMPORT] extension/vc-model-settings/desktop/standalone/engine/helper-types.js is dynamically imported by extension/vc-model-settings/desktop/standalone/engine/runtime.js but also statically imported by extension/vc-model-settings/desktop/standalone/cards/index.js, extension/vc-model-settings/desktop/standalone/engine/helper-computation.js, dynamic import will not move module into another chunk.
+
+
+new URL("/scripts/extensions/third-party/vc-model-settings/", import.meta.url) doesn't exist at build time, it will remain unchanged to be resolved at runtime. If this is intended, you can use the /* @vite-ignore */ comment to suppress this warning.
+[plugin builtin:vite-reporter]
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+[EVAL] Use of direct `eval` function is strongly discouraged as it poses security risks and may cause issues with minification.
+     ╭─[ extension/vc-model-settings/desktop/locked-source/ejs/desktop.js:930:17 ]
+     │
+ 930 │           return void eval("throw \"STOP\"; (function () { " + src + "\n})()");
+     │                       ──┬─
+     │                         ╰─── Use of direct `eval` here.
+     │
+     │ Help: Consider using indirect eval. For more information, check the documentation: https://rolldown.rs/guide/troubleshooting#avoiding-direct-eval
+─────╯
+
+[IMPORT_IS_UNDEFINED] Import `nai_settings` will always be undefined because there is no matching export in 'extension/vc-model-settings/desktop/standalone/cards/ejs-host.js'
+      ╭─[ extension/vc-model-settings/desktop/locked-source/ejs/desktop.js:5974:23 ]
+      │
+ 5974 │        nai_settings: () => __WEBPACK_EXTERNAL_MODULE__script_js_588e7203__.nai_settings,
+      │                            ──────────────────────────────┬─────────────────────────────
+      │                                                          ╰───────────────────────────────
+──────╯
+
+[IMPORT_IS_UNDEFINED] Import `online_status` will always be undefined because there is no matching export in 'extension/vc-model-settings/desktop/standalone/cards/ejs-host.js'
+      ╭─[ extension/vc-model-settings/desktop/locked-source/ejs/desktop.js:5977:24 ]
+      │
+ 5977 │        online_status: () => __WEBPACK_EXTERNAL_MODULE__script_js_588e7203__.online_status,
+      │                             ──────────────────────────────┬──────────────────────────────
+      │                                                           ╰────────────────────────────────
+──────╯
+
+[IMPORT_IS_UNDEFINED] Import `renderExtensionTemplateAsync` will always be undefined because there is no matching export in 'extension/vc-model-settings/desktop/standalone/cards/ejs-host.js'
+      ╭─[ extension/vc-model-settings/desktop/locked-source/ejs/desktop.js:6035:39 ]
+      │
+ 6035 │        renderExtensionTemplateAsync: () => __WEBPACK_EXTERNAL_MODULE__extensions_js_e625da88__.renderExtensionTemplateAsync
+      │                                            ────────────────────────────────────────┬───────────────────────────────────────
+      │                                                                                    ╰─────────────────────────────────────────
+──────╯
+
+[IMPORT_IS_UNDEFINED] Import `POPUP_TYPE` will always be undefined because there is no matching export in 'extension/vc-model-settings/desktop/standalone/cards/ejs-host.js'
+       ╭─[ extension/vc-model-settings/desktop/locked-source/ejs/desktop.js:21870:21 ]
+       │
+ 21870 │        POPUP_TYPE: () => __WEBPACK_EXTERNAL_MODULE__popup_js_755810aa__.POPUP_TYPE,
+       │                          ────────────────────────────┬────────────────────────────
+       │                                                      ╰──────────────────────────────
+───────╯
+
+[IMPORT_IS_UNDEFINED] Import `callGenericPopup` will always be undefined because there is no matching export in 'extension/vc-model-settings/desktop/standalone/cards/ejs-host.js'
+       ╭─[ extension/vc-model-settings/desktop/locked-source/ejs/desktop.js:21871:27 ]
+       │
+ 21871 │        callGenericPopup: () => __WEBPACK_EXTERNAL_MODULE__popup_js_755810aa__.callGenericPopup
+       │                                ───────────────────────────────┬───────────────────────────────
+       │                                                               ╰─────────────────────────────────
+───────╯
+
+[INEFFECTIVE_DYNAMIC_IMPORT] extension/vc-model-settings/desktop/standalone/engine/helper-types.js is dynamically imported by extension/vc-model-settings/desktop/standalone/engine/runtime.js but also statically imported by extension/vc-model-settings/desktop/standalone/cards/index.js, extension/vc-model-settings/desktop/standalone/engine/helper-computation.js, dynamic import will not move module into another chunk.
+
+[INEFFECTIVE_DYNAMIC_IMPORT] extension/vc-model-settings/stickers-logic.js is dynamically imported by extension/vc-model-settings/companion-prompt.js but also statically imported by extension/vc-model-settings/desktop/standalone/engine/runtime.js, extension/vc-model-settings/desktop/standalone/runtime.js, extension/vc-model-settings/voice-logic.js, dynamic import will not move module into another chunk.
+
+[accept] · 已清除持久 dataRoot 中旧库实例绑定 0 个聊天文件
+(node:82761) ExperimentalWarning: stripTypeScriptTypes is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+[accept] ✓ 受管 ST 栈就绪 http://127.0.0.1:28972（B 入口：assemble-managed → start-managed）
+[accept] · 场景 catalog-admin：Go 侧建 provider/模型/用途绑定 + UI03 API 面（保存/读回/Key 三态/独立用途/409 保留草稿）
+[accept] ✓ 四个受管 provider 保存成功（revision=1，凭据=合成 fixture key）
+[accept] ✓ 读回断言通过：credentialConfigured=true、endpointUrl 按协议规范化、无明文凭据
+[accept] ✓ 409 REVISION_CONFLICT 保留草稿通过（revision 与全部模型文档原样）
+[accept] ✓ Key 三态通过：草稿(无 Key) → 已配置 → 清除
+[accept] ✓ 绑定切换（独立用途面）通过：br=2→3→…→4，provider revision 不受影响
+[accept] ✓ discover 通过（真实 fixture /models，auth 匹配）
+[accept] ✓ 场景 catalog-admin PASS（380ms）
+[accept] · 场景 mb2-shell：MB2-5 手机壳层：五项标签导航、设置大 Sheet、真实历史往返、主题与首屏空闲（可选 4× CPU 切换性能）
+[accept] ✗ 场景 mb2-shell FAIL：浅色模式 --vc-canvas 应为 #eef0f6
++ actual - expected
+
++ '#f5f5f7'
+- '#eef0f6'
+
+[accept] · 场景 mb2-layout：MB2-5 手机适配矩阵：全设备视口横竖屏、触控目标、标签栏几何、浅深色、1.3× 字体与减弱动态
+[accept] ✗ 场景 mb2-layout FAIL：[small-phone portrait 320×568 light shell] 几何断言失败: 设置头像被遮挡不可达 (elementFromPoint 未命中)；标签栏高度应为 64px，实际 72.00px；标签栏左边距应为 16px，实际 10.00px；标签栏右边距应为 16px，实际 10.00px；标签项 chat 被遮挡不可达；标签项 characters 被遮挡不可达；标签项 memory 被遮挡不可达；标签项 inbox 被遮挡不可达；标签项 story 被遮挡不可达
++ actual - expected
+
++ [
++   '设置头像被遮挡不可达 (elementFromPoint 未命中)',
++   '标签栏高度应为 64px，实际 72.00px',
++   '标签栏左边距应为 16px，实际 10.00px',
++   '标签栏右边距应为 16px，实际 10.00px',
++   '标签项 chat 被遮挡不可达',
++   '标签项 characters 被遮挡不可达',
++   '标签项 memory 被遮挡不可达',
++   '标签项 inbox 被遮挡不可达',
++   '标签项 story 被遮挡不可达'
++ ]
+- []
+
+[accept] · 结果 JSON 已写入 integrations/sillytavern/dev-managed-mb2-shell/artifacts/accept-2026-11-06T15-41-18-360Z/results.json
+[accept] · 已停止：st.pid（经 stop-managed）, fixture.pid=82546, go.pid=82541（TERM）
+[accept] · 已移除受管容器 vc-mb2-shell-final-pg（label com.vc.w03=managed）
+[accept] · 已移除受管容器 vc-mb2-shell-final-minio（label com.vc.w03=managed）
+[accept] ✗ 2 个场景失败（退出码 4）

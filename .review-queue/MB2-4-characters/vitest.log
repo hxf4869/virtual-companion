@@ -1,0 +1,275 @@
+
+> vc-sillytavern-integration@0.1.0 test:desktop
+> vitest run --config desktop-ui/vitest.config.mjs
+
+
+ RUN  v5.1.0 <original-mac-worktree>/integrations/sillytavern/desktop-ui
+
+AggregateError:
+    at internalConnectMultiple (node:net:1135:18)
+    at afterConnectMultiple (node:net:1716:7) {
+  code: 'ECONNREFUSED',
+  [errors]: [
+    Error: connect ECONNREFUSED ::1:3000
+        at createConnectionError (node:net:1679:14)
+        at afterConnectMultiple (node:net:1709:16) {
+      errno: -61,
+      code: 'ECONNREFUSED',
+      syscall: 'connect',
+      address: '::1',
+      port: 3000
+    },
+    Error: connect ECONNREFUSED 127.0.0.1:3000
+        at createConnectionError (node:net:1679:14)
+        at afterConnectMultiple (node:net:1709:16) {
+      errno: -61,
+      code: 'ECONNREFUSED',
+      syscall: 'connect',
+      address: '127.0.0.1',
+      port: 3000
+    }
+  ]
+}
+AggregateError:
+    at internalConnectMultiple (node:net:1135:18)
+    at afterConnectMultiple (node:net:1716:7) {
+  code: 'ECONNREFUSED',
+  [errors]: [
+    Error: connect ECONNREFUSED ::1:3000
+        at createConnectionError (node:net:1679:14)
+        at afterConnectMultiple (node:net:1709:16) {
+      errno: -61,
+      code: 'ECONNREFUSED',
+      syscall: 'connect',
+      address: '::1',
+      port: 3000
+    },
+    Error: connect ECONNREFUSED 127.0.0.1:3000
+        at createConnectionError (node:net:1679:14)
+        at afterConnectMultiple (node:net:1709:16) {
+      errno: -61,
+      code: 'ECONNREFUSED',
+      syscall: 'connect',
+      address: '127.0.0.1',
+      port: 3000
+    }
+  ]
+}
+AggregateError:
+    at internalConnectMultiple (node:net:1135:18)
+    at afterConnectMultiple (node:net:1716:7) {
+  code: 'ECONNREFUSED',
+  [errors]: [
+    Error: connect ECONNREFUSED ::1:3000
+        at createConnectionError (node:net:1679:14)
+        at afterConnectMultiple (node:net:1709:16) {
+      errno: -61,
+      code: 'ECONNREFUSED',
+      syscall: 'connect',
+      address: '::1',
+      port: 3000
+    },
+    Error: connect ECONNREFUSED 127.0.0.1:3000
+        at createConnectionError (node:net:1679:14)
+        at afterConnectMultiple (node:net:1709:16) {
+      errno: -61,
+      code: 'ECONNREFUSED',
+      syscall: 'connect',
+      address: '127.0.0.1',
+      port: 3000
+    }
+  ]
+}
+AggregateError:
+    at internalConnectMultiple (node:net:1135:18)
+    at afterConnectMultiple (node:net:1716:7) {
+  code: 'ECONNREFUSED',
+  [errors]: [
+    Error: connect ECONNREFUSED ::1:3000
+        at createConnectionError (node:net:1679:14)
+        at afterConnectMultiple (node:net:1709:16) {
+      errno: -61,
+      code: 'ECONNREFUSED',
+      syscall: 'connect',
+      address: '::1',
+      port: 3000
+    },
+    Error: connect ECONNREFUSED 127.0.0.1:3000
+        at createConnectionError (node:net:1679:14)
+        at afterConnectMultiple (node:net:1709:16) {
+      errno: -61,
+      code: 'ECONNREFUSED',
+      syscall: 'connect',
+      address: '127.0.0.1',
+      port: 3000
+    }
+  ]
+}
+DOMException [AbortError]: The operation was aborted.
+    at Fetch.onAsyncTaskManagerAbort (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/fetch/Fetch.js:546:23)
+    at Object.<anonymous> (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/fetch/Fetch.js:416:101)
+    at AsyncTaskManager.abortAll (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/async-task-manager/AsyncTaskManager.js:292:30)
+    at AsyncTaskManager.abort (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/async-task-manager/AsyncTaskManager.js:52:21)
+    at DetachedBrowserFrame.abort (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/browser/detached-browser/DetachedBrowserFrame.js:112:58)
+    at DetachedWindowAPI.abort (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/window/DetachedWindowAPI.js:51:35)
+    at teardownWindow (file://<original-mac-worktree>/integrations/sillytavern/node_modules/vitest/dist/chunks/index.Bi0NXYPf.js:1281:22)
+    at Object.teardown (file://<original-mac-worktree>/integrations/sillytavern/node_modules/vitest/dist/chunks/index.Bi0NXYPf.js:1343:10)
+    at file://<original-mac-worktree>/integrations/sillytavern/node_modules/vitest/dist/chunks/base.Cof-UHJf.js:188:65
+    at Traces.$ (file://<original-mac-worktree>/integrations/sillytavern/node_modules/vitest/dist/traces.js:143:27)
+DOMException [AbortError]: The operation was aborted.
+    at Fetch.onAsyncTaskManagerAbort (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/fetch/Fetch.js:546:23)
+    at Object.<anonymous> (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/fetch/Fetch.js:416:101)
+    at AsyncTaskManager.abortAll (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/async-task-manager/AsyncTaskManager.js:292:30)
+    at AsyncTaskManager.abort (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/async-task-manager/AsyncTaskManager.js:52:21)
+    at DetachedBrowserFrame.abort (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/browser/detached-browser/DetachedBrowserFrame.js:112:58)
+    at DetachedWindowAPI.abort (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/window/DetachedWindowAPI.js:51:35)
+    at teardownWindow (file://<original-mac-worktree>/integrations/sillytavern/node_modules/vitest/dist/chunks/index.Bi0NXYPf.js:1281:22)
+    at Object.teardown (file://<original-mac-worktree>/integrations/sillytavern/node_modules/vitest/dist/chunks/index.Bi0NXYPf.js:1343:10)
+    at file://<original-mac-worktree>/integrations/sillytavern/node_modules/vitest/dist/chunks/base.Cof-UHJf.js:188:65
+    at Traces.$ (file://<original-mac-worktree>/integrations/sillytavern/node_modules/vitest/dist/traces.js:143:27)
+DOMException [AbortError]: The operation was aborted.
+    at Fetch.onAsyncTaskManagerAbort (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/fetch/Fetch.js:546:23)
+    at Object.<anonymous> (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/fetch/Fetch.js:416:101)
+    at AsyncTaskManager.abortAll (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/async-task-manager/AsyncTaskManager.js:292:30)
+    at AsyncTaskManager.abort (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/async-task-manager/AsyncTaskManager.js:52:21)
+    at DetachedBrowserFrame.abort (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/browser/detached-browser/DetachedBrowserFrame.js:112:58)
+    at DetachedWindowAPI.abort (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/window/DetachedWindowAPI.js:51:35)
+    at teardownWindow (file://<original-mac-worktree>/integrations/sillytavern/node_modules/vitest/dist/chunks/index.Bi0NXYPf.js:1281:22)
+    at Object.teardown (file://<original-mac-worktree>/integrations/sillytavern/node_modules/vitest/dist/chunks/index.Bi0NXYPf.js:1343:10)
+    at file://<original-mac-worktree>/integrations/sillytavern/node_modules/vitest/dist/chunks/base.Cof-UHJf.js:188:65
+    at Traces.$ (file://<original-mac-worktree>/integrations/sillytavern/node_modules/vitest/dist/traces.js:143:27)
+DOMException [AbortError]: The operation was aborted.
+    at Fetch.onAsyncTaskManagerAbort (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/fetch/Fetch.js:546:23)
+    at Object.<anonymous> (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/fetch/Fetch.js:416:101)
+    at AsyncTaskManager.abortAll (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/async-task-manager/AsyncTaskManager.js:292:30)
+    at AsyncTaskManager.abort (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/async-task-manager/AsyncTaskManager.js:52:21)
+    at DetachedBrowserFrame.abort (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/browser/detached-browser/DetachedBrowserFrame.js:112:58)
+    at DetachedWindowAPI.abort (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/window/DetachedWindowAPI.js:51:35)
+    at teardownWindow (file://<original-mac-worktree>/integrations/sillytavern/node_modules/vitest/dist/chunks/index.Bi0NXYPf.js:1281:22)
+    at Object.teardown (file://<original-mac-worktree>/integrations/sillytavern/node_modules/vitest/dist/chunks/index.Bi0NXYPf.js:1343:10)
+    at file://<original-mac-worktree>/integrations/sillytavern/node_modules/vitest/dist/chunks/base.Cof-UHJf.js:188:65
+    at Traces.$ (file://<original-mac-worktree>/integrations/sillytavern/node_modules/vitest/dist/traces.js:143:27)
+DOMException [AbortError]: The operation was aborted.
+    at Fetch.onAsyncTaskManagerAbort (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/fetch/Fetch.js:546:23)
+    at Object.<anonymous> (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/fetch/Fetch.js:416:101)
+    at AsyncTaskManager.abortAll (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/async-task-manager/AsyncTaskManager.js:292:30)
+    at AsyncTaskManager.abort (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/async-task-manager/AsyncTaskManager.js:52:21)
+    at DetachedBrowserFrame.abort (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/browser/detached-browser/DetachedBrowserFrame.js:112:58)
+    at DetachedWindowAPI.abort (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/window/DetachedWindowAPI.js:51:35)
+    at teardownWindow (file://<original-mac-worktree>/integrations/sillytavern/node_modules/vitest/dist/chunks/index.Bi0NXYPf.js:1281:22)
+    at Object.teardown (file://<original-mac-worktree>/integrations/sillytavern/node_modules/vitest/dist/chunks/index.Bi0NXYPf.js:1343:10)
+    at file://<original-mac-worktree>/integrations/sillytavern/node_modules/vitest/dist/chunks/base.Cof-UHJf.js:188:65
+    at Traces.$ (file://<original-mac-worktree>/integrations/sillytavern/node_modules/vitest/dist/traces.js:143:27)
+DOMException [AbortError]: The operation was aborted.
+    at Fetch.onAsyncTaskManagerAbort (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/fetch/Fetch.js:546:23)
+    at Object.<anonymous> (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/fetch/Fetch.js:416:101)
+    at AsyncTaskManager.abortAll (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/async-task-manager/AsyncTaskManager.js:292:30)
+    at AsyncTaskManager.abort (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/async-task-manager/AsyncTaskManager.js:52:21)
+    at DetachedBrowserFrame.abort (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/browser/detached-browser/DetachedBrowserFrame.js:112:58)
+    at DetachedWindowAPI.abort (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/window/DetachedWindowAPI.js:51:35)
+    at teardownWindow (file://<original-mac-worktree>/integrations/sillytavern/node_modules/vitest/dist/chunks/index.Bi0NXYPf.js:1281:22)
+    at Object.teardown (file://<original-mac-worktree>/integrations/sillytavern/node_modules/vitest/dist/chunks/index.Bi0NXYPf.js:1343:10)
+    at file://<original-mac-worktree>/integrations/sillytavern/node_modules/vitest/dist/chunks/base.Cof-UHJf.js:188:65
+    at Traces.$ (file://<original-mac-worktree>/integrations/sillytavern/node_modules/vitest/dist/traces.js:143:27)
+DOMException [NotSupportedError]: Failed to load external stylesheet "http://localhost:3000/@fs<original-mac-worktree>/integrations/sillytavern/extension/vc-model-settings/fonts/lxgw-wenkai/lxgwwenkai-regular.css". CSS file loading is disabled.
+    at #loadStyleSheet (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/nodes/html-link-element/HTMLLinkElement.js:380:31)
+    at [connectedToDocument] (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/nodes/html-link-element/HTMLLinkElement.js:213:41)
+    at [connectedToNode] (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/nodes/node/Node.js:801:53)
+    at [appendChild] (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/nodes/node/Node.js:421:45)
+    at [appendChild] (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/nodes/element/Element.js:1102:62)
+    at HTMLHeadElement.appendChild (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/nodes/node/Node.js:314:48)
+    at ParentNodeUtility.append (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/nodes/parent-node/ParentNodeUtility.js:19:28)
+    at HTMLHeadElement.append (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/nodes/element/Element.js:510:27)
+    at ensureHandwriting (<original-mac-worktree>/integrations/sillytavern/extension/vc-model-settings/memory-logic.js:248:14)
+    at <original-mac-worktree>/integrations/sillytavern/desktop-ui/src/features/memory/Diary.tsx:43:7
+AggregateError:
+    at internalConnectMultiple (node:net:1135:18)
+    at afterConnectMultiple (node:net:1716:7) {
+  code: 'ECONNREFUSED',
+  [errors]: [
+    Error: connect ECONNREFUSED ::1:3000
+        at createConnectionError (node:net:1679:14)
+        at afterConnectMultiple (node:net:1709:16) {
+      errno: -61,
+      code: 'ECONNREFUSED',
+      syscall: 'connect',
+      address: '::1',
+      port: 3000
+    },
+    Error: connect ECONNREFUSED 127.0.0.1:3000
+        at createConnectionError (node:net:1679:14)
+        at afterConnectMultiple (node:net:1709:16) {
+      errno: -61,
+      code: 'ECONNREFUSED',
+      syscall: 'connect',
+      address: '127.0.0.1',
+      port: 3000
+    }
+  ]
+}
+AggregateError:
+    at internalConnectMultiple (node:net:1135:18)
+    at afterConnectMultiple (node:net:1716:7) {
+  code: 'ECONNREFUSED',
+  [errors]: [
+    Error: connect ECONNREFUSED ::1:3000
+        at createConnectionError (node:net:1679:14)
+        at afterConnectMultiple (node:net:1709:16) {
+      errno: -61,
+      code: 'ECONNREFUSED',
+      syscall: 'connect',
+      address: '::1',
+      port: 3000
+    },
+    Error: connect ECONNREFUSED 127.0.0.1:3000
+        at createConnectionError (node:net:1679:14)
+        at afterConnectMultiple (node:net:1709:16) {
+      errno: -61,
+      code: 'ECONNREFUSED',
+      syscall: 'connect',
+      address: '127.0.0.1',
+      port: 3000
+    }
+  ]
+}
+DOMException [NotSupportedError]: Failed to load iframe page "about:blank". Iframe page loading is disabled.
+    at #loadPage (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/nodes/html-iframe-element/HTMLIFrameElement.js:334:27)
+    at [connectedToDocument] (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/nodes/html-iframe-element/HTMLIFrameElement.js:230:23)
+    at [connectedToNode] (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/nodes/node/Node.js:801:53)
+    at [appendChild] (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/nodes/node/Node.js:421:45)
+    at [appendChild] (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/nodes/element/Element.js:1102:62)
+    at HTMLDivElement.appendChild (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/nodes/node/Node.js:314:48)
+    at Object.renderMessage (<original-mac-worktree>/integrations/sillytavern/desktop-ui/tests/chat/fixtures.ts:345:32)
+    at renderLeaf (<original-mac-worktree>/integrations/sillytavern/desktop-ui/src/runtime/session-bridge.ts:455:49)
+    at Object.mountLeaf (<original-mac-worktree>/integrations/sillytavern/desktop-ui/src/runtime/session-bridge.ts:1569:13)
+    at Object.bridge.mountLeaf (<original-mac-worktree>/integrations/sillytavern/desktop-ui/tests/chat/fixtures.ts:541:16)
+DOMException [NotSupportedError]: Failed to load iframe page "about:blank". Iframe page loading is disabled.
+    at #loadPage (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/nodes/html-iframe-element/HTMLIFrameElement.js:334:27)
+    at [connectedToDocument] (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/nodes/html-iframe-element/HTMLIFrameElement.js:230:23)
+    at [connectedToNode] (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/nodes/node/Node.js:801:53)
+    at [appendChild] (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/nodes/node/Node.js:421:45)
+    at [appendChild] (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/nodes/element/Element.js:1102:62)
+    at HTMLDivElement.appendChild (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/nodes/node/Node.js:314:48)
+    at Object.renderMessage (<original-mac-worktree>/integrations/sillytavern/desktop-ui/tests/chat/fixtures.ts:345:32)
+    at renderLeaf (<original-mac-worktree>/integrations/sillytavern/desktop-ui/src/runtime/session-bridge.ts:455:49)
+    at Object.mountLeaf (<original-mac-worktree>/integrations/sillytavern/desktop-ui/src/runtime/session-bridge.ts:1569:13)
+    at Object.bridge.mountLeaf (<original-mac-worktree>/integrations/sillytavern/desktop-ui/tests/chat/fixtures.ts:541:16)
+DOMException [NotSupportedError]: Failed to load iframe page "about:blank". Iframe page loading is disabled.
+    at #loadPage (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/nodes/html-iframe-element/HTMLIFrameElement.js:334:27)
+    at [connectedToDocument] (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/nodes/html-iframe-element/HTMLIFrameElement.js:230:23)
+    at [connectedToNode] (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/nodes/node/Node.js:801:53)
+    at [appendChild] (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/nodes/node/Node.js:421:45)
+    at [appendChild] (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/nodes/element/Element.js:1102:62)
+    at HTMLDivElement.appendChild (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/nodes/node/Node.js:314:48)
+    at Object.renderMessage (<original-mac-worktree>/integrations/sillytavern/desktop-ui/tests/chat/fixtures.ts:345:32)
+    at renderLeaf (<original-mac-worktree>/integrations/sillytavern/desktop-ui/src/runtime/session-bridge.ts:455:49)
+    at Object.mountLeaf (<original-mac-worktree>/integrations/sillytavern/desktop-ui/src/runtime/session-bridge.ts:1569:13)
+    at Object.bridge.mountLeaf (<original-mac-worktree>/integrations/sillytavern/desktop-ui/tests/chat/fixtures.ts:541:16)
+
+ Test Files  39 passed (39)
+      Tests  154 passed (154)
+   Start at  19:56:41
+   Duration  8.68s (import 46%, tests 34%, environment 10%, transform 9%)
+
+    Isolate  39 workers spawned · ~275ms startup each (spawn + environment, per file)
+             at least ~916ms faster with isolate: false — reuses workers across files instead of one per file

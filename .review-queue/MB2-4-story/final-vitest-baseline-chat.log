@@ -1,0 +1,16 @@
+
+> vc-sillytavern-integration@0.1.0 test:desktop
+> vitest run --config desktop-ui/vitest.config.mjs tests/chat/ChatRoute.test.tsx -t locates an older source only after the chat route is visible and history has committed
+
+
+ RUN  v5.1.0 <original-mac-worktree>/integrations/sillytavern/desktop-ui
+
+
+ Test Files  1 passed (1)
+      Tests  1 passed | 21 skipped (22)
+   Start at  22:25:48
+   Duration  5.92s (tests 49%, import 26%, transform 18%, environment 7%)
+
+npm --prefix integrations/sillytavern run test:desktop --  -t   3.50s user 0.52s system 61% cpu 6.546 total
+
+exit=0

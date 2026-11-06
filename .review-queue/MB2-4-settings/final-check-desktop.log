@@ -1,0 +1,5 @@
+
+> vc-sillytavern-integration@0.1.0 check:desktop
+> tsc --project desktop-ui/tsconfig.json
+
+npm --prefix integrations/sillytavern run check:desktop  22.18s user 1.23s system 49% cpu 47.314 total

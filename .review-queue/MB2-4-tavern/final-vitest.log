@@ -1,0 +1,196 @@
+
+> vc-sillytavern-integration@0.1.0 test:desktop
+> vitest run --config desktop-ui/vitest.config.mjs
+
+
+ RUN  v5.1.0 <original-mac-worktree>/integrations/sillytavern/desktop-ui
+
+DOMException [NotSupportedError]: Failed to load external stylesheet "http://localhost:3000/@fs<original-mac-worktree>/integrations/sillytavern/extension/vc-model-settings/fonts/lxgw-wenkai/lxgwwenkai-regular.css". CSS file loading is disabled.
+    at #loadStyleSheet (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/nodes/html-link-element/HTMLLinkElement.js:380:31)
+    at [connectedToDocument] (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/nodes/html-link-element/HTMLLinkElement.js:213:41)
+    at [connectedToNode] (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/nodes/node/Node.js:801:53)
+    at [appendChild] (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/nodes/node/Node.js:421:45)
+    at [appendChild] (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/nodes/element/Element.js:1102:62)
+    at HTMLHeadElement.appendChild (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/nodes/node/Node.js:314:48)
+    at ParentNodeUtility.append (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/nodes/parent-node/ParentNodeUtility.js:19:28)
+    at HTMLHeadElement.append (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/nodes/element/Element.js:510:27)
+    at ensureHandwriting (<original-mac-worktree>/integrations/sillytavern/extension/vc-model-settings/memory-logic.js:248:14)
+    at <original-mac-worktree>/integrations/sillytavern/desktop-ui/src/features/memory/Diary.tsx:41:7
+ ❯ tests/chat/t14-window.test.tsx (3 tests | 1 failed) 5744ms
+   ❯ t14-window: MessageList / SessionBridge firstDisplayedMessageId real window supply (3)
+     × updates context.firstDisplayedMessageId across 80-message window, load-earlier, delete, and conversation switch 5158ms
+ ❯ tests/tavern/WorldInfo.test.tsx (3 tests | 1 failed) 8114ms
+   ❯ WorldInfo (B14 deleting world clears global/char/chat references in one commit) (3)
+     × deleting world clears global/char/chat references in one commit 5717ms
+stderr | tests/chat/ChatRoute.test.tsx > ChatRoute streaming isolation, B5 open lifecycle, and B13 VoiceBubble initial state > locates an older source only after the chat route is visible and history has committed
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+
+ ❯ tests/inbox/useInbox.test.tsx (6 tests | 1 failed) 10259ms
+   ❯ MB2-4 inbox shared hooks and decoupled views (6)
+     × useInboxRelationship & InboxRoute handle relationship selection and switch confirmation when PolicyForm has unsaved draft 5039ms
+ ❯ tests/tavern/ReplyConfig.test.tsx (2 tests | 1 failed) 6271ms
+   ❯ ReplyConfig (B8 preset save-as / import active preset & orphan cleanup) (2)
+     × save-as preset updates active preset and leaves no dirty orphan 5627ms
+ ❯ tests/characters/CharactersRoute.test.tsx (5 tests | 1 failed) 14960ms
+   ❯ CharactersRoute (B15 delete character, instance creation & rename) (5)
+     × deleting character refreshes characters/relationships/recentChats, clears open conversation, and supersedes in-flight open (B15) 5504ms
+DOMException [NotSupportedError]: Failed to load iframe page "about:blank". Iframe page loading is disabled.
+    at #loadPage (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/nodes/html-iframe-element/HTMLIFrameElement.js:334:27)
+    at [connectedToDocument] (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/nodes/html-iframe-element/HTMLIFrameElement.js:230:23)
+    at [connectedToNode] (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/nodes/node/Node.js:801:53)
+    at [appendChild] (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/nodes/node/Node.js:421:45)
+    at [appendChild] (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/nodes/element/Element.js:1102:62)
+    at HTMLDivElement.appendChild (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/nodes/node/Node.js:314:48)
+    at Object.renderMessage (<original-mac-worktree>/integrations/sillytavern/desktop-ui/tests/chat/fixtures.ts:345:32)
+    at renderLeaf (<original-mac-worktree>/integrations/sillytavern/desktop-ui/src/runtime/session-bridge.ts:468:49)
+    at Object.mountLeaf (<original-mac-worktree>/integrations/sillytavern/desktop-ui/src/runtime/session-bridge.ts:1604:13)
+    at Object.bridge.mountLeaf (<original-mac-worktree>/integrations/sillytavern/desktop-ui/tests/chat/fixtures.ts:541:16)
+DOMException [NotSupportedError]: Failed to load iframe page "about:blank". Iframe page loading is disabled.
+    at #loadPage (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/nodes/html-iframe-element/HTMLIFrameElement.js:334:27)
+    at [connectedToDocument] (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/nodes/html-iframe-element/HTMLIFrameElement.js:230:23)
+    at [connectedToNode] (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/nodes/node/Node.js:801:53)
+    at [appendChild] (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/nodes/node/Node.js:421:45)
+    at [appendChild] (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/nodes/element/Element.js:1102:62)
+    at HTMLDivElement.appendChild (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/nodes/node/Node.js:314:48)
+    at Object.renderMessage (<original-mac-worktree>/integrations/sillytavern/desktop-ui/tests/chat/fixtures.ts:345:32)
+    at renderLeaf (<original-mac-worktree>/integrations/sillytavern/desktop-ui/src/runtime/session-bridge.ts:468:49)
+    at Object.mountLeaf (<original-mac-worktree>/integrations/sillytavern/desktop-ui/src/runtime/session-bridge.ts:1604:13)
+    at Object.bridge.mountLeaf (<original-mac-worktree>/integrations/sillytavern/desktop-ui/tests/chat/fixtures.ts:541:16)
+DOMException [NotSupportedError]: Failed to load iframe page "about:blank". Iframe page loading is disabled.
+    at #loadPage (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/nodes/html-iframe-element/HTMLIFrameElement.js:334:27)
+    at [connectedToDocument] (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/nodes/html-iframe-element/HTMLIFrameElement.js:230:23)
+    at [connectedToNode] (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/nodes/node/Node.js:801:53)
+    at [appendChild] (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/nodes/node/Node.js:421:45)
+    at [appendChild] (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/nodes/element/Element.js:1102:62)
+    at HTMLDivElement.appendChild (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/nodes/node/Node.js:314:48)
+    at Object.renderMessage (<original-mac-worktree>/integrations/sillytavern/desktop-ui/tests/chat/fixtures.ts:345:32)
+    at renderLeaf (<original-mac-worktree>/integrations/sillytavern/desktop-ui/src/runtime/session-bridge.ts:468:49)
+    at Object.mountLeaf (<original-mac-worktree>/integrations/sillytavern/desktop-ui/src/runtime/session-bridge.ts:1604:13)
+    at Object.bridge.mountLeaf (<original-mac-worktree>/integrations/sillytavern/desktop-ui/tests/chat/fixtures.ts:541:16)
+ ❯ tests/chat/ChatRoute.test.tsx (22 tests | 3 failed) 38575ms
+   ❯ ChatRoute streaming isolation, B5 open lifecycle, and B13 VoiceBubble initial state (22)
+     × loads history in pages of 80 while retaining the existing visible leaves 7453ms
+     × locates an older source only after the chat route is visible and history has committed 6183ms
+     × expands the opening window far enough to restore a saved reading position 11871ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 8 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/characters/CharactersRoute.test.tsx > CharactersRoute (B15 delete character, instance creation & rename) > deleting character refreshes characters/relationships/recentChats, clears open conversation, and supersedes in-flight open (B15)
+Error: Test timed out in 5000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+ ❯ tests/characters/CharactersRoute.test.tsx:43:5
+     41|     });
+     42|
+     43|     it('deleting character refreshes characters/relationships/recentCh…
+       |     ^
+     44|         const queryClient = new QueryClient({
+     45|             defaultOptions: { queries: { retry: false, gcTime: Infinit…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/8]⎯
+
+ FAIL  tests/chat/ChatRoute.test.tsx > ChatRoute streaming isolation, B5 open lifecycle, and B13 VoiceBubble initial state > loads history in pages of 80 while retaining the existing visible leaves
+Error: Test timed out in 5000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+ ❯ tests/chat/ChatRoute.test.tsx:54:5
+     52|     });
+     53|
+     54|     it('loads history in pages of 80 while retaining the existing visi…
+       |     ^
+     55|         const key = '["alice.png","history"]';
+     56|         const env = createTestChatEnv({
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/8]⎯
+
+ FAIL  tests/chat/ChatRoute.test.tsx > ChatRoute streaming isolation, B5 open lifecycle, and B13 VoiceBubble initial state > locates an older source only after the chat route is visible and history has committed
+Error: Test timed out in 5000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+ ❯ tests/chat/ChatRoute.test.tsx:75:5
+     73|     });
+     74|
+     75|     it('locates an older source only after the chat route is visible a…
+       |     ^
+     76|         const key = '["alice.png","source"]';
+     77|         const previousKey = '["alice.png","previous"]';
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/8]⎯
+
+ FAIL  tests/chat/ChatRoute.test.tsx > ChatRoute streaming isolation, B5 open lifecycle, and B13 VoiceBubble initial state > expands the opening window far enough to restore a saved reading position
+Error: Test timed out in 5000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+ ❯ tests/chat/ChatRoute.test.tsx:111:5
+    109|     });
+    110|
+    111|     it('expands the opening window far enough to restore a saved readi…
+       |     ^
+    112|         const key = '["alice.png","restored-history"]';
+    113|         const env = createTestChatEnv({
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/8]⎯
+
+ FAIL  tests/chat/t14-window.test.tsx > t14-window: MessageList / SessionBridge firstDisplayedMessageId real window supply > updates context.firstDisplayedMessageId across 80-message window, load-earlier, delete, and conversation switch
+Error: Test timed out in 5000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+ ❯ tests/chat/t14-window.test.tsx:54:5
+     52|     });
+     53|
+     54|     it('updates context.firstDisplayedMessageId across 80-message wind…
+       |     ^
+     55|         const keyA = '["alice.png","chat-105"]';
+     56|         const keyB = '["bob.png","chat-90"]';
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/8]⎯
+
+ FAIL  tests/inbox/useInbox.test.tsx > MB2-4 inbox shared hooks and decoupled views > useInboxRelationship & InboxRoute handle relationship selection and switch confirmation when PolicyForm has unsaved draft
+Error: Test timed out in 5000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+ ❯ tests/inbox/useInbox.test.tsx:57:3
+     55|   });
+     56|
+     57|   it('useInboxRelationship & InboxRoute handle relationship selection …
+       |   ^
+     58|     const storyRequest = vi.fn(async (method: string, path: string) =>…
+     59|       if (path === '/api/v1/relationships/101/proactive-policy' && met…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/8]⎯
+
+ FAIL  tests/tavern/ReplyConfig.test.tsx > ReplyConfig (B8 preset save-as / import active preset & orphan cleanup) > save-as preset updates active preset and leaves no dirty orphan
+Error: Test timed out in 5000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+ ❯ tests/tavern/ReplyConfig.test.tsx:107:3
+    105|   });
+    106|
+    107|   it('save-as preset updates active preset and leaves no dirty orphan'…
+       |   ^
+    108|     const presetSavePayloads: Array<Record<string, unknown>> = [];
+    109|     const settingsSavePayloads: Array<Record<string, unknown>> = [];
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[7/8]⎯
+
+ FAIL  tests/tavern/WorldInfo.test.tsx > WorldInfo (B14 deleting world clears global/char/chat references in one commit) > deleting world clears global/char/chat references in one commit
+Error: Test timed out in 5000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+ ❯ tests/tavern/WorldInfo.test.tsx:180:3
+    178|   });
+    179|
+    180|   it('deleting world clears global/char/chat references in one commit'…
+       |   ^
+    181|     const deletedWorlds: string[] = [];
+    182|     const settingsSaves: Array<Record<string, unknown>> = [];
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[8/8]⎯
+
+
+ Test Files  6 failed | 36 passed (42)
+      Tests  8 failed | 173 passed (181)
+   Start at  22:25:04
+   Duration  44.79s (tests 54%, import 29%, environment 14%, transform 3%, worker 1%)
+
+    Isolate  42 workers spawned · ~1.57s startup each (spawn + environment, per file)
+             at least ~5.75s faster with isolate: false — reuses workers across files instead of one per file
+
+real 45.37
+user 80.85
+sys 11.92

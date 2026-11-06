@@ -1,0 +1,25 @@
+{
+  "startedAt": "2026-11-06T14:26:40.344Z",
+  "selected": [
+    "catalog-admin",
+    "nf-settings",
+    "dr2-settings"
+  ],
+  "scenes": {
+    "catalog-admin": {
+      "status": "PASS",
+      "ms": 421
+    },
+    "nf-settings": {
+      "status": "PASS",
+      "ms": 22259
+    },
+    "dr2-settings": {
+      "status": "PASS",
+      "ms": 14020
+    }
+  },
+  "artifactsDir": "<original-mac-worktree>/integrations/sillytavern/dev-managed-mb2-settings/artifacts/accept-2026-11-06T14-26-40-343Z",
+  "finishedAt": "2026-11-06T14:28:03.884Z",
+  "screenshots": []
+}

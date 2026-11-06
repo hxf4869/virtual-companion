@@ -1,0 +1,26 @@
+{
+  "startedAt": "2026-11-06T14:28:03.365Z",
+  "selected": [
+    "catalog-admin",
+    "nf-cards",
+    "nf-tavern"
+  ],
+  "scenes": {
+    "catalog-admin": {
+      "status": "PASS",
+      "ms": 451
+    },
+    "nf-cards": {
+      "status": "PASS",
+      "ms": 19221
+    },
+    "nf-tavern": {
+      "status": "FAIL",
+      "ms": 9188,
+      "error": "NF07 code-editor: Expected values to be strictly equal:\n+ actual - expected\n\n+ 'NF07 Monaved\" '\n- 'NF07 Monaco <%= \"saved\" %>'\n            ^\n; {\"errors\":[],\"forbidden\":[]}"
+    }
+  },
+  "artifactsDir": "<original-mac-worktree>/integrations/sillytavern/dev-managed-mb2-tavern/artifacts/accept-2026-11-06T14-28-03-364Z",
+  "finishedAt": "2026-11-06T14:29:22.915Z",
+  "screenshots": []
+}

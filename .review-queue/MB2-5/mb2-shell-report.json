@@ -1,0 +1,50 @@
+{
+  "scene": "mb2-shell",
+  "entry": "/m/chat",
+  "tabsVerified": [
+    "/m/chat",
+    "/m/characters",
+    "/m/memory",
+    "/m/inbox",
+    "/m/story"
+  ],
+  "historyVerified": [
+    "tabs-back-forward",
+    "settings-sheet-location-state-back-forward",
+    "settings-done-close"
+  ],
+  "themeVerified": [
+    "light",
+    "dark",
+    "auto-dark",
+    "auto-light"
+  ],
+  "initialIdle": {
+    "pathname": "/m/chat",
+    "vcDevice": "mobile",
+    "vcApp": "ready",
+    "vcRuntime": null,
+    "vcEngine": null,
+    "engineIframes": 0,
+    "hasAccountMeta": true,
+    "hasSessionMeta": true
+  },
+  "screenshots": [
+    "mb2-shell-settings-390-light.png",
+    "mb2-shell-chat-390-light.png",
+    "mb2-shell-settings-390-dark.png",
+    "mb2-shell-chat-390-dark.png",
+    "mb2-shell-settings-1440-light.png",
+    "mb2-shell-chat-1440-light.png",
+    "mb2-shell-settings-1440-dark.png",
+    "mb2-shell-chat-1440-dark.png"
+  ],
+  "perf": {
+    "status": "NOT_RUN",
+    "reason": "未设置 VC_MB2_SHELL_PERF=1；4× CPU 壳层切换采样由主代理在无并行负载时单独开启执行"
+  },
+  "notRunBoundaries": {
+    "secondaryBusinessRoutes": "NOT_RUN（二级页面当前无真实业务消费者，仅在组件测试经公开 route slots 验证；受管不伪造假路由或假业务页）",
+    "messageAndListScrollPerf": "NOT_RUN（真实会话列表与消息列表滚动属于 MB2-6 接入后验收）"
+  }
+}

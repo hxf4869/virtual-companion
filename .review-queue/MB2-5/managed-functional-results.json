@@ -1,0 +1,27 @@
+{
+  "startedAt": "2026-11-06T15:35:14.095Z",
+  "selected": [
+    "catalog-admin",
+    "mb2-shell",
+    "mb2-layout"
+  ],
+  "scenes": {
+    "catalog-admin": {
+      "status": "PASS",
+      "ms": 381
+    },
+    "mb2-shell": {
+      "status": "FAIL",
+      "ms": 8888,
+      "error": "浅色模式 --vc-canvas 应为 #eef0f6\n+ actual - expected\n\n+ '#f5f5f7'\n- '#eef0f6'\n"
+    },
+    "mb2-layout": {
+      "status": "FAIL",
+      "ms": 3975,
+      "error": "[small-phone portrait 320×568 light shell] 几何断言失败: 设置头像被遮挡不可达 (elementFromPoint 未命中)；标签栏高度应为 64px，实际 72.00px；标签栏左边距应为 16px，实际 10.00px；标签栏右边距应为 16px，实际 10.00px；标签项 chat 被遮挡不可达；标签项 characters 被遮挡不可达；标签项 memory 被遮挡不可达；标签项 inbox 被遮挡不可达；标签项 story 被遮挡不可达\n+ actual - expected\n\n+ [\n+   '设置头像被遮挡不可达 (elementFromPoint 未命中)',\n+   '标签栏高度应为 64px，实际 72.00px',\n+   '标签栏左边距应为 16px，实际 10.00px',\n+   '标签栏右边距应为 16px，实际 10.00px',\n+   '标签项 chat 被遮挡不可达',\n+   '标签项 characters 被遮挡不可达',\n+   '标签项 memory 被遮挡不可达',\n+   '标签项 inbox 被遮挡不可达',\n+   '标签项 story 被遮挡不可达'\n+ ]\n- []\n"
+    }
+  },
+  "artifactsDir": "<original-mac-worktree>/integrations/sillytavern/dev-managed-mb2-shell/artifacts/accept-2026-11-06T15-35-14-095Z",
+  "finishedAt": "2026-11-06T15:36:19.324Z",
+  "screenshots": []
+}

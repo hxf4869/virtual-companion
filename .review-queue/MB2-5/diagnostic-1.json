@@ -1,0 +1,379 @@
+{
+  "url": "http://127.0.0.1:28972/m/chat",
+  "viewport": {
+    "width": 390,
+    "height": 844
+  },
+  "theme": "light",
+  "nodes": [
+    {
+      "node": {
+        "tag": "HTML",
+        "id": "",
+        "class": "ion-ce plt-ipad plt-ios plt-tablet plt-mobile plt-mobileweb ios",
+        "html": "<html lang=\"zh-CN\" data-vc-device=\"mobile\" data-vc-theme=\"light\" data-vc-theme-id=\"aurora\" data-vc-variant-bubble=\"grouped\" class=\"ion-ce plt-ipad plt-ios plt-tablet plt-mobile plt-mobileweb ios\" mode=\"ios\" data-vc-app=\"ready\"><head><meta name=\"vc-account-id\" content=\"1793979678360\"><meta name=\"vc-session-id\" content=\"1\">\n<meta charset=\"utf-8\">\n<meta name=\"viewport\" content=\"width=device-width,initial-scale=1,viewport-fit=cover\">\n<meta name=\"color-scheme\" content=\"light dark\">\n<title>Virtual Com"
+      },
+      "rect": {
+        "x": 0,
+        "y": 0,
+        "width": 390,
+        "height": 844
+      },
+      "style": {
+        "--vc-canvas": "#f5f5f7",
+        "height": "844px",
+        "min-height": "100%",
+        "box-sizing": "border-box",
+        "padding": "0px",
+        "left": "auto",
+        "right": "auto",
+        "position": "static",
+        "z-index": "auto",
+        "pointer-events": "auto",
+        "display": "block",
+        "visibility": "visible"
+      },
+      "hitChain": [
+        {
+          "tag": "BUTTON",
+          "id": "",
+          "class": "vc-mobile-settings-row",
+          "html": "<button type=\"button\" class=\"vc-mobile-settings-row\" data-vc-settings-item=\"appearance\" data-vc-settings-item-disabled=\"true\" disabled=\"\" aria-disabled=\"true\"><span class=\"vc-mobile-settings-tile\" data-tile=\"purple\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" width=\"17\" height=\"17\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\" focusable=\"false\" aria-hidden=\"true\" class=\"vc-icon vc-mobile-icon\" style=\"--vc-i"
+        }
+      ],
+      "matched": []
+    },
+    {
+      "node": {
+        "tag": "DIV",
+        "id": "",
+        "class": "vc-mobile-app",
+        "html": "<div class=\"vc-mobile-app\" data-vc-mobile-app=\"\" data-vc-mobile-scene=\"default\" data-vc-mobile-route=\"/m/chat\"><div class=\"vc-desktop-aurora vc-aurora\" aria-hidden=\"true\" data-vc-period=\"night\"><div class=\"vc-aurora-set\"><div class=\"vc-aurora-spot vc-aurora-spot--1\" style=\"--c: 255,150,120;\"></div><div class=\"vc-aurora-spot vc-aurora-spot--2\" style=\"--c: 170,135,255;\"></div><div class=\"vc-aurora-spot vc-aurora-spot--3\" style=\"--c: 100,165,255;\"></div></div></div><div class=\"vc-mobile-shell-frame"
+      },
+      "rect": {
+        "x": 0,
+        "y": 0,
+        "width": 390,
+        "height": 844
+      },
+      "style": {
+        "--vc-canvas": "#f5f5f7",
+        "height": "844px",
+        "min-height": "844px",
+        "box-sizing": "border-box",
+        "padding": "0px",
+        "left": "0px",
+        "right": "0px",
+        "position": "relative",
+        "z-index": "auto",
+        "pointer-events": "auto",
+        "display": "block",
+        "visibility": "visible"
+      },
+      "hitChain": [
+        {
+          "tag": "BUTTON",
+          "id": "",
+          "class": "vc-mobile-settings-row",
+          "html": "<button type=\"button\" class=\"vc-mobile-settings-row\" data-vc-settings-item=\"appearance\" data-vc-settings-item-disabled=\"true\" disabled=\"\" aria-disabled=\"true\"><span class=\"vc-mobile-settings-tile\" data-tile=\"purple\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" width=\"17\" height=\"17\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\" focusable=\"false\" aria-hidden=\"true\" class=\"vc-icon vc-mobile-icon\" style=\"--vc-i"
+        }
+      ],
+      "matched": []
+    },
+    {
+      "node": {
+        "tag": "ION-TAB-BAR",
+        "id": "",
+        "class": "vc-mobile-tabbar ios hydrated",
+        "html": "<ion-tab-bar slot=\"bottom\" data-vc-mobile-tabbar=\"\" data-hidden=\"true\" class=\"vc-mobile-tabbar ios hydrated\" role=\"tablist\" selected-tab=\"chat\" hidden=\"\"><ion-tab-button data-vc-tab=\"chat\" data-active=\"true\" class=\"vc-mobile-tab-button ios tab-layout-icon-top ion-activatable ion-selectable ion-focusable hydrated tab-selected\" tab=\"chat\" href=\"/m/chat\" id=\"tab-button-chat\"><span class=\"vc-mobile-tab-icon-wrap\"><svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" width=\"24\" height=\"24\" fill"
+      },
+      "rect": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0
+      },
+      "style": {
+        "--vc-canvas": "#f5f5f7",
+        "height": "64px",
+        "min-height": "64px",
+        "box-sizing": "content-box",
+        "padding": "4px",
+        "left": "16px",
+        "right": "16px",
+        "position": "fixed",
+        "z-index": "20",
+        "pointer-events": "auto",
+        "display": "none",
+        "visibility": "visible"
+      },
+      "hitChain": [
+        {
+          "tag": "ION-MODAL",
+          "id": "ion-overlay-1",
+          "class": "vc-mobile-settings-modal ios modal-sheet hydrated show-modal",
+          "html": "<ion-modal keep-contents-mounted=\"\" initial-breakpoint=\"1\" class=\"vc-mobile-settings-modal ios modal-sheet hydrated show-modal\" id=\"ion-overlay-1\" no-router=\"\" tabindex=\"-1\" is-open=\"\" style=\"z-index: 20002; --ion-safe-area-top: 0px; --ion-safe-area-bottom: inherit; --ion-safe-area-left: 0px; --ion-safe-area-right: 0px; --ion-modal-offset-top: 0px; pointer-events: auto;\"><div class=\"ion-delegate-host ion-page\"><div class=\"vc-mobile-settings-sheet\" data-vc-settings-sheet=\"\" data-open=\"true\" role="
+        },
+        {
+          "tag": "ION-BACKDROP",
+          "id": "",
+          "class": "ios hydrated",
+          "html": "<ion-backdrop part=\"backdrop\" aria-hidden=\"true\" class=\"ios hydrated\" style=\"pointer-events: auto;\"></ion-backdrop>"
+        }
+      ],
+      "matched": []
+    },
+    {
+      "node": {
+        "tag": "BUTTON",
+        "id": "",
+        "class": "vc-mobile-avatar-trigger",
+        "html": "<button type=\"button\" class=\"vc-mobile-avatar-trigger\" aria-label=\"打开设置\" data-vc-settings-trigger=\"\"><span class=\"vc-mobile-avatar-fallback\" aria-hidden=\"true\">你</span></button>"
+      },
+      "rect": {
+        "x": 330,
+        "y": 12,
+        "width": 44,
+        "height": 44
+      },
+      "style": {
+        "--vc-canvas": "#f5f5f7",
+        "height": "44px",
+        "min-height": "44px",
+        "box-sizing": "border-box",
+        "padding": "0px",
+        "left": "0px",
+        "right": "0px",
+        "position": "relative",
+        "z-index": "auto",
+        "pointer-events": "auto",
+        "display": "flex",
+        "visibility": "visible"
+      },
+      "hitChain": [
+        {
+          "tag": "BUTTON",
+          "id": "",
+          "class": "vc-mobile-sheet-nav-btn vc-mobile-sheet-nav-btn--done",
+          "html": "<button type=\"button\" class=\"vc-mobile-sheet-nav-btn vc-mobile-sheet-nav-btn--done\" data-vc-settings-done=\"\">完成</button>"
+        }
+      ],
+      "matched": []
+    },
+    {
+      "node": {
+        "tag": "ION-TAB-BUTTON",
+        "id": "tab-button-chat",
+        "class": "vc-mobile-tab-button ios tab-layout-icon-top ion-activatable ion-selectable ion-focusable hydrated tab-selected",
+        "html": "<ion-tab-button data-vc-tab=\"chat\" data-active=\"true\" class=\"vc-mobile-tab-button ios tab-layout-icon-top ion-activatable ion-selectable ion-focusable hydrated tab-selected\" tab=\"chat\" href=\"/m/chat\" id=\"tab-button-chat\"><span class=\"vc-mobile-tab-icon-wrap\"><svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" width=\"24\" height=\"24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\" focusable=\"false\" aria-hidden=\"true\" class=\"vc-icon vc-mo"
+      },
+      "rect": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0
+      },
+      "style": {
+        "--vc-canvas": "#f5f5f7",
+        "height": "56px",
+        "min-height": "44px",
+        "box-sizing": "border-box",
+        "padding": "4px 2px",
+        "left": "auto",
+        "right": "auto",
+        "position": "relative",
+        "z-index": "auto",
+        "pointer-events": "auto",
+        "display": "flex",
+        "visibility": "visible"
+      },
+      "hitChain": [
+        {
+          "tag": "ION-MODAL",
+          "id": "ion-overlay-1",
+          "class": "vc-mobile-settings-modal ios modal-sheet hydrated show-modal",
+          "html": "<ion-modal keep-contents-mounted=\"\" initial-breakpoint=\"1\" class=\"vc-mobile-settings-modal ios modal-sheet hydrated show-modal\" id=\"ion-overlay-1\" no-router=\"\" tabindex=\"-1\" is-open=\"\" style=\"z-index: 20002; --ion-safe-area-top: 0px; --ion-safe-area-bottom: inherit; --ion-safe-area-left: 0px; --ion-safe-area-right: 0px; --ion-modal-offset-top: 0px; pointer-events: auto;\"><div class=\"ion-delegate-host ion-page\"><div class=\"vc-mobile-settings-sheet\" data-vc-settings-sheet=\"\" data-open=\"true\" role="
+        },
+        {
+          "tag": "ION-BACKDROP",
+          "id": "",
+          "class": "ios hydrated",
+          "html": "<ion-backdrop part=\"backdrop\" aria-hidden=\"true\" class=\"ios hydrated\" style=\"pointer-events: auto;\"></ion-backdrop>"
+        }
+      ],
+      "matched": []
+    },
+    {
+      "node": {
+        "tag": "ION-TAB-BUTTON",
+        "id": "tab-button-characters",
+        "class": "vc-mobile-tab-button ios tab-layout-icon-top ion-activatable ion-selectable ion-focusable hydrated",
+        "html": "<ion-tab-button data-vc-tab=\"characters\" data-active=\"false\" class=\"vc-mobile-tab-button ios tab-layout-icon-top ion-activatable ion-selectable ion-focusable hydrated\" tab=\"characters\" href=\"/m/characters\" id=\"tab-button-characters\"><span class=\"vc-mobile-tab-icon-wrap\"><svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" width=\"24\" height=\"24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\" focusable=\"false\" aria-hidden=\"true\" class=\"v"
+      },
+      "rect": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0
+      },
+      "style": {
+        "--vc-canvas": "#f5f5f7",
+        "height": "56px",
+        "min-height": "44px",
+        "box-sizing": "border-box",
+        "padding": "4px 2px",
+        "left": "auto",
+        "right": "auto",
+        "position": "relative",
+        "z-index": "auto",
+        "pointer-events": "auto",
+        "display": "flex",
+        "visibility": "visible"
+      },
+      "hitChain": [
+        {
+          "tag": "ION-MODAL",
+          "id": "ion-overlay-1",
+          "class": "vc-mobile-settings-modal ios modal-sheet hydrated show-modal",
+          "html": "<ion-modal keep-contents-mounted=\"\" initial-breakpoint=\"1\" class=\"vc-mobile-settings-modal ios modal-sheet hydrated show-modal\" id=\"ion-overlay-1\" no-router=\"\" tabindex=\"-1\" is-open=\"\" style=\"z-index: 20002; --ion-safe-area-top: 0px; --ion-safe-area-bottom: inherit; --ion-safe-area-left: 0px; --ion-safe-area-right: 0px; --ion-modal-offset-top: 0px; pointer-events: auto;\"><div class=\"ion-delegate-host ion-page\"><div class=\"vc-mobile-settings-sheet\" data-vc-settings-sheet=\"\" data-open=\"true\" role="
+        },
+        {
+          "tag": "ION-BACKDROP",
+          "id": "",
+          "class": "ios hydrated",
+          "html": "<ion-backdrop part=\"backdrop\" aria-hidden=\"true\" class=\"ios hydrated\" style=\"pointer-events: auto;\"></ion-backdrop>"
+        }
+      ],
+      "matched": []
+    },
+    {
+      "node": {
+        "tag": "ION-TAB-BUTTON",
+        "id": "tab-button-memory",
+        "class": "vc-mobile-tab-button ios tab-layout-icon-top ion-activatable ion-selectable ion-focusable hydrated",
+        "html": "<ion-tab-button data-vc-tab=\"memory\" data-active=\"false\" class=\"vc-mobile-tab-button ios tab-layout-icon-top ion-activatable ion-selectable ion-focusable hydrated\" tab=\"memory\" href=\"/m/memory\" id=\"tab-button-memory\"><span class=\"vc-mobile-tab-icon-wrap\"><svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" width=\"24\" height=\"24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\" focusable=\"false\" aria-hidden=\"true\" class=\"vc-icon vc-mobile"
+      },
+      "rect": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0
+      },
+      "style": {
+        "--vc-canvas": "#f5f5f7",
+        "height": "56px",
+        "min-height": "44px",
+        "box-sizing": "border-box",
+        "padding": "4px 2px",
+        "left": "auto",
+        "right": "auto",
+        "position": "relative",
+        "z-index": "auto",
+        "pointer-events": "auto",
+        "display": "flex",
+        "visibility": "visible"
+      },
+      "hitChain": [
+        {
+          "tag": "ION-MODAL",
+          "id": "ion-overlay-1",
+          "class": "vc-mobile-settings-modal ios modal-sheet hydrated show-modal",
+          "html": "<ion-modal keep-contents-mounted=\"\" initial-breakpoint=\"1\" class=\"vc-mobile-settings-modal ios modal-sheet hydrated show-modal\" id=\"ion-overlay-1\" no-router=\"\" tabindex=\"-1\" is-open=\"\" style=\"z-index: 20002; --ion-safe-area-top: 0px; --ion-safe-area-bottom: inherit; --ion-safe-area-left: 0px; --ion-safe-area-right: 0px; --ion-modal-offset-top: 0px; pointer-events: auto;\"><div class=\"ion-delegate-host ion-page\"><div class=\"vc-mobile-settings-sheet\" data-vc-settings-sheet=\"\" data-open=\"true\" role="
+        },
+        {
+          "tag": "ION-BACKDROP",
+          "id": "",
+          "class": "ios hydrated",
+          "html": "<ion-backdrop part=\"backdrop\" aria-hidden=\"true\" class=\"ios hydrated\" style=\"pointer-events: auto;\"></ion-backdrop>"
+        }
+      ],
+      "matched": []
+    },
+    {
+      "node": {
+        "tag": "ION-TAB-BUTTON",
+        "id": "tab-button-inbox",
+        "class": "vc-mobile-tab-button ios tab-layout-icon-top ion-activatable ion-selectable ion-focusable hydrated",
+        "html": "<ion-tab-button data-vc-tab=\"inbox\" data-active=\"false\" class=\"vc-mobile-tab-button ios tab-layout-icon-top ion-activatable ion-selectable ion-focusable hydrated\" tab=\"inbox\" href=\"/m/inbox\" id=\"tab-button-inbox\"><span class=\"vc-mobile-tab-icon-wrap\"><svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" width=\"24\" height=\"24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\" focusable=\"false\" aria-hidden=\"true\" class=\"vc-icon vc-mobile-ico"
+      },
+      "rect": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0
+      },
+      "style": {
+        "--vc-canvas": "#f5f5f7",
+        "height": "56px",
+        "min-height": "44px",
+        "box-sizing": "border-box",
+        "padding": "4px 2px",
+        "left": "auto",
+        "right": "auto",
+        "position": "relative",
+        "z-index": "auto",
+        "pointer-events": "auto",
+        "display": "flex",
+        "visibility": "visible"
+      },
+      "hitChain": [
+        {
+          "tag": "ION-MODAL",
+          "id": "ion-overlay-1",
+          "class": "vc-mobile-settings-modal ios modal-sheet hydrated show-modal",
+          "html": "<ion-modal keep-contents-mounted=\"\" initial-breakpoint=\"1\" class=\"vc-mobile-settings-modal ios modal-sheet hydrated show-modal\" id=\"ion-overlay-1\" no-router=\"\" tabindex=\"-1\" is-open=\"\" style=\"z-index: 20002; --ion-safe-area-top: 0px; --ion-safe-area-bottom: inherit; --ion-safe-area-left: 0px; --ion-safe-area-right: 0px; --ion-modal-offset-top: 0px; pointer-events: auto;\"><div class=\"ion-delegate-host ion-page\"><div class=\"vc-mobile-settings-sheet\" data-vc-settings-sheet=\"\" data-open=\"true\" role="
+        },
+        {
+          "tag": "ION-BACKDROP",
+          "id": "",
+          "class": "ios hydrated",
+          "html": "<ion-backdrop part=\"backdrop\" aria-hidden=\"true\" class=\"ios hydrated\" style=\"pointer-events: auto;\"></ion-backdrop>"
+        }
+      ],
+      "matched": []
+    },
+    {
+      "node": {
+        "tag": "ION-TAB-BUTTON",
+        "id": "tab-button-story",
+        "class": "vc-mobile-tab-button ios tab-layout-icon-top ion-activatable ion-selectable ion-focusable hydrated",
+        "html": "<ion-tab-button data-vc-tab=\"story\" data-active=\"false\" class=\"vc-mobile-tab-button ios tab-layout-icon-top ion-activatable ion-selectable ion-focusable hydrated\" tab=\"story\" href=\"/m/story\" id=\"tab-button-story\"><span class=\"vc-mobile-tab-icon-wrap\"><svg xmlns=\"http://www.w3.org/2000/svg\" class=\"vc-mobile-icon\" width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\" focusable=\"false\" aria-hidden=\"true\"><path"
+      },
+      "rect": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0
+      },
+      "style": {
+        "--vc-canvas": "#f5f5f7",
+        "height": "56px",
+        "min-height": "44px",
+        "box-sizing": "border-box",
+        "padding": "4px 2px",
+        "left": "auto",
+        "right": "auto",
+        "position": "relative",
+        "z-index": "auto",
+        "pointer-events": "auto",
+        "display": "flex",
+        "visibility": "visible"
+      },
+      "hitChain": [
+        {
+          "tag": "ION-MODAL",
+          "id": "ion-overlay-1",
+          "class": "vc-mobile-settings-modal ios modal-sheet hydrated show-modal",
+          "html": "<ion-modal keep-contents-mounted=\"\" initial-breakpoint=\"1\" class=\"vc-mobile-settings-modal ios modal-sheet hydrated show-modal\" id=\"ion-overlay-1\" no-router=\"\" tabindex=\"-1\" is-open=\"\" style=\"z-index: 20002; --ion-safe-area-top: 0px; --ion-safe-area-bottom: inherit; --ion-safe-area-left: 0px; --ion-safe-area-right: 0px; --ion-modal-offset-top: 0px; pointer-events: auto;\"><div class=\"ion-delegate-host ion-page\"><div class=\"vc-mobile-settings-sheet\" data-vc-settings-sheet=\"\" data-open=\"true\" role="
+        },
+        {
+          "tag": "ION-BACKDROP",
+          "id": "",
+          "class": "ios hydrated",
+          "html": "<ion-backdrop part=\"backdrop\" aria-hidden=\"true\" class=\"ios hydrated\" style=\"pointer-events: auto;\"></ion-backdrop>"
+        }
+      ],
+      "matched": []
+    }
+  ]
+}

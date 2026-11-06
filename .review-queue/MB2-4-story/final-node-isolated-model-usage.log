@@ -1,0 +1,112 @@
+TAP version 13
+# Subtest: 供应商信封里的 usage 可结算，且不带回正文
+ok 1 - 供应商信封里的 usage 可结算，且不带回正文
+  ---
+  duration_ms: 0.718416
+  type: 'test'
+  ...
+# Subtest: node-fetch 响应结算已武装预留：SSE usage 入账，正文不入账
+ok 2 - node-fetch 响应结算已武装预留：SSE usage 入账，正文不入账
+  ---
+  duration_ms: 26.125125
+  type: 'test'
+  ...
+# Subtest: Claude SSE 与非流式 JSON 的用量都能结算，正文不入账
+ok 3 - Claude SSE 与非流式 JSON 的用量都能结算，正文不入账
+  ---
+  duration_ms: 44.395916
+  type: 'test'
+  ...
+# Subtest: 原生 Chat JSON 使用正文所在信封的用量，无效信封按 UNKNOWN 取消
+ok 4 - 原生 Chat JSON 使用正文所在信封的用量，无效信封按 UNKNOWN 取消
+  ---
+  duration_ms: 21.889292
+  type: 'test'
+  ...
+# Subtest: 原生 fetch 抛错时按 UNKNOWN 取消已武装预留，地址不符不取消
+ok 5 - 原生 fetch 抛错时按 UNKNOWN 取消已武装预留，地址不符不取消
+  ---
+  duration_ms: 43.136
+  type: 'test'
+  ...
+# Subtest: 再次武装时按 UNKNOWN 取消仍未结算的旧预留
+ok 6 - 再次武装时按 UNKNOWN 取消仍未结算的旧预留
+  ---
+  duration_ms: 23.101167
+  type: 'test'
+  ...
+# [vc-bridge] memory_recheck_ms=1
+# [vc-bridge] memory_recheck_ms=0
+# [vc-bridge] memory_recheck_ms=0
+# [vc-bridge] memory_recheck_ms=0
+# [vc-bridge] memory_recheck_ms=0
+# [vc-bridge] Responses 出站完成：model=fixture-model stream=false 耗时0ms estimator=st-guesstimate
+# Subtest: 两路重叠且上游 URL 相同：各自结算自己的用量，互不取消
+ok 7 - 两路重叠且上游 URL 相同：各自结算自己的用量，互不取消
+  ---
+  duration_ms: 22.352541
+  type: 'test'
+  ...
+# Subtest: 计费门禁：只有契约 200 且 status=HELD 才放行，否则上游请求数为 0
+    # Subtest: 404
+    ok 1 - 404
+      ---
+      duration_ms: 2.170334
+      type: 'test'
+      ...
+    # Subtest: 500
+    ok 2 - 500
+      ---
+      duration_ms: 0.435459
+      type: 'test'
+      ...
+    # Subtest: network
+    ok 3 - network
+      ---
+      duration_ms: 0.297125
+      type: 'test'
+      ...
+    # Subtest: not-held
+    ok 4 - not-held
+      ---
+      duration_ms: 0.238792
+      type: 'test'
+      ...
+    # Subtest: held
+    ok 5 - held
+      ---
+      duration_ms: 0.62075
+      type: 'test'
+      ...
+    1..5
+ok 8 - 计费门禁：只有契约 200 且 status=HELD 才放行，否则上游请求数为 0
+  ---
+  duration_ms: 4.276458
+  type: 'test'
+  ...
+# [vc-bridge] memory_recheck_ms=0
+# [vc-bridge] memory_recheck_ms=0
+# Subtest: 预留超时按闭合原因拒绝，不当成上游模型超时，且不重试预留
+ok 9 - 预留超时按闭合原因拒绝，不当成上游模型超时，且不重试预留
+  ---
+  duration_ms: 83.559375
+  type: 'test'
+  ...
+# Subtest: 结算失败有界重试后仍取消为 UNKNOWN，取消失败同样有界重试并只记录错误码
+ok 10 - 结算失败有界重试后仍取消为 UNKNOWN，取消失败同样有界重试并只记录错误码
+  ---
+  duration_ms: 1.325792
+  type: 'test'
+  ...
+1..10
+# tests 15
+# suites 0
+# pass 15
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 327.680667
+node --test integrations/sillytavern/tests/model-usage-closed.test.mjs  0.17s user 0.02s system 53% cpu 0.358 total
+
+exit=0

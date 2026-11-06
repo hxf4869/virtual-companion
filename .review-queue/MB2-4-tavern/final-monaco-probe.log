@@ -1,0 +1,187 @@
+[accept] ✓ 端口归属检查通过：ST=28932 fixture=28933 Go=28236 均空闲
+(node:61679) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+[accept] ✓ 受管 PG 就绪：127.0.0.1:34079（DSN 仅进子进程环境，不打印）
+[accept] ✓ 迁移完成（backend/internal/migrate 全量 SQL）
+[accept] ✓ owner binding secret 已按应用原生路径种子（与 Go 服务 env 同值）
+[accept] ✓ 受管 MinIO 就绪：127.0.0.1:34080 桶 vc03m-accept 已建（凭据只在容器 env 与已删的临时 config）
+[accept] ✓ Go 服务就绪 http://127.0.0.1:28236（pid=61972）
+[accept] ✓ 合成 Owner 真实密码、TOTP 设置与重新认证完成（不输出凭据、验证码或恢复码）
+[accept] ✓ fixture provider 就绪 http://127.0.0.1:28933（pid=61979，expectKey 只在进程间传递）
+
+new URL("/scripts/extensions/third-party/vc-model-settings/", import.meta.url) doesn't exist at build time, it will remain unchanged to be resolved at runtime. If this is intended, you can use the /* @vite-ignore */ comment to suppress this warning.
+[plugin builtin:vite-reporter]
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+[EVAL] Use of direct `eval` function is strongly discouraged as it poses security risks and may cause issues with minification.
+     ╭─[ extension/vc-model-settings/desktop/locked-source/ejs/desktop.js:930:17 ]
+     │
+ 930 │           return void eval("throw \"STOP\"; (function () { " + src + "\n})()");
+     │                       ──┬─
+     │                         ╰─── Use of direct `eval` here.
+     │
+     │ Help: Consider using indirect eval. For more information, check the documentation: https://rolldown.rs/guide/troubleshooting#avoiding-direct-eval
+─────╯
+
+[IMPORT_IS_UNDEFINED] Import `nai_settings` will always be undefined because there is no matching export in 'extension/vc-model-settings/desktop/standalone/cards/ejs-host.js'
+      ╭─[ extension/vc-model-settings/desktop/locked-source/ejs/desktop.js:5974:23 ]
+      │
+ 5974 │        nai_settings: () => __WEBPACK_EXTERNAL_MODULE__script_js_588e7203__.nai_settings,
+      │                            ──────────────────────────────┬─────────────────────────────
+      │                                                          ╰───────────────────────────────
+──────╯
+
+[IMPORT_IS_UNDEFINED] Import `online_status` will always be undefined because there is no matching export in 'extension/vc-model-settings/desktop/standalone/cards/ejs-host.js'
+      ╭─[ extension/vc-model-settings/desktop/locked-source/ejs/desktop.js:5977:24 ]
+      │
+ 5977 │        online_status: () => __WEBPACK_EXTERNAL_MODULE__script_js_588e7203__.online_status,
+      │                             ──────────────────────────────┬──────────────────────────────
+      │                                                           ╰────────────────────────────────
+──────╯
+
+[IMPORT_IS_UNDEFINED] Import `renderExtensionTemplateAsync` will always be undefined because there is no matching export in 'extension/vc-model-settings/desktop/standalone/cards/ejs-host.js'
+      ╭─[ extension/vc-model-settings/desktop/locked-source/ejs/desktop.js:6035:39 ]
+      │
+ 6035 │        renderExtensionTemplateAsync: () => __WEBPACK_EXTERNAL_MODULE__extensions_js_e625da88__.renderExtensionTemplateAsync
+      │                                            ────────────────────────────────────────┬───────────────────────────────────────
+      │                                                                                    ╰─────────────────────────────────────────
+──────╯
+
+[IMPORT_IS_UNDEFINED] Import `POPUP_TYPE` will always be undefined because there is no matching export in 'extension/vc-model-settings/desktop/standalone/cards/ejs-host.js'
+       ╭─[ extension/vc-model-settings/desktop/locked-source/ejs/desktop.js:21870:21 ]
+       │
+ 21870 │        POPUP_TYPE: () => __WEBPACK_EXTERNAL_MODULE__popup_js_755810aa__.POPUP_TYPE,
+       │                          ────────────────────────────┬────────────────────────────
+       │                                                      ╰──────────────────────────────
+───────╯
+
+[IMPORT_IS_UNDEFINED] Import `callGenericPopup` will always be undefined because there is no matching export in 'extension/vc-model-settings/desktop/standalone/cards/ejs-host.js'
+       ╭─[ extension/vc-model-settings/desktop/locked-source/ejs/desktop.js:21871:27 ]
+       │
+ 21871 │        callGenericPopup: () => __WEBPACK_EXTERNAL_MODULE__popup_js_755810aa__.callGenericPopup
+       │                                ───────────────────────────────┬───────────────────────────────
+       │                                                               ╰─────────────────────────────────
+───────╯
+
+[IMPORT_IS_UNDEFINED] Import `Portal` will always be undefined because there is no matching export in 'node_modules/cmdk/node_modules/@radix-ui/react-dialog/dist/index.mjs'
+ -  in node_modules/cmdk/dist/index.mjs at 8988..8996
+
+[IMPORT_IS_UNDEFINED] Import `Overlay` will always be undefined because there is no matching export in 'node_modules/cmdk/node_modules/@radix-ui/react-dialog/dist/index.mjs'
+ -  in node_modules/cmdk/dist/index.mjs at 9027..9036
+
+[IMPORT_IS_UNDEFINED] Import `Content` will always be undefined because there is no matching export in 'node_modules/cmdk/node_modules/@radix-ui/react-dialog/dist/index.mjs'
+ -  in node_modules/cmdk/dist/index.mjs at 9086..9095
+
+[INEFFECTIVE_DYNAMIC_IMPORT] extension/vc-model-settings/desktop/standalone/engine/helper-types.js is dynamically imported by extension/vc-model-settings/desktop/standalone/engine/runtime.js but also statically imported by extension/vc-model-settings/desktop/standalone/cards/index.js, extension/vc-model-settings/desktop/standalone/engine/helper-computation.js, dynamic import will not move module into another chunk.
+
+
+new URL("/scripts/extensions/third-party/vc-model-settings/", import.meta.url) doesn't exist at build time, it will remain unchanged to be resolved at runtime. If this is intended, you can use the /* @vite-ignore */ comment to suppress this warning.
+[plugin builtin:vite-reporter]
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+[EVAL] Use of direct `eval` function is strongly discouraged as it poses security risks and may cause issues with minification.
+     ╭─[ extension/vc-model-settings/desktop/locked-source/ejs/desktop.js:930:17 ]
+     │
+ 930 │           return void eval("throw \"STOP\"; (function () { " + src + "\n})()");
+     │                       ──┬─
+     │                         ╰─── Use of direct `eval` here.
+     │
+     │ Help: Consider using indirect eval. For more information, check the documentation: https://rolldown.rs/guide/troubleshooting#avoiding-direct-eval
+─────╯
+
+[IMPORT_IS_UNDEFINED] Import `nai_settings` will always be undefined because there is no matching export in 'extension/vc-model-settings/desktop/standalone/cards/ejs-host.js'
+      ╭─[ extension/vc-model-settings/desktop/locked-source/ejs/desktop.js:5974:23 ]
+      │
+ 5974 │        nai_settings: () => __WEBPACK_EXTERNAL_MODULE__script_js_588e7203__.nai_settings,
+      │                            ──────────────────────────────┬─────────────────────────────
+      │                                                          ╰───────────────────────────────
+──────╯
+
+[IMPORT_IS_UNDEFINED] Import `online_status` will always be undefined because there is no matching export in 'extension/vc-model-settings/desktop/standalone/cards/ejs-host.js'
+      ╭─[ extension/vc-model-settings/desktop/locked-source/ejs/desktop.js:5977:24 ]
+      │
+ 5977 │        online_status: () => __WEBPACK_EXTERNAL_MODULE__script_js_588e7203__.online_status,
+      │                             ──────────────────────────────┬──────────────────────────────
+      │                                                           ╰────────────────────────────────
+──────╯
+
+[IMPORT_IS_UNDEFINED] Import `renderExtensionTemplateAsync` will always be undefined because there is no matching export in 'extension/vc-model-settings/desktop/standalone/cards/ejs-host.js'
+      ╭─[ extension/vc-model-settings/desktop/locked-source/ejs/desktop.js:6035:39 ]
+      │
+ 6035 │        renderExtensionTemplateAsync: () => __WEBPACK_EXTERNAL_MODULE__extensions_js_e625da88__.renderExtensionTemplateAsync
+      │                                            ────────────────────────────────────────┬───────────────────────────────────────
+      │                                                                                    ╰─────────────────────────────────────────
+──────╯
+
+[IMPORT_IS_UNDEFINED] Import `POPUP_TYPE` will always be undefined because there is no matching export in 'extension/vc-model-settings/desktop/standalone/cards/ejs-host.js'
+       ╭─[ extension/vc-model-settings/desktop/locked-source/ejs/desktop.js:21870:21 ]
+       │
+ 21870 │        POPUP_TYPE: () => __WEBPACK_EXTERNAL_MODULE__popup_js_755810aa__.POPUP_TYPE,
+       │                          ────────────────────────────┬────────────────────────────
+       │                                                      ╰──────────────────────────────
+───────╯
+
+[IMPORT_IS_UNDEFINED] Import `callGenericPopup` will always be undefined because there is no matching export in 'extension/vc-model-settings/desktop/standalone/cards/ejs-host.js'
+       ╭─[ extension/vc-model-settings/desktop/locked-source/ejs/desktop.js:21871:27 ]
+       │
+ 21871 │        callGenericPopup: () => __WEBPACK_EXTERNAL_MODULE__popup_js_755810aa__.callGenericPopup
+       │                                ───────────────────────────────┬───────────────────────────────
+       │                                                               ╰─────────────────────────────────
+───────╯
+
+[INEFFECTIVE_DYNAMIC_IMPORT] extension/vc-model-settings/desktop/standalone/engine/helper-types.js is dynamically imported by extension/vc-model-settings/desktop/standalone/engine/runtime.js but also statically imported by extension/vc-model-settings/desktop/standalone/cards/index.js, extension/vc-model-settings/desktop/standalone/engine/helper-computation.js, dynamic import will not move module into another chunk.
+
+[INEFFECTIVE_DYNAMIC_IMPORT] extension/vc-model-settings/stickers-logic.js is dynamically imported by extension/vc-model-settings/companion-prompt.js but also statically imported by extension/vc-model-settings/desktop/standalone/engine/runtime.js, extension/vc-model-settings/desktop/standalone/runtime.js, extension/vc-model-settings/voice-logic.js, dynamic import will not move module into another chunk.
+
+(node:61982) ExperimentalWarning: stripTypeScriptTypes is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+[accept] · 已清除持久 dataRoot 中旧库实例绑定 0 个聊天文件
+(node:62339) ExperimentalWarning: stripTypeScriptTypes is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+[accept] ✓ 受管 ST 栈就绪 http://127.0.0.1:28932（B 入口：assemble-managed → start-managed）
+[accept] · 场景 catalog-admin：Go 侧建 provider/模型/用途绑定 + UI03 API 面（保存/读回/Key 三态/独立用途/409 保留草稿）
+[accept] ✓ 四个受管 provider 保存成功（revision=1，凭据=合成 fixture key）
+[accept] ✓ 读回断言通过：credentialConfigured=true、endpointUrl 按协议规范化、无明文凭据
+[accept] ✓ 409 REVISION_CONFLICT 保留草稿通过（revision 与全部模型文档原样）
+[accept] ✓ Key 三态通过：草稿(无 Key) → 已配置 → 清除
+[accept] ✓ 绑定切换（独立用途面）通过：br=2→3→…→4，provider revision 不受影响
+[accept] ✓ discover 通过（真实 fixture /models，auth 匹配）
+[accept] ✓ 场景 catalog-admin PASS（335ms）
+[accept] · 场景 nf-tavern：NF-07 独立酒馆设置、条件保存与运行时应用
+[nf-tavern] held-reply
+[nf-tavern] conflict
+[nf-tavern] format
+[nf-tavern] world
+[nf-tavern] code-editor
+[monaco-probe] after-typing {"initial":{"value":"NF07 世界书 <%= \"已更新\" %>","version":1,"selection":{"startLineNumber":1,"startColumn":1,"endLineNumber":1,"endColumn":1,"selectionStartLineNumber":1,"selectionStartColumn":1,"positionLineNumber":1,"positionColumn":1},"sameNode":true,"editorCount":1,"lines":["NF07 世界书 <%= \"已更新\" %>"]},"current":{"value":"NF07 Monaco <%= \"saved\" %>","version":25,"selection":{"startLineNumber":1,"startColumn":27,"endLineNumber":1,"endColumn":27,"selectionStartLineNumber":1,"selectionStartColumn":27,"positionLineNumber":1,"positionColumn":27},"sameNode":true,"editorCount":1,"lines":["NF07 Monaco <%= \"%>"]},"events":[{"type":"keydown","key":"Meta","time":5420},{"type":"keydown","key":"A","time":5421},{"type":"keydown","key":"N","time":5424},{"type":"beforeinput","data":"N","inputType":"insertText","time":5425},{"type":"model","value":"N","version":2,"selection":{"startLineNumber":1,"startColumn":1,"endLineNumber":1,"endColumn":22,"selectionStartLineNumber":1,"selectionStartColumn":1,"positionLineNumber":1,"positionColumn":22},"sameNode":true,"editorCount":1,"lines":["NF07 世界书 <%= \"已更新\" %>"],"changes":[{"range":{"startLineNumber":1,"startColumn":1,"endLineNumber":1,"endColumn":22},"rangeLength":21,"text":"N","rangeOffset":0,"forceMoveMarkers":false}],"undo":false,"flush":false,"time":5427},{"type":"keydown","key":"F","time":5431},{"type":"beforeinput","data":"F","inputType":"insertText","time":5431},{"type":"model","value":"NF","version":3,"selection":{"startLineNumber":1,"startColumn":2,"endLineNumber":1,"endColumn":2,"selectionStartLineNumber":1,"selectionStartColumn":2,"positionLineNumber":1,"positionColumn":2},"sameNode":true,"editorCount":1,"lines":["N"],"changes":[{"range":{"startLineNumber":1,"startColumn":2,"endLineNumber":1,"endColumn":2},"rangeLength":0,"text":"F","rangeOffset":1,"forceMoveMarkers":false}],"undo":false,"flush":false,"time":5432},{"type":"keydown","key":"0","time":5433},{"type":"beforeinput","data":"0","inputType":"insertText","time":5433},{"type":"model","value":"NF0","version":4,"selection":{"startLineNumber":1,"startColumn":3,"endLineNumber":1,"endColumn":3,"selectionStartLineNumber":1,"selectionStartColumn":3,"positionLineNumber":1,"positionColumn":3},"sameNode":true,"editorCount":1,"lines":["N"],"changes":[{"range":{"startLineNumber":1,"startColumn":3,"endLineNumber":1,"endColumn":3},"rangeLength":0,"text":"0","rangeOffset":2,"forceMoveMarkers":false}],"undo":false,"flush":false,"time":5433},{"type":"keydown","key":"7","time":5434},{"type":"beforeinput","data":"7","inputType":"insertText","time":5434},{"type":"model","value":"NF07","version":5,"selection":{"startLineNumber":1,"startColumn":4,"endLineNumber":1,"endColumn":4,"selectionStartLineNumber":1,"selectionStartColumn":4,"positionLineNumber":1,"positionColumn":4},"sameNode":true,"editorCount":1,"lines":["N"],"changes":[{"range":{"startLineNumber":1,"startColumn":4,"endLineNumber":1,"endColumn":4},"rangeLength":0,"text":"7","rangeOffset":3,"forceMoveMarkers":false}],"undo":false,"flush":false,"time":5434},{"type":"keydown","key":" ","time":5435},{"type":"beforeinput","data":" ","inputType":"insertText","time":5435},{"type":"model","value":"NF07 ","version":6,"selection":{"startLineNumber":1,"startColumn":5,"endLineNumber":1,"endColumn":5,"selectionStartLineNumber":1,"selectionStartColumn":5,"positionLineNumber":1,"positionColumn":5},"sameNode":true,"editorCount":1,"lines":["N"],"changes":[{"range":{"startLineNumber":1,"startColumn":5,"endLineNumber":1,"endColumn":5},"rangeLength":0,"text":" ","rangeOffset":4,"forceMoveMarkers":false}],"undo":false,"flush":false,"time":5435},{"type":"keydown","key":"M","time":5436},{"type":"beforeinput","data":"M","inputType":"insertText","time":5436},{"type":"model","value":"NF07 M","version":7,"selection":{"startLineNumber":1,"startColumn":6,"endLineNumber":1,"endColumn":6,"selectionStartLineNumber":1,"selectionStartColumn":6,"positionLineNumber":1,"positionColumn":6},"sameNode":true,"editorCount":1,"lines":["N"],"changes":[{"range":{"startLineNumber":1,"startColumn":6,"endLineNumber":1,"endColumn":6},"rangeLength":0,"text":"M","rangeOffset":5,"forceMoveMarkers":false}],"undo":false,"flush":false,"time":5436},{"type":"keydown","key":"o","time":5436},{"type":"beforeinput","data":"o","inputType":"insertText","time":5436},{"type":"model","value":"NF07 Mo","version":8,"selection":{"startLineNumber":1,"startColumn":7,"endLineNumber":1,"endColumn":7,"selectionStartLineNumber":1,"selectionStartColumn":7,"positionLineNumber":1,"positionColumn":7},"sameNode":true,"editorCount":1,"lines":["N"],"changes":[{"range":{"startLineNumber":1,"startColumn":7,"endLineNumber":1,"endColumn":7},"rangeLength":0,"text":"o","rangeOffset":6,"forceMoveMarkers":false}],"undo":false,"flush":false,"time":5437},{"type":"keydown","key":"n","time":5437},{"type":"beforeinput","data":"n","inputType":"insertText","time":5437},{"type":"model","value":"NF07 Mon","version":9,"selection":{"startLineNumber":1,"startColumn":8,"endLineNumber":1,"endColumn":8,"selectionStartLineNumber":1,"selectionStartColumn":8,"positionLineNumber":1,"positionColumn":8},"sameNode":true,"editorCount":1,"lines":["N"],"changes":[{"range":{"startLineNumber":1,"startColumn":8,"endLineNumber":1,"endColumn":8},"rangeLength":0,"text":"n","rangeOffset":7,"forceMoveMarkers":false}],"undo":false,"flush":false,"time":5437},{"type":"keydown","key":"a","time":5438},{"type":"beforeinput","data":"a","inputType":"insertText","time":5438},{"type":"model","value":"NF07 Mona","version":10,"selection":{"startLineNumber":1,"startColumn":9,"endLineNumber":1,"endColumn":9,"selectionStartLineNumber":1,"selectionStartColumn":9,"positionLineNumber":1,"positionColumn":9},"sameNode":true,"editorCount":1,"lines":["N"],"changes":[{"range":{"startLineNumber":1,"startColumn":9,"endLineNumber":1,"endColumn":9},"rangeLength":0,"text":"a","rangeOffset":8,"forceMoveMarkers":false}],"undo":false,"flush":false,"time":5439},{"type":"keydown","key":"c","time":5439},{"type":"beforeinput","data":"c","inputType":"insertText","time":5439},{"type":"model","value":"NF07 Monac","version":11,"selection":{"startLineNumber":1,"startColumn":10,"endLineNumber":1,"endColumn":10,"selectionStartLineNumber":1,"selectionStartColumn":10,"positionLineNumber":1,"positionColumn":10},"sameNode":true,"editorCount":1,"lines":["N"],"changes":[{"range":{"startLineNumber":1,"startColumn":10,"endLineNumber":1,"endColumn":10},"rangeLength":0,"text":"c","rangeOffset":9,"forceMoveMarkers":false}],"undo":false,"flush":false,"time":5439},{"type":"keydown","key":"o","time":5440},{"type":"beforeinput","data":"o","inputType":"insertText","time":5440},{"type":"model","value":"NF07 Monaco","version":12,"selection":{"startLineNumber":1,"startColumn":11,"endLineNumber":1,"endColumn":11,"selectionStartLineNumber":1,"selectionStartColumn":11,"positionLineNumber":1,"positionColumn":11},"sameNode":true,"editorCount":1,"lines":["N"],"changes":[{"range":{"startLineNumber":1,"startColumn":11,"endLineNumber":1,"endColumn":11},"rangeLength":0,"text":"o","rangeOffset":10,"forceMoveMarkers":false}],"undo":false,"flush":false,"time":5440},{"type":"keydown","key":" ","time":5440},{"type":"beforeinput","data":" ","inputType":"insertText","time":5440},{"type":"model","value":"NF07 Monaco ","version":13,"selection":{"startLineNumber":1,"startColumn":12,"endLineNumber":1,"endColumn":12,"selectionStartLineNumber":1,"selectionStartColumn":12,"positionLineNumber":1,"positionColumn":12},"sameNode":true,"editorCount":1,"lines":["N"],"changes":[{"range":{"startLineNumber":1,"startColumn":12,"endLineNumber":1,"endColumn":12},"rangeLength":0,"text":" ","rangeOffset":11,"forceMoveMarkers":false}],"undo":false,"flush":false,"time":5440},{"type":"keydown","key":"<","time":5441},{"type":"beforeinput","data":"<","inputType":"insertText","time":5441},{"type":"model","value":"NF07 Monaco <","version":14,"selection":{"startLineNumber":1,"startColumn":13,"endLineNumber":1,"endColumn":13,"selectionStartLineNumber":1,"selectionStartColumn":13,"positionLineNumber":1,"positionColumn":13},"sameNode":true,"editorCount":1,"lines":["N"],"changes":[{"range":{"startLineNumber":1,"startColumn":13,"endLineNumber":1,"endColumn":13},"rangeLength":0,"text":"<","rangeOffset":12,"forceMoveMarkers":false}],"undo":false,"flush":false,"time":5441},{"type":"keydown","key":"%","time":5441},{"type":"beforeinput","data":"%","inputType":"insertText","time":5441},{"type":"model","value":"NF07 Monaco <%%>","version":15,"selection":{"startLineNumber":1,"startColumn":14,"endLineNumber":1,"endColumn":14,"selectionStartLineNumber":1,"selectionStartColumn":14,"positionLineNumber":1,"positionColumn":14},"sameNode":true,"editorCount":1,"lines":["N"],"changes":[{"range":{"startLineNumber":1,"startColumn":14,"endLineNumber":1,"endColumn":14},"rangeLength":0,"text":"%%>","rangeOffset":13,"forceMoveMarkers":false}],"undo":false,"flush":false,"time":5442},{"type":"keydown","key":"=","time":5442},{"type":"beforeinput","data":"=","inputType":"insertText","time":5442},{"type":"model","value":"NF07 Monaco <%=%>","version":16,"selection":{"startLineNumber":1,"startColumn":15,"endLineNumber":1,"endColumn":15,"selectionStartLineNumber":1,"selectionStartColumn":15,"positionLineNumber":1,"positionColumn":15},"sameNode":true,"editorCount":1,"lines":["N"],"changes":[{"range":{"startLineNumber":1,"startColumn":15,"endLineNumber":1,"endColumn":15},"rangeLength":0,"text":"=","rangeOffset":14,"forceMoveMarkers":false}],"undo":false,"flush":false,"time":5442},{"type":"keydown","key":" ","time":5443},{"type":"beforeinput","data":" ","inputType":"insertText","time":5443},{"type":"model","value":"NF07 Monaco <%= %>","version":17,"selection":{"startLineNumber":1,"startColumn":16,"endLineNumber":1,"endColumn":16,"selectionStartLineNumber":1,"selectionStartColumn":16,"positionLineNumber":1,"positionColumn":16},"sameNode":true,"editorCount":1,"lines":["N"],"changes":[{"range":{"startLineNumber":1,"startColumn":16,"endLineNumber":1,"endColumn":16},"rangeLength":0,"text":" ","rangeOffset":15,"forceMoveMarkers":false}],"undo":false,"flush":false,"time":5443},{"type":"keydown","key":"\"","time":5443},{"type":"beforeinput","data":"\"","inputType":"insertText","time":5443},{"type":"model","value":"NF07 Monaco <%= \"%>","version":18,"selection":{"startLineNumber":1,"startColumn":17,"endLineNumber":1,"endColumn":17,"selectionStartLineNumber":1,"selectionStartColumn":17,"positionLineNumber":1,"positionColumn":17},"sameNode":true,"editorCount":1,"lines":["N"],"changes":[{"range":{"startLineNumber":1,"startColumn":17,"endLineNumber":1,"endColumn":17},"rangeLength":0,"text":"\"","rangeOffset":16,"forceMoveMarkers":false}],"undo":false,"flush":false,"time":5444},{"type":"keydown","key":"s","time":5446},{"type":"beforeinput","data":"s","inputType":"insertText","time":5446},{"type":"model","value":"NF07 Monaco <%= \"s%>","version":19,"selection":{"startLineNumber":1,"startColumn":18,"endLineNumber":1,"endColumn":18,"selectionStartLineNumber":1,"selectionStartColumn":18,"positionLineNumber":1,"positionColumn":18},"sameNode":true,"editorCount":1,"lines":["NF07 Monaco <%= \"%>"],"changes":[{"range":{"startLineNumber":1,"startColumn":18,"endLineNumber":1,"endColumn":18},"rangeLength":0,"text":"s","rangeOffset":17,"forceMoveMarkers":false}],"undo":false,"flush":false,"time":5447},{"type":"keydown","key":"a","time":5447},{"type":"beforeinput","data":"a","inputType":"insertText","time":5447},{"type":"model","value":"NF07 Monaco <%= \"sa%>","version":20,"selection":{"startLineNumber":1,"startColumn":19,"endLineNumber":1,"endColumn":19,"selectionStartLineNumber":1,"selectionStartColumn":19,"positionLineNumber":1,"positionColumn":19},"sameNode":true,"editorCount":1,"lines":["NF07 Monaco <%= \"%>"],"changes":[{"range":{"startLineNumber":1,"startColumn":19,"endLineNumber":1,"endColumn":19},"rangeLength":0,"text":"a","rangeOffset":18,"forceMoveMarkers":false}],"undo":false,"flush":false,"time":5447},{"type":"keydown","key":"v","time":5448},{"type":"beforeinput","data":"v","inputType":"insertText","time":5448},{"type":"model","value":"NF07 Monaco <%= \"sav%>","version":21,"selection":{"startLineNumber":1,"startColumn":20,"endLineNumber":1,"endColumn":20,"selectionStartLineNumber":1,"selectionStartColumn":20,"positionLineNumber":1,"positionColumn":20},"sameNode":true,"editorCount":1,"lines":["NF07 Monaco <%= \"%>"],"changes":[{"range":{"startLineNumber":1,"startColumn":20,"endLineNumber":1,"endColumn":20},"rangeLength":0,"text":"v","rangeOffset":19,"forceMoveMarkers":false}],"undo":false,"flush":false,"time":5448},{"type":"keydown","key":"e","time":5448},{"type":"beforeinput","data":"e","inputType":"insertText","time":5448},{"type":"model","value":"NF07 Monaco <%= \"save%>","version":22,"selection":{"startLineNumber":1,"startColumn":21,"endLineNumber":1,"endColumn":21,"selectionStartLineNumber":1,"selectionStartColumn":21,"positionLineNumber":1,"positionColumn":21},"sameNode":true,"editorCount":1,"lines":["NF07 Monaco <%= \"%>"],"changes":[{"range":{"startLineNumber":1,"startColumn":21,"endLineNumber":1,"endColumn":21},"rangeLength":0,"text":"e","rangeOffset":20,"forceMoveMarkers":false}],"undo":false,"flush":false,"time":5448},{"type":"keydown","key":"d","time":5449},{"type":"beforeinput","data":"d","inputType":"insertText","time":5449},{"type":"model","value":"NF07 Monaco <%= \"saved%>","version":23,"selection":{"startLineNumber":1,"startColumn":22,"endLineNumber":1,"endColumn":22,"selectionStartLineNumber":1,"selectionStartColumn":22,"positionLineNumber":1,"positionColumn":22},"sameNode":true,"editorCount":1,"lines":["NF07 Monaco <%= \"%>"],"changes":[{"range":{"startLineNumber":1,"startColumn":22,"endLineNumber":1,"endColumn":22},"rangeLength":0,"text":"d","rangeOffset":21,"forceMoveMarkers":false}],"undo":false,"flush":false,"time":5449},{"type":"keydown","key":"\"","time":5449},{"type":"beforeinput","data":"\"","inputType":"insertText","time":5449},{"type":"model","value":"NF07 Monaco <%= \"saved\"%>","version":24,"selection":{"startLineNumber":1,"startColumn":23,"endLineNumber":1,"endColumn":23,"selectionStartLineNumber":1,"selectionStartColumn":23,"positionLineNumber":1,"positionColumn":23},"sameNode":true,"editorCount":1,"lines":["NF07 Monaco <%= \"%>"],"changes":[{"range":{"startLineNumber":1,"startColumn":23,"endLineNumber":1,"endColumn":23},"rangeLength":0,"text":"\"","rangeOffset":22,"forceMoveMarkers":false}],"undo":false,"flush":false,"time":5449},{"type":"keydown","key":" ","time":5450},{"type":"beforeinput","data":" ","inputType":"insertText","time":5450},{"type":"model","value":"NF07 Monaco <%= \"saved\" %>","version":25,"selection":{"startLineNumber":1,"startColumn":24,"endLineNumber":1,"endColumn":24,"selectionStartLineNumber":1,"selectionStartColumn":24,"positionLineNumber":1,"positionColumn":24},"sameNode":true,"editorCount":1,"lines":["NF07 Monaco <%= \"%>"],"changes":[{"range":{"startLineNumber":1,"startColumn":24,"endLineNumber":1,"endColumn":24},"rangeLength":0,"text":" ","rangeOffset":23,"forceMoveMarkers":false}],"undo":false,"flush":false,"time":5450},{"type":"keydown","key":"End","time":5450}]}
+[monaco-probe] after-apply {"events":[{"type":"model-dispose","time":8475},{"type":"editor-dispose","time":8475}]}
+[nf-tavern] PersonaManagement
+[nf-tavern] Backgrounds
+[nf-tavern] user-settings-block
+[nf-tavern] rm_api_block
+[nf-tavern] right-nav-panel
+[nf-tavern] presentation
+[nf-tavern] background
+[nf-tavern] character-crud
+[nf-tavern] extensions
+[nf-tavern] runtime
+[nf-tavern] late-global-variable
+[nf-tavern] helper-worldbook
+[nf-tavern] helper-generation
+[nf-tavern] nested-ejs
+[nf-tavern] input-preferences
+[nf-tavern] continuation
+[nf-tavern] chat-world
+[accept] ✓ 场景 nf-tavern PASS（26286ms）
+[accept] · 结果 JSON 已写入 integrations/sillytavern/dev-managed-mb2-tavern-diag/artifacts/accept-2026-11-06T14-33-04-754Z/results.json
+[accept] · 已停止：st.pid（经 stop-managed）, fixture.pid=61979, go.pid=61972（TERM）
+[accept] · 已移除受管容器 vc-mb2-tavern-final-pg（label com.vc.w03=managed）
+[accept] · 已移除受管容器 vc-mb2-tavern-final-minio（label com.vc.w03=managed）
+[accept] ✓ 全部 2 个所选场景通过
+
+accept_exit=0
+wall_seconds=77

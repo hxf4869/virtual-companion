@@ -1,0 +1,53 @@
+{
+  "scene": "mb2-layout",
+  "matrixCount": 32,
+  "phonePortraitViewports": [
+    "320x568",
+    "360x780",
+    "390x844",
+    "393x852",
+    "412x915",
+    "430x932"
+  ],
+  "phoneLandscapeViewports": [
+    "568x320",
+    "780x360",
+    "844x390",
+    "852x393",
+    "915x412",
+    "932x430"
+  ],
+  "foldablePhoneShellOnlyViewports": [
+    "673x841",
+    "841x673",
+    "768x1024",
+    "1024x768"
+  ],
+  "themesVerified": [
+    "light",
+    "dark"
+  ],
+  "fontScaleVerified": {
+    "method": "通过用户真实字体基础 scale (--fontScale=1.3 与 Chromium Page.setFontSizes 1.3×) 模拟，未注入任何改变生产 layout 的 CSS 覆盖规则",
+    "viewports": [
+      "320x568",
+      "568x320",
+      "390x844",
+      "844x390",
+      "430x932"
+    ]
+  },
+  "reducedMediaVerified": {
+    "matchesReducedMotion": true,
+    "matchesReducedTransparency": true,
+    "durQuick": ".26s",
+    "mobGlassBlur": "none",
+    "mobSheetBlur": "none",
+    "tabbarBackdrop": "none"
+  },
+  "notRunBoundaries": {
+    "foldableDualPane": "NOT_RUN（673×841 与 768×1024 本批仅验证同一手机壳不溢出与控件可达，折叠屏双栏待 MB2-0 选图与后续业务页条目实现）",
+    "nativeSafeAreaInsets": "NOT_RUN（桌面 Chromium 无非 CSS 原生 env(safe-area-inset-*) 注入接口，浏览器仅核对 0px 下公式与边界不裁切；刘海/灵动岛/手势条/三键导航真实非零 inset 属 MB2-13 原生壳验收）",
+    "nativeKeyboardAndOsFont": "NOT_RUN（原生软键盘避让与 Android/iOS 系统级字体缩放在 MB2-13 原生壳真机/模拟器矩阵验收）"
+  }
+}

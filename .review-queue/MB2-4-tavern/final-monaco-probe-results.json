@@ -1,0 +1,20 @@
+{
+  "startedAt": "2026-11-06T14:33:04.754Z",
+  "selected": [
+    "catalog-admin",
+    "nf-tavern"
+  ],
+  "scenes": {
+    "catalog-admin": {
+      "status": "PASS",
+      "ms": 335
+    },
+    "nf-tavern": {
+      "status": "PASS",
+      "ms": 26286
+    }
+  },
+  "artifactsDir": "<original-mac-worktree>/integrations/sillytavern/dev-managed-mb2-tavern-diag/artifacts/accept-2026-11-06T14-33-04-754Z",
+  "finishedAt": "2026-11-06T14:34:17.703Z",
+  "screenshots": []
+}

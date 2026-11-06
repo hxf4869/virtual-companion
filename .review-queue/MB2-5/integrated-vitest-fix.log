@@ -1,0 +1,12 @@
+
+> vc-sillytavern-integration@0.1.0 test:desktop
+> vitest run --config desktop-ui/vitest.config.mjs --maxWorkers=2 tests/design/tokens.test.tsx tests/dr2-review-r1.test.tsx tests/mobile/MobileShell.test.tsx
+
+
+ RUN  v5.1.0 <original-mac-worktree>/integrations/sillytavern/desktop-ui
+
+
+ Test Files  3 passed (3)
+      Tests  15 passed (15)
+   Start at  00:11:24
+   Duration  1.18s (import 36%, tests 24%, environment 23%, transform 16%)

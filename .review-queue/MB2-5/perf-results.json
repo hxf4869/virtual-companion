@@ -1,0 +1,29 @@
+{
+  "startedAt": "2026-11-06T16:14:11.782Z",
+  "selected": [
+    "catalog-admin",
+    "mb2-shell"
+  ],
+  "scenes": {
+    "catalog-admin": {
+      "status": "PASS",
+      "ms": 487
+    },
+    "mb2-shell": {
+      "status": "PASS",
+      "ms": 35608
+    }
+  },
+  "artifactsDir": "<original-mac-worktree>/integrations/sillytavern/dev-managed-mb2-shell-perf/artifacts/accept-2026-11-06T16-14-11-782Z",
+  "finishedAt": "2026-11-06T16:15:33.012Z",
+  "screenshots": [
+    "<original-mac-worktree>/integrations/sillytavern/dev-managed-mb2-shell-perf/artifacts/accept-2026-11-06T16-14-11-782Z/mb2-shell-settings-390-light.png",
+    "<original-mac-worktree>/integrations/sillytavern/dev-managed-mb2-shell-perf/artifacts/accept-2026-11-06T16-14-11-782Z/mb2-shell-chat-390-light.png",
+    "<original-mac-worktree>/integrations/sillytavern/dev-managed-mb2-shell-perf/artifacts/accept-2026-11-06T16-14-11-782Z/mb2-shell-settings-390-dark.png",
+    "<original-mac-worktree>/integrations/sillytavern/dev-managed-mb2-shell-perf/artifacts/accept-2026-11-06T16-14-11-782Z/mb2-shell-chat-390-dark.png",
+    "<original-mac-worktree>/integrations/sillytavern/dev-managed-mb2-shell-perf/artifacts/accept-2026-11-06T16-14-11-782Z/mb2-shell-settings-1440-light.png",
+    "<original-mac-worktree>/integrations/sillytavern/dev-managed-mb2-shell-perf/artifacts/accept-2026-11-06T16-14-11-782Z/mb2-shell-chat-1440-light.png",
+    "<original-mac-worktree>/integrations/sillytavern/dev-managed-mb2-shell-perf/artifacts/accept-2026-11-06T16-14-11-782Z/mb2-shell-settings-1440-dark.png",
+    "<original-mac-worktree>/integrations/sillytavern/dev-managed-mb2-shell-perf/artifacts/accept-2026-11-06T16-14-11-782Z/mb2-shell-chat-1440-dark.png"
+  ]
+}

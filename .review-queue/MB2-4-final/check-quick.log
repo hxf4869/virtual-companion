@@ -1,0 +1,7 @@
+PASS  catalog-validate (1s)
+PASS  catalog-drift (1s)
+PASS  openapi-validate (0s)
+PASS  openapi-drift (1s)
+PASS  paid-features (0s)
+PASS  licenses (0s)
+OK    scripts/check.sh 全部通过（3s）

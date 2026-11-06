@@ -1,0 +1,25 @@
+{
+  "startedAt": "2026-11-06T14:26:04.063Z",
+  "selected": [
+    "catalog-admin",
+    "dr2-pages",
+    "nf-business"
+  ],
+  "scenes": {
+    "catalog-admin": {
+      "status": "PASS",
+      "ms": 346
+    },
+    "dr2-pages": {
+      "status": "PASS",
+      "ms": 22618
+    },
+    "nf-business": {
+      "status": "PASS",
+      "ms": 12513
+    }
+  },
+  "artifactsDir": "<original-mac-worktree>/integrations/sillytavern/dev-managed-mb2-story/artifacts/accept-2026-11-06T14-26-04-063Z",
+  "finishedAt": "2026-11-06T14:27:41.363Z",
+  "screenshots": []
+}

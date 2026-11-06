@@ -1,0 +1,30 @@
+{
+  "startedAt": "2026-11-06T13:16:57.859Z",
+  "selected": [
+    "catalog-admin",
+    "dr2-pages",
+    "nf-operations",
+    "nf-business"
+  ],
+  "scenes": {
+    "catalog-admin": {
+      "status": "PASS",
+      "ms": 404
+    },
+    "dr2-pages": {
+      "status": "PASS",
+      "ms": 21594
+    },
+    "nf-operations": {
+      "status": "PASS",
+      "ms": 18639
+    },
+    "nf-business": {
+      "status": "PASS",
+      "ms": 14247
+    }
+  },
+  "artifactsDir": "<original-mac-worktree>/integrations/sillytavern/dev-managed-mb2-memory/artifacts/accept-2026-11-06T13-16-57-858Z",
+  "finishedAt": "2026-11-06T13:18:46.981Z",
+  "screenshots": []
+}

@@ -1,0 +1,16 @@
+
+> vc-sillytavern-integration@0.1.0 test:desktop
+> vitest run --config desktop-ui/vitest.config.mjs tests/chat/ChatRoute.test.tsx
+
+
+ RUN  v5.1.0 <original-mac-worktree>/integrations/sillytavern/desktop-ui
+
+
+ Test Files  1 passed (1)
+      Tests  22 passed (22)
+   Start at  22:26:31
+   Duration  2.80s (tests 77%, import 15%, transform 4%, environment 4%)
+
+npm --prefix integrations/sillytavern run test:desktop --   3.56s user 0.26s system 124% cpu 3.064 total
+
+exit=0

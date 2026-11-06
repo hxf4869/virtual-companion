@@ -1,0 +1,410 @@
+
+> vc-sillytavern-integration@0.1.0 test:desktop
+> vitest run --config desktop-ui/vitest.config.mjs
+
+
+ RUN  v5.1.0 <original-mac-worktree>/integrations/sillytavern/desktop-ui
+
+DOMException [NotSupportedError]: Failed to load external stylesheet "http://localhost:3000/@fs<original-mac-worktree>/integrations/sillytavern/extension/vc-model-settings/fonts/lxgw-wenkai/lxgwwenkai-regular.css". CSS file loading is disabled.
+    at #loadStyleSheet (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/nodes/html-link-element/HTMLLinkElement.js:380:31)
+    at [connectedToDocument] (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/nodes/html-link-element/HTMLLinkElement.js:213:41)
+    at [connectedToNode] (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/nodes/node/Node.js:801:53)
+    at [appendChild] (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/nodes/node/Node.js:421:45)
+    at [appendChild] (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/nodes/element/Element.js:1102:62)
+    at HTMLHeadElement.appendChild (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/nodes/node/Node.js:314:48)
+    at ParentNodeUtility.append (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/nodes/parent-node/ParentNodeUtility.js:19:28)
+    at HTMLHeadElement.append (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/nodes/element/Element.js:510:27)
+    at ensureHandwriting (<original-mac-worktree>/integrations/sillytavern/extension/vc-model-settings/memory-logic.js:248:14)
+    at <original-mac-worktree>/integrations/sillytavern/desktop-ui/src/features/memory/Diary.tsx:41:7
+ ❯ tests/app/main.test.tsx (4 tests | 1 failed) 6558ms
+   ❯ desktop and mobile app entries (4)
+     × mounts mobile entry with shared AppProviders without eagerly preparing chat runtime, and prepares runtime on conversation open 5209ms
+ ❯ tests/chat/t14-window.test.tsx (3 tests | 1 failed) 6925ms
+   ❯ t14-window: MessageList / SessionBridge firstDisplayedMessageId real window supply (3)
+     × updates context.firstDisplayedMessageId across 80-message window, load-earlier, delete, and conversation switch 6765ms
+stderr | tests/settings/ModelSection.test.tsx > ModelSection & SettingsRoute > in-flight provider or bindings save still prompts leave confirmation dialog on category switch
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+
+stderr | tests/settings/ModelSection.test.tsx > ModelSection & SettingsRoute > in-flight provider or bindings save still prompts leave confirmation dialog on category switch
+The current testing environment is not configured to support act(...)
+
+stderr | tests/settings/ModelSection.test.tsx > ModelSection & SettingsRoute > in-flight provider or bindings save still prompts leave confirmation dialog on category switch
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+
+ ❯ tests/settings/ModelSection.test.tsx (8 tests | 2 failed) 15735ms
+   ❯ ModelSection & SettingsRoute (8)
+     × unsaved provider edit blocks category switch 5586ms
+     × in-flight provider or bindings save still prompts leave confirmation dialog on category switch 5134ms
+ ❯ tests/memory/MemoryRoute.test.tsx (11 tests | 1 failed) 16056ms
+   ❯ MemoryRoute (11)
+     × filters combine type+source+date and survive navigation 5216ms
+ ❯ tests/characters/CharactersRoute.test.tsx (5 tests | 1 failed) 7189ms
+   ❯ CharactersRoute (B15 delete character, instance creation & rename) (5)
+     × filters characters by search query, opens/closes detail, and preserves navigation params for card settings, voice settings, and conversation key without router imports in features/characters 1346ms
+DOMException [NotSupportedError]: Failed to load iframe page "about:blank". Iframe page loading is disabled.
+    at #loadPage (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/nodes/html-iframe-element/HTMLIFrameElement.js:334:27)
+    at [connectedToDocument] (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/nodes/html-iframe-element/HTMLIFrameElement.js:230:23)
+    at [connectedToNode] (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/nodes/node/Node.js:801:53)
+    at [appendChild] (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/nodes/node/Node.js:421:45)
+    at [appendChild] (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/nodes/element/Element.js:1102:62)
+    at HTMLDivElement.appendChild (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/nodes/node/Node.js:314:48)
+    at Object.renderMessage (<original-mac-worktree>/integrations/sillytavern/desktop-ui/tests/chat/fixtures.ts:345:32)
+    at renderLeaf (<original-mac-worktree>/integrations/sillytavern/desktop-ui/src/runtime/session-bridge.ts:468:49)
+    at Object.mountLeaf (<original-mac-worktree>/integrations/sillytavern/desktop-ui/src/runtime/session-bridge.ts:1604:13)
+    at Object.bridge.mountLeaf (<original-mac-worktree>/integrations/sillytavern/desktop-ui/tests/chat/fixtures.ts:541:16)
+DOMException [NotSupportedError]: Failed to load iframe page "about:blank". Iframe page loading is disabled.
+    at #loadPage (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/nodes/html-iframe-element/HTMLIFrameElement.js:334:27)
+    at [connectedToDocument] (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/nodes/html-iframe-element/HTMLIFrameElement.js:230:23)
+    at [connectedToNode] (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/nodes/node/Node.js:801:53)
+    at [appendChild] (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/nodes/node/Node.js:421:45)
+    at [appendChild] (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/nodes/element/Element.js:1102:62)
+    at HTMLDivElement.appendChild (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/nodes/node/Node.js:314:48)
+    at Object.renderMessage (<original-mac-worktree>/integrations/sillytavern/desktop-ui/tests/chat/fixtures.ts:345:32)
+    at renderLeaf (<original-mac-worktree>/integrations/sillytavern/desktop-ui/src/runtime/session-bridge.ts:468:49)
+    at Object.mountLeaf (<original-mac-worktree>/integrations/sillytavern/desktop-ui/src/runtime/session-bridge.ts:1604:13)
+    at Object.bridge.mountLeaf (<original-mac-worktree>/integrations/sillytavern/desktop-ui/tests/chat/fixtures.ts:541:16)
+DOMException [NotSupportedError]: Failed to load iframe page "about:blank". Iframe page loading is disabled.
+    at #loadPage (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/nodes/html-iframe-element/HTMLIFrameElement.js:334:27)
+    at [connectedToDocument] (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/nodes/html-iframe-element/HTMLIFrameElement.js:230:23)
+    at [connectedToNode] (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/nodes/node/Node.js:801:53)
+    at [appendChild] (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/nodes/node/Node.js:421:45)
+    at [appendChild] (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/nodes/element/Element.js:1102:62)
+    at HTMLDivElement.appendChild (file://<original-mac-worktree>/integrations/sillytavern/node_modules/happy-dom/lib/nodes/node/Node.js:314:48)
+    at Object.renderMessage (<original-mac-worktree>/integrations/sillytavern/desktop-ui/tests/chat/fixtures.ts:345:32)
+    at renderLeaf (<original-mac-worktree>/integrations/sillytavern/desktop-ui/src/runtime/session-bridge.ts:468:49)
+    at Object.mountLeaf (<original-mac-worktree>/integrations/sillytavern/desktop-ui/src/runtime/session-bridge.ts:1604:13)
+    at Object.bridge.mountLeaf (<original-mac-worktree>/integrations/sillytavern/desktop-ui/tests/chat/fixtures.ts:541:16)
+ ❯ tests/chat/ChatRoute.test.tsx (22 tests | 2 failed) 23408ms
+   ❯ ChatRoute streaming isolation, B5 open lifecycle, and B13 VoiceBubble initial state (22)
+     × loads history in pages of 80 while retaining the existing visible leaves 6754ms
+     × locates an older source only after the chat route is visible and history has committed 6201ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 8 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/app/main.test.tsx > desktop and mobile app entries > mounts mobile entry with shared AppProviders without eagerly preparing chat runtime, and prepares runtime on conversation open
+Error: Test timed out in 5000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+ ❯ tests/app/main.test.tsx:38:5
+     36|     });
+     37|
+     38|     it('mounts mobile entry with shared AppProviders without eagerly p…
+       |     ^
+     39|         const baseOai = {
+     40|             ...structuredClone(openaiDefaults),
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/8]⎯
+
+ FAIL  tests/characters/CharactersRoute.test.tsx > CharactersRoute (B15 delete character, instance creation & rename) > filters characters by search query, opens/closes detail, and preserves navigation params for card settings, voice settings, and conversation key without router imports in features/characters
+AssertionError: expected { category: 'voice', …(6) } to deeply equal { category: 'voice', …(1) }
+
+Ignored nodes: comments, script, style
+<html
+  data-chrome="compact"
+  data-vc-runtime="prepared"
+  data-vc-theme="auto"
+  data-vc-theme-id="aurora"
+  data-vc-variant-bubble="grouped"
+>
+  <head />
+  <body
+    data-generating="false"
+  >
+    <div>
+      <div
+        aria-hidden="true"
+        class="vc-desktop-aurora vc-aurora"
+        data-vc-period="night"
+      >
+        <div
+          class="vc-aurora-set"
+        >
+          <div
+            class="vc-aurora-spot vc-aurora-spot--1"
+            style="--c: 255,150,120;"
+          />
+          <div
+            class="vc-aurora-spot vc-aurora-spot--2"
+            style="--c: 170,135,255;"
+          />
+          <div
+            class="vc-aurora-spot vc-aurora-spot--3"
+            style="--c: 100,165,255;"
+          />
+        </div>
+      </div>
+      <div
+        class="vc-overlay-host"
+        data-vc-overlay-host=""
+        id="vc-overlay-host"
+      >
+        <div
+          class="vc-overlay-host__toast"
+          data-vc-toast-host=""
+        >
+          <div
+            data-base-ui-portal=""
+            id="_r_4e_"
+          >
+            <div
+              aria-atomic="false"
+              aria-label="Notifications"
+              aria-live="polite"
+              aria-relevant="additions text"
+              class="vc-toast-viewport"
+              role="region"
+              tabindex="-1"
+            />
+          </div>
+        </div>
+      </div>
+      <div
+        class="vc-shell"
+        data-chrome="compact"
+        data-destination="chat"
+        data-layout="single-main"
+        data-list-open="false"
+        data-panel-open="false"
+        data-settings="open"
+        data-sidebar="collapsed"
+        id="vc-shell"
+      >
+        <aside
+          aria-label="主导航"
+          class="vc-sidebar is-collapsed"
+          data-collapsed="true"
+        >
+          <i
+            aria-hidden="true"
+            class="vc-desktop-lens"
+            data-lens-target="settings"
+            data-side-lens=""
+            style="opacity: 0;"
+          />
+          <div
+            class="vc-side-top"
+          />
+          <nav
+            aria-label="一级导航"
+            class="vc-side-nav"
+          >
+            <button
+              aria-label="聊天"
+              class="vc-side-item"
+              data-nav="chat"
+              title="聊天"
+              type="button"
+            >
+              <span
+                aria-hidden="true"
+                class="vc-side-icon"
+              >
+                <svg
+                  aria-hidden="true"
+                  class="vc-icon"
+                  fill="none"
+                  focusable="false"
+                  height="22"
+                  stroke="currentColor"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="1.75"
+                  style="--vc-icon-size: 22px;"
+                  viewBox="0 0 24 24"
+                  width="22"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  <use
+                    href="/scripts/extensions/third-party/vc-model-settings/ui/icons/lucide.svg#message-circle"
+                  />
+                </svg>
+              </span>
+              <span
+                aria-hidden="true"
+                class="vc-side-dot"
+                data-dot="chat"
+                hidden=""
+              />
+            </button>
+            <button
+              aria-label="角色"
+              class="vc-side-item"
+              data-nav="characters"
+              title="角色"
+              type="button"
+            >
+              <span
+                aria-hidden="true"
+                class="vc-side-icon"
+              >
+                <svg
+                  aria-hidden="true"
+                  class="vc-icon"
+                  fill="none"
+                  focusable="false"
+                  height="22"
+                  stroke="currentColor"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="1.75"
+                  style="--vc-icon-size: 22px;"
+                  viewBox="0 0 24 24"
+                  width="22"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  <use
+                    href="/scripts/extensions/third-party/vc-model-settings/ui/icons/lucide.svg#users-round"
+                  />
+                </svg>
+              </span>
+            </button>
+            <button
+         ...
+
+- Expected
++ Received
+
+  {
+    "category": "voice",
++   "onOpenInbox": [Function anonymous],
++   "onSelectCategory": [Function anonymous],
++   "onSelectTavern": [Function anonymous],
++   "preferences": {
++     "desktopThemePrefs": {
++       "characters": {},
++       "global": "aurora",
++     },
++     "reducedMotion": false,
++     "replyStyle": "bubble",
++     "setCharacterDesktopTheme": [Function setCharacterDesktopTheme],
++     "setGlobalDesktopTheme": [Function setGlobalDesktopTheme],
++     "setReducedMotion": [Function setReducedMotion],
++     "setReplyStyle": [Function setReplyStyle],
++     "setThemeMode": [Function setThemeMode],
++     "syncFromStorage": [Function syncFromStorage],
++     "themeMode": "auto",
++   },
+    "relationshipId": "101",
++   "renderLeaveGuard": [Function anonymous],
+  }
+
+ ❯ tests/characters/CharactersRoute.test.tsx:1024:40
+    1022|         await waitFor(() => {
+    1023|             expect(router.state.location.pathname).toBe('/settings/voi…
+    1024|             expect(capturedVoiceProps).toEqual({
+       |                                        ^
+    1025|                 category: 'voice',
+    1026|                 relationshipId: '101',
+ ❯ runWithExpensiveErrorDiagnosticsDisabled ../node_modules/@testing-library/dom/dist/config.js:47:12
+ ❯ checkCallback ../node_modules/@testing-library/dom/dist/wait-for.js:124:77
+ ❯ Timeout.checkRealTimersCallback ../node_modules/@testing-library/dom/dist/wait-for.js:118:16
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/8]⎯
+
+ FAIL  tests/chat/ChatRoute.test.tsx > ChatRoute streaming isolation, B5 open lifecycle, and B13 VoiceBubble initial state > loads history in pages of 80 while retaining the existing visible leaves
+Error: Test timed out in 5000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+ ❯ tests/chat/ChatRoute.test.tsx:54:5
+     52|     });
+     53|
+     54|     it('loads history in pages of 80 while retaining the existing visi…
+       |     ^
+     55|         const key = '["alice.png","history"]';
+     56|         const env = createTestChatEnv({
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/8]⎯
+
+ FAIL  tests/chat/ChatRoute.test.tsx > ChatRoute streaming isolation, B5 open lifecycle, and B13 VoiceBubble initial state > locates an older source only after the chat route is visible and history has committed
+Error: Test timed out in 5000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+ ❯ tests/chat/ChatRoute.test.tsx:75:5
+     73|     });
+     74|
+     75|     it('locates an older source only after the chat route is visible a…
+       |     ^
+     76|         const key = '["alice.png","source"]';
+     77|         const previousKey = '["alice.png","previous"]';
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/8]⎯
+
+ FAIL  tests/chat/t14-window.test.tsx > t14-window: MessageList / SessionBridge firstDisplayedMessageId real window supply > updates context.firstDisplayedMessageId across 80-message window, load-earlier, delete, and conversation switch
+Error: Test timed out in 5000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+ ❯ tests/chat/t14-window.test.tsx:54:5
+     52|     });
+     53|
+     54|     it('updates context.firstDisplayedMessageId across 80-message wind…
+       |     ^
+     55|         const keyA = '["alice.png","chat-105"]';
+     56|         const keyB = '["bob.png","chat-90"]';
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/8]⎯
+
+ FAIL  tests/memory/MemoryRoute.test.tsx > MemoryRoute > filters combine type+source+date and survive navigation
+Error: Test timed out in 5000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+ ❯ tests/memory/MemoryRoute.test.tsx:276:3
+    274|   });
+    275|
+    276|   it('filters combine type+source+date and survive navigation', async …
+       |   ^
+    277|     const { client, fetchMemories } = createMemoryTestClient();
+    278|     const router = createDesktopRouter({
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/8]⎯
+
+ FAIL  tests/settings/ModelSection.test.tsx > ModelSection & SettingsRoute > unsaved provider edit blocks category switch
+Error: Test timed out in 5000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+ ❯ tests/settings/ModelSection.test.tsx:148:3
+    146|   });
+    147|
+    148|   it('unsaved provider edit blocks category switch', async () => {
+       |   ^
+    149|     const client = createModelTestClient();
+    150|     const router = createDesktopRouter({
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[7/8]⎯
+
+ FAIL  tests/settings/ModelSection.test.tsx > ModelSection & SettingsRoute > in-flight provider or bindings save still prompts leave confirmation dialog on category switch
+Error: Test timed out in 5000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+ ❯ tests/settings/ModelSection.test.tsx:199:3
+    197|   });
+    198|
+    199|   it('in-flight provider or bindings save still prompts leave confirma…
+       |   ^
+    200|     let resolveProviderSave!: (res: { ok: boolean; revision: number })…
+    201|     let resolvePurposeSave!: (res: Record<string, unknown>) => void;
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[8/8]⎯
+
+
+ Test Files  6 failed | 36 passed (42)
+      Tests  8 failed | 173 passed (181)
+   Start at  22:25:14
+   Duration  39.94s (tests 45%, import 29%, transform 13%, environment 13%)
+
+    Isolate  42 workers spawned · ~1.29s startup each (spawn + environment, per file)
+             at least ~4.73s faster with isolate: false — reuses workers across files instead of one per file
+
+npm --prefix integrations/sillytavern run test:desktop  74.24s user 10.50s system 197% cpu 42.801 total
