@@ -1,12 +1,24 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
+import {
+  Outlet,
+  RouterProvider,
+  createMemoryHistory,
+  createRootRoute,
+  createRoute,
+  createRouter,
+  useParams,
+} from '@tanstack/react-router';
 import { applyDocumentValues } from '../../../extension/vc-model-settings/settings-documents.js';
 import { AppProviders, createQueryClient, queryClient } from '../../src/app/providers';
+import { TavernRouteAdapter } from '../../src/app/TavernRouteAdapter';
 import { createAppClient } from '../../src/data/client';
+import * as tavernQueries from '../../src/data/queries/tavern';
 import { queryKeys } from '../../src/data/queryKeys';
 import { SessionBridgeProvider, type SessionBridge } from '../../src/runtime/session-bridge';
-import { TavernRoute } from '../../src/features/tavern/TavernRoute';
+import { TavernRoute, type TavernRouteProps } from '../../src/features/tavern/TavernRoute';
+import { useTavernController } from '../../src/features/tavern/useTavernController';
 
 function setIdentityMeta(accountId = '9007199254740993', sessionId = '17') {
   document.head.innerHTML = `
@@ -607,5 +619,460 @@ describe('TavernRoute (409 conflict recovery & unknown keys preservation)', () =
     );
     expect(descInput.value).toBe('My local desc');
     expect(mergeCalls).toHaveLength(0);
+  });
+
+  it('MB2-4: data/queries/tavern is pure data and useTavernController exposes dialog states, checkValidity, onDownload, and onNotify without modals or formRef', async () => {
+    expect('useTavernController' in tavernQueries).toBe(false);
+    expect(typeof tavernQueries.createTavernReads).toBe('function');
+
+    const downloads: Array<{ value: unknown; name: string }> = [];
+    const notifications: string[] = [];
+    let allowValid = false;
+
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/csrf-token') return jsonResponse({ token: 'csrf-1' });
+      if (url === '/api/settings/get') {
+        return jsonResponse({
+          settings: JSON.stringify({
+            oai_settings: {
+              preset_settings_openai: 'Default',
+              temp_openai: 1,
+              top_p_openai: 1,
+              openai_max_context: 4096,
+              openai_max_tokens: 300,
+              seed: -1,
+              n: 1,
+              prompts: [],
+              prompt_order: [{ character_id: 100001, order: [] }],
+            },
+            power_user: {},
+            world_info_settings: { world_info: { globalSelect: [], charLore: [] } },
+            extension_settings: {},
+          }),
+          openai_setting_names: ['Default'],
+          openai_settings: [JSON.stringify({ temp_openai: 1 })],
+          context: [],
+          instruct: [],
+          sysprompt: [],
+          reasoning: [],
+        });
+      }
+      if (url === '/api/characters/all') {
+        return jsonResponse([{ avatar: 'Seraphina.png', name: 'Seraphina' }]);
+      }
+      if (url === '/api/characters/get') {
+        return jsonResponse({
+          avatar: 'Seraphina.png',
+          name: 'Seraphina',
+          description: 'Initial desc',
+          data: {
+            name: 'Seraphina',
+            description: 'Initial desc',
+            extensions: {
+              depth_prompt: { prompt: '', depth: 4, role: 'system' },
+              talkativeness: 0.5,
+              fav: false,
+            },
+          },
+        });
+      }
+      if (url === '/api/characters/export') {
+        return new Response(JSON.stringify({ exported: 'Seraphina' }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if (url === '/api/characters/merge-attributes') {
+        return jsonResponse({ ok: true });
+      }
+      return jsonResponse({});
+    }) as typeof fetch;
+
+    let latestCtrl: ReturnType<typeof useTavernController> | null = null;
+    function HookProbe() {
+      const ctrl = useTavernController('right-nav-panel', {
+        checkValidity: () => allowValid,
+        onDownload: (value, name) => downloads.push({ value, name }),
+        onNotify: (msg) => notifications.push(msg),
+      });
+      latestCtrl = ctrl;
+      return <div data-testid="probe">{ctrl.loading ? 'loading' : ctrl.state.selectedCharacter}</div>;
+    }
+
+    const client = createAppClient();
+    await client.initialize();
+    const bridge = createFakeBridge();
+
+    render(
+      <AppProviders client={client}>
+        <SessionBridgeProvider bridge={bridge}>
+          <HookProbe />
+        </SessionBridgeProvider>
+      </AppProviders>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('probe').textContent).toBe('Seraphina.png');
+    });
+
+    expect(latestCtrl).not.toBeNull();
+    expect('modals' in (latestCtrl as unknown as Record<string, unknown>)).toBe(false);
+    expect('formRef' in (latestCtrl as unknown as Record<string, unknown>)).toBe(false);
+    expect(latestCtrl!.askNameDialog.open).toBe(false);
+    expect(latestCtrl!.confirmDialog.open).toBe(false);
+    expect(latestCtrl!.charDeleteDialog.open).toBe(false);
+    expect(latestCtrl!.codeEditorDialog.open).toBe(false);
+
+    // Edit description and attempt save while checkValidity returns false
+    latestCtrl!.onField(
+      latestCtrl!.state.groups[0].fields.find((f) => f.label === '描述')!.key,
+      'Changed description',
+    );
+    const blockedSave = await latestCtrl!.save();
+    expect(blockedSave).toBe(false);
+    await waitFor(() => {
+      expect(latestCtrl!.error).toBe('请先修正标出的输入。');
+    });
+
+    // Enable validity and save -> triggers onNotify('已保存')
+    allowValid = true;
+    const okSave = await latestCtrl!.save();
+    expect(okSave).toBe(true);
+    expect(notifications).toEqual(['已保存']);
+
+    // Export character -> triggers onDownload callback with Blob and filename
+    latestCtrl!.onAction('character-export');
+    await waitFor(() => {
+      expect(downloads).toHaveLength(1);
+    });
+    expect(downloads[0].name).toBe('Seraphina.json');
+    expect(downloads[0].value).toBeInstanceOf(Blob);
+  });
+
+  it('MB2-4: TavernRoute delegates category/section navigation and leave guard via props without mutating window.location.hash', async () => {
+    window.location.hash = '#/settings/tavern/left-nav-panel';
+    const onNavigateCategory = vi.fn();
+    const onNavigateTavern = vi.fn();
+    const dirtyRecords: boolean[] = [];
+
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/csrf-token') return jsonResponse({ token: 'csrf-1' });
+      if (url === '/api/settings/get') {
+        return jsonResponse({
+          settings: JSON.stringify({
+            oai_settings: {
+              preset_settings_openai: 'Default',
+              temp_openai: 1,
+              top_p_openai: 1,
+              openai_max_context: 4096,
+              openai_max_tokens: 300,
+              seed: -1,
+              n: 1,
+              prompts: [],
+              prompt_order: [{ character_id: 100001, order: [] }],
+            },
+            power_user: {},
+            world_info_settings: { world_info: { globalSelect: [], charLore: [] } },
+            extension_settings: {},
+          }),
+          openai_setting_names: ['Default'],
+          openai_settings: [JSON.stringify({})],
+          context: [],
+          instruct: [],
+          sysprompt: [],
+          reasoning: [],
+        });
+      }
+      if (url.endsWith('/model-purposes')) return jsonResponse({ items: [] });
+      if (url.endsWith('/providers')) return jsonResponse({ items: [] });
+      return jsonResponse({});
+    }) as typeof fetch;
+
+    const client = createAppClient();
+    await client.initialize();
+    const bridge = createFakeBridge();
+
+    render(
+      <AppProviders client={client}>
+        <SessionBridgeProvider bridge={bridge}>
+          <TavernRoute
+            section="left-nav-panel"
+            onNavigateCategory={onNavigateCategory}
+            onNavigateTavern={onNavigateTavern}
+            onDirtyChange={(d) => dirtyRecords.push(d)}
+            renderLeaveGuard={(dirty) => (
+              <div data-testid="custom-leave-guard">{dirty ? 'dirty' : 'clean'}</div>
+            )}
+          />
+        </SessionBridgeProvider>
+      </AppProviders>,
+    );
+
+    const seedInput = (await screen.findByLabelText('随机种子')) as HTMLInputElement;
+    expect(screen.getByTestId('custom-leave-guard').textContent).toBe('clean');
+
+    fireEvent.change(seedInput, { target: { value: '42' } });
+    expect(screen.getByTestId('custom-leave-guard').textContent).toBe('dirty');
+    expect(dirtyRecords.at(-1)).toBe(true);
+
+    // Clicking another tavern section while dirty opens discard confirmation before navigating
+    fireEvent.click(screen.getByRole('button', { name: 'API 连接' }));
+    const discardDialog = await screen.findByRole('alertdialog');
+    fireEvent.click(
+      Array.from(discardDialog.querySelectorAll('button')).find((b) => b.textContent === '放弃')!,
+    );
+
+    await waitFor(() => {
+      expect(onNavigateTavern).toHaveBeenCalledWith('rm_api_block');
+    });
+    expect(window.location.hash).toBe('#/settings/tavern/left-nav-panel');
+
+    // Clicking '模型设置' triggers onNavigateCategory('model') without mutating window.location.hash
+    const openModelBtn = await screen.findByRole('button', { name: '模型设置' });
+    fireEvent.click(openModelBtn);
+    await waitFor(() => {
+      expect(onNavigateCategory).toHaveBeenCalledWith('model');
+    });
+    expect(window.location.hash).toBe('#/settings/tavern/left-nav-panel');
+  });
+
+  it('MB2-4: TavernRouteAdapter wires router search/navigation, useLeaveGuard, and View override', async () => {
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/csrf-token') return jsonResponse({ token: 'csrf-1' });
+      if (url === '/api/settings/get') {
+        return jsonResponse({
+          settings: JSON.stringify({
+            oai_settings: { preset_settings_openai: 'Default', prompts: [], prompt_order: [] },
+            power_user: {},
+            world_info_settings: { world_info: { globalSelect: [], charLore: [] } },
+            extension_settings: {},
+          }),
+          openai_setting_names: ['Default'],
+          openai_settings: [JSON.stringify({})],
+          context: [],
+          instruct: [],
+          sysprompt: [],
+          reasoning: [],
+        });
+      }
+      if (url === '/api/characters/all') {
+        return jsonResponse([
+          { avatar: 'Alice.png', name: 'Alice' },
+          { avatar: 'Seraphina.png', name: 'Seraphina' },
+        ]);
+      }
+      if (url === '/api/characters/get') {
+        return jsonResponse({
+          avatar: 'Seraphina.png',
+          name: 'Seraphina',
+          description: 'Seraphina desc',
+          data: {
+            name: 'Seraphina',
+            description: 'Seraphina desc',
+            extensions: {
+              depth_prompt: { prompt: '', depth: 4, role: 'system' },
+              talkativeness: 0.5,
+              fav: false,
+            },
+          },
+        });
+      }
+      return jsonResponse({});
+    }) as typeof fetch;
+
+    const capturedProps: TavernRouteProps[] = [];
+    function SpyTavernView(props: TavernRouteProps) {
+      capturedProps.push(props);
+      return <TavernRoute {...props} />;
+    }
+
+    const rootRoute = createRootRoute({
+      component: () => <Outlet />,
+    });
+    const settingsCategoryRoute = createRoute({
+      getParentRoute: () => rootRoute,
+      path: '/settings/$category',
+      component: function CategoryPage() {
+        const { category } = useParams({ from: settingsCategoryRoute.id });
+        return <div data-testid="category-page">{category}</div>;
+      },
+    });
+    const settingsTavernRoute = createRoute({
+      getParentRoute: () => rootRoute,
+      path: '/settings/tavern/$section',
+      component: function TavernPage() {
+        const { section } = useParams({ from: settingsTavernRoute.id });
+        return <TavernRouteAdapter section={section} View={SpyTavernView} />;
+      },
+    });
+    const routeTree = rootRoute.addChildren([settingsCategoryRoute, settingsTavernRoute]);
+    const router = createRouter({
+      routeTree,
+      history: createMemoryHistory({
+        initialEntries: ['/settings/tavern/right-nav-panel?character=Seraphina.png'],
+      }),
+    });
+
+    const client = createAppClient();
+    await client.initialize();
+    const bridge = createFakeBridge();
+
+    render(
+      <AppProviders client={client}>
+        <SessionBridgeProvider bridge={bridge}>
+          <RouterProvider router={router} />
+        </SessionBridgeProvider>
+      </AppProviders>,
+    );
+
+    const descInput = (await screen.findByLabelText('描述')) as HTMLTextAreaElement;
+    expect(descInput.value).toBe('Seraphina desc');
+    expect(capturedProps.at(-1)?.initialCharacter).toBe('Seraphina.png');
+
+    // Make form dirty and attempt router navigation -> blocked by useLeaveGuard
+    fireEvent.change(descInput, { target: { value: 'Dirty desc' } });
+
+    void router.navigate({ to: '/settings/$category', params: { category: 'account' } });
+    const leaveDialog = await screen.findByRole('alertdialog');
+    expect(leaveDialog.textContent).toContain('放弃更改？');
+
+    // Confirm leave -> navigates to /settings/account
+    fireEvent.click(
+      Array.from(leaveDialog.querySelectorAll('button')).find((b) => b.textContent === '放弃')!,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('category-page').textContent).toBe('account');
+    });
+  });
+
+  it('MB2-4: preserves fast section switch late-load guard, form aria-invalid checkValidity, and character delete two-step dialog', async () => {
+    let resolveLateWorldbook: ((res: Response) => void) | null = null;
+    const worldbookGate = new Promise<Response>((resolve) => {
+      resolveLateWorldbook = resolve;
+    });
+
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/csrf-token') return jsonResponse({ token: 'csrf-1' });
+      if (url === '/api/settings/get') {
+        return jsonResponse({
+          settings: JSON.stringify({
+            oai_settings: {
+              preset_settings_openai: 'Default',
+              temp_openai: 1,
+              top_p_openai: 1,
+              openai_max_context: 4096,
+              openai_max_tokens: 300,
+              seed: -1,
+              n: 1,
+              prompts: [],
+              prompt_order: [{ character_id: 100001, order: [] }],
+            },
+            power_user: {},
+            world_info_settings: { world_info: { globalSelect: [], charLore: [] } },
+            extension_settings: {},
+          }),
+          openai_setting_names: ['Default'],
+          openai_settings: [JSON.stringify({})],
+          context: [],
+          instruct: [],
+          sysprompt: [],
+          reasoning: [],
+        });
+      }
+      if (url === '/api/worldinfo/list') {
+        return jsonResponse([{ file_id: 'DelayedBook' }]);
+      }
+      if (url === '/api/worldinfo/get') {
+        return worldbookGate;
+      }
+      if (url === '/api/characters/all') {
+        return jsonResponse([
+          { avatar: 'Seraphina.png', name: 'Seraphina' },
+          { avatar: 'Alice.png', name: 'Alice' },
+        ]);
+      }
+      if (url === '/api/characters/get') {
+        return jsonResponse({
+          avatar: 'Seraphina.png',
+          name: 'Seraphina',
+          description: 'Seraphina desc',
+          data: {
+            name: 'Seraphina',
+            description: 'Seraphina desc',
+            extensions: {
+              depth_prompt: { prompt: '', depth: 4, role: 'system' },
+              talkativeness: 0.5,
+              fav: false,
+            },
+          },
+        });
+      }
+      return jsonResponse({});
+    }) as typeof fetch;
+
+    const client = createAppClient();
+    await client.initialize();
+    const bridge = createFakeBridge();
+
+    const { rerender } = render(
+      <AppProviders client={client}>
+        <SessionBridgeProvider bridge={bridge}>
+          <TavernRoute section="WorldInfo" />
+        </SessionBridgeProvider>
+      </AppProviders>,
+    );
+
+    // Rapidly switch section to right-nav-panel before WorldInfo finishes loading DelayedBook
+    rerender(
+      <AppProviders client={client}>
+        <SessionBridgeProvider bridge={bridge}>
+          <TavernRoute section="right-nav-panel" />
+        </SessionBridgeProvider>
+      </AppProviders>,
+    );
+
+    const descInput = (await screen.findByLabelText('描述')) as HTMLTextAreaElement;
+    expect(descInput.value).toBe('Seraphina desc');
+
+    // Resolve the late WorldInfo response after switching -> must not overwrite CharacterCard section
+    resolveLateWorldbook!(
+      jsonResponse({
+        entries: {
+          '0': { uid: 0, comment: 'Late Entry', content: 'late', key: ['k'] },
+        },
+      }),
+    );
+
+    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('角色卡');
+    expect((screen.getByLabelText('描述') as HTMLTextAreaElement).value).toBe('Seraphina desc');
+
+    // Form DOM aria-invalid="true" blocks save via TavernFormContainer setCheckValidity
+    fireEvent.change(descInput, { target: { value: 'Edited desc' } });
+    descInput.setAttribute('aria-invalid', 'true');
+    fireEvent.click(screen.getByRole('button', { name: '保存' }));
+
+    const invalidBanner = await screen.findByRole('alert');
+    expect(invalidBanner.textContent).toContain('请先修正标出的输入。');
+    descInput.removeAttribute('aria-invalid');
+
+    // Character deletion two-step modal flow via TavernDialogs
+    fireEvent.click(screen.getByRole('button', { name: '删除角色卡' }));
+    const deleteChatsBtn = await screen.findByRole('button', { name: '同时删除聊天' });
+    fireEvent.click(deleteChatsBtn);
+
+    const confirmAlert = await screen.findByRole('alertdialog');
+    expect(confirmAlert.textContent).toContain('同时删除聊天？');
+    fireEvent.click(
+      Array.from(confirmAlert.querySelectorAll('button')).find((b) => b.textContent === '删除')!,
+    );
+
+    await waitFor(() => {
+      expect(bridge.deleteCharacter).toHaveBeenCalledWith('Seraphina.png', true);
+    });
   });
 });

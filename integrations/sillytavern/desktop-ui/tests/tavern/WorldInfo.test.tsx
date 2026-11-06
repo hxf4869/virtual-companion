@@ -10,10 +10,11 @@ import {
   CODE_EDITOR_STORAGE_KEY,
   CodeField,
   SELF_HOSTED_WORKER_SPECS,
+  TavernDialogs,
   WorldCodeEditorDialog,
   codeEditorDefaults,
 } from '../../src/features/tavern/CodeField';
-import { useTavernController } from '../../src/data/queries/tavern';
+import { useTavernController } from '../../src/features/tavern/useTavernController';
 
 interface FakeMonacoRecord {
   lastCreatedOptions: Record<string, unknown> | null;
@@ -155,7 +156,7 @@ function WorldInfoTestHarness() {
         </button>
       </header>
       <WorldInfo controller={controller} />
-      {controller.modals}
+      <TavernDialogs controller={controller} />
     </div>
   );
 }

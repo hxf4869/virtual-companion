@@ -769,7 +769,16 @@ export function TavernFormContainer({
   controller: UseTavernControllerResult;
   children: React.ReactNode;
 }) {
-  const { loading, busy, error, conflict, formRef, save, onAction } = controller;
+  const { loading, busy, error, conflict, setCheckValidity, save, onAction } = controller;
+  const formRef = useRef<HTMLFormElement | null>(null);
+
+  useEffect(() => {
+    setCheckValidity(() => !formRef.current?.querySelector('[aria-invalid="true"]'));
+    return () => {
+      setCheckValidity(null);
+    };
+  }, [setCheckValidity]);
+
   if (loading) {
     return (
       <div className="vc-tavern-skeleton" aria-busy="true">
@@ -807,5 +816,121 @@ export function TavernFormContainer({
       ) : null}
       {children}
     </form>
+  );
+}
+
+export function triggerTavernBrowserDownload(value: unknown, name: string): void {
+  if (typeof document === 'undefined' || typeof URL?.createObjectURL !== 'function') return;
+  const blob =
+    value instanceof Blob
+      ? value
+      : new Blob([JSON.stringify(value, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = name;
+  anchor.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+export function TavernDialogs({ controller }: { controller: UseTavernControllerResult }) {
+  const { askNameDialog, charDeleteDialog, confirmDialog, codeEditorDialog } = controller;
+
+  return (
+    <>
+      <Dialog
+        open={askNameDialog.open}
+        onOpenChange={(nextOpen: boolean) => {
+          if (!nextOpen) askNameDialog.close();
+        }}
+        title={askNameDialog.title}
+        className="vc-sheet"
+        actions={
+          <>
+            <Button type="button" variant="gray" onClick={askNameDialog.close}>
+              取消
+            </Button>
+            <Button type="button" variant="filled" onClick={askNameDialog.submit}>
+              完成
+            </Button>
+          </>
+        }
+      >
+        <form
+          className="vc-tavern-name"
+          onSubmit={(e: React.FormEvent) => {
+            e.preventDefault();
+            askNameDialog.submit();
+          }}
+        >
+          <label>
+            名称
+            <input
+              required
+              maxLength={120}
+              value={askNameDialog.value}
+              aria-invalid={askNameDialog.error ? 'true' : undefined}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                askNameDialog.setValue(e.target.value)
+              }
+            />
+          </label>
+          {askNameDialog.error ? (
+            <span className="vc-desk-error" role="alert">
+              {askNameDialog.error}
+            </span>
+          ) : null}
+        </form>
+      </Dialog>
+
+      <Dialog
+        open={charDeleteDialog.open}
+        onOpenChange={(nextOpen: boolean) => {
+          if (!nextOpen) charDeleteDialog.close();
+        }}
+        title="删除角色卡"
+        className="vc-sheet"
+      >
+        <div className="vc-column">
+          {(
+            [
+              [false, '仅删除角色卡'],
+              [true, '同时删除聊天'],
+            ] as const
+          ).map(([deleteChats, label]) => (
+            <button
+              key={label}
+              type="button"
+              className="vc-btn vc-btn-danger"
+              onClick={() => charDeleteDialog.select(deleteChats, label)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </Dialog>
+
+      <AlertDialog
+        open={confirmDialog.open}
+        onOpenChange={(nextOpen: boolean) => {
+          if (!nextOpen) confirmDialog.cancel();
+        }}
+        title={confirmDialog.title}
+        description={confirmDialog.message}
+        confirmLabel={confirmDialog.confirmLabel}
+        cancelLabel={confirmDialog.cancelLabel}
+        danger={confirmDialog.danger}
+        className="vc-alert"
+        onConfirm={confirmDialog.confirm}
+      />
+
+      <WorldCodeEditorDialog
+        open={codeEditorDialog.open}
+        initialValue={codeEditorDialog.initialValue}
+        onDirtyChange={codeEditorDialog.setDirty}
+        onApply={codeEditorDialog.apply}
+        onClose={codeEditorDialog.close}
+      />
+    </>
   );
 }

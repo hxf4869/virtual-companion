@@ -6,7 +6,8 @@ import { createAppClient } from '../../src/data/client';
 import { SessionBridgeProvider, type SessionBridge } from '../../src/runtime/session-bridge';
 import { ReplyConfig } from '../../src/features/tavern/ReplyConfig';
 import { PromptOrder } from '../../src/features/tavern/PromptOrder';
-import { useTavernController } from '../../src/data/queries/tavern';
+import { TavernDialogs } from '../../src/features/tavern/CodeField';
+import { useTavernController } from '../../src/features/tavern/useTavernController';
 
 function setIdentityMeta(accountId = '9007199254740993', sessionId = '17') {
   document.head.innerHTML = `
@@ -82,7 +83,7 @@ function ReplyConfigTestHarness() {
         </button>
       </header>
       <ReplyConfig controller={controller} />
-      {controller.modals}
+      <TavernDialogs controller={controller} />
     </div>
   );
 }

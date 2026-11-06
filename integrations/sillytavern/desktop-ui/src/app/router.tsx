@@ -47,7 +47,6 @@ import {
     StoryRoute,
     type StoryRouteProps,
 } from '../features/story/StoryRoute';
-import { TavernRoute } from '../features/tavern/TavernRoute';
 import { useChatSnapshot } from '../runtime/session-bridge';
 import { AppShell, useShellLayout, type ShellConversationItem } from '../shell/AppShell';
 import type { ShellDestination } from '../shell/Sidebar';
@@ -55,6 +54,7 @@ import { useReducedMotion } from '../shell/useReducedMotion';
 import { MemoryRouteAdapter } from './MemoryRouteAdapter';
 import { StoryRouteAdapter } from './StoryRouteAdapter';
 import { SettingsRouteAdapter } from './SettingsRouteAdapter';
+import { TavernRouteAdapter } from './TavernRouteAdapter';
 
 export type {
     ChatRouteProps,
@@ -90,29 +90,7 @@ export interface CreateDesktopRouterOptions {
 }
 
 function DefaultTavernSettingsRoute({ section }: TavernSettingsRouteProps) {
-    const navigate = useNavigate();
-    const initialCharacter = useRouterState({
-        select: s => {
-            const raw = (s.location.search as Record<string, unknown> | undefined)
-                ?.character;
-            return typeof raw === 'string' && raw ? raw : undefined;
-        },
-    });
-    return (
-        <TavernRoute
-            section={section}
-            initialCharacter={initialCharacter}
-            onNavigateCategory={category => {
-                void navigate({ to: '/settings/$category', params: { category } });
-            }}
-            onNavigateTavern={nextSection => {
-                void navigate({
-                    to: '/settings/tavern/$section',
-                    params: { section: nextSection },
-                });
-            }}
-        />
-    );
+    return <TavernRouteAdapter section={section} />;
 }
 
 function resolveShellStateFromPath(pathname: string): {

@@ -1,14 +1,8 @@
-import { Suspense, lazy, useCallback, useEffect, useState } from 'react';
-import { useRouter } from '@tanstack/react-router';
+import React, { Suspense, lazy, useCallback, useEffect, useState } from 'react';
 import { Icon } from '../../design/components/Icon';
 import { IconButton } from '../../design/components/IconButton';
 import { Menu, type MenuItemDef } from '../../design/components/Menu';
-import {
-  TAVERN_SECTIONS,
-  normalizeTavernSection,
-  useTavernController,
-} from '../../data/queries/tavern';
-import { useLeaveGuard } from '../../shell/useLeaveGuard';
+import { toast } from '../../design/components/Toast';
 import {
   PRODUCT_SETTINGS_CATEGORIES,
   SettingsNav,
@@ -16,11 +10,17 @@ import {
 import { ApiConnection } from './ApiConnection';
 import { Backgrounds } from './Backgrounds';
 import { CharacterCard } from './CharacterCard';
+import { TavernDialogs, triggerTavernBrowserDownload } from './CodeField';
 import { Extensions } from './Extensions';
 import { InterfacePrefs } from './InterfacePrefs';
 import { Personas } from './Personas';
 import { ReplyConfig } from './ReplyConfig';
 import { WorldInfo } from './WorldInfo';
+import {
+  TAVERN_SECTIONS,
+  normalizeTavernSection,
+  useTavernController,
+} from './useTavernController';
 import '../settings/settings.css';
 import './tavern.css';
 
@@ -28,17 +28,16 @@ const Formatting = lazy(() =>
   import('./Formatting').then((mod) => ({ default: mod.Formatting })),
 );
 
-function ActiveLeaveGuard({ dirty }: { dirty: boolean }) {
-  const modal = useLeaveGuard(dirty);
-  return <>{modal}</>;
-}
-
 export interface TavernRouteProps {
   section?: string;
   initialCharacter?: string;
   embedded?: boolean;
   onNavigateCategory?: (category: string) => void;
   onNavigateTavern?: (section: string) => void;
+  onDirtyChange?: (dirty: boolean) => void;
+  renderLeaveGuard?: (dirty: boolean) => React.ReactNode;
+  onDownload?: (value: unknown, name: string) => void;
+  onNotify?: (message: string) => void;
 }
 
 export function TavernRoute({
@@ -47,6 +46,10 @@ export function TavernRoute({
   embedded = false,
   onNavigateCategory,
   onNavigateTavern,
+  onDirtyChange,
+  renderLeaveGuard,
+  onDownload,
+  onNotify,
 }: TavernRouteProps) {
   const [activeSection, setActiveSection] = useState(() => normalizeTavernSection(section));
 
@@ -56,13 +59,7 @@ export function TavernRoute({
 
   const navigateToCategory = useCallback(
     (category: string) => {
-      if (onNavigateCategory) {
-        onNavigateCategory(category);
-        return;
-      }
-      if (typeof window !== 'undefined') {
-        window.location.hash = `#/settings/${category}`;
-      }
+      onNavigateCategory?.(category);
     },
     [onNavigateCategory],
   );
@@ -71,15 +68,21 @@ export function TavernRoute({
     initialCharacter,
     onOpenModels: () => navigateToCategory('model'),
     onOpenAppearance: () => navigateToCategory('appearance'),
+    onDownload: onDownload ?? triggerTavernBrowserDownload,
+    onNotify: (message: string) => {
+      if (onNotify) {
+        onNotify(message);
+        return;
+      }
+      toast.show({ title: message, kind: 'success' });
+    },
   });
 
-  let hasRouter = false;
-  try {
-    hasRouter = Boolean(useRouter({ warn: false } as any));
-  } catch {
-    hasRouter = false;
-  }
-  const leaveGuardModal = hasRouter ? <ActiveLeaveGuard dirty={controller.dirty} /> : null;
+  useEffect(() => {
+    onDirtyChange?.(controller.dirty);
+  }, [controller.dirty, onDirtyChange]);
+
+  const leaveGuardModal = renderLeaveGuard ? renderLeaveGuard(controller.dirty) : null;
 
   const handleSelectTavern = useCallback(
     async (panelKey: string) => {
@@ -91,11 +94,7 @@ export function TavernRoute({
         if (!discarded) return;
       }
       setActiveSection(normalized);
-      if (onNavigateTavern) {
-        onNavigateTavern(normalized);
-      } else if (typeof window !== 'undefined' && window.location.hash.startsWith('#/settings/tavern')) {
-        window.location.hash = `#/settings/tavern/${normalized}`;
-      }
+      onNavigateTavern?.(normalized);
     },
     [controller, onNavigateTavern],
   );
@@ -206,7 +205,7 @@ export function TavernRoute({
     return (
       <>
         {contentPane}
-        {controller.modals}
+        <TavernDialogs controller={controller} />
         {leaveGuardModal}
       </>
     );
@@ -220,7 +219,7 @@ export function TavernRoute({
         onSelectTavern={(panel) => void handleSelectTavern(panel)}
       />
       {contentPane}
-      {controller.modals}
+      <TavernDialogs controller={controller} />
       {leaveGuardModal}
     </section>
   );
