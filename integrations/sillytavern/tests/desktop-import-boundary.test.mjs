@@ -140,10 +140,22 @@ export async function analyzeDesktopImportBoundary({
         path.join(desktopSrcRoot, 'mobile', 'app', 'main.tsx'),
     ];
     const visited = new Set();
+    const visitedByScope = {
+        desktop: new Set(),
+        mobile: new Set(),
+    };
+    const specifiersCache = new Map();
     const reachableExtensionModules = new Set();
     const violations = [];
 
-    async function walk(currentFile, chain) {
+    async function getSpecifiers(filePath) {
+        if (!specifiersCache.has(filePath)) {
+            specifiersCache.set(filePath, await extractSpecifiers(filePath));
+        }
+        return specifiersCache.get(filePath);
+    }
+
+    async function walk(currentFile, chain, inMobileScope = false) {
         const normalizedCurrent = path.resolve(currentFile);
         if (!fs.existsSync(normalizedCurrent)) {
             violations.push({
@@ -153,51 +165,63 @@ export async function analyzeDesktopImportBoundary({
             });
             return;
         }
-        if (visited.has(normalizedCurrent)) return;
-        visited.add(normalizedCurrent);
         const currentRelToDesktop = toPosix(path.relative(desktopSrcRoot, normalizedCurrent));
-        const importerIsMobile = currentRelToDesktop === 'mobile' || currentRelToDesktop.startsWith('mobile/');
+        const currentIsMobile = currentRelToDesktop === 'mobile' || currentRelToDesktop.startsWith('mobile/');
+        const mobileReachable = inMobileScope || currentIsMobile;
+        const scopeVisited = mobileReachable ? visitedByScope.mobile : visitedByScope.desktop;
+        if (scopeVisited.has(normalizedCurrent)) return;
+        scopeVisited.add(normalizedCurrent);
+        const alreadyCheckedCommon = visited.has(normalizedCurrent);
+        visited.add(normalizedCurrent);
 
-        const specifiers = await extractSpecifiers(normalizedCurrent);
+        const specifiers = await getSpecifiers(normalizedCurrent);
         for (const specifier of specifiers) {
             const resolved = resolveLocalSpecifier(normalizedCurrent, specifier, extensionRoot);
             if (!resolved) {
                 if (isDesktopPackageImport(normalizedCurrent, specifier)) continue;
-                violations.push({ type: 'unapproved-import', specifier, target: specifier, chain });
+                if (!alreadyCheckedCommon) {
+                    violations.push({ type: 'unapproved-import', specifier, target: specifier, chain });
+                }
                 continue;
             }
             const nextChain = [...chain, resolved];
             if (!fs.existsSync(resolved)) {
-                violations.push({
-                    type: 'unresolved-import',
-                    specifier,
-                    target: resolved,
-                    chain: nextChain,
-                });
+                if (!alreadyCheckedCommon) {
+                    violations.push({
+                        type: 'unresolved-import',
+                        specifier,
+                        target: resolved,
+                        chain: nextChain,
+                    });
+                }
                 continue;
             }
 
             const actual = fs.realpathSync(resolved);
             const relToDesktop = toPosix(path.relative(desktopSrcRoot, actual));
             if (relToDesktop === 'bridge' || relToDesktop.startsWith('bridge/')) {
-                violations.push({
-                    type: 'forbidden-bridge-import',
-                    specifier,
-                    target: relToDesktop,
-                    chain: nextChain,
-                });
+                if (!alreadyCheckedCommon) {
+                    violations.push({
+                        type: 'forbidden-bridge-import',
+                        specifier,
+                        target: relToDesktop,
+                        chain: nextChain,
+                    });
+                }
                 continue;
             }
-            if ((relToDesktop === 'mobile' || relToDesktop.startsWith('mobile/')) && !importerIsMobile) {
-                violations.push({
-                    type: 'desktop-imports-mobile',
-                    specifier,
-                    target: relToDesktop,
-                    chain: nextChain,
-                });
+            if ((relToDesktop === 'mobile' || relToDesktop.startsWith('mobile/')) && !currentIsMobile) {
+                if (!alreadyCheckedCommon) {
+                    violations.push({
+                        type: 'desktop-imports-mobile',
+                        specifier,
+                        target: relToDesktop,
+                        chain: nextChain,
+                    });
+                }
                 continue;
             }
-            if (importerIsMobile && (relToDesktop === 'shell' || relToDesktop.startsWith('shell/') || relToDesktop === 'app/router.tsx')) {
+            if (mobileReachable && (relToDesktop === 'shell' || relToDesktop.startsWith('shell/') || relToDesktop === 'app/router.tsx')) {
                 violations.push({
                     type: 'mobile-imports-desktop-shell',
                     specifier,
@@ -212,21 +236,25 @@ export async function analyzeDesktopImportBoundary({
             if (insideExtension) {
                 reachableExtensionModules.add(relToExtension);
                 if (!isWhitelistedExtensionModule(relToExtension)) {
-                    violations.push({
-                        type: 'non-whitelisted-extension-module',
-                        specifier,
-                        target: relToExtension,
-                        chain: nextChain,
-                    });
+                    if (!alreadyCheckedCommon) {
+                        violations.push({
+                            type: 'non-whitelisted-extension-module',
+                            specifier,
+                            target: relToExtension,
+                            chain: nextChain,
+                        });
+                    }
                     continue;
                 }
             }
 
             if (!insideExtension && !actual.startsWith(`${desktopSrcRoot}${path.sep}`) && actual !== SOURCE_IDENTITY_FILE) {
-                violations.push({ type: 'unapproved-import', specifier, target: specifier, chain: nextChain });
+                if (!alreadyCheckedCommon) {
+                    violations.push({ type: 'unapproved-import', specifier, target: specifier, chain: nextChain });
+                }
                 continue;
             }
-            await walk(actual, nextChain);
+            await walk(actual, nextChain, mobileReachable);
         }
     }
 
@@ -236,7 +264,8 @@ export async function analyzeDesktopImportBoundary({
         if (relToDesktop === 'bridge' || relToDesktop.startsWith('bridge/')) {
             continue;
         }
-        await walk(resolvedEntry, [resolvedEntry]);
+        const entryIsMobile = relToDesktop === 'mobile' || relToDesktop.startsWith('mobile/');
+        await walk(resolvedEntry, [resolvedEntry], entryIsMobile);
     }
 
     return {
@@ -592,9 +621,86 @@ test('mobile 入口纳入边界检查，且禁止桌面模块反向引用 mobile
         assert.deepEqual(mobileReport.violations.map(v => `${v.type}:${v.target}`), [
             'mobile-imports-desktop-shell:shell/AppShell.tsx',
         ]);
+
+        // 间接引用与双入口共享模块：桌面入口先遍历 features/design，手机入口后遍历同一模块时仍须检出对 shell/** 与 app/router.tsx 的静态/动态引用
+        fs.mkdirSync(path.join(fakeSrc, 'features', 'design'), { recursive: true });
+        fs.writeFileSync(path.join(fakeSrc, 'app', 'router.tsx'), 'export const router = {};\n');
+        const sharedDesign = path.join(fakeSrc, 'features', 'design', 'sharedCard.ts');
+        fs.writeFileSync(
+            sharedDesign,
+            [
+                "import { AppShell } from '../../shell/AppShell';",
+                "export const loadRouter = () => import('../../app/router');",
+                'export const shared = AppShell;',
+            ].join('\n'),
+        );
+        const sharedFeatureHop = path.join(fakeSrc, 'features', 'hop.ts');
+        fs.writeFileSync(sharedFeatureHop, "import { shared } from './design/sharedCard';\nexport const hop = shared;\n");
+        const desktopEntryFixture = path.join(fakeSrc, 'app', 'main.tsx');
+        const mobileEntryFixture = path.join(fakeSrc, 'mobile', 'app', 'main.tsx');
+        fs.writeFileSync(desktopEntryFixture, "import { hop } from '../features/hop';\nexport const d = hop;\n");
+        fs.writeFileSync(mobileEntryFixture, "export const m = () => import('../../features/hop');\n");
+
+        for (const entries of [
+            [desktopEntryFixture, mobileEntryFixture],
+            [mobileEntryFixture, desktopEntryFixture],
+        ]) {
+            const transitiveMobileReport = await analyzeDesktopImportBoundary({
+                entryFiles: entries,
+                desktopSrcRoot: fakeSrc,
+                extensionRoot: fakeExt,
+            });
+            assert.deepEqual(
+                transitiveMobileReport.violations.map(v => `${v.type}:${v.target}`).sort(),
+                [
+                    'mobile-imports-desktop-shell:app/router.tsx',
+                    'mobile-imports-desktop-shell:shell/AppShell.tsx',
+                ],
+            );
+            for (const violation of transitiveMobileReport.violations) {
+                assert.equal(violation.chain[0], fs.realpathSync(mobileEntryFixture));
+                assert.equal(violation.chain[1], fs.realpathSync(sharedFeatureHop));
+                assert.equal(violation.chain[2], fs.realpathSync(sharedDesign));
+            }
+        }
     } finally {
         fs.rmSync(tmpDir, { recursive: true, force: true });
     }
+
+    assert.equal(
+        isDesktopPackageImport(path.join(DESKTOP_SRC_ROOT, 'features/chat/ChatCharacterPanel.tsx'), '@tanstack/react-router'),
+        false,
+        'ChatCharacterPanel.tsx 已不导入 @tanstack/react-router，白名单不应继续放行',
+    );
+    assert.equal(
+        isDesktopPackageImport(path.join(DESKTOP_SRC_ROOT, 'features/chat/ChatRoute.tsx'), '@tanstack/react-router'),
+        false,
+        'ChatRoute.tsx 已不导入 @tanstack/react-router，白名单不应继续放行',
+    );
+    assert.equal(
+        isDesktopPackageImport(path.join(DESKTOP_SRC_ROOT, 'features/chat/Composer.tsx'), 'react-hook-form'),
+        false,
+    );
+    assert.equal(
+        isDesktopPackageImport(path.join(DESKTOP_SRC_ROOT, 'features/chat/Composer.tsx'), 'zod'),
+        false,
+    );
+    assert.equal(
+        isDesktopPackageImport(path.join(DESKTOP_SRC_ROOT, 'features/chat/MessageList.tsx'), 'react-hook-form'),
+        false,
+    );
+    assert.equal(
+        isDesktopPackageImport(path.join(DESKTOP_SRC_ROOT, 'features/chat/MessageList.tsx'), 'zod'),
+        false,
+    );
+    assert.equal(
+        isDesktopPackageImport(path.join(DESKTOP_SRC_ROOT, 'features/characters/CreateWizard.tsx'), 'react'),
+        false,
+    );
+    assert.equal(
+        isDesktopPackageImport(path.join(DESKTOP_SRC_ROOT, 'features/characters/InstanceDialog.tsx'), 'react'),
+        false,
+    );
 
     const entry = path.join(DESKTOP_SRC_ROOT, 'app/providers.tsx');
     await assert.rejects(build({
@@ -613,6 +719,65 @@ test('mobile 入口纳入边界检查，且禁止桌面模块反向引用 mobile
             lib: { entry, formats: ['es'] },
         },
     }), /Unexpected desktop-imports-mobile mobile\/app\/MobileApp\.tsx/);
+
+    const mobileEntry = path.join(DESKTOP_SRC_ROOT, 'mobile/app/MobileApp.tsx');
+    const sharedDesignModule = path.join(DESKTOP_SRC_ROOT, 'design/theme/Aurora.tsx');
+    const sharedButtonModule = path.join(DESKTOP_SRC_ROOT, 'design/components/Button.tsx');
+    const desktopShellModule = path.join(DESKTOP_SRC_ROOT, 'shell/AppShell.tsx');
+    const desktopRouterModule = path.join(DESKTOP_SRC_ROOT, 'app/router.tsx');
+    await assert.rejects(build({
+        configFile: false,
+        logLevel: 'silent',
+        plugins: [
+            desktopResolvedGraph(),
+            {
+                name: 'mobile-indirect-shell-static-fixture',
+                enforce: 'pre',
+                resolveId(source) {
+                    if (source === '../../design/theme/Aurora?raw') {
+                        return `${sharedDesignModule}?raw`;
+                    }
+                    return null;
+                },
+                load(id) {
+                    if (id === mobileEntry) {
+                        return 'import "../../design/theme/Aurora?raw"; import "../../design/theme/Aurora"; export const bad = 1;';
+                    }
+                    if (id === `${sharedDesignModule}?raw`) return 'export default "raw";';
+                    if (id === sharedDesignModule) return 'import "../components/Button"; export const Aurora = () => null;';
+                    if (id === sharedButtonModule) return 'import "../../shell/AppShell"; export const Button = () => null;';
+                    if (id === desktopShellModule) return 'export const AppShell = () => null;';
+                    return null;
+                },
+            },
+        ],
+        build: {
+            write: false,
+            lib: { entry: mobileEntry, formats: ['es'] },
+        },
+    }), /Unexpected mobile-imports-desktop-shell shell\/AppShell\.tsx/);
+
+    await assert.rejects(build({
+        configFile: false,
+        logLevel: 'silent',
+        plugins: [
+            desktopResolvedGraph(),
+            {
+                name: 'mobile-indirect-router-dynamic-fixture',
+                enforce: 'pre',
+                load(id) {
+                    if (id === mobileEntry) return 'export const bad = () => import("../../design/theme/Aurora");';
+                    if (id === sharedDesignModule) return 'export const Aurora = () => import("../../app/router");';
+                    if (id === desktopRouterModule) return 'export const router = {};';
+                    return null;
+                },
+            },
+        ],
+        build: {
+            write: false,
+            lib: { entry: mobileEntry, formats: ['es'] },
+        },
+    }), /Unexpected mobile-imports-desktop-shell app\/router\.tsx/);
 });
 
 test('mobile/app 初始静态依赖图与预加载满足预算且超预算输入退出非零', () => {

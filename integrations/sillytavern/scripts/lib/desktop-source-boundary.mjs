@@ -176,21 +176,19 @@ const appPackages = {
     'features/characters/CharacterDetail.tsx': ['react'],
     'features/characters/CharacterGrid.tsx': ['react'],
     'features/characters/CharactersRoute.tsx': ['react'],
-    'features/characters/CreateWizard.tsx': ['react'],
     'features/characters/ImportCharacter.tsx': ['react'],
-    'features/characters/InstanceDialog.tsx': ['react'],
     'features/characters/PersonaEditor.tsx': ['react'],
     'features/characters/useCharactersState.ts': ['react', 'react-hook-form', 'zod'],
-    'features/chat/ChatCharacterPanel.tsx': ['@tanstack/react-query', '@tanstack/react-router', 'react', 'react-hook-form', 'zod'],
-    'features/chat/ChatRoute.tsx': ['@tanstack/react-router', 'react'],
+    'features/chat/ChatCharacterPanel.tsx': ['@tanstack/react-query', 'react', 'react-hook-form', 'zod'],
+    'features/chat/ChatRoute.tsx': ['react'],
     'features/chat/ChatSearch.tsx': ['react'],
     'features/chat/ChatStatusCard.tsx': ['@base-ui/react/popover', 'react'],
-    'features/chat/Composer.tsx': ['react', 'react-hook-form', 'zod'],
+    'features/chat/Composer.tsx': ['react'],
     'features/chat/ConflictSheet.tsx': ['@base-ui/react/dialog'],
     'features/chat/EmojiPicker.tsx': ['@base-ui/react/popover', '@emoji-mart/data', 'emoji-mart', 'react'],
     'features/chat/MessageItem.tsx': ['react'],
     'features/chat/MessageLeaf.tsx': ['react'],
-    'features/chat/MessageList.tsx': ['react', 'react-hook-form', 'yet-another-react-lightbox', 'yet-another-react-lightbox/plugins/zoom', 'yet-another-react-lightbox/styles.css', 'zod'],
+    'features/chat/MessageList.tsx': ['react', 'yet-another-react-lightbox', 'yet-another-react-lightbox/plugins/zoom', 'yet-another-react-lightbox/styles.css'],
     'features/chat/MessageMenu.tsx': ['@base-ui/react/menu', 'react'],
     'features/chat/ReactionBar.tsx': ['@base-ui/react/toolbar'],
     'features/chat/VoiceBubble.tsx': ['@base-ui/react/collapsible', 'react', 'wavesurfer.js'],
@@ -264,6 +262,14 @@ function allowsDesktopExternal(importer, specifier) {
     return importer === path.join(standalone, 'runtime.js') && specifier === sourceIdentity;
 }
 
+function isMobileModuleRel(relPath) {
+    return relPath === 'mobile' || relPath.startsWith('mobile/');
+}
+
+function isDesktopShellModuleRel(relPath) {
+    return relPath === 'shell' || relPath.startsWith('shell/') || relPath === 'app/router.tsx';
+}
+
 export function desktopResolvedGraph() {
     const ionicComponentsDir = `${path.join(npmDir, '@ionic/core/components')}${path.sep}`;
     return {
@@ -305,22 +311,51 @@ export function desktopResolvedGraph() {
         },
         buildEnd(error) {
             if (error) return;
-            for (const id of this.getModuleIds()) {
+            const moduleIds = [...this.getModuleIds()];
+            const mobileReachable = new Set();
+            const mobileQueue = [];
+            for (const id of moduleIds) {
+                const file = id.split('?')[0];
+                if (!file.startsWith(`${desktopSrc}${path.sep}`)) continue;
+                const rel = toPosix(path.relative(desktopSrc, file));
+                if (isMobileModuleRel(rel)) {
+                    mobileReachable.add(id);
+                    mobileQueue.push(id);
+                }
+            }
+            while (mobileQueue.length > 0) {
+                const currentId = mobileQueue.shift();
+                const currentModule = this.getModuleInfo(currentId);
+                if (!currentModule) continue;
+                for (const target of [...currentModule.importedIds, ...currentModule.dynamicallyImportedIds]) {
+                    const targetFile = target.split('?')[0];
+                    if (targetFile.startsWith(`${desktopSrc}${path.sep}`)) {
+                        const targetRel = toPosix(path.relative(desktopSrc, targetFile));
+                        if (isDesktopShellModuleRel(targetRel)) continue;
+                    }
+                    if (!mobileReachable.has(target)) {
+                        mobileReachable.add(target);
+                        mobileQueue.push(target);
+                    }
+                }
+            }
+            for (const id of moduleIds) {
                 const file = id.split('?')[0];
                 if (!isFirstPartyModule(file)) continue;
                 const module = this.getModuleInfo(id);
                 const importerRel = file.startsWith(`${desktopSrc}${path.sep}`)
                     ? toPosix(path.relative(desktopSrc, file))
                     : '';
-                const importerIsMobile = importerRel === 'mobile' || importerRel.startsWith('mobile/');
+                const importerIsMobile = isMobileModuleRel(importerRel);
+                const importerInMobileGraph = importerIsMobile || mobileReachable.has(id);
                 for (const target of [...module.importedIds, ...module.dynamicallyImportedIds]) {
                     const targetFile = target.split('?')[0];
                     if (targetFile.startsWith(`${desktopSrc}${path.sep}`)) {
                         const targetRel = toPosix(path.relative(desktopSrc, targetFile));
-                        if ((targetRel === 'mobile' || targetRel.startsWith('mobile/')) && !importerIsMobile) {
+                        if (isMobileModuleRel(targetRel) && !importerIsMobile) {
                             this.error(`Unexpected desktop-imports-mobile ${targetRel} from ${file}`);
                         }
-                        if (importerIsMobile && (targetRel === 'shell' || targetRel.startsWith('shell/') || targetRel === 'app/router.tsx')) {
+                        if (importerInMobileGraph && isDesktopShellModuleRel(targetRel)) {
                             this.error(`Unexpected mobile-imports-desktop-shell ${targetRel} from ${file}`);
                         }
                     }
