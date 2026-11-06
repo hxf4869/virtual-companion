@@ -472,3 +472,28 @@ Owner 选择 React，要求保留现有正常 UI、优先复用成熟开源组�
 | 预设写入 | `loadPreset`、`createPreset`、`deletePreset`、`createOrReplacePreset`、`renamePreset`、`replacePreset`、`updatePresetWith`、`setPreset` |
 | 正则写入 | `replaceTavernRegexes`、`updateTavernRegexesWith` |
 | `builtin.*` | `addOneMessage`、`getImageTokenCost`、`getVideoTokenCost`、`promptManager`、`reloadAndRenderChatWithoutEvents`、`reloadChatWithoutEvents`、`reloadEditor`、`reloadEditorDebounced`、`renderPromptManager`、`renderPromptManagerDebounced` |
+
+## L. 手机端 React 重建（MB2，2026-11-06 Owner 要求重做手机端）
+
+新增原因：电脑端 DR2 合入 main 后功能远多于 `mb-mobile` 的 uni-app 手机端；Owner 决定手机端重做并接受大面积调整。
+方案为手机与电脑端共用 React 代码与独立引擎，放弃 uni-app 界面与隐藏 ST 引擎，见 [ADR-0012](../decisions/0012-mobile-react-shared-engine.md)（Proposed）
+与 [MB2 计划](2026-11-06-mobile-react-rebuild-plan.md)。ADR-0012 批准前只执行 MB2-0、MB2-1。`MB-*`（ADR-0011 路线）不再推进。
+
+| ID | P | 内容 | 验收要点 |
+| --- | --- | --- | --- |
+| MB2-0 | P1 | 批准 ADR-0012，修订 DESIGN.md 第 17 节，登记待出图页面 | 文档一致性、`git diff --check` |
+| MB2-1 | P1 | Spike：独立引擎手机性能基线与 Android 壳（Capacitor）可行性 | 计划第 3.6 节指标、ADR-0011 App 验证项、插件许可 |
+| MB2-2 | P1 | 迁移 `mb-mobile` 后端与契约：MDL-2（V285）、角色来电（V284） | 迁移重排编号、Go 集成、RLS、受管 `hl-proactive` / `voice-chat` |
+| MB2-3 | P1 | 手机入口构建与 `/m/` 同源托管 | host-auth 单测、两端构建、电脑端不回归 |
+| MB2-4 | P1 | 共享业务逻辑抽取（电脑端零行为变化） | 电脑端 Vitest、离线全量、受影响受管场景 |
+| MB2-5 | P0 | 手机壳、导航、主题与背景 | `mb2-shell`、`mb2-layout` |
+| MB2-6 | P0 | 聊天、富内容与全屏卡片页 | `mb2-chat`、`mb2-cards`、`mb2-perf` |
+| MB2-7 | P1 | 角色与人设 | `mb2-pages` 角色段 |
+| MB2-8 | P1 | 记忆、收藏、提醒与日记 | `mb2-pages` 记忆段 |
+| MB2-9 | P1 | 陪伴与收件箱（含未接来电回电） | `mb2-pages` 陪伴段 |
+| MB2-10 | P1 | 剧情 | `mb2-pages` 剧情段 |
+| MB2-11 | P1 | 设置与酒馆九类配置 | `mb2-settings` |
+| MB2-12 | P1/P2 | 语音、通话与来电 | `mb2-voice`、`mb2-call` |
+| MB2-13 | P2 | Android 薄壳与系统能力 | MuMu + adb 记录，真机项标注 |
+| MB2-14 | P1 | 手机入口切换与旧宿主清理（逐项确认） | 两端受管整组、`check.sh` |
+| MB2-15 | P1 | 全量验收、视觉终审与合并准备 | Mac 参考环境整组、性能预算、截图终审 |
