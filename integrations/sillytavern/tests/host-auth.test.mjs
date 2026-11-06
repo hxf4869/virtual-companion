@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createHostAuth, parseAccountHandles } from '../server-plugin/virtual-companion/lib/host-auth.js';
+import { createHostAuth, isMobileRoutePath, parseAccountHandles } from '../server-plugin/virtual-companion/lib/host-auth.js';
 
 const active = { stDataConfigured: true, nextStep: 'ACTIVE', accountId: '42', sessionId: '7', authenticatorEnabled: true, passwordMustChange: false };
 function harness({ identity = active, status = 200, fetchImpl } = {}) {
@@ -173,13 +173,21 @@ test('手机界面 /m/：未登录跳登录页；入口绑定会话并注入meta
             mobileDir: customMobileDir,
         });
         const run = async (gate, p, session = {}, method = 'GET') => {
-            const req = { path: p, method, session, headers: { cookie: 'vc_session=synthetic' } };
+            const [pathname] = p.split('?');
+            const req = { path: pathname, url: p, originalUrl: p, method, session, headers: { cookie: 'vc_session=synthetic' } };
             const res = { statusCode: 200, headers: {}, payload: undefined, setHeader(n, v) { this.headers[n] = v; }, appendHeader(n, v) { this.headers[n] = v; },
                 status(c) { this.statusCode = c; return this; }, json(v) { this.payload = v; return this; }, end(v) { this.payload = v; }, redirect(c, u) { this.statusCode = c; this.headers.Location = u; } };
             let next = false; await gate(req, res, () => { next = true; }); return { req, res, next };
         };
+        assert.equal(isMobileRoutePath('/m/chat/%5B%22alice.png%22%2C%22chat-1%22%5D/card'), true);
+        assert.equal(isMobileRoutePath('/m/chat/%5B%22alice.png%22%2C%22chat-1%22%5D/card?message=msg-42'), true);
+        assert.equal(isMobileRoutePath('/m/cards/x'), false);
+
         assert.equal((await run(gateFor(active, 401), '/m/')).res.headers.Location, '/auth/');
         assert.equal((await run(gateFor(active, 401), '/m/chat/%5B%22alice.png%22%2C%22chat-1%22%5D')).res.headers.Location, '/auth/');
+        assert.equal((await run(gateFor(active, 401), '/m/chat/%5B%22alice.png%22%2C%22chat-1%22%5D/card')).res.headers.Location, '/auth/');
+        assert.equal((await run(gateFor(active, 401), '/m/chat/%5B%22alice.png%22%2C%22chat-1%22%5D/card?message=msg-42')).res.headers.Location, '/auth/');
+        assert.equal((await run(gateFor(active, 401), '/m/cards/x')).res.statusCode, 401);
         assert.equal((await run(gateFor(active), '/m')).res.headers.Location, '/m/');
 
         // 缺少构建产物时返回 503
@@ -209,6 +217,8 @@ test('手机界面 /m/：未登录跳登录页；入口绑定会话并注入meta
         for (const subroute of [
             '/m/chat',
             '/m/chat/%5B%22alice.png%22%2C%22chat-1%22%5D',
+            '/m/chat/%5B%22alice.png%22%2C%22chat-1%22%5D/card',
+            '/m/chat/%5B%22alice.png%22%2C%22chat-1%22%5D/card?message=msg-42',
             '/m/characters',
             '/m/characters/alice.png',
             '/m/memory',
@@ -253,6 +263,7 @@ test('手机界面 /m/：未登录跳登录页；入口绑定会话并注入meta
             '/m/assets//a-1.js',
             '/m/assets',
             '/m/missing.js',
+            '/m/cards/x',
             '/m/unknown-route',
             '/m/%ZZ',
             '/m/%5csecret',
@@ -263,6 +274,7 @@ test('手机界面 /m/：未登录跳登录页；入口绑定会话并注入meta
         }
         // 其他非页面入口路径首个请求仍不能绑定会话。
         assert.equal((await run(gate, '/m/assets/a-1.js')).res.statusCode, 409);
+        assert.equal((await run(gate, '/m/cards/x')).res.statusCode, 409);
         assert.equal((await run(gate, '/m/unknown-route')).res.statusCode, 409);
     } finally {
         fs.rmSync(dir, { recursive: true, force: true });

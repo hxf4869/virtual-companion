@@ -50,9 +50,11 @@ function isSafeMobileParam(rawSegment) {
 }
 
 export function isMobileRoutePath(reqPath) {
-    if (reqPath === '/m/' || reqPath === '/m/index.html') return true;
-    if (!reqPath.startsWith('/m/')) return false;
-    const rawRel = reqPath.slice('/m/'.length).replace(/\/+$/, '');
+    if (typeof reqPath !== 'string') return false;
+    const pathname = reqPath.split('?')[0];
+    if (pathname === '/m/' || pathname === '/m/index.html') return true;
+    if (!pathname.startsWith('/m/')) return false;
+    const rawRel = pathname.slice('/m/'.length).replace(/\/+$/, '');
     if (!rawRel) return true;
     const rawParts = rawRel.split('/');
     if (rawParts.some((part) => !isSafeMobileParam(part))) return false;
@@ -77,10 +79,11 @@ export function isMobileRoutePath(reqPath) {
 }
 
 export function serveMobile(mobileDir, req, res) {
-    const rawTail = req.path.slice('/m/'.length);
+    const pathname = String(req.path || '').split('?')[0];
+    const rawTail = pathname.slice('/m/'.length);
     let rel;
     try { rel = decodeURIComponent(rawTail) || 'index.html'; } catch { return fail(res, 400, 'INVALID_REQUEST', '路径无效'); }
-    const routeEntry = rel === 'index.html' || isMobileRoutePath(req.path);
+    const routeEntry = rel === 'index.html' || isMobileRoutePath(pathname);
     if (!routeEntry && rel.split('/').some((part) => part === '' || part === '.' || part === '..' || part.includes('\\') || part.includes('\0'))) {
         return fail(res, 404, 'NOT_FOUND_OR_FORBIDDEN', '未找到此入口');
     }

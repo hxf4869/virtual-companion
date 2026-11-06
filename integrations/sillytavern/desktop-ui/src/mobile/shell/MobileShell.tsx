@@ -78,7 +78,12 @@ export interface MobileShellSlots {
   characterDetail?: (ctx: MobileRouteSlotContext & { avatar: string }) => React.ReactNode;
   memoryDetail?: (ctx: MobileRouteSlotContext & { memoryId: string }) => React.ReactNode;
   storyRun?: (ctx: MobileRouteSlotContext & { runId: string }) => React.ReactNode;
-  cardFullscreen?: (ctx: MobileRouteSlotContext & { cardKey: string }) => React.ReactNode;
+  cardFullscreen?: (
+    ctx: MobileRouteSlotContext & {
+      conversationKey: string;
+      message?: string;
+    },
+  ) => React.ReactNode;
   settingsCategories?: Partial<
     Record<
       SettingsCategoryKey,
@@ -114,10 +119,11 @@ function formatBadgeCount(count: number | undefined): string | null {
 }
 
 function normalizeMobilePathname(pathname: string): string {
-  if (!pathname || pathname === '/' || pathname === '/m' || pathname === '/m/') {
+  const clean = (pathname || '').split('?')[0];
+  if (!clean || clean === '/' || clean === '/m' || clean === '/m/') {
     return '/m/chat';
   }
-  return pathname.length > 1 && pathname.endsWith('/') ? pathname.slice(0, -1) : pathname;
+  return clean.length > 1 && clean.endsWith('/') ? clean.slice(0, -1) : clean;
 }
 
 function isPrimaryTabPathname(pathname: string): MobileTabDefinition | undefined {
@@ -133,9 +139,13 @@ function resolveTavernSectionLabel(section: string): string {
   return DEFAULT_TAVERN_CATEGORIES.find((item) => item.panel === section)?.label ?? '酒馆设置';
 }
 
-interface PrimaryTabPageProps {
-  tab: MobileTabDefinition;
+function resolveCardFallbackBackPath(conversationKey: string): string {
+  return conversationKey ? `/m/chat/${encodeURIComponent(conversationKey)}` : '/m/chat';
+}
+
+interface MobileShellRuntimeContextValue {
   activePathname: string;
+  activeSearch: string;
   userName: string;
   userAvatarUrl?: string | null;
   onOpenSettings: () => void;
@@ -143,20 +153,35 @@ interface PrimaryTabPageProps {
   createContext: (
     pagePathname: string,
     params?: Record<string, string | undefined>,
+    defaultFallbackBackPath?: string,
   ) => MobileRouteSlotContext;
 }
 
-function PrimaryTabPage({
-  tab,
-  activePathname,
-  userName,
-  userAvatarUrl,
-  onOpenSettings,
-  slots,
-  createContext,
-}: PrimaryTabPageProps) {
+const MobileShellRuntimeContext = React.createContext<MobileShellRuntimeContextValue | null>(null);
+
+function useMobileShellRuntime(): MobileShellRuntimeContextValue {
+  const ctx = React.useContext(MobileShellRuntimeContext);
+  if (!ctx) {
+    throw new Error('useMobileShellRuntime must be used within MobileShellInner');
+  }
+  return ctx;
+}
+
+interface PrimaryTabPageProps {
+  tab: MobileTabDefinition;
+}
+
+function PrimaryTabPage({ tab }: PrimaryTabPageProps) {
+  const {
+    activePathname,
+    userName,
+    userAvatarUrl,
+    onOpenSettings,
+    slots,
+    createContext,
+  } = useMobileShellRuntime();
   const isActive = normalizeMobilePathname(activePathname) === tab.path;
-  const ctx = useMemo(() => createContext(tab.path, {}), [createContext, tab.path]);
+  const ctx = useMemo(() => createContext(tab.path, {}, '/m/chat'), [createContext, tab.path]);
   const headerActionNode = slots?.headerActions?.[tab.key];
   const slotNode = slots?.tabs?.[tab.key];
   const initialChar = (userName || '你').trim().charAt(0).toUpperCase() || '你';
@@ -208,32 +233,33 @@ function PrimaryTabPage({
   );
 }
 
+type SecondarySlotKey =
+  | 'chat-detail'
+  | 'character-detail'
+  | 'memory-detail'
+  | 'story-run'
+  | 'card-fullscreen'
+  | 'tavern-section'
+  | 'settings-category';
+
 interface SecondaryRoutePageProps {
-  slotKey: string;
+  slotKey: SecondarySlotKey;
   routePrefix: string;
+  routeSuffix?: string;
   paramName: string;
-  fallbackBackPath: string;
+  fallbackBackPath: string | ((paramValue: string, rawParam: string) => string);
   defaultTitle: string | ((paramValue: string) => string);
-  activePathname: string;
-  slots?: MobileShellSlots;
-  createContext: (
-    pagePathname: string,
-    params?: Record<string, string | undefined>,
-  ) => MobileRouteSlotContext;
-  renderContent?: (ctx: MobileRouteSlotContext, paramValue: string) => React.ReactNode;
 }
 
 function SecondaryRoutePage({
   slotKey,
   routePrefix,
+  routeSuffix = '',
   paramName,
   fallbackBackPath,
   defaultTitle,
-  activePathname,
-  slots,
-  createContext,
-  renderContent,
 }: SecondaryRoutePageProps) {
+  const { activePathname, activeSearch, slots, createContext } = useMobileShellRuntime();
   const routeParams = useParams<Record<string, string | undefined>>();
   const rawParam = routeParams[paramName] ?? '';
   const paramValue = useMemo(() => {
@@ -244,20 +270,98 @@ function SecondaryRoutePage({
     }
   }, [rawParam]);
 
-  const pagePathname = rawParam ? `${routePrefix}/${rawParam}` : routePrefix;
+  const encodedParam = useMemo(() => encodeURIComponent(paramValue), [paramValue]);
+  const rawPath = rawParam
+    ? `${routePrefix}/${rawParam}${routeSuffix}`
+    : `${routePrefix}${routeSuffix}`;
+  const decodedPath = rawParam
+    ? `${routePrefix}/${paramValue}${routeSuffix}`
+    : `${routePrefix}${routeSuffix}`;
+  const encodedPath = rawParam
+    ? `${routePrefix}/${encodedParam}${routeSuffix}`
+    : `${routePrefix}${routeSuffix}`;
+
   const normalizedActive = normalizeMobilePathname(activePathname);
-  const isActive = normalizedActive === pagePathname || normalizedActive === `${routePrefix}/${paramValue}`;
+  const decodedActive = useMemo(() => {
+    try {
+      return decodeURIComponent(normalizedActive);
+    } catch {
+      return normalizedActive;
+    }
+  }, [normalizedActive]);
+  const isActive =
+    normalizedActive === rawPath ||
+    normalizedActive === decodedPath ||
+    normalizedActive === encodedPath ||
+    decodedActive === decodedPath;
+
+  const lastActivePathnameRef = useRef(isActive ? normalizedActive : encodedPath);
+  if (isActive) {
+    lastActivePathnameRef.current = normalizedActive;
+  }
+
+  const lastActiveSearchRef = useRef(activeSearch);
+  if (isActive) {
+    lastActiveSearchRef.current = activeSearch;
+  }
+  const effectiveSearch = isActive ? activeSearch : lastActiveSearchRef.current;
+
+  const messageParam = useMemo(() => {
+    if (!effectiveSearch) return undefined;
+    const val = new URLSearchParams(effectiveSearch).get('message');
+    return val && val.length > 0 ? val : undefined;
+  }, [effectiveSearch]);
+
+  const resolvedFallbackBackPath = useMemo(
+    () =>
+      typeof fallbackBackPath === 'function'
+        ? fallbackBackPath(paramValue, rawParam)
+        : fallbackBackPath,
+    [fallbackBackPath, paramValue, rawParam],
+  );
+
+  const pagePathname = isActive ? normalizedActive : lastActivePathnameRef.current;
 
   const ctx = useMemo(
-    () => createContext(pagePathname, { ...routeParams, [paramName]: paramValue }),
-    [createContext, pagePathname, paramName, paramValue, routeParams],
+    () =>
+      createContext(
+        pagePathname,
+        {
+          ...routeParams,
+          [paramName]: paramValue,
+          ...(slotKey === 'card-fullscreen' && messageParam !== undefined
+            ? { message: messageParam }
+            : {}),
+        },
+        resolvedFallbackBackPath,
+      ),
+    [
+      createContext,
+      messageParam,
+      pagePathname,
+      paramName,
+      paramValue,
+      resolvedFallbackBackPath,
+      routeParams,
+      slotKey,
+    ],
   );
 
   const fallbackTitleText =
     typeof defaultTitle === 'function' ? defaultTitle(paramValue) : defaultTitle;
   const customTitle =
+    (effectiveSearch
+      ? slots?.secondaryTitles?.[`${pagePathname}${effectiveSearch}`] ??
+        slots?.secondaryTitles?.[`${decodedPath}${effectiveSearch}`] ??
+        slots?.secondaryTitles?.[`${encodedPath}${effectiveSearch}`]
+      : undefined) ??
     slots?.secondaryTitles?.[pagePathname] ??
-    slots?.secondaryTitles?.[`${routePrefix}/${paramValue}`] ??
+    slots?.secondaryTitles?.[rawPath] ??
+    slots?.secondaryTitles?.[decodedPath] ??
+    slots?.secondaryTitles?.[encodedPath] ??
+    (slotKey === 'card-fullscreen' && messageParam
+      ? slots?.secondaryTitles?.[messageParam]
+      : undefined) ??
     slots?.secondaryTitles?.[paramValue] ??
     fallbackTitleText;
 
@@ -269,7 +373,7 @@ function SecondaryRoutePage({
     >
       <header className="vc-mobile-secondary-header">
         <IonBackButton
-          defaultHref={fallbackBackPath}
+          defaultHref={resolvedFallbackBackPath}
           text=""
           className="vc-mobile-glass-circle-btn"
           aria-label="返回"
@@ -292,7 +396,48 @@ function SecondaryRoutePage({
         className="vc-mobile-slot-container vc-mobile-slot-container--secondary"
         data-vc-mobile-slot={isActive ? `secondary:${slotKey}` : undefined}
       >
-        {renderContent ? renderContent(ctx, paramValue) : null}
+        {slotKey === 'chat-detail'
+          ? slots?.chatDetail
+            ? slots.chatDetail({ ...ctx, conversationKey: paramValue })
+            : null
+          : slotKey === 'character-detail'
+            ? slots?.characterDetail
+              ? slots.characterDetail({ ...ctx, avatar: paramValue })
+              : null
+            : slotKey === 'memory-detail'
+              ? slots?.memoryDetail
+                ? slots.memoryDetail({ ...ctx, memoryId: paramValue })
+                : null
+              : slotKey === 'story-run'
+                ? slots?.storyRun
+                  ? slots.storyRun({ ...ctx, runId: paramValue })
+                  : null
+                : slotKey === 'card-fullscreen'
+                  ? slots?.cardFullscreen
+                    ? slots.cardFullscreen({
+                        ...ctx,
+                        conversationKey: paramValue,
+                        message: messageParam,
+                      })
+                    : null
+                  : slotKey === 'tavern-section'
+                    ? (() => {
+                        const slot = slots?.tavernSections?.[paramValue as TavernCategoryKey];
+                        if (typeof slot === 'function') {
+                          return slot({ ...ctx, section: paramValue as TavernCategoryKey });
+                        }
+                        return slot ?? null;
+                      })()
+                    : slotKey === 'settings-category'
+                      ? (() => {
+                          const slot =
+                            slots?.settingsCategories?.[paramValue as SettingsCategoryKey];
+                          if (typeof slot === 'function') {
+                            return slot({ ...ctx, category: paramValue as SettingsCategoryKey });
+                          }
+                          return slot ?? null;
+                        })()
+                      : null}
       </main>
     </IonPage>
   );
@@ -339,12 +484,17 @@ function MobileShellInner({
     if (initialPathAppliedRef.current) return;
     initialPathAppliedRef.current = true;
     if (initialPath) {
-      const target = normalizeMobilePathname(initialPath);
-      if (normalizeMobilePathname(location.pathname) !== target) {
-        routerNavigate(target, { replace: true });
+      const [rawInitPathname, ...searchParts] = initialPath.split('?');
+      const targetPathname = normalizeMobilePathname(rawInitPathname);
+      const targetSearch = searchParts.length > 0 ? `?${searchParts.join('?')}` : '';
+      if (
+        normalizeMobilePathname(location.pathname) !== targetPathname ||
+        location.search !== targetSearch
+      ) {
+        routerNavigate(`${targetPathname}${targetSearch}`, { replace: true });
       }
     }
-  }, [initialPath, location.pathname, routerNavigate]);
+  }, [initialPath, location.pathname, location.search, routerNavigate]);
 
   const settingsOpen = readSettingsOpenFromState(location.state);
   if (!settingsOpen) {
@@ -469,247 +619,212 @@ function MobileShellInner({
     (
       pagePathname: string,
       params: Record<string, string | undefined> = {},
+      defaultFallbackBackPath = '/m/chat',
     ): MobileRouteSlotContext => ({
       pathname: pagePathname,
       params,
       navigate,
-      goBack,
+      goBack: (fallbackPath = defaultFallbackBackPath) => goBack(fallbackPath),
       openSettings,
       setCharacterContext,
     }),
     [goBack, navigate, openSettings, setCharacterContext],
   );
 
+  const runtimeContextValue = useMemo<MobileShellRuntimeContextValue>(
+    () => ({
+      activePathname: normalizedPathname,
+      activeSearch: location.search,
+      userName,
+      userAvatarUrl,
+      onOpenSettings: openSettings,
+      slots,
+      createContext,
+    }),
+    [
+      createContext,
+      location.search,
+      normalizedPathname,
+      openSettings,
+      slots,
+      userAvatarUrl,
+      userName,
+    ],
+  );
+
   const effectiveAuroraTint = isStoryScene ? STORY_AURORA_TINT : characterTint;
   const hideTabBar = !activePrimaryTab || settingsOpen || keyboardOpen;
 
   return (
-    <div
-      className="vc-mobile-app"
-      data-vc-mobile-app=""
-      data-vc-mobile-scene={isStoryScene ? 'story' : 'default'}
-      data-vc-mobile-route={normalizedPathname}
-    >
-      <Aurora characterTint={effectiveAuroraTint} />
+    <MobileShellRuntimeContext.Provider value={runtimeContextValue}>
+      <div
+        className="vc-mobile-app"
+        data-vc-mobile-app=""
+        data-vc-mobile-scene={isStoryScene ? 'story' : 'default'}
+        data-vc-mobile-route={normalizedPathname}
+      >
+        <Aurora characterTint={effectiveAuroraTint} />
 
-      <div className="vc-mobile-shell-frame">
-        <IonTabs>
-          <IonRouterOutlet id="vc-mobile-router-outlet">
-            <Route path="/" element={<Navigate to="/m/chat" replace />} />
-            <Route path="/m" element={<Navigate to="/m/chat" replace />} />
+        <div className="vc-mobile-shell-frame">
+          <IonTabs>
+            <IonRouterOutlet id="vc-mobile-router-outlet">
+              <Route path="/" element={<Navigate to="/m/chat" replace />} />
+              <Route path="/m" element={<Navigate to="/m/chat" replace />} />
 
-            {MOBILE_TABS.map((tab) => (
+              {MOBILE_TABS.map((tab) => (
+                <Route
+                  key={tab.key}
+                  path={tab.path}
+                  element={<PrimaryTabPage tab={tab} />}
+                />
+              ))}
+
               <Route
-                key={tab.key}
-                path={tab.path}
+                path="/m/chat/:conversationKey/card"
                 element={
-                  <PrimaryTabPage
-                    tab={tab}
-                    activePathname={normalizedPathname}
-                    userName={userName}
-                    userAvatarUrl={userAvatarUrl}
-                    onOpenSettings={openSettings}
-                    slots={slots}
-                    createContext={createContext}
+                  <SecondaryRoutePage
+                    slotKey="card-fullscreen"
+                    routePrefix="/m/chat"
+                    routeSuffix="/card"
+                    paramName="conversationKey"
+                    fallbackBackPath={resolveCardFallbackBackPath}
+                    defaultTitle="互动卡片"
                   />
                 }
               />
-            ))}
 
-            <Route
-              path="/m/chat/:conversationKey"
-              element={
-                <SecondaryRoutePage
-                  slotKey="chat-detail"
-                  routePrefix="/m/chat"
-                  paramName="conversationKey"
-                  fallbackBackPath="/m/chat"
-                  defaultTitle="对话"
-                  activePathname={normalizedPathname}
-                  slots={slots}
-                  createContext={createContext}
-                  renderContent={(ctx, conversationKey) =>
-                    slots?.chatDetail ? slots.chatDetail({ ...ctx, conversationKey }) : null
-                  }
-                />
-              }
-            />
+              <Route
+                path="/m/chat/:conversationKey"
+                element={
+                  <SecondaryRoutePage
+                    slotKey="chat-detail"
+                    routePrefix="/m/chat"
+                    paramName="conversationKey"
+                    fallbackBackPath="/m/chat"
+                    defaultTitle="对话"
+                  />
+                }
+              />
 
-            <Route
-              path="/m/characters/:avatar"
-              element={
-                <SecondaryRoutePage
-                  slotKey="character-detail"
-                  routePrefix="/m/characters"
-                  paramName="avatar"
-                  fallbackBackPath="/m/characters"
-                  defaultTitle="角色详情"
-                  activePathname={normalizedPathname}
-                  slots={slots}
-                  createContext={createContext}
-                  renderContent={(ctx, avatar) =>
-                    slots?.characterDetail ? slots.characterDetail({ ...ctx, avatar }) : null
-                  }
-                />
-              }
-            />
+              <Route
+                path="/m/characters/:avatar"
+                element={
+                  <SecondaryRoutePage
+                    slotKey="character-detail"
+                    routePrefix="/m/characters"
+                    paramName="avatar"
+                    fallbackBackPath="/m/characters"
+                    defaultTitle="角色详情"
+                  />
+                }
+              />
 
-            <Route
-              path="/m/memory/:memoryId"
-              element={
-                <SecondaryRoutePage
-                  slotKey="memory-detail"
-                  routePrefix="/m/memory"
-                  paramName="memoryId"
-                  fallbackBackPath="/m/memory"
-                  defaultTitle="记忆详情"
-                  activePathname={normalizedPathname}
-                  slots={slots}
-                  createContext={createContext}
-                  renderContent={(ctx, memoryId) =>
-                    slots?.memoryDetail ? slots.memoryDetail({ ...ctx, memoryId }) : null
-                  }
-                />
-              }
-            />
+              <Route
+                path="/m/memory/:memoryId"
+                element={
+                  <SecondaryRoutePage
+                    slotKey="memory-detail"
+                    routePrefix="/m/memory"
+                    paramName="memoryId"
+                    fallbackBackPath="/m/memory"
+                    defaultTitle="记忆详情"
+                  />
+                }
+              />
 
-            <Route
-              path="/m/story/:runId"
-              element={
-                <SecondaryRoutePage
-                  slotKey="story-run"
-                  routePrefix="/m/story"
-                  paramName="runId"
-                  fallbackBackPath="/m/story"
-                  defaultTitle="剧情进行中"
-                  activePathname={normalizedPathname}
-                  slots={slots}
-                  createContext={createContext}
-                  renderContent={(ctx, runId) =>
-                    slots?.storyRun ? slots.storyRun({ ...ctx, runId }) : null
-                  }
-                />
-              }
-            />
+              <Route
+                path="/m/story/:runId"
+                element={
+                  <SecondaryRoutePage
+                    slotKey="story-run"
+                    routePrefix="/m/story"
+                    paramName="runId"
+                    fallbackBackPath="/m/story"
+                    defaultTitle="剧情进行中"
+                  />
+                }
+              />
 
-            <Route
-              path="/m/cards/:cardKey"
-              element={
-                <SecondaryRoutePage
-                  slotKey="card-fullscreen"
-                  routePrefix="/m/cards"
-                  paramName="cardKey"
-                  fallbackBackPath="/m/chat"
-                  defaultTitle="互动卡片"
-                  activePathname={normalizedPathname}
-                  slots={slots}
-                  createContext={createContext}
-                  renderContent={(ctx, cardKey) =>
-                    slots?.cardFullscreen ? slots.cardFullscreen({ ...ctx, cardKey }) : null
-                  }
-                />
-              }
-            />
+              <Route
+                path="/m/settings/tavern/:section"
+                element={
+                  <SecondaryRoutePage
+                    slotKey="tavern-section"
+                    routePrefix="/m/settings/tavern"
+                    paramName="section"
+                    fallbackBackPath="/m/chat"
+                    defaultTitle={resolveTavernSectionLabel}
+                  />
+                }
+              />
 
-            <Route
-              path="/m/settings/tavern/:section"
-              element={
-                <SecondaryRoutePage
-                  slotKey="tavern-section"
-                  routePrefix="/m/settings/tavern"
-                  paramName="section"
-                  fallbackBackPath="/m/chat"
-                  defaultTitle={resolveTavernSectionLabel}
-                  activePathname={normalizedPathname}
-                  slots={slots}
-                  createContext={createContext}
-                  renderContent={(ctx, section) => {
-                    const slot = slots?.tavernSections?.[section as TavernCategoryKey];
-                    if (typeof slot === 'function') {
-                      return slot({ ...ctx, section: section as TavernCategoryKey });
-                    }
-                    return slot ?? null;
-                  }}
-                />
-              }
-            />
+              <Route
+                path="/m/settings/:category"
+                element={
+                  <SecondaryRoutePage
+                    slotKey="settings-category"
+                    routePrefix="/m/settings"
+                    paramName="category"
+                    fallbackBackPath="/m/chat"
+                    defaultTitle={resolveSettingsCategoryLabel}
+                  />
+                }
+              />
+            </IonRouterOutlet>
 
-            <Route
-              path="/m/settings/:category"
-              element={
-                <SecondaryRoutePage
-                  slotKey="settings-category"
-                  routePrefix="/m/settings"
-                  paramName="category"
-                  fallbackBackPath="/m/chat"
-                  defaultTitle={resolveSettingsCategoryLabel}
-                  activePathname={normalizedPathname}
-                  slots={slots}
-                  createContext={createContext}
-                  renderContent={(ctx, category) => {
-                    const slot = slots?.settingsCategories?.[category as SettingsCategoryKey];
-                    if (typeof slot === 'function') {
-                      return slot({ ...ctx, category: category as SettingsCategoryKey });
-                    }
-                    return slot ?? null;
-                  }}
-                />
-              }
-            />
-          </IonRouterOutlet>
+            <IonTabBar
+              slot="bottom"
+              className="vc-mobile-tabbar"
+              data-vc-mobile-tabbar=""
+              data-hidden={hideTabBar ? 'true' : 'false'}
+              hidden={hideTabBar}
+            >
+              {MOBILE_TABS.map((tab) => {
+                const isSelected = activePrimaryTab?.key === tab.key;
+                const badgeText = formatBadgeCount(badges?.[tab.key]);
+                const showDot = !badgeText && Boolean(unreadDots?.[tab.key]);
 
-          <IonTabBar
-            slot="bottom"
-            className="vc-mobile-tabbar"
-            data-vc-mobile-tabbar=""
-            data-hidden={hideTabBar ? 'true' : 'false'}
-            hidden={hideTabBar}
-          >
-            {MOBILE_TABS.map((tab) => {
-              const isSelected = activePrimaryTab?.key === tab.key;
-              const badgeText = formatBadgeCount(badges?.[tab.key]);
-              const showDot = !badgeText && Boolean(unreadDots?.[tab.key]);
+                return (
+                  <IonTabButton
+                    key={tab.key}
+                    tab={tab.key}
+                    href={tab.path}
+                    selected={isSelected}
+                    className="vc-mobile-tab-button"
+                    data-vc-tab={tab.key}
+                    data-active={isSelected ? 'true' : 'false'}
+                  >
+                    <span className="vc-mobile-tab-icon-wrap">
+                      <MobileIcon name={tab.icon} size={24} />
+                      {badgeText ? (
+                        <span className="vc-mobile-tab-badge" data-vc-tab-badge="">
+                          {badgeText}
+                        </span>
+                      ) : showDot ? (
+                        <span className="vc-mobile-tab-dot" data-vc-tab-dot="" />
+                      ) : null}
+                    </span>
+                    <span className="vc-mobile-tab-label">{tab.label}</span>
+                  </IonTabButton>
+                );
+              })}
+            </IonTabBar>
+          </IonTabs>
 
-              return (
-                <IonTabButton
-                  key={tab.key}
-                  tab={tab.key}
-                  href={tab.path}
-                  selected={isSelected}
-                  className="vc-mobile-tab-button"
-                  data-vc-tab={tab.key}
-                  data-active={isSelected ? 'true' : 'false'}
-                >
-                  <span className="vc-mobile-tab-icon-wrap">
-                    <MobileIcon name={tab.icon} size={24} />
-                    {badgeText ? (
-                      <span className="vc-mobile-tab-badge" data-vc-tab-badge="">
-                        {badgeText}
-                      </span>
-                    ) : showDot ? (
-                      <span className="vc-mobile-tab-dot" data-vc-tab-dot="" />
-                    ) : null}
-                  </span>
-                  <span className="vc-mobile-tab-label">{tab.label}</span>
-                </IonTabButton>
-              );
-            })}
-          </IonTabBar>
-        </IonTabs>
+          {children ? <div className="vc-mobile-injected-children">{children}</div> : null}
+        </div>
 
-        {children ? <div className="vc-mobile-injected-children">{children}</div> : null}
+        <MobileSettingsSheet
+          open={settingsOpen}
+          onRequestClose={closeSettings}
+          onSelectCategory={handleSelectSettingsCategory}
+          onSelectTavernSection={handleSelectTavernSection}
+          userName={userName}
+          userAvatarUrl={userAvatarUrl}
+          slots={slots}
+        />
       </div>
-
-      <MobileSettingsSheet
-        open={settingsOpen}
-        onRequestClose={closeSettings}
-        onSelectCategory={handleSelectSettingsCategory}
-        onSelectTavernSection={handleSelectTavernSection}
-        userName={userName}
-        userAvatarUrl={userAvatarUrl}
-        slots={slots}
-      />
-    </div>
+    </MobileShellRuntimeContext.Provider>
   );
 }
 

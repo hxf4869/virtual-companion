@@ -233,6 +233,272 @@ describe('MB2-5 MobileShell (Ionic React 9 + Router 6)', () => {
     expect(observedKeys.every((k) => k === 'conv-alpha')).toBe(true);
   });
 
+  it('renders cardFullscreen slot at /m/chat/:conversationKey/card with conversationKey and message query param, and falls back to /m/chat/:conversationKey on back', async () => {
+    const client = createSilentClient();
+    const queryClient = createQueryClient();
+    const observedCardCalls: Array<{
+      conversationKey: string;
+      message?: string;
+      paramConversationKey?: string;
+      paramMessage?: string;
+    }> = [];
+
+    const encodedKey = encodeURIComponent('["alice.png","chat-1"]');
+    window.history.replaceState(null, '', `/m/chat/${encodedKey}/card?message=msg-42`);
+
+    render(
+      <MobileApp
+        client={client}
+        queryClient={queryClient}
+        slots={{
+          chatDetail: ({ conversationKey, navigate }) => (
+            <div data-testid="chat-detail-view">
+              <span>对话页:{conversationKey}</span>
+              <button
+                type="button"
+                data-testid="open-card-msg-99"
+                onClick={() => navigate(`/m/chat/${encodedKey}/card?message=msg-99`)}
+              >
+                打开卡片99
+              </button>
+            </div>
+          ),
+          cardFullscreen: ({ conversationKey, message, params, goBack }) => {
+            observedCardCalls.push({
+              conversationKey,
+              message,
+              paramConversationKey: params.conversationKey,
+              paramMessage: params.message,
+            });
+            return (
+              <div data-testid="card-fullscreen-view">
+                <span>
+                  卡片:{conversationKey}:{message}
+                </span>
+                <button type="button" data-testid="card-fallback-back" onClick={() => goBack()}>
+                  关闭卡片
+                </button>
+              </div>
+            );
+          },
+        }}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(window.location.pathname).toBe(`/m/chat/${encodedKey}/card`);
+      expect(screen.getByTestId('card-fullscreen-view').textContent).toContain(
+        '卡片:["alice.png","chat-1"]:msg-42',
+      );
+    });
+
+    expect(observedCardCalls.at(-1)).toEqual({
+      conversationKey: '["alice.png","chat-1"]',
+      message: 'msg-42',
+      paramConversationKey: '["alice.png","chat-1"]',
+      paramMessage: 'msg-42',
+    });
+
+    const activePages = document.querySelectorAll('[data-vc-page-active="true"]');
+    expect(activePages.length).toBe(1);
+    expect(activePages[0]?.getAttribute('data-vc-page')).toBe('secondary:card-fullscreen');
+
+    const backBtn = document.querySelector('[data-vc-back-button]') as HTMLElement | null;
+    expect(backBtn).toBeTruthy();
+    expect(
+      backBtn?.getAttribute('default-href') ?? (backBtn as any)?.defaultHref,
+    ).toBe(`/m/chat/${encodedKey}`);
+
+    // Deep-link fallback back navigates to /m/chat/<key>
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('card-fallback-back'));
+    });
+
+    await waitFor(() => {
+      expect(window.location.pathname).toBe(`/m/chat/${encodedKey}`);
+      expect(screen.getByTestId('chat-detail-view').textContent).toContain(
+        '对话页:["alice.png","chat-1"]',
+      );
+    });
+
+    // Navigate from conversation to cardFullscreen with a new ?message=msg-99 query parameter
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('open-card-msg-99'));
+    });
+
+    await waitFor(() => {
+      expect(window.location.pathname).toBe(`/m/chat/${encodedKey}/card`);
+      expect(window.location.search).toBe('?message=msg-99');
+      expect(screen.getByTestId('card-fullscreen-view').textContent).toContain(
+        '卡片:["alice.png","chat-1"]:msg-99',
+      );
+    });
+    expect(observedCardCalls.at(-1)).toEqual({
+      conversationKey: '["alice.png","chat-1"]',
+      message: 'msg-99',
+      paramConversationKey: '["alice.png","chat-1"]',
+      paramMessage: 'msg-99',
+    });
+
+    // Click IonBackButton to return to /m/chat/<key>
+    const activeBackBtn = document.querySelector('[data-vc-back-button]') as HTMLElement;
+    expect(activeBackBtn).toBeTruthy();
+    await act(async () => {
+      fireEvent.click(activeBackBtn);
+    });
+
+    await waitFor(() => {
+      expect(window.location.pathname).toBe(`/m/chat/${encodedKey}`);
+    });
+  });
+
+  it('propagates updated slots and activePathname to subsequent same-pattern parameterized pages (A -> back -> B) and keeps exactly one active page', async () => {
+    const client = createSilentClient();
+    const queryClient = createQueryClient();
+
+    window.history.replaceState(null, '', '/m/chat');
+
+    function buildSlots(version: string) {
+      return {
+        tabs: {
+          chat: ({ navigate }: { navigate: (to: string) => void }) => (
+            <div>
+              <button
+                type="button"
+                data-testid="open-conv-a"
+                onClick={() => navigate('/m/chat/conv-a')}
+              >
+                打开A
+              </button>
+              <button
+                type="button"
+                data-testid="open-conv-b"
+                onClick={() => navigate('/m/chat/conv-b')}
+              >
+                打开B
+              </button>
+            </div>
+          ),
+        },
+        chatDetail: ({
+          conversationKey,
+          navigate,
+          goBack,
+        }: {
+          conversationKey: string;
+          navigate: (to: string) => void;
+          goBack: (fallback?: string) => void;
+        }) => (
+          <div data-testid={`detail-${conversationKey}`}>
+            <span>
+              {conversationKey}:{version}
+            </span>
+            <button
+              type="button"
+              data-testid={`back-from-${conversationKey}`}
+              onClick={() =>
+                conversationKey === 'conv-a' ? navigate('/m/chat') : goBack('/m/chat')
+              }
+            >
+              返回
+            </button>
+          </div>
+        ),
+        secondaryTitles: {
+          '/m/chat/conv-a': `会话A-${version}`,
+          '/m/chat/conv-b': `会话B-${version}`,
+        },
+      };
+    }
+
+    const { rerender } = render(
+      <MobileApp
+        client={client}
+        queryClient={queryClient}
+        initialPath="/m/chat"
+        slots={buildSlots('v1')}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(window.location.pathname).toBe('/m/chat');
+      expect(screen.getByTestId('open-conv-a')).toBeTruthy();
+    });
+
+    // 1. Open conversation A
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('open-conv-a'));
+    });
+
+    await waitFor(() => {
+      expect(window.location.pathname).toBe('/m/chat/conv-a');
+      expect(screen.getByTestId('detail-conv-a').textContent).toContain('conv-a:v1');
+    });
+    expect(document.querySelectorAll('[data-vc-page-active="true"]').length).toBe(1);
+
+    // 2. Return to /m/chat
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('back-from-conv-a'));
+    });
+
+    await waitFor(() => {
+      expect(window.location.pathname).toBe('/m/chat');
+    });
+    expect(document.querySelectorAll('[data-vc-page-active="true"]').length).toBe(1);
+
+    // 3. Open conversation B (second viewItem for /m/chat/:conversationKey)
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('open-conv-b'));
+    });
+
+    await waitFor(() => {
+      expect(window.location.pathname).toBe('/m/chat/conv-b');
+      expect(screen.getByTestId('detail-conv-b').textContent).toContain('conv-b:v1');
+    });
+    expect(document.querySelectorAll('[data-vc-page-active="true"]').length).toBe(1);
+
+    // 4. Parent updates slots while on conversation B -> B must receive v2 slots and title
+    rerender(
+      <MobileApp
+        client={client}
+        queryClient={queryClient}
+        initialPath="/m/chat"
+        slots={buildSlots('v2')}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('detail-conv-b').textContent).toContain('conv-b:v2');
+      expect(document.querySelector('[data-vc-secondary-title]')?.textContent).toBe('会话B-v2');
+    });
+    expect(document.querySelectorAll('[data-vc-page-active="true"]').length).toBe(1);
+
+    // 5. Return from B to /m/chat -> B must update activePathname so only /m/chat is active
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('back-from-conv-b'));
+    });
+
+    await waitFor(() => {
+      expect(window.location.pathname).toBe('/m/chat');
+    });
+    const activeAfterBackFromB = document.querySelectorAll('[data-vc-page-active="true"]');
+    expect(activeAfterBackFromB.length).toBe(1);
+    expect(activeAfterBackFromB[0]?.getAttribute('data-vc-page')).toBe('tab:chat');
+
+    // 6. Re-open conversation A -> only conv-a is active, with v2 slots
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('open-conv-a'));
+    });
+
+    await waitFor(() => {
+      expect(window.location.pathname).toBe('/m/chat/conv-a');
+      expect(screen.getByTestId('detail-conv-a').textContent).toContain('conv-a:v2');
+    });
+    const activeOnReopenA = document.querySelectorAll('[data-vc-page-active="true"]');
+    expect(activeOnReopenA.length).toBe(1);
+    expect(activeOnReopenA[0]?.getAttribute('data-vc-page')).toBe('secondary:chat-detail');
+  });
+
   it('opens Settings large sheet with real history entry, supports browser back/forward, syncs theme radios with shared usePreferences, disables unimplemented items, and pushes formal settings subroutes that return to sheet on Back', async () => {
     const client = createSilentClient();
     const queryClient = createQueryClient();
