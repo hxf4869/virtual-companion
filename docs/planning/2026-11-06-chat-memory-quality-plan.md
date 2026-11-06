@@ -115,7 +115,13 @@ React Composer → session-bridge → desktop/standalone/session
 
 ### 2.3 脚本、结果和每次改动后的比较
 
-复用 `scripts/perf-send-stages.mjs` 做局部原因分析，后续给它增加 `--mode browser|pipeline|local-model`、`--dataset`、`--baseline`、`--output` 等参数；这些是**拟议参数，当前不能直接执行**。browser模式复用已安装的真实浏览器工具及现有合成夹具，用固定延迟的SSE替身隔离UI成本，零外部费用；pipeline模式使用隔离栈和真实模型，纳入同一轮¥100预算。local-model模式只作用于专用测试模型进程；禁止默认卸载共用模型。
+`scripts/perf-send-stages.mjs` 的 CM-1 入口（2026-11-07）：
+
+- `--mode browser --round round-<name>`：真实 Chrome + 本机分块 SSE 的采集器校准，默认 0/20/200/2,000/20,000 条持久化合成消息 × cold-browser/first-open/warm/search，冷/首次各30次、暖/搜索各50次；`--histories`、`--cold-runs`、`--warm-runs` 可用于定向复核。结果标为 `collector-fixture`，不是生产桌面速度基线；token 数为合成码点计数。采集器可在隔离桌面测量适配器中通过 `installChatMemoryProbe` 接入真实事件与消息叶子。
+- `--mode pipeline --dataset <numeric-samples.jsonl> [--baseline <previous-samples.jsonl>]`：读取隔离评测采集的数值行，输出分组分位数、失败分母和配对差值/95% bootstrap区间；这个命令本身不发模型请求。真实评测出口与数据来自 CM-2/3。
+- `--mode local-model --dedicated-local-models --label <name>`：沿用原局部模型测量；必须明确声明专用实例才允许卸载 embedding。不提供 mode 不会进行网络访问。`--output <directory>` 可指定本轮产物根目录。
+
+回复指标由 `createReplyQualityMetrics` 采集、`summarizeReplyQuality` 汇总。重叠率定义为当前最终回复的不同 Unicode 码点 3-gram 中，曾出现在同会话此前至多3条助手回复里的比例（保留标点/空白；无可比历史或不足3字为无样本）。首次候选/最终回复的规则硬命中与软命中分开计数，分母只含实际执行规则的回复；重写耗时从首次要求重写到第二候选完成判定，仅成功结束的重写进入耗时分布。独立桌面现未执行旧 ST 的 `planReplyAction`，其规则/重写指标必须标 `inactive`，不能以零命中表示质量通过。
 
 每次涉及聊天渲染/存储/召回的改动后：
 
@@ -318,6 +324,8 @@ else: 原子持久化reservation → 发送 → 结算或保留UNKNOWN上界
 - 被测模型保持现有主聊天与提取配置；评审模型从已配置且可定价的模型中选，中转按实际单价计价；每轮硬上限 ¥100。
 - 指标目标先跑一次真实基线再锁定。
 - Go+PG 接口按 ST 退出计划 SX-2 冻结后提供；CM-1–6 与内存缓存、窗口渲染先行。
+
+**补充答（Owner 2026-11-07，chat-memory-cm）**：本次先不核价，真实评测以 token 用量报告；沿用 1,000,000 上下文与 393,216（384K）最大输出配置。当前模型没有配置价格，因此本次明确使用仅计 token 的授权模式，实际费用记为未知，不宣称已验证 ¥100 上限。CM-2 仍实现并验证有价格时的 CNY 预留与熔断；缺价拒绝在 CNY 模式发包，不能静默切换为 token 模式。
 
 ## 7. 本文验证边界
 
