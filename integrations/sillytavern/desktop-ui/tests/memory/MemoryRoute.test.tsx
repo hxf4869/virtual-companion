@@ -1,14 +1,29 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, act, cleanup } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { RouterProvider } from '@tanstack/react-router';
 import { AppProviders, createQueryClient } from '../../src/app/providers';
 import { createDesktopRouter } from '../../src/app/router';
+import {
+  renderDesktopMemoryLeaveGuard,
+} from '../../src/app/MemoryRouteAdapter';
 import { SessionBridgeProvider, createSessionBridge } from '../../src/runtime/session-bridge';
 import type { AppClient } from '../../src/data/client';
 import { MemoryRoute } from '../../src/features/memory/MemoryRoute';
-import { MemoryItemDetail } from '../../src/features/memory/MemoryItemDetail';
+import {
+  MemoryItemDetail,
+  type LocateMessagePayload,
+} from '../../src/features/memory/MemoryItemDetail';
+import { Diary } from '../../src/features/memory/Diary';
+import { parseStoredMemoryRouteState } from '../../src/features/memory/useMemoryState';
+import { ChatUiContext, type ChatUiContextValue } from '../../src/features/chat/useChatUi';
 import { useRelationshipMemoriesQuery } from '../../src/data/queries/chat';
+
+const noopNavigateToMessage = vi.fn(async (_payload: LocateMessagePayload) => {});
 
 function setupMatchMedia(initialWidth = 1440) {
   vi.stubGlobal(
@@ -188,6 +203,11 @@ describe('MemoryRoute', () => {
     window.sessionStorage.clear();
     window.history.replaceState(null, '', '/');
     window.location.hash = '';
+    if (!document.querySelector('link[data-vc-diary-font]')) {
+      const marker = document.createElement('link');
+      marker.setAttribute('data-vc-diary-font', '');
+      document.head.append(marker);
+    }
   });
 
   afterEach(() => {
@@ -203,7 +223,11 @@ describe('MemoryRoute', () => {
     const queryClient = createQueryClient();
     const view = (item: (typeof page1Items)[number] | (typeof page2Items)[number]) => (
       <AppProviders client={client} queryClient={queryClient}>
-        <MemoryItemDetail item={item} />
+        <MemoryItemDetail
+          item={item}
+          onNavigateToMessage={noopNavigateToMessage}
+          renderLeaveGuard={renderDesktopMemoryLeaveGuard}
+        />
       </AppProviders>
     );
     const { rerender } = render(view(page1Items[0]));
@@ -230,7 +254,7 @@ describe('MemoryRoute', () => {
       initialEntry: '/chat',
       routeOverrides: {
         chat: ChatMemoryPreview,
-        memory: () => <MemoryRoute initialRelationshipId="11" />,
+        memory: (props) => <MemoryRoute {...props} initialRelationshipId="11" />,
       },
     });
     render(
@@ -253,7 +277,7 @@ describe('MemoryRoute', () => {
     const { client, fetchMemories } = createMemoryTestClient();
     const router = createDesktopRouter({
       routeOverrides: {
-        memory: () => <MemoryRoute />,
+        memory: (props) => <MemoryRoute {...props} />,
       },
     });
 
@@ -372,7 +396,12 @@ describe('MemoryRoute', () => {
     const router = createDesktopRouter({
       routeOverrides: {
         chat: () => <div data-route="chat" />,
-        memory: () => <MemoryRoute onNavigateToMessage={onLocateMessage} />,
+        memory: (props) => (
+          <MemoryRoute
+            {...props}
+            onNavigateToMessage={onLocateMessage}
+          />
+        ),
       },
     });
 
@@ -395,6 +424,7 @@ describe('MemoryRoute', () => {
     fireEvent.click(screen.getAllByText('喜欢桂花拿铁')[0]);
 
     const jumpBtn = await waitFor(() => screen.getByRole('button', { name: /跳转原消息/ }));
+    const querySelectorSpy = vi.spyOn(document, 'querySelector');
     fireEvent.click(jumpBtn);
 
     await waitFor(() => {
@@ -422,6 +452,7 @@ describe('MemoryRoute', () => {
         }),
       );
     });
+    expect(querySelectorSpy).not.toHaveBeenCalledWith('#chat > .mes');
     expect(order).toEqual([
       'bridge.open:start',
       'bridge.open:resolved',
@@ -443,7 +474,7 @@ describe('MemoryRoute', () => {
 
     const router = createDesktopRouter({
       routeOverrides: {
-        memory: () => <MemoryRoute />,
+        memory: (props) => <MemoryRoute {...props} />,
       },
     });
 
@@ -510,7 +541,7 @@ describe('MemoryRoute', () => {
 
     const router = createDesktopRouter({
       routeOverrides: {
-        memory: () => <MemoryRoute />,
+        memory: (props) => <MemoryRoute {...props} />,
       },
     });
 
@@ -599,7 +630,7 @@ describe('MemoryRoute', () => {
 
     const router = createDesktopRouter({
       routeOverrides: {
-        memory: () => <MemoryRoute />,
+        memory: (props) => <MemoryRoute {...props} />,
       },
     });
 
@@ -647,5 +678,417 @@ describe('MemoryRoute', () => {
       expect(screen.queryByText('第一页收藏：桂花拿铁')).toBeNull();
     });
     expect(screen.getByText('第二页收藏：海边日落')).toBeTruthy();
+  });
+
+  it('keeps features/memory decoupled from desktop router/shell and keeps useMemoryState free of DOM/CSS/Toast', () => {
+    const memoryDir = path.resolve(
+      path.dirname(fileURLToPath(import.meta.url)),
+      '../../src/features/memory',
+    );
+    const files = fs
+      .readdirSync(memoryDir)
+      .filter((name) => name.endsWith('.ts') || name.endsWith('.tsx'));
+
+    for (const file of files) {
+      const code = fs.readFileSync(path.join(memoryDir, file), 'utf8');
+      expect(code, `${file} must not import @tanstack/react-router`).not.toMatch(
+        /@tanstack\/react-router/,
+      );
+      expect(code, `${file} must not import ../../shell/`).not.toMatch(
+        /from\s+['"]\.\.\/\.\.\/shell\//,
+      );
+    }
+
+    const hookCode = fs.readFileSync(path.join(memoryDir, 'useMemoryState.ts'), 'utf8');
+    const domGlobalPattern =
+      /\b(window|HTMLElement|localStorage)\b|(?<![{,]\s*)\bdocument\b|\bdocument(?!\s*:\s*null\b)/;
+    expect(hookCode.match(/([,{]\s*)document:\s*null\b/g)).toHaveLength(2);
+    expect(hookCode).not.toMatch(domGlobalPattern);
+    expect('document.querySelector("#chat > .mes")').toMatch(domGlobalPattern);
+    expect('window.document').toMatch(domGlobalPattern);
+    expect('cond ? document : null').toMatch(domGlobalPattern);
+    expect('{ ensureVisible: () => {}, document: null }').not.toMatch(domGlobalPattern);
+    expect(hookCode).not.toMatch(/from\s+['"]\.\.\/\.\.\/design\//);
+    expect(hookCode).not.toMatch(/from\s+['"]\.\.\/chat\/ChatRoute['"]/);
+    expect(hookCode).toMatch(/from\s+['"]\.\.\/chat\/useChatUi['"]/);
+    expect(hookCode).not.toMatch(/\.css['"]/);
+  });
+
+  it('preserves filter state and active tab across relationship switching and tolerates malformed stored state', async () => {
+    expect(parseStoredMemoryRouteState(null)).toEqual({
+      relId: null,
+      tab: 'timeline',
+      filters: { type: '', source: '', date: '', status: '', q: '' },
+    });
+    expect(parseStoredMemoryRouteState('{not-valid-json')).toEqual({
+      relId: null,
+      tab: 'timeline',
+      filters: { type: '', source: '', date: '', status: '', q: '' },
+    });
+    expect(
+      parseStoredMemoryRouteState(
+        JSON.stringify({
+          relId: 'undefined',
+          tab: 'invalid-tab',
+          filters: { type: 'fact', q: '拿铁' },
+        }),
+      ),
+    ).toEqual({
+      relId: null,
+      tab: 'timeline',
+      filters: { type: 'fact', source: '', date: '', status: '', q: '拿铁' },
+    });
+
+    const rel13Item = {
+      memoryId: 'mem-13',
+      relationshipId: '13',
+      type: 'FACT',
+      source: 'chat_turn',
+      sourceStatus: 'VALID',
+      lifecycle: 'ACTIVE',
+      summary: '小禾记住的事实：喜欢乌龙茶',
+      version: 1,
+      pinnedAt: null,
+      time: {
+        eventDate: '2026-11-01',
+        recordedAt: '2026-11-01T12:00:00Z',
+      },
+      createdAt: '2026-11-01T12:00:00Z',
+    };
+
+    const fetchMemories = vi.fn(async (relId: string) => {
+      if (relId === '13') {
+        return { items: [rel13Item], nextCursor: null };
+      }
+      return {
+        items: [
+          {
+            memoryId: 'mem-1',
+            relationshipId: '11',
+            type: 'FACT',
+            source: 'chat_turn',
+            sourceStatus: 'VALID',
+            lifecycle: 'ACTIVE',
+            summary: '喜欢桂花拿铁',
+            version: 1,
+            pinnedAt: null,
+            time: {
+              eventDate: '2026-11-01',
+              recordedAt: '2026-11-01T10:30:00Z',
+            },
+            createdAt: '2026-11-01T10:30:00Z',
+          },
+        ],
+        nextCursor: null,
+      };
+    });
+
+    const { client } = createMemoryTestClient({
+      fetchRelationships: vi.fn(async () => [
+        {
+          relationshipId: '11',
+          personaRef: 'st-character',
+          companionName: '阿梨',
+          characterRef: 'char-alice',
+          active: true,
+        },
+        {
+          relationshipId: '13',
+          personaRef: 'st-character',
+          companionName: '小禾',
+          characterRef: 'char-he',
+          active: false,
+        },
+      ]),
+      fetchMemories,
+      fetchMemory: vi.fn(async (id: string) =>
+        id === 'mem-13'
+          ? rel13Item
+          : {
+              memoryId: id,
+              relationshipId: '11',
+              type: 'FACT',
+              sourceStatus: 'VALID',
+              lifecycle: 'ACTIVE',
+              summary: '喜欢桂花拿铁',
+              version: 1,
+              pinnedAt: null,
+              time: {
+                eventDate: '2026-11-01',
+                recordedAt: '2026-11-01T10:30:00Z',
+              },
+              createdAt: '2026-11-01T10:30:00Z',
+            },
+      ),
+    });
+
+    render(
+      <AppProviders client={client} queryClient={createQueryClient()}>
+        <MemoryRoute
+          onNavigateToMessage={noopNavigateToMessage}
+          renderLeaveGuard={renderDesktopMemoryLeaveGuard}
+        />
+      </AppProviders>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getAllByText('喜欢桂花拿铁').length).toBeGreaterThan(0);
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: '事实' }));
+    fireEvent.click(screen.getByRole('button', { name: '对话提取' }));
+
+    await waitFor(() => {
+      expect(fetchMemories).toHaveBeenCalledWith(
+        '11',
+        expect.objectContaining({ type: 'fact', source: 'chat_turn' }),
+      );
+    });
+
+    // Switch relationship via the Select control
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('combobox', { name: '选择角色关系' }));
+    await user.click(await screen.findByRole('option', { name: /小禾/ }));
+
+    await waitFor(() => {
+      expect(fetchMemories).toHaveBeenCalledWith(
+        '13',
+        expect.objectContaining({ type: 'fact', source: 'chat_turn' }),
+      );
+      expect(screen.getAllByText('小禾记住的事实：喜欢乌龙茶').length).toBeGreaterThan(0);
+    });
+    expect(screen.getByRole('button', { name: '事实' }).getAttribute('aria-pressed')).toBe('true');
+    expect(screen.getByRole('button', { name: '对话提取' }).getAttribute('aria-pressed')).toBe(
+      'true',
+    );
+  });
+
+  it('includes conversationKey and messageKey when jumping from Favorites and MemoryItemDetail, and notifies onItemForgotten even if unmounted during forget', async () => {
+    const onLocateMessage = vi.fn(async (_payload: LocateMessagePayload) => {});
+    const { client, page1Items } = createMemoryTestClient({
+      listFavorites: vi.fn(async () => ({
+        items: [
+          {
+            favoriteId: 'fav-1',
+            relationshipId: '11',
+            chatFile: 'chat-a.jsonl',
+            role: 'character',
+            speakerName: '阿梨',
+            messageAt: '2026-11-01T10:30:00Z',
+            body: '我平时最喜欢喝桂花拿铁',
+          },
+        ],
+        nextCursor: '',
+      })),
+    });
+
+    const baseBridge = createSessionBridge(client);
+    const fakeBridge = {
+      ...baseBridge,
+      getContext: () => ({
+        characters: [{ avatar: 'alice.png', name: '阿梨' }],
+        characterId: 0,
+        chatId: 'chat-a',
+        chatMetadata: {
+          vc_binding: { relationshipId: '11' },
+          vc_f2: { id: 'chat-uuid-1' },
+        },
+        chat: [
+          {
+            name: 'User',
+            is_user: true,
+            mes: '你好',
+            send_date: '2026-11-01T10:29:00Z',
+            vc_message_id: 'msg-uuid-0',
+          },
+          {
+            name: '阿梨',
+            is_user: false,
+            mes: '我平时最喜欢喝桂花拿铁',
+            send_date: '2026-11-01T10:30:00Z',
+            vc_message_id: '550e8400-e29b-41d4-a716-446655440000',
+          },
+        ],
+      }),
+      open: vi.fn(async () => 'opened' as const),
+    };
+
+    const requestMessageJump = vi.fn();
+    const fakeChatUi: ChatUiContextValue = {
+      quote: null,
+      setQuote: vi.fn(),
+      searchOpen: false,
+      setSearchOpen: vi.fn(),
+      toggleSearch: vi.fn(),
+      historyAll: false,
+      setHistoryAll: vi.fn(),
+      messageJump: null,
+      requestMessageJump,
+      completeMessageJump: vi.fn(),
+      sendSequence: 0,
+      notifySent: vi.fn(),
+    };
+
+    const { unmount } = render(
+      <AppProviders client={client} queryClient={createQueryClient()}>
+        <SessionBridgeProvider bridge={fakeBridge}>
+          <ChatUiContext.Provider value={fakeChatUi}>
+            <MemoryRoute
+              onNavigateToMessage={onLocateMessage}
+              renderLeaveGuard={renderDesktopMemoryLeaveGuard}
+            />
+          </ChatUiContext.Provider>
+        </SessionBridgeProvider>
+      </AppProviders>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getAllByText('喜欢桂花拿铁').length).toBeGreaterThan(0);
+    });
+
+    const querySelectorSpy = vi.spyOn(document, 'querySelector');
+
+    // 1. Jump from MemoryItemDetail source evidence
+    fireEvent.click(await screen.findByRole('button', { name: /跳转原消息/ }));
+    await waitFor(() => {
+      expect(onLocateMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          relationshipId: '11',
+          chatIdentity: 'chat-uuid-1',
+          chatFile: 'chat-a',
+          avatar: 'alice.png',
+          conversationKey: '["alice.png","chat-a"]',
+          messageKey: '550e8400-e29b-41d4-a716-446655440000',
+          floor: 1,
+          messageId: '550e8400-e29b-41d4-a716-446655440000',
+          sourceRef: 'st:chat-uuid-1:550e8400-e29b-41d4-a716-446655440000:1',
+          excerpt: '我平时最喜欢喝桂花拿铁',
+        }),
+      );
+      expect(requestMessageJump).toHaveBeenCalledWith('["alice.png","chat-a"]', 1);
+    });
+    expect(querySelectorSpy).not.toHaveBeenCalledWith('#chat > .mes');
+
+    onLocateMessage.mockClear();
+    requestMessageJump.mockClear();
+    querySelectorSpy.mockClear();
+
+    // 2. Jump from Favorites item
+    fireEvent.click(screen.getByRole('tab', { name: '收藏' }));
+    await waitFor(() => {
+      expect(screen.getByText('我平时最喜欢喝桂花拿铁')).toBeTruthy();
+    });
+    fireEvent.click(screen.getByRole('button', { name: '回到对话' }));
+
+    await waitFor(() => {
+      expect(onLocateMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          relationshipId: '11',
+          chatFile: 'chat-a',
+          avatar: 'alice.png',
+          conversationKey: '["alice.png","chat-a"]',
+          messageKey: '550e8400-e29b-41d4-a716-446655440000',
+          floor: 1,
+          messageId: '550e8400-e29b-41d4-a716-446655440000',
+          excerpt: '我平时最喜欢喝桂花拿铁',
+        }),
+      );
+      expect(requestMessageJump).toHaveBeenCalledWith('["alice.png","chat-a"]', 1);
+    });
+    expect(querySelectorSpy).not.toHaveBeenCalledWith('#chat > .mes');
+
+    unmount();
+
+    // 3. Verify onItemForgotten still fires if MemoryItemDetail unmounts before forget resolves
+    let resolveForget!: () => void;
+    const forgetPromise = new Promise<void>((res) => {
+      resolveForget = res;
+    });
+    const { client: forgetClient } = createMemoryTestClient({
+      forgetMemory: vi.fn(() => forgetPromise),
+    });
+    const onItemForgotten = vi.fn();
+    const detailRender = render(
+      <AppProviders client={forgetClient} queryClient={createQueryClient()}>
+        <MemoryItemDetail
+          item={page1Items[0]}
+          onItemForgotten={onItemForgotten}
+          onNavigateToMessage={noopNavigateToMessage}
+          renderLeaveGuard={renderDesktopMemoryLeaveGuard}
+        />
+      </AppProviders>,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: '遗忘' }));
+    fireEvent.click(await screen.findByRole('button', { name: '确认遗忘' }));
+    detailRender.unmount();
+
+    await act(async () => {
+      resolveForget();
+      await forgetPromise;
+    });
+
+    expect(onItemForgotten).toHaveBeenCalledWith('mem-1');
+  });
+
+  it('supports Diary month navigation, summary-to-full entry fetch, and handwriting font state', async () => {
+    const fetchDiaryMonth = vi.fn(async (_relId: string, month: string) => {
+      if (month === '2026-10') {
+        return [
+          {
+            diaryId: 'diary-oct-20',
+            day: '2026-10-20',
+            title: '十月日记摘要',
+          },
+        ];
+      }
+      return [
+        {
+          diaryId: 'diary-nov-01',
+          day: '2026-11-01',
+          title: '十一月日记',
+          body: '今天天气很好。',
+          moments: ['一起散步'],
+        },
+      ];
+    });
+    const fetchDiaryEntry = vi.fn(async (entryId: string) => ({
+      diaryId: entryId,
+      day: '2026-10-20',
+      title: '十月日记摘要',
+      body: '通过详情接口补齐的十月日记正文。',
+      moments: ['补齐高光时刻'],
+    }));
+
+    const { client } = createMemoryTestClient({
+      fetchDiaryMonth,
+      fetchDiaryEntry,
+    });
+
+    render(
+      <AppProviders client={client} queryClient={createQueryClient()}>
+        <Diary relId="11" />
+      </AppProviders>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('今天天气很好。')).toBeTruthy();
+    });
+
+    // Toggle handwriting font
+    const fontBtn = screen.getByRole('button', { name: /手写体/ });
+    expect(fontBtn.getAttribute('aria-pressed')).toBe('false');
+    fireEvent.click(fontBtn);
+    expect(fontBtn.getAttribute('aria-pressed')).toBe('true');
+
+    // Navigate to previous month (2026-10) where entry has no body -> triggers fetchDiaryEntry
+    fireEvent.click(screen.getByRole('button', { name: '上一月' }));
+
+    await waitFor(() => {
+      expect(fetchDiaryMonth).toHaveBeenCalledWith('11', '2026-10');
+      expect(fetchDiaryEntry).toHaveBeenCalledWith('diary-oct-20');
+      expect(screen.getByText('通过详情接口补齐的十月日记正文。')).toBeTruthy();
+      expect(screen.getByText('补齐高光时刻')).toBeTruthy();
+    });
   });
 });

@@ -5,6 +5,7 @@ import { RouterProvider } from '@tanstack/react-router';
 import { AppProviders, createQueryClient } from '../../src/app/providers';
 import { createDesktopRouter } from '../../src/app/router';
 import { ConflictError, type AppClient } from '../../src/data/client';
+import { CorrectMemory } from '../../src/features/memory/CorrectMemory';
 import { MemoryRoute } from '../../src/features/memory/MemoryRoute';
 
 function setupMatchMedia(initialWidth = 1440) {
@@ -104,7 +105,7 @@ describe('CorrectMemory & MemoryDetail actions', () => {
 
     const router = createDesktopRouter({
       routeOverrides: {
-        memory: () => <MemoryRoute />,
+        memory: (props) => <MemoryRoute {...props} />,
       },
     });
 
@@ -129,6 +130,17 @@ describe('CorrectMemory & MemoryDetail actions', () => {
 
     const textarea = (await waitFor(() => screen.getByLabelText('记忆内容'))) as HTMLTextAreaElement;
     fireEvent.change(textarea, { target: { value: '我的草稿：其实只喝热燕麦拿铁' } });
+
+    // Attempting to navigate away while draft is dirty triggers the injected desktop leave guard
+    void router.navigate({ to: '/characters' });
+    await waitFor(() => {
+      expect(screen.getByText('放弃更改？')).toBeTruthy();
+    });
+    expect(router.state.location.pathname).toBe('/memory');
+    fireEvent.click(screen.getByRole('button', { name: '继续编辑' }));
+    await waitFor(() => {
+      expect(screen.queryByText('放弃更改？')).toBeNull();
+    });
 
     const saveBtn = screen.getByRole('button', { name: '保存纠正' });
     fireEvent.click(saveBtn);
@@ -201,7 +213,7 @@ describe('CorrectMemory & MemoryDetail actions', () => {
 
     const router = createDesktopRouter({
       routeOverrides: {
-        memory: () => <MemoryRoute />,
+        memory: (props) => <MemoryRoute {...props} />,
       },
     });
 
@@ -231,6 +243,96 @@ describe('CorrectMemory & MemoryDetail actions', () => {
     await waitFor(() => {
       expect(forgetMemory).toHaveBeenCalledWith('mem-1');
       expect(screen.getByText(/聊天原文仍保留/)).toBeTruthy();
+    });
+  });
+
+  it('delegates leave guard rendering via renderLeaveGuard and preserves draft on general save error before refreshing on success', async () => {
+    const item = {
+      memoryId: 'mem-1',
+      relationshipId: '11',
+      type: 'FACT',
+      sourceStatus: 'VALID',
+      lifecycle: 'ACTIVE',
+      summary: '旧摘要：喜欢拿铁',
+      version: 1,
+      pinnedAt: null,
+      time: { recordedAt: '2026-11-01T10:30:00Z' },
+      createdAt: '2026-11-01T10:30:00Z',
+    };
+
+    let failFirst = true;
+    const correctMemory = vi.fn(
+      async (memoryId: string, body: { summary: string; expectedVersion: number }) => {
+        if (failFirst) {
+          throw new Error('网络抖动，保存未成功');
+        }
+        return {
+          ...item,
+          memoryId,
+          summary: body.summary,
+          version: body.expectedVersion + 1,
+        };
+      },
+    );
+
+    const client: AppClient = {
+      initialize: vi.fn(async () => ({ characters: [], chat: [], settings: {} })),
+      recent: vi.fn(async () => []),
+      go: {
+        captureSessionContext: vi.fn(() => ({ userId: 'u-1', sessionId: 's-1' })),
+        fetchRelationships: vi.fn(async () => []),
+        fetchMemories: vi.fn(async () => ({ items: [item], nextCursor: '' })),
+        fetchMemory: vi.fn(async () => item),
+        fetchMemoryEvidence: vi.fn(async () => []),
+        correctMemory,
+        reauth: vi.fn(async () => ({ ok: true })),
+      },
+    } as unknown as AppClient;
+
+    const renderLeaveGuard = vi.fn((dirty: boolean) => (
+      <div data-testid="custom-leave-guard" data-dirty={String(dirty)} />
+    ));
+    const onSaved = vi.fn();
+
+    render(
+      <AppProviders client={client} queryClient={createQueryClient()}>
+        <CorrectMemory
+          item={item}
+          onSaved={onSaved}
+          onCancel={vi.fn()}
+          renderLeaveGuard={renderLeaveGuard}
+        />
+      </AppProviders>,
+    );
+
+    expect(screen.getByTestId('custom-leave-guard').getAttribute('data-dirty')).toBe('false');
+
+    const textarea = screen.getByLabelText('记忆内容') as HTMLTextAreaElement;
+    fireEvent.change(textarea, { target: { value: '纠正后的摘要：只喝手冲咖啡' } });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('custom-leave-guard').getAttribute('data-dirty')).toBe('true');
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: '保存纠正' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('网络抖动，保存未成功')).toBeTruthy();
+    });
+    expect(textarea.value).toBe('纠正后的摘要：只喝手冲咖啡');
+    expect(onSaved).not.toHaveBeenCalled();
+
+    failFirst = false;
+    fireEvent.click(screen.getByRole('button', { name: '保存纠正' }));
+
+    await waitFor(() => {
+      expect(onSaved).toHaveBeenCalledWith(
+        expect.objectContaining({
+          memoryId: 'mem-1',
+          summary: '纠正后的摘要：只喝手冲咖啡',
+          version: 2,
+        }),
+      );
     });
   });
 });

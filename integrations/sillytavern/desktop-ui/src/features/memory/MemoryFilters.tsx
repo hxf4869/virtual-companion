@@ -3,37 +3,12 @@ import { Button } from '../../design/components/Button';
 import { Field } from '../../design/components/Field';
 import { Select } from '../../design/components/Select';
 import { TextInput } from '../../design/components/TextInput';
-
-const TYPE_OPTIONS = [
-  { value: '', label: '全部类型' },
-  { value: 'fact', label: '事实' },
-  { value: 'preference', label: '偏好' },
-  { value: 'event', label: '事件' },
-  { value: 'boundary', label: '边界' },
-  { value: 'promise', label: '约定' },
-  { value: 'SharedEpisode', label: '共同经历' },
-  { value: 'Commitment', label: '承诺' },
-  { value: 'ConflictRepair', label: '和解' },
-  { value: 'InsideJoke', label: '暗号' },
-] as const;
-
-const SOURCE_OPTIONS = [
-  { value: '', label: '全部来源' },
-  { value: 'chat_turn', label: '对话提取' },
-  { value: 'consolidation', label: '睡眠巩固' },
-  { value: 'user_explicit', label: '主动记住' },
-  { value: 'user_edit', label: '手动纠正' },
-  { value: 'PENDING_VERIFICATION', label: '待核验' },
-  { value: 'INVALID', label: '已失效' },
-] as const;
-
-const STATUS_SELECT_OPTIONS = [
-  { value: '', label: '全部状态' },
-  { value: 'active', label: '生效中' },
-  { value: 'corrected', label: '已纠正' },
-  { value: 'forgotten', label: '已遗忘' },
-  { value: 'candidate', label: '待确认' },
-] as const;
+import {
+  EMPTY_MEMORY_FILTERS,
+  MEMORY_SOURCE_OPTIONS,
+  MEMORY_STATUS_OPTIONS,
+  MEMORY_TYPE_OPTIONS,
+} from './useMemoryState';
 
 export interface MemoryFiltersProps {
   filters: MemoryFilterValues;
@@ -74,7 +49,7 @@ export function MemoryFilters({ filters, onChange, onReset }: MemoryFiltersProps
       <div className="vc-memory-filters__group">
         <span className="vc-memory-filters__heading">记忆类型</span>
         <div className="vc-memory-filters__chips" role="group" aria-label="按类型筛选">
-          {TYPE_OPTIONS.map((opt) => {
+          {MEMORY_TYPE_OPTIONS.map((opt) => {
             const pressed = currentType === opt.value;
             return (
               <button
@@ -99,7 +74,7 @@ export function MemoryFilters({ filters, onChange, onReset }: MemoryFiltersProps
       <div className="vc-memory-filters__group">
         <span className="vc-memory-filters__heading">记忆来源</span>
         <div className="vc-memory-filters__chips" role="group" aria-label="按来源筛选">
-          {SOURCE_OPTIONS.map((opt) => {
+          {MEMORY_SOURCE_OPTIONS.map((opt) => {
             const pressed = currentSource === opt.value;
             return (
               <button
@@ -138,7 +113,7 @@ export function MemoryFilters({ filters, onChange, onReset }: MemoryFiltersProps
           <Select
             aria-label="生命周期状态"
             value={currentStatus}
-            options={STATUS_SELECT_OPTIONS}
+            options={MEMORY_STATUS_OPTIONS}
             onValueChange={(val) => updateField('status', val)}
           />
         </Field>
@@ -152,7 +127,7 @@ export function MemoryFilters({ filters, onChange, onReset }: MemoryFiltersProps
             if (onReset) {
               onReset();
             } else {
-              onChange({ type: '', source: '', date: '', status: '', q: '' });
+              onChange({ ...EMPTY_MEMORY_FILTERS });
             }
           }}
         >

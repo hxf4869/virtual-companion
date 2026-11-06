@@ -6,44 +6,15 @@ import {
   clockOf,
   groupTimeline,
   idOf,
-  lifecycleLabels,
   MEMORY_EMPTY_TAB,
   memoryMoment,
-  sourceLabels,
   toneForLifecycle,
-  typeLabels,
 } from '../../../../extension/vc-model-settings/memory-logic.js';
-
-const EXTRA_TYPE_LABELS: Record<string, string> = {
-  ...(typeLabels as Record<string, string>),
-  fact: '事实',
-  preference: '偏好',
-  event: '事件',
-  boundary: '边界',
-  promise: '约定',
-  SharedEpisode: '共同经历',
-  Commitment: '承诺',
-  ConflictRepair: '和解',
-  InsideJoke: '暗号与梗',
-};
-
-const EXTRA_SOURCE_LABELS: Record<string, string> = {
-  ...(sourceLabels as Record<string, string>),
-  chat_turn: '对话提取',
-  consolidation: '睡眠巩固',
-  user_explicit: '主动记住',
-  user_edit: '手动纠正',
-};
-
-const EXTRA_LIFECYCLE_LABELS: Record<string, string> = {
-  ...(lifecycleLabels as Record<string, string>),
-  active: '生效中',
-  corrected: '已纠正',
-  forgotten: '已遗忘',
-  forgetting: '清理中',
-  superseded: '已被替代',
-  candidate: '待确认',
-};
+import {
+  EXTRA_LIFECYCLE_LABELS,
+  EXTRA_SOURCE_LABELS,
+  EXTRA_TYPE_LABELS,
+} from './useMemoryState';
 
 export interface MemoryTimelineProps {
   items: MemoryItem[];

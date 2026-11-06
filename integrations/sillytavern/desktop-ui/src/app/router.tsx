@@ -31,7 +31,10 @@ import {
 } from '../features/characters/CharactersRoute';
 import { useLeaveGuard } from '../shell/useLeaveGuard';
 import { InboxRoute } from '../features/inbox/InboxRoute';
-import { MemoryRoute } from '../features/memory/MemoryRoute';
+import {
+    MemoryRoute,
+    type MemoryRouteProps,
+} from '../features/memory/MemoryRoute';
 import {
     SettingsRoute,
     type SettingsRouteProps,
@@ -45,8 +48,15 @@ import { useChatSnapshot } from '../runtime/session-bridge';
 import { AppShell, useShellLayout, type ShellConversationItem } from '../shell/AppShell';
 import type { ShellDestination } from '../shell/Sidebar';
 import { useReducedMotion } from '../shell/useReducedMotion';
+import { MemoryRouteAdapter } from './MemoryRouteAdapter';
 
-export type { ChatRouteProps, CharactersRouteProps, StoryRouteProps, SettingsRouteProps };
+export type {
+    ChatRouteProps,
+    CharactersRouteProps,
+    MemoryRouteProps,
+    StoryRouteProps,
+    SettingsRouteProps,
+};
 
 export interface TavernSettingsRouteProps {
     section: string;
@@ -58,7 +68,7 @@ export interface TavernSettingsRouteProps {
 export interface DesktopRouteComponents {
     chat?: React.ComponentType<ChatRouteProps>;
     characters?: React.ComponentType<CharactersRouteProps>;
-    memory?: React.ComponentType;
+    memory?: React.ComponentType<MemoryRouteProps>;
     inbox?: React.ComponentType;
     story?: React.ComponentType<StoryRouteProps>;
     settings?: React.ComponentType<SettingsRouteProps>;
@@ -507,7 +517,7 @@ export function createDesktopRouter(
         getParentRoute: () => rootRoute,
         path: '/memory',
         component: function MemoryPage() {
-            return <MemoryComp />;
+            return <MemoryRouteAdapter View={MemoryComp} />;
         },
     });
 

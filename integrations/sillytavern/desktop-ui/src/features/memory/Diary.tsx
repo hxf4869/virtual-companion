@@ -1,5 +1,4 @@
-import { useEffect, useState } from 'react';
-import { useDiaries, useDiaryEntry, type DiaryEntry } from '../../data/queries/memory';
+import { useEffect } from 'react';
 import { Button } from '../../design/components/Button';
 import { EmptyState } from '../../design/components/EmptyState';
 import {
@@ -8,65 +7,40 @@ import {
   DIARY_MOMENTS,
   diaryDayTitle,
   ensureHandwriting,
-  localDay,
-  monthDays,
   monthLabel,
-  monthOfDay,
   readDiaryFont,
-  shiftMonth,
   writeDiaryFont,
 } from '../../../../extension/vc-model-settings/memory-logic.js';
+import { useDiaryState, type DiaryFontMode } from './useMemoryState';
 
 export interface DiaryProps {
   relId: string | null;
 }
 
 export function Diary({ relId }: DiaryProps) {
-  const today = localDay();
-  const [month, setMonth] = useState<string>(() => monthOfDay(today));
-  const [selectedDay, setSelectedDay] = useState<string>(today);
-  const [fontMode, setFontMode] = useState<'body' | 'hand'>(() => readDiaryFont());
-
-  const diariesQuery = useDiaries(relId, month);
-  const entries = diariesQuery.data ?? [];
-
-  const entriesByDay = new Map<string, DiaryEntry>();
-  for (const entry of entries) {
-    const dayKey = String(entry.day ?? entry.entryDate ?? '');
-    if (dayKey) {
-      entriesByDay.set(dayKey, entry);
-    }
-  }
+  const {
+    month,
+    selectedDay,
+    setSelectedDay,
+    fontMode,
+    entriesByDay,
+    activeEntry,
+    days,
+    moments,
+    handlePrevMonth,
+    handleNextMonth,
+    handleToggleFont,
+  } = useDiaryState({
+    relId,
+    initialFontMode: readDiaryFont() as DiaryFontMode,
+    onFontModeChange: (next) => writeDiaryFont(next) as DiaryFontMode,
+  });
 
   useEffect(() => {
     if (fontMode === 'hand') {
       ensureHandwriting();
     }
   }, [fontMode]);
-
-  useEffect(() => {
-    const sortedDays = Array.from(entriesByDay.keys()).sort();
-    if (!selectedDay.startsWith(month)) {
-      const fallback = sortedDays.at(-1) || `${month}-01`;
-      setSelectedDay(fallback);
-    } else if (!entriesByDay.has(selectedDay) && sortedDays.length > 0) {
-      setSelectedDay(sortedDays[sortedDays.length - 1]);
-    }
-  }, [month, entries.length]);
-
-  const summaryEntry = entriesByDay.get(selectedDay) ?? null;
-  const summaryEntryId = summaryEntry ? String(summaryEntry.diaryId ?? summaryEntry.id ?? '') : null;
-  const needFullFetch = Boolean(summaryEntryId && !summaryEntry?.body && !summaryEntry?.content);
-  const fullEntryQuery = useDiaryEntry(needFullFetch ? summaryEntryId : null);
-
-  const activeEntry = fullEntryQuery.data ?? summaryEntry;
-  const days = monthDays(month);
-  const moments = activeEntry?.moments ?? activeEntry?.highlights ?? [];
-
-  const handleToggleFont = () => {
-    const next = writeDiaryFont(fontMode === 'hand' ? 'body' : 'hand');
-    setFontMode(next);
-  };
 
   return (
     <section className="vc-memory-diary" aria-label="角色日记">
@@ -75,7 +49,7 @@ export function Diary({ relId }: DiaryProps) {
           <Button
             variant="gray"
             size="sm"
-            onClick={() => setMonth((m) => shiftMonth(m, -1))}
+            onClick={handlePrevMonth}
           >
             上一月
           </Button>
@@ -83,7 +57,7 @@ export function Diary({ relId }: DiaryProps) {
           <Button
             variant="gray"
             size="sm"
-            onClick={() => setMonth((m) => shiftMonth(m, 1))}
+            onClick={handleNextMonth}
           >
             下一月
           </Button>
