@@ -10,7 +10,8 @@
 
 - [x] SX-1（2026-11-06）：ADR-0013（Accepted，Owner 决定见 §6.1）、ST 依赖与补丁清单、接口契约草案、阶段 0 合成测量（1k 条每次保存 2.5 MiB / 234 ms，20k 条 50 MiB / 5.2 s）；提交 1f1dd9ef。
 - [x] SX-2（2026-11-06）：聊天存储与分页历史接口契约经总调度审定后冻结进 OpenAPI / catalog（11 路径、15 操作、12 错误码，均 DEFER 待实现）：body `requestId` 幂等、keyset before/after 与 `anchorMessageId`、重排后 410、类型化 operations、`include=chat`。quick PASS。
-- [ ] SX-3–SX-16：见 Backlog M 节。
+- [x] SX-3（2026-11-07）：新增 V287 加密聊天/候选/顺序与 metadata、权威 epoch、幂等回执及事务 outbox，补齐无痕/清空删除；Go 离线、store/http 集成、RLS PASS；提交 bf3ba14b。
+- [ ] SX-4–SX-16：见 Backlog M 节。
 
 ### 聊天与记忆质量（CM）
 
