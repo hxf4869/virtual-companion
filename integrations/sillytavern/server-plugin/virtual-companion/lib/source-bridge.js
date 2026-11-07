@@ -8,7 +8,7 @@ export const DATA_EXPORT_PATH = '/internal/v1/st/data/export';
 export const DATA_DELETE_PATH = '/internal/v1/st/data/delete';
 export const PRIVATE_ST_PATHS = [SOURCE_BRIDGE_PATH, DATA_EXPORT_PATH, DATA_DELETE_PATH, INBOX_BRIDGE_PATH];
 function reject(res, status, code) { return res.status(status).json({ code }); }
-export function createSourceBridge({ config, getUser, getUserDirectories, accountData, inbox }) {
+export function createSourceBridge({ config, getUser, getUserDirectories, accountData, inbox, chatStorageGate }) {
     return async (req, res) => {
         res.setHeader('Cache-Control', 'no-store');
         if (req.headers.origin) return reject(res, 403, 'ACCESS_DENIED');
@@ -20,10 +20,8 @@ export function createSourceBridge({ config, getUser, getUserDirectories, accoun
         if (!handle) return reject(res, 403, 'ACCESS_DENIED');
         if (req.path === INBOX_BRIDGE_PATH) {
             if (!inbox) return reject(res, 503, 'ST_INBOX_UNAVAILABLE');
-            const profile = await getUser(handle);
-            if (!profile?.enabled || profile.handle !== handle) return reject(res, 403, 'ACCESS_DENIED');
-            if (accountData && !await accountData.readable(ownerAccountId, handle)) return reject(res, 503, 'ST_ACCOUNT_DELETING');
-            return inbox(req, res);
+            // Inbox owns its admission through save and readback; do not release on socket events.
+            return await inbox(req, res);
         }
         if ([DATA_EXPORT_PATH, DATA_DELETE_PATH].includes(req.path)) {
             if (!accountData) return reject(res, 503, 'ST_DATA_UNAVAILABLE');
@@ -36,19 +34,23 @@ export function createSourceBridge({ config, getUser, getUserDirectories, accoun
             try { return res.json(await accountData.exportData(ownerAccountId, handle)); }
             catch (error) { if (error.code === 'ST_EXPORT_TOO_LARGE') return reject(res, 413, error.code); throw error; }
         }
-        if (!Array.isArray(chats) || chats.length < 1 || chats.length > 64) return reject(res, 400, 'INVALID_REQUEST');
-        const unique = new Set();
-        for (const entry of chats) {
-            if (!entry || !idPattern.test(entry.chatIdentity || '') || unique.has(entry.chatIdentity)
-                || (entry.revision !== undefined && (!Number.isSafeInteger(entry.revision) || entry.revision < 0))) return reject(res, 400, 'INVALID_REQUEST');
-            unique.add(entry.chatIdentity);
-        }
-        const profile = await getUser(handle);
-        if (!profile?.enabled || profile.handle !== handle) return reject(res, 403, 'ACCESS_DENIED');
-        if (accountData && !await accountData.readable(ownerAccountId, handle)) return reject(res, 503, 'ST_ACCOUNT_DELETING');
-        const store = getF2Store(getUserDirectories(handle).root);
-        const snapshots = [];
-        for (const entry of chats) snapshots.push(await store.sourceSnapshot(entry.chatIdentity, entry.revision));
-        return res.json({ ownerAccountId, snapshots });
+        const release = chatStorageGate?.enter(ownerAccountId);
+        if (chatStorageGate && !release) return reject(res, 409, 'CHAT_AUTHORITY_CHANGED');
+        try {
+            if (!Array.isArray(chats) || chats.length < 1 || chats.length > 64) return reject(res, 400, 'INVALID_REQUEST');
+            const unique = new Set();
+            for (const entry of chats) {
+                if (!entry || !idPattern.test(entry.chatIdentity || '') || unique.has(entry.chatIdentity)
+                    || (entry.revision !== undefined && (!Number.isSafeInteger(entry.revision) || entry.revision < 0))) return reject(res, 400, 'INVALID_REQUEST');
+                unique.add(entry.chatIdentity);
+            }
+            const profile = await getUser(handle);
+            if (!profile?.enabled || profile.handle !== handle) return reject(res, 403, 'ACCESS_DENIED');
+            if (accountData && !await accountData.readable(ownerAccountId, handle)) return reject(res, 503, 'ST_ACCOUNT_DELETING');
+            const store = getF2Store(getUserDirectories(handle).root);
+            const snapshots = [];
+            for (const entry of chats) snapshots.push(await store.sourceSnapshot(entry.chatIdentity, entry.revision));
+            return res.json({ ownerAccountId, snapshots });
+        } finally { release?.(); }
     };
 }

@@ -119,7 +119,7 @@ class F2Store {
         }
         const records = new Map();
         for (const entry of await fs.readdir(this.stateDir, { withFileTypes: true })) {
-            if (!entry.name.endsWith('.json')) continue;
+            if (entry.name === 'chat-cutover.json' || !entry.name.endsWith('.json')) continue;
             if (!entry.isFile()) throw corrupt('身份记录不是普通文件');
             let record;
             try { record = JSON.parse(await fs.readFile(path.join(this.stateDir, entry.name), 'utf8')); }

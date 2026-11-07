@@ -298,3 +298,56 @@ test('私有 inbox 桥只接受服务令牌，读回后不回显正文', async (
     assert.equal(again.payload.associated, true);
     assert.equal(eventHits(await getF2Store(root).read(file), event.eventId).length, 1);
 });
+
+test('SX-8 inbox counts through save and readback despite client close, freezes late requests, and saves the event once', async (t) => {
+    const { createChatStorageGate } = await import('../server-plugin/virtual-companion/lib/chat-storage-gate.js');
+    const { EventEmitter } = await import('node:events');
+    const { root, store, file } = await fixture(t);
+    const gate = createChatStorageGate({ accountHandles: { 101: 'ownerA' }, getUserDirectories: () => ({ root }) });
+    let releaseSave, saving, releaseReadback, readingBack;
+    const savePaused = new Promise((resolve) => { releaseSave = resolve; });
+    const saveEntered = new Promise((resolve) => { saving = resolve; });
+    const readPaused = new Promise((resolve) => { releaseReadback = resolve; });
+    const readEntered = new Promise((resolve) => { readingBack = resolve; });
+    const originalSave = store.save, originalRead = store.read;
+    let saved = false, saves = 0;
+    store.save = async (...args) => { saves += 1; saving(); await savePaused; const result = await originalSave.apply(store, args); saved = true; return result; };
+    store.read = async (...args) => { if (saved) { readingBack(); await readPaused; } return originalRead.apply(store, args); };
+    t.after(() => { store.save = originalSave; store.read = originalRead; releaseSave(); releaseReadback(); });
+    let profiles = 0, directories = 0;
+    const options = {
+        config: { serviceToken: SERVICE_TOKEN, accountHandles: { 101: 'ownerA' } },
+        getUser: async () => { profiles += 1; assert.equal(gate.status('101').active, 1); return { handle: 'ownerA', enabled: true }; },
+        getUserDirectories: () => { directories += 1; return { root }; }, chatStorageGate: gate,
+    };
+    const bridge = createSourceBridge({ ...options, inbox: createInboxBridge(options) });
+    const body = { ownerAccountId: '101', file: path.relative(root, file), event: { eventId: 'sx8-drain', intent: 'BODY', body: '合成排空消息' }, lease: liveLease() };
+    function request() {
+        return {
+            req: Object.assign(new EventEmitter(), { path: INBOX_BRIDGE_PATH, headers: { authorization: `Bearer ${SERVICE_TOKEN}` }, body }),
+            res: Object.assign(new EventEmitter(), { statusCode: 200, setHeader() {}, status(code) { this.statusCode = code; return this; }, json(payload) { this.payload = payload; return this; } }),
+        };
+    }
+    const first = request();
+    const handling = bridge(first.req, first.res);
+    await saveEntered;
+    first.req.emit('close'); first.res.emit('close'); first.res.emit('finish');
+    assert.equal(gate.status('101').active, 1);
+    await gate.closeAdmission('101', { runId: randomUUID(), epoch: '3' });
+    const late = request(); await bridge(late.req, late.res);
+    assert.equal(late.res.statusCode, 409);
+    assert.deepEqual(late.res.payload, { code: 'CHAT_AUTHORITY_CHANGED' });
+    assert.equal(profiles, 1); assert.equal(directories, 1); assert.equal(saves, 1);
+    let exported = false;
+    const exporting = gate.waitForIdle('101').then(() => { exported = true; });
+    await Promise.resolve(); assert.equal(exported, false);
+    releaseSave();
+    await Promise.race([readEntered, handling.then(() => { throw new Error('inbox finished before readback pause'); })]);
+    assert.equal(gate.status('101').active, 1);
+    assert.equal(exported, false);
+    releaseReadback(); await handling; await exporting;
+    assert.equal(first.res.payload.saved, true);
+    assert.equal(first.res.payload.acked, true);
+    assert.equal(gate.status('101').active, 0);
+    assert.equal(eventHits(await originalRead.call(store, file), body.event.eventId).length, 1);
+});

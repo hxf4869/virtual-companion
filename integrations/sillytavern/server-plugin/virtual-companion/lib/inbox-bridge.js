@@ -100,7 +100,7 @@ export async function attemptInboxDelivery({ store, file, event, lease, claim, n
     return acknowledge(saved, event.eventId, message, beforeAck, active, now, { saved: true, stopped: false, waitingHost: false, associated: false });
 }
 
-export function createInboxBridge({ config, getUser, getUserDirectories, accountData }) {
+export function createInboxBridge({ config, getUser, getUserDirectories, accountData, chatStorageGate }) {
     return async (req, res) => {
         res.setHeader('Cache-Control', 'no-store');
         if (req.headers.origin) return reject(res, 403, 'ACCESS_DENIED');
@@ -110,25 +110,29 @@ export function createInboxBridge({ config, getUser, getUserDirectories, account
         const { ownerAccountId, file, event, lease } = req.body || {};
         const handle = typeof ownerAccountId === 'string' && /^[1-9][0-9]{0,18}$/.test(ownerAccountId) ? config.accountHandles[ownerAccountId] : null;
         if (!handle) return reject(res, 403, 'ACCESS_DENIED');
-        const profile = await getUser(handle);
-        if (!profile?.enabled || profile.handle !== handle) return reject(res, 403, 'ACCESS_DENIED');
-        if (accountData && !await accountData.readable(ownerAccountId, handle)) return reject(res, 503, 'ST_ACCOUNT_DELETING');
-        if (typeof file !== 'string' || !file || !isObject(event) || !eventIdPattern.test(event.eventId || '')) return reject(res, 400, 'INVALID_REQUEST');
+        const release = chatStorageGate?.enter(ownerAccountId);
+        if (chatStorageGate && !release) return reject(res, 409, 'CHAT_AUTHORITY_CHANGED');
         try {
-            const result = await attemptInboxDelivery({ store: getF2Store(getUserDirectories(handle).root), file, event, lease });
-            const payload = {
-                saved: result.saved === true,
-                stopped: result.stopped === true,
-                waitingHost: result.waitingHost === true,
-                associated: result.associated === true,
-                acked: result.acked === true,
-            };
-            if (result.linkStatus) payload.linkStatus = result.linkStatus;
-            if (result.readback) payload.readback = { ...result.readback };
-            return res.json(payload);
-        } catch (error) {
-            if (error instanceof F2Error) return reject(res, error.status, error.code);
-            throw error;
-        }
+            const profile = await getUser(handle);
+            if (!profile?.enabled || profile.handle !== handle) return reject(res, 403, 'ACCESS_DENIED');
+            if (accountData && !await accountData.readable(ownerAccountId, handle)) return reject(res, 503, 'ST_ACCOUNT_DELETING');
+            if (typeof file !== 'string' || !file || !isObject(event) || !eventIdPattern.test(event.eventId || '')) return reject(res, 400, 'INVALID_REQUEST');
+            try {
+                const result = await attemptInboxDelivery({ store: getF2Store(getUserDirectories(handle).root), file, event, lease });
+                const payload = {
+                    saved: result.saved === true,
+                    stopped: result.stopped === true,
+                    waitingHost: result.waitingHost === true,
+                    associated: result.associated === true,
+                    acked: result.acked === true,
+                };
+                if (result.linkStatus) payload.linkStatus = result.linkStatus;
+                if (result.readback) payload.readback = { ...result.readback };
+                return res.json(payload);
+            } catch (error) {
+                if (error instanceof F2Error) return reject(res, error.status, error.code);
+                throw error;
+            }
+        } finally { release?.(); }
     };
 }

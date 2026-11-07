@@ -21,6 +21,7 @@ import fs from 'node:fs';
 import { createHostAuth } from './lib/host-auth.js';
 import { createF2Hooks } from './lib/f2-routes.js';
 import { commitDocument } from './lib/document-commit.js';
+import { createChatStorageGate } from './lib/chat-storage-gate.js';
 import { createSourceBridge } from './lib/source-bridge.js';
 import { attemptInboxDelivery, createInboxBridge } from './lib/inbox-bridge.js';
 import { createAccountData } from './lib/account-data.js';
@@ -44,8 +45,9 @@ export async function init(router) {
             await storage.removeItem(users.toAvatarKey(handle));
         },
     });
-    const inbox = createInboxBridge({ config, getUser, getUserDirectories: users.getUserDirectories, accountData });
-    const sourceBridge = createSourceBridge({ config, getUser, getUserDirectories: users.getUserDirectories, accountData, inbox });
+    const chatStorageGate = createChatStorageGate({ accountHandles: config.accountHandles, getUserDirectories: users.getUserDirectories });
+    const inbox = createInboxBridge({ config, getUser, getUserDirectories: users.getUserDirectories, accountData, chatStorageGate });
+    const sourceBridge = createSourceBridge({ config, getUser, getUserDirectories: users.getUserDirectories, accountData, inbox, chatStorageGate });
     const hostAuth = createHostAuth({ config,
         getUser, sourceBridge, accountData,
         accountVersion: users.getAccountVersion,
@@ -72,7 +74,7 @@ export async function init(router) {
     installUsageFetch();
     // ④ guardUnmanagedGeneration（text-completions / kobold / horde generate-text / novel；不改 generate-bridge）。
     const f2 = createF2Hooks({ getUserDirectories: users.getUserDirectories });
-    globalThis[BRIDGE_SYMBOL] = { ...bridge, interceptStatus, hostAuth, f2, commitDocument, guardUnmanagedGeneration, attemptInboxDelivery };
+    globalThis[BRIDGE_SYMBOL] = { ...bridge, interceptStatus, hostAuth, f2, commitDocument, guardUnmanagedGeneration, attemptInboxDelivery, chatStorageGate };
     log.info(`插件就绪：goBaseUrl=${config.goBaseUrl || '(未配置)'} 服务令牌=${config.serviceToken ? '已配置' : '缺失（受控生成不可用）'} estimator=${counter.estimator}`);
 }
 

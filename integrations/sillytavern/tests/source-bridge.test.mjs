@@ -298,3 +298,62 @@ test('浏览器 cookie 不构成授权：合成 vc_* cookie 无服务令牌仍�
     assert.equal(withBoth.res.statusCode, 200);
     assert.equal(withBoth.res.payload.snapshots[0].state, 'PRESENT');
 });
+
+test('SX-8 sources handler stays active after client close, rejects late arrivals without profile/disk access, and drains in finally', async (t) => {
+    const { createChatStorageGate } = await import('../server-plugin/virtual-companion/lib/chat-storage-gate.js');
+    const { EventEmitter } = await import('node:events');
+    const root = await tempRoot(t, 'vc-source-drain-');
+    const store = getF2Store(root);
+    const base = await store.save(path.join(root, 'chats/card/main.jsonl'), chatRows(), { expected: fresh() });
+    const gate = createChatStorageGate({ accountHandles: { 101: 'ownerA' }, getUserDirectories: () => ({ root }) });
+    let unpause, started;
+    const paused = new Promise((resolve) => { unpause = resolve; });
+    const entered = new Promise((resolve) => { started = resolve; });
+    const original = store.sourceSnapshot;
+    store.sourceSnapshot = async (...args) => { started(); await paused; return original.apply(store, args); };
+    t.after(() => { store.sourceSnapshot = original; unpause(); });
+    let profiles = 0, directories = 0;
+    const bridge = createSourceBridge({
+        config: { serviceToken: SERVICE_TOKEN, accountHandles: { 101: 'ownerA' } },
+        getUser: async () => { profiles += 1; assert.equal(gate.status('101').active, 1); return { handle: 'ownerA', enabled: true }; },
+        getUserDirectories: () => { directories += 1; return { root }; }, chatStorageGate: gate,
+    });
+    function request() {
+        const req = Object.assign(new EventEmitter(), { headers: auth, path: SOURCE_BRIDGE_PATH, body: { ownerAccountId: '101', chats: [{ chatIdentity: base.id }] } });
+        const res = Object.assign(new EventEmitter(), { statusCode: 200, setHeader() {}, status(code) { this.statusCode = code; return this; }, json(payload) { this.payload = payload; return this; } });
+        return { req, res };
+    }
+    const first = request();
+    const processing = bridge(first.req, first.res);
+    await entered;
+    first.req.emit('close'); first.res.emit('close'); first.res.emit('finish');
+    assert.equal(gate.status('101').active, 1);
+    await gate.closeAdmission('101', { runId: randomUUID(), epoch: '2' });
+    const late = request();
+    await bridge(late.req, late.res);
+    assert.equal(late.res.statusCode, 409);
+    assert.deepEqual(late.res.payload, { code: 'CHAT_AUTHORITY_CHANGED' });
+    assert.equal(profiles, 1);
+    assert.equal(directories, 1);
+    let exported = false;
+    const exporting = gate.waitForIdle('101').then(() => { exported = true; });
+    await Promise.resolve(); assert.equal(exported, false);
+    unpause();
+    await processing;
+    await exporting;
+    assert.equal(first.res.payload.snapshots[0].state, 'PRESENT');
+    assert.equal(gate.status('101').active, 0);
+});
+
+test('SX-8 source profile failures and rejected profiles release admission in finally', async (t) => {
+    const { createChatStorageGate } = await import('../server-plugin/virtual-companion/lib/chat-storage-gate.js');
+    const root = await tempRoot(t, 'vc-source-drain-error-');
+    const gate = createChatStorageGate({ accountHandles: { 101: 'ownerA' }, getUserDirectories: () => ({ root }) });
+    for (const profile of [async () => { throw new Error('synthetic-profile-failure'); }, async () => undefined]) {
+        const bridge = createSourceBridge({ config: { serviceToken: SERVICE_TOKEN, accountHandles: { 101: 'ownerA' } }, getUser: profile, chatStorageGate: gate });
+        const req = { headers: auth, path: SOURCE_BRIDGE_PATH, body: { ownerAccountId: '101', chats: [{ chatIdentity: randomUUID() }] } };
+        const res = { setHeader() {}, status() { return this; }, json() {} };
+        await bridge(req, res).catch((error) => assert.match(error.message, /synthetic-profile-failure/));
+        assert.equal(gate.status('101').active, 0);
+    }
+});
