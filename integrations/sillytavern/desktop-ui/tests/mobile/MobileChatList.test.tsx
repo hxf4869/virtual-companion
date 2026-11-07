@@ -21,6 +21,8 @@ import {
   useCachedChatTailReconcile,
 } from '../../src/mobile/chat/data/chatTailPrefetch';
 import { formatMobileConversationPreview } from '../../src/mobile/chat/data/conversationPreview';
+import fs from 'node:fs';
+import path from 'node:path';
 import { MobileApp } from '../../src/mobile/app/MobileApp';
 import { MobileChatList } from '../../src/mobile/chat/MobileChatList';
 import { usePreferences } from '../../src/design/theme/usePreferences';
@@ -1518,5 +1520,28 @@ describe('MB2-6a SX-2 Paginated Chat Data Layer, Idle Prefetch, Tail Cache & Mob
     const timelessMeta = getRowEl(keyTimeless).querySelector('.vc-mobile-convo-meta');
     expect(timelessMeta?.querySelector('[data-vc-convo-pin-mark]')).toBeTruthy();
     expect(timelessMeta?.querySelector('.vc-mobile-convo-time')).toBeNull();
+
+    // 7. .vc-mobile-convo-options must not set display or !important so Ionic controls ion-item-options visibility at rest vs active slide
+    const mobileChatListCss = fs
+      .readFileSync(path.resolve(__dirname, '../../src/mobile/chat/mobile-chat-list.css'), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '');
+    const optionsRules = [
+      ...mobileChatListCss.matchAll(
+        /([^{}]*(?:\.vc-mobile-convo-options|ion-item-options)[^{}]*)\{([^}]*)\}/g,
+      ),
+    ];
+    expect(optionsRules.length).toBeGreaterThan(0);
+    for (const [, selector, body] of optionsRules) {
+      expect(body, `rule ${selector.trim()} must not declare display`).not.toMatch(
+        /(?:^|[\s;])display\s*:/,
+      );
+      expect(body, `rule ${selector.trim()} must not use !important`).not.toContain('!important');
+    }
+    const primaryOptionsRuleBody = optionsRules[0]?.[2] ?? '';
+    expect(primaryOptionsRuleBody).toContain('align-items: stretch');
+    expect(primaryOptionsRuleBody).toContain('gap: 8px');
+    expect(primaryOptionsRuleBody).toContain('padding-left: 8px');
+    expect(primaryOptionsRuleBody).toContain('border: none');
+    expect(primaryOptionsRuleBody).toContain('background: transparent');
   });
 });

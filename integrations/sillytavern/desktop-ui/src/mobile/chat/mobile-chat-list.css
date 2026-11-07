@@ -335,7 +335,6 @@
 
 /* ── Left-swipe IonItemOptions (88px width, radius 20px, DESIGN.md §17.3) ── */
 .vc-mobile-convo-options {
-  display: flex;
   align-items: stretch;
   gap: 8px;
   padding-left: 8px;

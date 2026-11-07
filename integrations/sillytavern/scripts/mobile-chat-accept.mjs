@@ -59,6 +59,104 @@ async function clickThemeOption(page, mode, label) {
     await settleMobilePage(page);
 }
 
+async function swipeRowHorizontally(page, startX, endX, y, steps = 12) {
+    await page.mouse.move(startX, y);
+    await page.mouse.down();
+    for (let i = 1; i <= steps; i += 1) {
+        const x = Math.round(startX + ((endX - startX) * i) / steps);
+        await page.mouse.move(x, y);
+        await page.evaluate(
+            () => new Promise((resolve) => requestAnimationFrame(() => resolve())),
+        );
+    }
+    await page.evaluate(
+        () => new Promise((resolve) => requestAnimationFrame(() => resolve())),
+    );
+    await page.mouse.up();
+}
+
+async function inspectConvoRowSwipeGeometry(page, conversationKey) {
+    return page.evaluate((key) => {
+        const card = document.querySelector(`[data-vc-mobile-convo-row=${JSON.stringify(key)}]`);
+        if (!card) return null;
+        const sliding = card.closest('ion-item-sliding') || card.parentElement;
+        const options = sliding?.querySelector('ion-item-options');
+        const pinBtn = sliding?.querySelector('[data-vc-swipe-action="pin"]');
+        const timeEl = card.querySelector('.vc-mobile-convo-time');
+
+        const cardRect = card.getBoundingClientRect();
+        const slidingRect = sliding ? sliding.getBoundingClientRect() : cardRect;
+        const pinRect = pinBtn ? pinBtn.getBoundingClientRect() : null;
+        const optionsCs = options ? getComputedStyle(options) : null;
+        const pinCs = pinBtn ? getComputedStyle(pinBtn) : null;
+        const timeRect = timeEl ? timeEl.getBoundingClientRect() : null;
+        const timeCs = timeEl ? getComputedStyle(timeEl) : null;
+
+        let timeHitInsideCard = false;
+        if (timeRect && timeRect.width > 0 && timeRect.height > 0) {
+            const cx = timeRect.left + timeRect.width / 2;
+            const cy = timeRect.top + timeRect.height / 2;
+            const hitEl = document.elementFromPoint(cx, cy);
+            timeHitInsideCard = Boolean(hitEl && card.contains(hitEl));
+        }
+
+        let pinHitInsideOption = false;
+        if (pinRect && pinRect.width > 0 && pinRect.height > 0 && pinBtn) {
+            const px = pinRect.left + pinRect.width / 2;
+            const py = pinRect.top + pinRect.height / 2;
+            const hitPinEl = document.elementFromPoint(px, py);
+            pinHitInsideOption = Boolean(hitPinEl && pinBtn.contains(hitPinEl));
+        }
+
+        const pinHidden =
+            Boolean(pinBtn && options) &&
+            (optionsCs?.display === 'none' ||
+                pinCs?.display === 'none' ||
+                (pinRect?.width ?? 0) === 0);
+
+        const pinVisible =
+            Boolean(pinBtn && options) &&
+            Boolean(sliding?.classList.contains('item-sliding-active-slide')) &&
+            !sliding?.classList.contains('item-sliding-closing') &&
+            optionsCs?.display !== 'none' &&
+            optionsCs?.visibility !== 'hidden' &&
+            pinCs?.display !== 'none' &&
+            pinCs?.visibility !== 'hidden' &&
+            (pinRect?.width ?? 0) > 0 &&
+            (pinRect?.height ?? 0) > 0 &&
+            cardRect.right <= (pinRect?.left ?? 0) + 1 &&
+            pinHitInsideOption;
+
+        return {
+            pinHidden,
+            pinVisible,
+            pinHitInsideOption,
+            slidingActive: Boolean(sliding?.classList.contains('item-sliding-active-slide')),
+            slidingClosing: Boolean(sliding?.classList.contains('item-sliding-closing')),
+            optionsDisplay: optionsCs?.display ?? 'none',
+            optionsVisibility: optionsCs?.visibility ?? 'hidden',
+            pinDisplay: pinCs?.display ?? 'none',
+            pinLeft: Math.round((pinRect?.left ?? 0) * 100) / 100,
+            pinWidth: Math.round((pinRect?.width ?? 0) * 100) / 100,
+            pinHeight: Math.round((pinRect?.height ?? 0) * 100) / 100,
+            cardRight: Math.round(cardRect.right * 100) / 100,
+            slidingRight: Math.round(slidingRect.right * 100) / 100,
+            rightEdgeDelta: Math.round(Math.abs(cardRect.right - slidingRect.right) * 100) / 100,
+            timeText: timeEl?.textContent?.trim() ?? '',
+            timeWidth: Math.round((timeRect?.width ?? 0) * 100) / 100,
+            timeHeight: Math.round((timeRect?.height ?? 0) * 100) / 100,
+            timeVisible:
+                Boolean(timeEl) &&
+                (timeRect?.width ?? 0) > 0 &&
+                (timeRect?.height ?? 0) > 0 &&
+                timeCs?.display !== 'none' &&
+                timeCs?.visibility !== 'hidden' &&
+                timeHitInsideCard,
+            timeHitInsideCard,
+        };
+    }, conversationKey);
+}
+
 function resolveArtifactDir(ctx) {
     const dir =
         ctx?.artifactsDir ||
@@ -260,6 +358,116 @@ export async function sceneMb2Chat(ctx) {
         );
         await rowLocator.waitFor({ state: 'visible', timeout: 20000 });
         await settleMobilePage(page);
+
+        // 1a. 静止状态几何断言：[data-vc-swipe-action="pin"] 不可见，会话卡片右边缘与所在行右边缘对齐，时间文字可见且未被遮盖
+        const restGeo = await inspectConvoRowSwipeGeometry(page, fixture.conversationKey);
+        assert.ok(restGeo, '必须找到会话行几何信息');
+        assert.equal(
+            restGeo.pinHidden,
+            true,
+            `静止状态下 [data-vc-swipe-action="pin"] 必须不可见（display:none 或 width:0），实际 optionsDisplay=${restGeo.optionsDisplay}, pinDisplay=${restGeo.pinDisplay}, pinWidth=${restGeo.pinWidth}`,
+        );
+        assert.ok(
+            restGeo.rightEdgeDelta <= 1,
+            `静止状态下 .vc-mobile-convo-card 右边缘须与所在行右边缘对齐（误差 <= 1px），实际 cardRight=${restGeo.cardRight}, slidingRight=${restGeo.slidingRight}, delta=${restGeo.rightEdgeDelta}`,
+        );
+        assert.equal(
+            restGeo.timeVisible,
+            true,
+            `静止状态下时间文字必须可见且未被遮盖，实际 timeText=${JSON.stringify(restGeo.timeText)}, timeWidth=${restGeo.timeWidth}, timeHitInsideCard=${restGeo.timeHitInsideCard}`,
+        );
+
+        // 1b. 用真实鼠标拖动手势在该行上向左滑，断言“置顶”按钮变为可见且宽度约为 88；再向右滑收起，断言恢复隐藏
+        const rowBox = await rowLocator.boundingBox();
+        assert.ok(rowBox && rowBox.width > 160 && rowBox.height > 40, '会话行 boundingBox 须有效');
+        const dragY = Math.round(rowBox.y + rowBox.height / 2);
+        const dragStartX = Math.round(rowBox.x + rowBox.width * 0.78);
+        const dragEndX = Math.round(rowBox.x + rowBox.width * 0.22);
+
+        await swipeRowHorizontally(page, dragStartX, dragEndX, dragY);
+        await page.waitForFunction(
+            (key) => {
+                const card = document.querySelector(`[data-vc-mobile-convo-row=${JSON.stringify(key)}]`);
+                const sliding = card?.closest('ion-item-sliding');
+                const pinBtn = sliding?.querySelector('[data-vc-swipe-action="pin"]');
+                const options = sliding?.querySelector('ion-item-options');
+                if (!card || !sliding || !pinBtn || !options) return false;
+                const optionsCs = getComputedStyle(options);
+                const cardRect = card.getBoundingClientRect();
+                const rect = pinBtn.getBoundingClientRect();
+                const hitEl =
+                    rect.width > 0 && rect.height > 0
+                        ? document.elementFromPoint(
+                              rect.left + rect.width / 2,
+                              rect.top + rect.height / 2,
+                          )
+                        : null;
+                return (
+                    sliding.classList.contains('item-sliding-active-slide') &&
+                    !sliding.classList.contains('item-sliding-closing') &&
+                    optionsCs.display !== 'none' &&
+                    optionsCs.visibility !== 'hidden' &&
+                    Math.abs(rect.width - 88) <= 2 &&
+                    cardRect.right <= rect.left + 1 &&
+                    Boolean(hitEl && pinBtn.contains(hitEl))
+                );
+            },
+            fixture.conversationKey,
+            { timeout: 5000 },
+        );
+        await settleMobilePage(page);
+
+        const swipedGeo = await inspectConvoRowSwipeGeometry(page, fixture.conversationKey);
+        assert.ok(swipedGeo, '左滑后必须读取到会话行几何信息');
+        assert.equal(
+            swipedGeo.pinVisible,
+            true,
+            `左滑后 [data-vc-swipe-action="pin"] 必须可见且未被卡片遮挡，实际 optionsDisplay=${swipedGeo.optionsDisplay}, optionsVisibility=${swipedGeo.optionsVisibility}, pinWidth=${swipedGeo.pinWidth}, cardRight=${swipedGeo.cardRight}, pinLeft=${swipedGeo.pinLeft}, pinHitInsideOption=${swipedGeo.pinHitInsideOption}`,
+        );
+        assert.ok(
+            Math.abs(swipedGeo.pinWidth - 88) <= 2,
+            `左滑后“置顶”按钮宽度须约为 88px，实际 ${swipedGeo.pinWidth}px`,
+        );
+
+        // 再次右滑收起，等待 Ionic 600ms 关闭周期结束并断言恢复隐藏
+        await swipeRowHorizontally(page, dragEndX, dragStartX, dragY);
+        await page.waitForFunction(
+            (key) => {
+                const card = document.querySelector(`[data-vc-mobile-convo-row=${JSON.stringify(key)}]`);
+                const sliding = card?.closest('ion-item-sliding');
+                const options = sliding?.querySelector('ion-item-options');
+                if (!card || !sliding || !options) return false;
+                const optionsCs = getComputedStyle(options);
+                const cardRect = card.getBoundingClientRect();
+                const slidingRect = sliding.getBoundingClientRect();
+                return (
+                    !sliding.classList.contains('item-sliding-active-slide') &&
+                    !sliding.classList.contains('item-sliding-closing') &&
+                    optionsCs.display === 'none' &&
+                    Math.abs(cardRect.right - slidingRect.right) <= 1
+                );
+            },
+            fixture.conversationKey,
+            { timeout: 5000 },
+        );
+        await settleMobilePage(page);
+
+        const closedGeo = await inspectConvoRowSwipeGeometry(page, fixture.conversationKey);
+        assert.ok(closedGeo, '右滑收起后必须读取到会话行几何信息');
+        assert.equal(
+            closedGeo.pinHidden,
+            true,
+            `右滑收起后 [data-vc-swipe-action="pin"] 必须恢复隐藏，实际 optionsDisplay=${closedGeo.optionsDisplay}, pinWidth=${closedGeo.pinWidth}`,
+        );
+        assert.ok(
+            closedGeo.rightEdgeDelta <= 1,
+            `右滑收起后 .vc-mobile-convo-card 右边缘须恢复与所在行右边缘对齐，实际 delta=${closedGeo.rightEdgeDelta}`,
+        );
+        assert.equal(
+            closedGeo.timeVisible,
+            true,
+            `右滑收起后时间文字必须恢复可见且未被遮盖，实际 timeVisible=${closedGeo.timeVisible}`,
+        );
 
         // 2. 通过真实点击从会话列表进入对话页，验证历史消息、气泡分组、日期胶囊、已发送、导航栏与隐藏 TabBar
         await rowLocator.click();
@@ -595,6 +803,25 @@ export async function sceneMb2Chat(ctx) {
                 );
                 await settleMobilePage(page);
 
+                const shotListGeo = await inspectConvoRowSwipeGeometry(
+                    page,
+                    fixture.conversationKey,
+                );
+                assert.equal(
+                    shotListGeo?.pinHidden,
+                    true,
+                    `[${vp.width} ${scheme}] 静止截图前 [data-vc-swipe-action="pin"] 必须隐藏`,
+                );
+                assert.ok(
+                    (shotListGeo?.rightEdgeDelta ?? 99) <= 1,
+                    `[${vp.width} ${scheme}] 静止截图前 .vc-mobile-convo-card 右边缘须与所在行右边缘对齐，实际 delta=${shotListGeo?.rightEdgeDelta}`,
+                );
+                assert.equal(
+                    shotListGeo?.timeVisible,
+                    true,
+                    `[${vp.width} ${scheme}] 静止截图前时间文字必须可见且未被遮盖`,
+                );
+
                 const listShotName = `mb2-chat-list-${vp.width}-${scheme}.png`;
                 const listShotPath = path.join(artifactDir, listShotName);
                 await page.screenshot({ path: listShotPath });
@@ -640,6 +867,7 @@ export async function sceneMb2Chat(ctx) {
             conversationKey: fixture.conversationKey,
             reenterHistoryVisibleMs: reenterTiming,
             verifiedSteps: [
+                'list-swipe-pin-hidden-at-rest-and-revealed-on-left-swipe',
                 'enter-from-chat-list',
                 'history-visible-and-grouped',
                 'send-and-streaming-reply',
