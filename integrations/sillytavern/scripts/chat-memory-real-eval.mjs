@@ -12,7 +12,7 @@ import { importSyntheticCard } from './w05-accept.mjs';
 import { cleanupSettled } from './w08-real-eval.mjs';
 import { RERANK } from '../memorycore-service/rerank.mjs';
 import { factMatchTerms, forgetStageCase, FORGET_STAGES } from '../../../scripts/lib/chat-memory-dataset.mjs';
-import { mapRecordToFacts, scoreRules, parseJudgeResult, summarizeChatMemoryEvaluation, summarizeDiagnosticControls, normalizeFactText } from '../../../scripts/lib/chat-memory-scoring.mjs';
+import { mapRecordToFacts, scoreRules, parseJudgeResult, summarizeChatMemoryEvaluation, summarizeDiagnosticControls, normalizeFactText, CASE_STATE_PROTOCOL } from '../../../scripts/lib/chat-memory-scoring.mjs';
 import { buildReviewTasks, reviewEvaluationAnswers } from '../../../scripts/lib/chat-memory-judging.mjs';
 import { createJudgeCalibrationDataset, summarizeJudgeCalibration } from '../../../scripts/lib/chat-memory-judge-calibration.mjs';
 import { summarizeSamples, summarizeReplyQuality } from '../../../scripts/lib/chat-memory-metrics.mjs';
@@ -188,6 +188,43 @@ export async function listEvaluationMemories(account, relationshipId, sourceMap,
 
 const listMemory = listEvaluationMemories;
 
+export function evaluationCorrectionSummary(record, action, dataset) {
+    // The API replaces a whole record, which may contain several facts. The
+    // existing placement remains historical evidence; the user edit states now.
+    const previous = dataset.facts.find(row => row.factId === action.targetFactId);
+    const summary = `${record.summary}\n${previous.subject}此前的位置记载仅作为历史；${action.replacementContent}`;
+    if ([...summary].length > 2000) throw new Error('CM_EVALUATION_CORRECTION_TOO_LONG');
+    return summary;
+}
+
+export function createEvaluationCaseResetter({ dataset, accounts, instances, sourceMap, sessionsByTurn,
+    recordAliases, seenFactRecords, priorActions }) {
+    const savedInstances = structuredClone([...instances].map(([id, { account: _account, ...local }]) => [id, local]));
+    const savedSources = structuredClone([...sourceMap]);
+    const savedSessions = structuredClone([...sessionsByTurn].map(([turn, { local, file, identity }]) =>
+        [turn, { instanceId: local.id, file, identity }]));
+    const savedAliases = structuredClone([...recordAliases]), savedFacts = structuredClone([...seenFactRecords]);
+    const restoreMap = (target, values) => {
+        target.clear();
+        for (const [key, value] of structuredClone(values)) target.set(key, value);
+    };
+    return clients => {
+        accounts.clear();
+        accounts.set(dataset.owners[0].id, clients.owner);
+        accounts.set(dataset.owners[1].id, clients.second);
+        instances.clear();
+        for (const [id, local] of structuredClone(savedInstances)) instances.set(id, { ...local, account: accounts.get(local.ownerId) });
+        restoreMap(sourceMap, savedSources);
+        sessionsByTurn.clear();
+        for (const [turn, { instanceId, file, identity }] of savedSessions) {
+            sessionsByTurn.set(turn, { local: instances.get(instanceId), file, identity });
+        }
+        restoreMap(recordAliases, savedAliases);
+        restoreMap(seenFactRecords, savedFacts);
+        priorActions.length = 0;
+    };
+}
+
 export function selectEvaluationActionTarget(testCase, { dataset, memories, jobs, sourceMap, pagesRead,
     recordAliases, seenFactRecords, priorActions }) {
     const fact = dataset.facts.find(row => row.factId === testCase.action.targetFactId);
@@ -361,13 +398,15 @@ export async function waitExtraction(ctx, expected, { signal, onProgress, timeou
 
 export async function evaluateCoreOnStack(ctx, { dataset, roles, modelRoutes, meter, budget, variant = 'baseline',
     signal, onProgress, diagnosticsOnly = false, extractionTimeoutMs = 7_200_000, caseTimeoutMs = 330000,
-    saveAnswer = async () => {}, checkpoint = async () => {} } = {}) {
-    if (!ctx.second || !ctx.judge || !ctx.readEngineObservations) throw new Error('CM_ISOLATION_CONTEXT');
+    saveAnswer = async () => {}, checkpoint: writeCheckpoint = async () => {} } = {}) {
+    if (!ctx.second || !ctx.judge || !ctx.readEngineObservations
+        || (!diagnosticsOnly && (!ctx.captureIngestCheckpoint || !ctx.restoreIngestCheckpoint))) throw new Error('CM_ISOLATION_CONTEXT');
     const reauthenticate = createEvaluationReauthentication();
     const accounts = new Map([[dataset.owners[0].id, { admin: ctx.admin, st: ctx.st, session: ctx.secrets.session, password: ctx.secrets.password }],
         [dataset.owners[1].id, ctx.second]]);
     const sourceMap = new Map(), savedAt = new Map(), sessionsByTurn = new Map(), instances = new Map(), cards = new Map();
     const metricRows = [], results = [], answerTasks = [], callCases = new Map(), priorActions = [];
+    const checkpoint = partial => writeCheckpoint({ ...partial, metricRows: metricRows.slice(), metrics: summarizeSamples(metricRows) });
     const recordAliases = new Map(), seenFactRecords = new Map();
     const controlCases = dataset.cases.filter((_testCase, index) => index % 20 === 0);
     const replyQuality = createReplyQualityMetrics({ capacity: 1000 });
@@ -435,7 +474,7 @@ export async function evaluateCoreOnStack(ctx, { dataset, roles, modelRoutes, me
     { signal: AbortSignal.any([...(signal ? [signal] : []), AbortSignal.timeout(caseTimeoutMs)]) });
     await readEvaluationResponse(probe.res, { signal, stream: true });
     onProgress?.({ phase: 'provider-probe', status: 'PASS', budget: budget.snapshot() });
-    let extraction = { jobs: [], timedOut: false };
+    let extraction = { jobs: [], timedOut: false }, resetCaseData;
     const extractionRecords = [];
     if (diagnosticsOnly) {
         // Controls disable recall. Empty bindings reproduce their runtime path
@@ -501,6 +540,18 @@ export async function evaluateCoreOnStack(ctx, { dataset, roles, modelRoutes, me
         extractionRecords.push(...local.memories.map(row => row.mapping));
     }
     await checkpoint({ phase: 'extracted', sourceCounts: dataset.sourceCounts, jobs: extraction.jobs.map(row => ({ status: row.status, published: Number(row.published) })), budget: budget.snapshot() });
+    if (extraction.timedOut) throw new Error('CM_INGEST_CHECKPOINT_NOT_READY');
+    const idleStarted = performance.now();
+    while (budget.snapshot().held !== 0) {
+        signal?.throwIfAborted();
+        if (performance.now() - idleStarted >= caseTimeoutMs) throw new Error('CM_INGEST_CHECKPOINT_NOT_READY');
+        await delay(100, undefined, { signal });
+    }
+    resetCaseData = createEvaluationCaseResetter({ dataset, accounts, instances, sourceMap, sessionsByTurn,
+        recordAliases, seenFactRecords, priorActions });
+    onProgress?.({ phase: 'case-state', status: 'CAPTURING' });
+    await ctx.captureIngestCheckpoint();
+    onProgress?.({ phase: 'case-state', status: 'READY' });
     }
 
     async function ask(testCase, caseIndex, stage = null, beforeSend, control = null) {
@@ -608,6 +659,11 @@ export async function evaluateCoreOnStack(ctx, { dataset, roles, modelRoutes, me
     }
 
     for (let caseIndex = 0; !diagnosticsOnly && caseIndex < dataset.cases.length; caseIndex++) {
+        signal?.throwIfAborted();
+        onProgress?.({ phase: 'case-state', status: 'RESTORING', caseIndex });
+        const clients = await ctx.restoreIngestCheckpoint();
+        resetCaseData(clients);
+        activeCase = null;
         const testCase = dataset.cases[caseIndex], local = instances.get(testCase.instanceId), account = local.account;
         let result, actionDiagnostic, actionFailureCode, actionStatus = testCase.action ? 'NOT_RUN' : undefined;
         const actionTarget = async () => {
@@ -630,7 +686,8 @@ export async function evaluateCoreOnStack(ctx, { dataset, roles, modelRoutes, me
                 if (!target) actionFailureCode = 'CM_CORRECTION_TARGET_MISSING';
                 else {
                     await reauthenticate(account.admin, account.password);
-                    expect(await account.admin.call('PATCH', `/api/v1/memories/${target.memoryId}`, { expectedVersion: target.version, summary: testCase.action.replacementContent }));
+                    expect(await account.admin.call('PATCH', `/api/v1/memories/${target.memoryId}`, {
+                        expectedVersion: target.version, summary: evaluationCorrectionSummary(target, testCase.action, dataset) }));
                     recordAction(target);
                 }
             }
@@ -688,7 +745,7 @@ export async function evaluateCoreOnStack(ctx, { dataset, roles, modelRoutes, me
                         await delay(1000, undefined, { signal });
                     }
                     measure(testCase.id, 'cleanup_ms', performance.now() - (releasedAt ?? deletionStarted), cleanup === 'DONE' ? 'ok' : 'timeout');
-                    result.cleanupMeasurement = 'native-forget-release-to-DONE';
+                    result.cleanupMeasurement = 'native-forget-release-to-post-answer-DONE-observation';
                     result.forgetStages.done = await askStage('done');
                     result.forgetStages.done.cleanupStatus = cleanup;
                     await ctx.restartMemorycore();
@@ -703,7 +760,7 @@ export async function evaluateCoreOnStack(ctx, { dataset, roles, modelRoutes, me
                 }
             }
         } catch (error) {
-            if (/^(?:ARTIFACT|SYNTHETIC)_/.test(error.message)) throw error;
+            if (/^(?:(?:ARTIFACT|SYNTHETIC)_|CM_EVALUATION_)/.test(error.message)) throw error;
             result ||= error.cmObservation || { caseId: testCase.id };
             result.status = error.cmObservation?.status || (signal?.aborted || error.name === 'TimeoutError' || error.name === 'AbortError' ? 'TIMEOUT'
                 : budget.snapshot().denied ? 'BUDGET_STOP' : 'FAILED');
@@ -760,7 +817,8 @@ export async function evaluateCoreOnStack(ctx, { dataset, roles, modelRoutes, me
     if (diagnosticsOnly) return { diagnosticControls, modelCalls };
     const quality = summarizeChatMemoryEvaluation(dataset.cases, results, { facts: dataset.facts, extractionRecords });
     const recallRows = results.flatMap(row => row.forgetStages ? Object.values(row.forgetStages) : [row]).filter(row => row.recallWork);
-    return { schemaVersion: 1, variant, dataset: { version: dataset.version, seed: dataset.seed, hashes: dataset.hashes, sourceCounts: dataset.sourceCounts },
+    return { schemaVersion: 1, variant, caseStateProtocol: CASE_STATE_PROTOCOL,
+        dataset: { version: dataset.version, seed: dataset.seed, hashes: dataset.hashes, sourceCounts: dataset.sourceCounts },
         results, quality, reply: summarizeReplyQuality(replyQuality.drain()), metrics: summarizeSamples(metricRows), metricRows,
         productionParity, judgePreflight,
         extraction: { planned: dataset.sourceCounts.eligibleUserTurns, jobs: extraction.jobs.length,
@@ -778,7 +836,8 @@ export async function evaluateCoreOnStack(ctx, { dataset, roles, modelRoutes, me
         recallWork: { observedAnswers: recallRows.length,
             ...Object.fromEntries(['httpCalls', 'searchExecutions', 'searchReuseHits', 'unknownExecutions']
                 .map(key => [key, recallRows.reduce((sum, row) => sum + row.recallWork[key], 0)])) },
-        measurementLimits: ['pipeline-not-visible-paint', 'late-stage-original-source-reconcile-not-inflight', 'same-model-judge-see-config'],
+        measurementLimits: ['pipeline-not-visible-paint', 'per-case-business-restart-model-services-retained',
+            'cleanup-ms-includes-begin-answer-wait', 'late-stage-original-source-reconcile-not-inflight', 'same-model-judge-see-config'],
         modelCalls,
         budget: budget.snapshot(), embedding: { model: embedding.model, artifactVersion: embedding.artifactVersion, dimensions: embedding.dimensions },
     };

@@ -22,6 +22,8 @@ const JUDGE = '424244';
 const JUDGE_HANDLE = 'vc-cm3-judge';
 const UPSTREAM = ['SillyTavern', 'JS-Slash-Runner', 'ST-Prompt-Template', 'MagVarUpdate', 'TencentDB-Agent-Memory'];
 const SHARED_MODELS = { embedding: 'vc-local-dev-embedding-1', rerank: 'vc-local-dev-rerank-1' };
+const CHECKPOINT_VOLUMES = ['db-data', 'memorycore-data', 'st-data', 'minio-data'];
+const CHECKPOINT_LIMIT = 4 * 1024 ** 3;
 const DOCKER_ENV = Object.fromEntries(['PATH', 'HOME', 'USER', 'TMPDIR', 'DOCKER_CONFIG']
     .filter(key => process.env[key]).map(key => [key, process.env[key]]));
 const CODES = new Set([
@@ -30,6 +32,8 @@ const CODES = new Set([
     'ISOLATION_MINIO_INIT_FAILED', 'ISOLATION_ST_PROFILE_FAILED',
     'ISOLATION_METER_UNREACHABLE', 'ISOLATION_SYNTHETIC_AUTH_FAILED', 'ISOLATION_EVALUATION_FAILED',
     'ISOLATION_INTERRUPTED', 'ISOLATION_CLEANUP_FAILED', 'CONFIG_NOT_READY',
+    'ISOLATION_CHECKPOINT_FAILED', 'ISOLATION_CHECKPOINT_ALREADY_CAPTURED',
+    'ISOLATION_CHECKPOINT_NOT_READY', 'ISOLATION_CHECKPOINT_LIMIT',
     'BUDGET_STOP', 'BUDGET_LOCKED', 'BUDGET_SNAPSHOT_MISMATCH',
 ]);
 const fail = code => new Error(code);
@@ -54,11 +58,16 @@ function docker(args, options) {
     return run('docker', ['--context', 'orbstack', ...args], options);
 }
 
-function runCompose(args, signal, code) {
+function runCompose(args, signal, code, { capture = false } = {}) {
     return new Promise((resolve, reject) => {
         if (signal.aborted) return reject(fail('ISOLATION_INTERRUPTED'));
         const child = spawn('docker', ['--context', 'orbstack', ...args], {
-            cwd: ROOT, env: DOCKER_ENV, stdio: 'ignore', detached: true,
+            cwd: ROOT, env: DOCKER_ENV, stdio: ['ignore', capture ? 'pipe' : 'ignore', 'ignore'], detached: true,
+        });
+        let output = '';
+        child.stdout?.on('data', chunk => {
+            output += chunk.toString();
+            if (output.length > 16384) interrupt();
         });
         // Stop the Compose plugin as well as the docker CLI before teardown.
         const interrupt = () => {
@@ -71,10 +80,243 @@ function runCompose(args, signal, code) {
         child.once('close', status => {
             signal.removeEventListener('abort', interrupt);
             if (signal.aborted) return reject(fail('ISOLATION_INTERRUPTED'));
-            if (status !== 0) return reject(fail(code));
-            resolve();
+            if (status !== 0 || output.length > 16384) return reject(fail(code));
+            resolve(output.trim());
         });
     });
+}
+
+function evaluationClient({ goBase, stBase, password, session, createAdmin = createGoAdminClient, createSt = createEvaluationStClient }) {
+    return { admin: createAdmin({ baseUrl: goBase, origin: stBase, session }),
+        st: createSt({ baseUrl: stBase, session }), session, password };
+}
+
+/** Reuse the captured synthetic login, never repeat TOTP setup or consent writes. */
+export async function recreateEvaluationClients({ sessions, signal, ...options }) {
+    const clients = {};
+    for (const role of ['owner', 'second', 'judge']) {
+        signal?.throwIfAborted();
+        const session = { ...sessions[role] };
+        const client = evaluationClient({ ...options, session });
+        const identity = await client.admin.sessionIdentity();
+        if (identity.status !== 200 || !identity.ok || identity.json?.accountId !== session.accountId ||
+            identity.json?.sessionId !== session.sessionId) throw fail('ISOLATION_SYNTHETIC_AUTH_FAILED');
+        const auth = await client.st.call('GET', '/auth/', undefined, { signal });
+        if (auth.status !== 200 || !auth.ok) throw fail('ISOLATION_SYNTHETIC_AUTH_FAILED');
+        await client.st.ensureCsrf();
+        clients[role] = client;
+    }
+    return clients;
+}
+
+// Serialized into the already built ST image. Only these four physical volume
+// roots and the writable ST config enter the one private archive.
+export async function copyIngestCheckpoint(action, root, directory, configMetadata) {
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const { spawn } = await import('node:child_process');
+    const volumes = ['db-data', 'memorycore-data', 'st-data', 'minio-data'];
+    const members = [...volumes, 'config.yaml'];
+    const archive = path.join(directory, 'ingest.tar');
+    const size = file => {
+        const stat = fs.lstatSync(file);
+        return stat.size + (stat.isDirectory() ? fs.readdirSync(file).reduce((total, name) => total + size(path.join(file, name)), 0) : 0);
+    };
+    for (const volume of volumes) {
+        const stat = fs.lstatSync(path.join(root, volume));
+        if (!stat.isDirectory() || stat.isSymbolicLink()) throw new Error('ISOLATION_CHECKPOINT_FAILED');
+    }
+    const config = fs.lstatSync(path.join(root, 'config.yaml'));
+    if (!config.isFile()) throw new Error('ISOLATION_CHECKPOINT_FAILED');
+    if (action === 'size') return members.reduce((total, name) => total + size(path.join(root, name)), 0);
+    if (action === 'clear') {
+        for (const volume of volumes) for (const name of fs.readdirSync(path.join(root, volume))) {
+            fs.rmSync(path.join(root, volume, name), { recursive: true, force: true });
+        }
+        return;
+    }
+    if (!['capture', 'extract'].includes(action)) throw new Error('ISOLATION_CHECKPOINT_FAILED');
+    const tar = (args, output = 'ignore') => new Promise((resolve, reject) => {
+        const child = spawn('tar', args, { stdio: ['ignore', output, 'ignore'] });
+        child.once('error', () => reject(new Error('ISOLATION_CHECKPOINT_FAILED')));
+        child.once('close', status => status === 0 ? resolve() : reject(new Error('ISOLATION_CHECKPOINT_FAILED')));
+    });
+    let fd;
+    try {
+        if (action === 'capture') {
+            fd = fs.openSync(archive, 'wx', 0o600);
+            await tar(['-cpf', '-', '--numeric-owner', '-C', root, ...members], fd);
+            return { uid: config.uid, gid: config.gid, mode: config.mode & 0o7777 };
+        }
+        await tar(['-xpf', archive, '--numeric-owner', '-C', root, ...volumes]);
+        // Replacing a file can detach an existing Docker bind mount. Stream
+        // config bytes into its current inode and restore the captured metadata.
+        fd = fs.openSync(path.join(root, 'config.yaml'), 'w');
+        await tar(['-xOf', archive, 'config.yaml'], fd);
+        fs.fchownSync(fd, configMetadata.uid, configMetadata.gid);
+        fs.fchmodSync(fd, configMetadata.mode);
+    } finally {
+        if (fd !== undefined) fs.closeSync(fd);
+    }
+}
+
+function verifyIngestVolumes(project, round, dockerSync = docker, { allowMissing = false, requireCleanData = true } = {}) {
+    const code = 'ISOLATION_CHECKPOINT_FAILED';
+    if (!/^vc-cm3-[a-f0-9]{16}$/.test(project) || !/^round-[a-z0-9-]{1,80}$/.test(round || '')) throw fail('ISOLATION_INPUT_INVALID');
+    const existing = new Set(dockerSync(['volume', 'ls', '--filter', `name=${project}_`, '--format', '{{.Name}}'], { code }).split('\n'));
+    const ids = dockerSync(['ps', '-aq'], { code }).split('\n').filter(Boolean);
+    if (ids.some(id => !/^[a-f0-9]{12,64}$/.test(id))) throw fail(code);
+    // Include stopped containers and foreign projects: a volume filter is
+    // documented for running containers and cannot prove all references.
+    const format = '{"labels":{{json .Config.Labels}},"running":{{.State.Running}},"status":{{json .State.Status}},"exitCode":{{.State.ExitCode}},"oomKilled":{{.State.OOMKilled}},"mounts":{{json .Mounts}}}';
+    const containers = ids.length ? dockerSync(['inspect', '--format', format, ...ids], { code }).split('\n').filter(Boolean).map(line => JSON.parse(line)) : [];
+    for (const short of CHECKPOINT_VOLUMES) {
+        const name = `${project}_${short}`;
+        if (!existing.has(name)) {
+            if (allowMissing) continue;
+            throw fail(code);
+        }
+        const volume = JSON.parse(dockerSync(['volume', 'inspect', '--format', '{{json .}}', name], { code }));
+        if (volume.Name !== name || volume.Labels?.['com.docker.compose.project'] !== project ||
+            volume.Labels?.['com.docker.compose.volume'] !== short || volume.Labels?.['com.vc.cm3.round'] !== round) throw fail(code);
+        const references = containers.filter(container => container.mounts?.some(mount => mount.Type === 'volume' && mount.Name === name));
+        if (!allowMissing && !references.length) throw fail(code);
+        for (const container of references) {
+            if (container.labels?.['com.docker.compose.project'] !== project || container.labels?.['com.vc.cm3.round'] !== round ||
+                container.running !== false || !['exited', 'created'].includes(container.status)) throw fail(code);
+            if (requireCleanData && ['db', 'minio'].includes(container.labels['com.docker.compose.service']) &&
+                (container.exitCode !== 0 || container.oomKilled !== false)) throw fail(code);
+        }
+    }
+    return containers;
+}
+
+/** One ingest checkpoint for this random project, not a host/evaluation snapshot. */
+export function createIngestCheckpoint({ project, round, state, compose, signal, ready, refreshClients, invalidate,
+    dockerSync = docker, dockerAsync = runCompose }) {
+    if (!/^vc-cm3-[a-f0-9]{16}$/.test(project || '') || !/^round-[a-z0-9-]{1,80}$/.test(round || '')) throw fail('ISOLATION_INPUT_INVALID');
+    const directory = path.join(state, 'ingest-checkpoint');
+    const helperName = `${project}-ingest-checkpoint-helper`;
+    const code = 'ISOLATION_CHECKPOINT_FAILED';
+    let status = 'new';
+    let configMetadata;
+    const cleanup = () => {
+        const find = () => dockerSync(['ps', '-aq', '--filter', `name=^/${helperName}$`], { code: 'ISOLATION_CLEANUP_FAILED' }).split('\n').filter(Boolean);
+        for (const id of find()) {
+            if (!/^[a-f0-9]{12,64}$/.test(id)) throw fail('ISOLATION_CLEANUP_FAILED');
+            const format = '{"name":{{json .Name}},"labels":{{json .Config.Labels}}}';
+            let container;
+            try { container = JSON.parse(dockerSync(['inspect', '--format', format, id], { code: 'ISOLATION_CLEANUP_FAILED' })); }
+            catch {
+                if (find().includes(id)) throw fail('ISOLATION_CLEANUP_FAILED');
+                continue; // --rm can complete between listing and inspection.
+            }
+            if (container.name !== `/${helperName}` || container.labels?.['com.docker.compose.project'] !== project ||
+                container.labels?.['com.vc.cm3.round'] !== round || container.labels?.['com.vc.cm3.checkpoint'] !== 'ingest') throw fail('ISOLATION_CLEANUP_FAILED');
+            try { dockerSync(['rm', '--force', id], { code: 'ISOLATION_CLEANUP_FAILED' }); }
+            catch { if (find().includes(id)) throw fail('ISOLATION_CLEANUP_FAILED'); }
+        }
+        if (find().length) throw fail('ISOLATION_CLEANUP_FAILED');
+    };
+    const checkVolumes = () => {
+        const containers = verifyIngestVolumes(project, round, dockerSync);
+        for (const service of ['st', 'runtime', 'engine-observer', 'memorycore', 'db', 'minio']) {
+            const matches = containers.filter(container => container.labels?.['com.docker.compose.project'] === project &&
+                container.labels?.['com.docker.compose.service'] === service);
+            if (matches.length !== 1 || matches[0].labels['com.vc.cm3.round'] !== round ||
+                matches[0].running !== false || matches[0].status !== 'exited') throw fail(code);
+        }
+    };
+    const mount = (source, target, { type = 'volume', readOnly = false } = {}) => ['--mount',
+        [`type=${type}`, `source=${source}`, `target=${target}`, ...(readOnly ? ['readonly'] : [])]
+            .map(field => /[",\n]/.test(field) ? `"${field.replaceAll('"', '""')}"` : field).join(',')];
+    const helper = async action => {
+        signal.throwIfAborted();
+        checkVolumes();
+        if (!fs.lstatSync(path.join(state, 'config.yaml')).isFile()) throw fail(code);
+        const readOnly = ['size', 'capture'].includes(action);
+        const program = `(${copyIngestCheckpoint.toString()})(process.argv[1], '/ingest', '/checkpoint', ${JSON.stringify(configMetadata ?? null)}).then(value=>{if(value!==undefined)console.log(JSON.stringify(value))}).catch(()=>process.exit(1));`;
+        const args = ['run', '--rm', '--pull', 'never', '--network', 'none', '--name', helperName,
+            '--label', `com.docker.compose.project=${project}`, '--label', `com.vc.cm3.round=${round}`,
+            '--label', 'com.vc.cm3.checkpoint=ingest', '--log-driver', 'none', '--read-only', '--user', '0:0',
+            '--cap-drop', 'ALL', '--cap-add', 'CHOWN', '--cap-add', 'DAC_OVERRIDE', '--cap-add', 'FOWNER',
+            '--security-opt', 'no-new-privileges:true', '--init',
+            ...CHECKPOINT_VOLUMES.flatMap(name => mount(`${project}_${name}`, `/ingest/${name}`, { readOnly })),
+            ...mount(path.join(state, 'config.yaml'), '/ingest/config.yaml', { type: 'bind', readOnly }),
+            ...(action === 'size' ? [] : mount(directory, '/checkpoint', { type: 'bind', readOnly: action !== 'capture' })),
+            '--entrypoint', 'node', `virtual-companion-st:${project}`, '--input-type=module', '-e', program, action];
+        try { return await dockerAsync(args, signal, code, { capture: readOnly }); }
+        finally { cleanup(); } // CLI interruption alone does not stop a daemon-side copy.
+    };
+    const stop = async () => {
+        for (const services of [['st'], ['runtime'], ['engine-observer', 'memorycore'], ['db', 'minio']]) {
+            await dockerAsync([...compose, 'stop', '--timeout', '60', ...services], signal, code);
+        }
+    };
+    const resume = async () => {
+        checkVolumes();
+        for (const services of [['db', 'minio'], ['engine-observer'], ['runtime'], ['memorycore'], ['st']]) {
+            // All six containers were verified above. Explicitly suppress
+            // Compose dependencies so one-shot initialization cannot rerun.
+            await dockerAsync([...compose, 'up', '-d', '--no-deps', '--no-recreate', '--no-build', '--pull', 'never',
+                '--wait', '--wait-timeout', '120', ...services], signal, code);
+        }
+        await ready();
+        signal.throwIfAborted();
+        return refreshClients();
+    };
+    const checkedArchive = () => {
+        const dir = fs.lstatSync(directory), archive = fs.lstatSync(path.join(directory, 'ingest.tar'));
+        if (!dir.isDirectory() || dir.isSymbolicLink() || (dir.mode & 0o777) !== 0o700 ||
+            !archive.isFile() || archive.isSymbolicLink() || (archive.mode & 0o777) !== 0o600) throw fail(code);
+        if (archive.size > CHECKPOINT_LIMIT) throw fail('ISOLATION_CHECKPOINT_LIMIT');
+    };
+    const perform = async work => {
+        try { signal.throwIfAborted(); return await work(); }
+        catch (error) {
+            status = 'failed';
+            const reason = signal.aborted ? 'ISOLATION_INTERRUPTED' :
+                ['ISOLATION_CHECKPOINT_LIMIT', 'ISOLATION_CLEANUP_FAILED'].includes(error?.message) ? error.message : code;
+            invalidate(reason);
+            throw fail(reason);
+        }
+    };
+    return {
+        async captureIngestCheckpoint() {
+            if (status !== 'new') throw fail('ISOLATION_CHECKPOINT_ALREADY_CAPTURED');
+            status = 'capturing';
+            await perform(async () => {
+                await stop();
+                const measured = await helper('size');
+                if (!/^\d+$/.test(measured)) throw fail(code);
+                const bytes = Number(measured);
+                if (!Number.isSafeInteger(bytes) || bytes < 0) throw fail(code);
+                if (bytes > CHECKPOINT_LIMIT) throw fail('ISOLATION_CHECKPOINT_LIMIT');
+                fs.mkdirSync(directory, { mode: 0o700 });
+                fs.chmodSync(directory, 0o700);
+                configMetadata = JSON.parse(await helper('capture'));
+                if (!['uid', 'gid', 'mode'].every(key => Number.isSafeInteger(configMetadata?.[key]) && configMetadata[key] >= 0) ||
+                    configMetadata.mode > 0o7777) throw fail(code);
+                checkedArchive();
+                await resume();
+                status = 'captured';
+            });
+        },
+        async restoreIngestCheckpoint() {
+            if (status !== 'captured') throw fail('ISOLATION_CHECKPOINT_NOT_READY');
+            status = 'restoring';
+            return perform(async () => {
+                checkedArchive();
+                await stop();
+                await helper('clear');
+                await helper('extract');
+                const clients = await resume();
+                status = 'captured';
+                return clients;
+            });
+        },
+        cleanup,
+    };
 }
 
 function privateWrite(file, content) {
@@ -258,6 +500,7 @@ function lifecycleSignal(external) {
     external?.addEventListener('abort', interrupt, { once: true });
     return {
         signal: controller.signal,
+        abort: code => controller.abort(fail(code)),
         remove() {
             process.off('SIGINT', interrupt);
             process.off('SIGTERM', interrupt);
@@ -305,14 +548,16 @@ export async function withIsolatedChatMemoryStack({ round, meterPort, signal: ex
     if (!/^round-[a-z0-9-]{1,80}$/.test(round || '') || !Number.isInteger(meterPort) ||
         meterPort < 1 || meterPort > 65535 || typeof evaluate !== 'function') throw fail('ISOLATION_INPUT_INVALID');
     const project = `vc-cm3-${crypto.randomBytes(8).toString('hex')}`;
-    const { signal, remove } = lifecycleSignal(externalSignal);
+    const { signal, remove, abort } = lifecycleSignal(externalSignal);
     let stage = 'ISOLATION_CONFIG_FAILED';
     let state;
     let compose;
+    let checkpoint;
     let readyToClean = false;
     try {
         signal.throwIfAborted();
         state = fs.mkdtempSync(path.join(os.tmpdir(), 'vc-cm3-'));
+        fs.chmodSync(state, 0o700);
         stage = 'ISOLATION_MODEL_CACHE_MISSING';
         const models = cachedModels();
         stage = 'ISOLATION_SOURCE_NOT_READY';
@@ -400,14 +645,15 @@ await (${seedManagedProfiles.toString()})('/srv/vc-managed/data','/opt/vc/${INTE
         const psql = sql => command(['exec', '-T', 'db', 'psql', '-U', 'vc_migrator', '-d', 'vc', '-v', 'ON_ERROR_STOP=1', '-q', '-t', '-A'], sql);
         const secrets = {};
         await seedSyntheticOwner(secrets, { sql: psql, ownerId: OWNER, secondId: SECOND, judgeId: JUDGE, goBase, stBase, secondSession: true });
+        const originalSessions = Object.fromEntries([['owner', secrets.session], ['second', secrets.secondSession], ['judge', secrets.judgeSession]]
+            .map(([role, session]) => [role, Object.freeze({ ...session })]));
         async function client(session) {
-            const admin = createGoAdminClient({ baseUrl: goBase, origin: stBase, session });
+            const account = evaluationClient({ goBase, stBase, session, password: secrets.password });
             for (const consentType of ['SERVICE_TERMS', 'PRIVACY_POLICY', 'AI_CONTENT_NOTICE', 'THIRD_PARTY_MODEL_PROCESSING', 'SENSITIVE_DATA_PROCESSING']) {
-                const { ok } = await admin.call('PUT', '/api/v1/consents', { consentType, version: 'accept-managed', granted: true });
+                const { ok } = await account.admin.call('PUT', '/api/v1/consents', { consentType, version: 'accept-managed', granted: true });
                 if (!ok) throw fail(stage);
             }
-            const st = createEvaluationStClient({ baseUrl: stBase, session });
-            return { admin, st, session, password: secrets.password };
+            return account;
         }
         const owner = await client(secrets.session);
         const second = await client(secrets.secondSession);
@@ -438,23 +684,50 @@ await (${seedManagedProfiles.toString()})('/srv/vc-managed/data','/opt/vc/${INTE
             }, { timeoutMs: 30000 });
         };
         stage = 'ISOLATION_EVALUATION_FAILED';
-        return await withSignal(signal, evaluate, {
+        const ctx = {
             ...owner, second, judge, secrets, signal, meterBase, engineCall, restartMemorycore, readEngineObservations, setForgetHold,
             embeddingModel: { name: embeddingModel.name, digest: embeddingModel.digest },
             w08: { psql }, w05: { stBase, goBase, ownerId: OWNER, secondId: SECOND },
+        };
+        checkpoint = createIngestCheckpoint({ project, round, state, compose, signal, invalidate: abort,
+            ready: async () => {
+                const options = { signal: AbortSignal.any([signal, AbortSignal.timeout(5000)]), redirect: 'error' };
+                if (!(await fetch(`${goBase}/actuator/health`, options)).ok) throw fail('ISOLATION_CHECKPOINT_FAILED');
+                const response = await fetch(`${engineBase}/readyz`, { ...options, headers: { authorization: `Bearer ${memoryToken}` } });
+                const health = response.ok ? await response.json() : null;
+                if (!health?.foundation || !health.storageReady || !health.businessReady) throw fail('ISOLATION_CHECKPOINT_FAILED');
+            },
+            refreshClients: async () => {
+                const clients = await recreateEvaluationClients({ goBase, stBase, password: secrets.password, sessions: originalSessions, signal });
+                Object.assign(ctx, clients.owner, { second: clients.second, judge: clients.judge });
+                Object.assign(secrets, { session: clients.owner.session, secondSession: clients.second.session, judgeSession: clients.judge.session });
+                return clients;
+            },
         });
+        ctx.captureIngestCheckpoint = checkpoint.captureIngestCheckpoint;
+        ctx.restoreIngestCheckpoint = checkpoint.restoreIngestCheckpoint;
+        return await withSignal(signal, evaluate, ctx);
     } catch (error) {
-        throw fail(signal.aborted ? 'ISOLATION_INTERRUPTED' : CODES.has(error?.message) ? error.message : stage);
+        const reason = signal.aborted ? signal.reason?.message : error?.message;
+        throw fail(CODES.has(reason) ? reason : signal.aborted ? 'ISOLATION_INTERRUPTED' : stage);
     } finally {
+        let cleaned = false;
         try {
+            checkpoint?.cleanup();
             if (readyToClean) {
                 verifyCleanupOwnership(project, round);
+                docker([...compose, 'stop', '--timeout', '60'], { code: 'ISOLATION_CLEANUP_FAILED' });
+                verifyIngestVolumes(project, round, docker, { allowMissing: true, requireCleanData: false });
                 docker([...compose, 'down', '-v', '--remove-orphans'], { code: 'ISOLATION_CLEANUP_FAILED' });
                 removeImages(project);
             }
+            cleaned = true;
+        } catch {
+            throw fail('ISOLATION_CLEANUP_FAILED');
         } finally {
             remove();
-            if (state) {
+            // If a helper cannot be verified/stopped, leave its bind source intact.
+            if (state && cleaned) {
                 try { fs.rmSync(state, { recursive: true, force: true }); }
                 catch { throw fail('ISOLATION_CLEANUP_FAILED'); }
             }

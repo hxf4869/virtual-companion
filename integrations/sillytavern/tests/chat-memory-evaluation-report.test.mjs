@@ -252,6 +252,25 @@ test('a changed rubric cannot fully replay a round that already reached answers'
     await assertClosed(f);
 });
 
+test('resume rejects a shared-state round before any model call even when model and judge match', async t => {
+    const f = await fixture(t);
+    await f.run();
+    const manifest = await f.read('manifest.json');
+    await f.write('manifest.json', { ...manifest, caseStateProtocol: 'shared-mutable-cases' });
+    await assert.rejects(f.run({ resume: true }), { message: 'CM_COMPARISON_GROUP_MISMATCH' });
+    assert.equal((await f.read('budget.json')).calls.length, 1);
+    assert.equal(f.state.runs, 1);
+    await assertClosed(f);
+});
+
+test('quality gates explicitly reject absent case isolation metadata', async t => {
+    const f = await fixture(t);
+    const report = await f.run();
+    assert.equal(evaluation.qualityGates(report).independentCases, true);
+    delete report.caseStateProtocol;
+    assert.equal(evaluation.qualityGates(report).independentCases, false);
+});
+
 test('diagnostic supplement preserves baseline core, controls, calibration, provenance and metrics on the same budget', async t => {
     const f = await fixture(t);
     f.state.coreCoverage = 132 / 140; f.state.controlCoverage = 0;

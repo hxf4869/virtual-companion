@@ -5,8 +5,8 @@ import { once } from 'node:events';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { factsInText, outboundMemoryText, readEvaluationResponse, evaluationQueryRows, diagnosticEvidence, assertDiagnosticControl, evaluateCoreOnStack, waitExtraction, createEvaluationReauthentication, recallWorkCounts, reviewSavedAnswersOnStack, selectEvaluationActionTarget, verifyEvaluationModels } from '../scripts/chat-memory-real-eval.mjs';
-import { AI_FLAVOR_FIELDS, summarizeDiagnosticControls, mapRecordToFacts, scoreRules } from '../../../scripts/lib/chat-memory-scoring.mjs';
+import { factsInText, outboundMemoryText, readEvaluationResponse, evaluationQueryRows, diagnosticEvidence, assertDiagnosticControl, evaluateCoreOnStack, waitExtraction, createEvaluationReauthentication, recallWorkCounts, reviewSavedAnswersOnStack, selectEvaluationActionTarget, verifyEvaluationModels, evaluationCorrectionSummary, createEvaluationCaseResetter } from '../scripts/chat-memory-real-eval.mjs';
+import { AI_FLAVOR_FIELDS, summarizeDiagnosticControls, mapRecordToFacts, scoreRules, CASE_STATE_PROTOCOL } from '../../../scripts/lib/chat-memory-scoring.mjs';
 import { prepareSourceIdentities, sourceMessages } from '../server-plugin/virtual-companion/lib/source-identity.js';
 import { getF2Store } from '../server-plugin/virtual-companion/lib/f2-store.js';
 import { startEngineObservationProxy } from '../scripts/lib/chat-memory-engine-proxy.mjs';
@@ -133,6 +133,63 @@ test('one memory can state two facts of one subject without repeating it in ever
     const injectedFactIds = factsInText('记忆：' + content, dataset.facts);
     assert.deepEqual(injectedFactIds, testCase.goldFactIds);
     assert.equal(scoreRules(testCase, { answer: testCase.expectedAnswer, injectedFactIds }).passed, true);
+});
+
+test('a correction edits the complete record while retaining independent facts and the explicitly tested history', () => {
+    const dataset = generateChatMemoryDataset();
+    const testCase = dataset.cases.find(row => row.id === 'update-10');
+    const old = dataset.facts.find(row => row.factId === testCase.action.targetFactId);
+    const current = dataset.facts.find(row => row.factId === testCase.action.replacementFactId);
+    const otherCase = dataset.cases.find(row => row.category === 'single' && row.instanceId === testCase.instanceId);
+    const other = dataset.facts.find(row => row.factId === otherCase.goldFactIds[0]);
+    const record = { summary: `${old.subject}第一次布展时摆在${old.value}。${other.subject}的${other.predicate}是${other.value}。` };
+    const summary = evaluationCorrectionSummary(record, testCase.action, dataset);
+    assert.equal(summary.slice(0, record.summary.length), record.summary, 'editing one concept must retain the rest of a composite record');
+    assert.ok(summary.includes(`${old.subject}此前的位置记载仅作为历史`));
+    const mapped = mapRecordToFacts({ sourceTurnIds: [...old.sourceTurnIds, ...current.sourceTurnIds, ...other.sourceTurnIds], content: summary }, dataset.facts);
+    for (const fact of [old, current, other]) assert.ok(mapped.factIds.includes(fact.factId));
+    const injectedFactIds = factsInText('记忆：' + summary, dataset.facts);
+    assert.equal(scoreRules(testCase, { answer: testCase.expectedAnswer, injectedFactIds }).passed, true, 'the historical manual case must retain the former location');
+    assert.equal(scoreRules({ ...testCase, requiredTerms: [[current.value]], forbiddenTerms: [old.value],
+        goldFactIds: [current.factId], evidenceSets: [[current.factId]] },
+    { answer: testCase.action.replacementContent, injectedFactIds }).passed, true, 'the new current value must remain answerable');
+    assert.equal(scoreRules(otherCase, { answer: otherCase.expectedAnswer, injectedFactIds }).passed, true);
+    assert.throws(() => evaluationCorrectionSummary({ summary: '长'.repeat(2000) }, testCase.action, dataset),
+        { message: 'CM_EVALUATION_CORRECTION_TOO_LONG' });
+});
+
+test('each case restores shared records and aliases and binds source sessions to fresh clients', () => {
+    const dataset = { owners: [{ id: 'owner-a' }, { id: 'owner-b' }] };
+    const firstClient = { admin: {}, st: {} }, secondClient = { admin: {}, st: {} };
+    const accounts = new Map([['owner-a', firstClient], ['owner-b', secondClient]]);
+    const local = { id: 'instance', ownerId: 'owner-a', account: firstClient,
+        memories: [{ memoryId: 'shared', lifecycle: 'ACTIVE', mapping: { factIds: ['fact-a', 'fact-b'] } }] };
+    const instances = new Map([['instance', local]]), sourceMap = new Map([['source', 'turn']]);
+    const sessionsByTurn = new Map([['turn', { local, file: 'source-chat', identity: 'source-chat-id' }]]);
+    const recordAliases = new Map([['shared', 'memory-1']]), seenFactRecords = new Map([['fact-a', new Set(['memory-1'])]]), priorActions = [];
+    const reset = createEvaluationCaseResetter({ dataset, accounts, instances, sourceMap, sessionsByTurn,
+        recordAliases, seenFactRecords, priorActions });
+    local.memories[0].lifecycle = 'FORGOTTEN';
+    local.memories[0].mapping.factIds.pop();
+    recordAliases.set('replacement', 'memory-2');
+    seenFactRecords.get('fact-a').add('memory-2');
+    priorActions.push({ record: 'memory-1', kind: 'forget' });
+    sourceMap.set('transient', 'query');
+    const fresh = { owner: { admin: {}, st: {} }, second: { admin: {}, st: {} }, judge: {} };
+    reset(fresh);
+    assert.equal(instances.get('instance').account, fresh.owner);
+    assert.equal(accounts.get('owner-b'), fresh.second);
+    assert.equal(sessionsByTurn.get('turn').local, instances.get('instance'));
+    assert.notEqual(sessionsByTurn.get('turn').local, local);
+    assert.equal(instances.get('instance').memories[0].lifecycle, 'ACTIVE');
+    assert.deepEqual(instances.get('instance').memories[0].mapping.factIds, ['fact-a', 'fact-b']);
+    assert.deepEqual([...sourceMap], [['source', 'turn']]);
+    assert.deepEqual([...recordAliases], [['shared', 'memory-1']]);
+    assert.deepEqual([...seenFactRecords.get('fact-a')], ['memory-1']);
+    assert.equal(priorActions.length, 0);
+    instances.get('instance').memories[0].mapping.factIds.pop();
+    reset(fresh);
+    assert.deepEqual(instances.get('instance').memories[0].mapping.factIds, ['fact-a', 'fact-b'], 'a restored case cannot mutate the saved baseline');
 });
 
 test('gold diagnostic exposes only allowed evidence and controls keep their own planned denominator', () => {
@@ -325,9 +382,9 @@ test('recall accounting keeps both HTTP checks and does not turn failed calls in
 });
 
 test('all planned questions still run when real action targets are missing, while action quality remains blocked', async () => {
-    const dataset = generateChatMemoryDataset(), calls = [], saved = [];
+    const dataset = generateChatMemoryDataset(), calls = [], saved = [], partials = [];
     const calibration = createJudgeCalibrationDataset();
-    let observer, writes = 0, restarts = 0, sourceSaves = 0, wrongCalibration = false;
+    let observer, writes = 0, restarts = 0, sourceSaves = 0, wrongCalibration = false, captures = 0, restores = 0;
     const ok = json => ({ status: 200, json });
     const admin = {
         reauth: async () => ok({}), saveProvider: async () => ok({}), savePurpose: async () => ok({}),
@@ -370,6 +427,16 @@ test('all planned questions still run when real action targets are missing, whil
         embeddingModel: { name: 'qwen3-embedding:0.6b', digest: 'synthetic' },
         setOutboundObserver: value => { observer = value; },
         restartMemorycore: async () => { restarts++; },
+        captureIngestCheckpoint: async () => { captures++; },
+        restoreIngestCheckpoint: async () => {
+            restores++;
+            const owner = { admin: { ...admin }, st: { ...st }, password: 'synthetic', session: { accountId: '1' } };
+            const second = { admin: { ...admin }, st: { ...st }, password: 'synthetic', session: { accountId: '4' } };
+            const judge = { st: { generate: generate(2) } };
+            ctx.admin = owner.admin; ctx.st = owner.st; ctx.secrets.session = owner.session;
+            ctx.second = second; ctx.judge = judge;
+            return { owner, second, judge };
+        },
         readEngineObservations: async () => ({ sequence: 0, searches: [], incomplete: false }),
         w08: { psql: sql => sql.includes('go_service_resolve_owner_memory_rerank') ? 'true'
             : sql.includes('FROM vc.work_item') ? JSON.stringify(Array.from({ length: 300 }, () => ({ status: 'DONE', published: 0 }))) : '[]' },
@@ -378,9 +445,16 @@ test('all planned questions still run when real action targets are missing, whil
         modelId: 'synthetic', protocol: 'OPENAI_CHAT_COMPLETIONS', maxOutputTokens: 128, contextWindowTokens: 2048 } }));
     const options = { dataset, roles,
         modelRoutes: roles.map((_role, at) => ({ baseUrl: `http://meter.test/${at}`, credential: 'synthetic' })),
-        meter: { snapshot: () => ({ calls }) }, budget: { snapshot: () => ({ calls: calls.length }) },
-        saveAnswer: async row => saved.push(row) };
+        meter: { snapshot: () => ({ calls }) }, budget: { snapshot: () => ({ calls: calls.length, held: 0 }) },
+        saveAnswer: async row => saved.push(row), checkpoint: async partial => partials.push(partial) };
     const result = await evaluateCoreOnStack(ctx, options);
+    assert.equal(captures, 1, 'the real ingest is captured exactly once');
+    assert.equal(restores, 140, 'each question must restore the ingest before using or mutating a shared record');
+    assert.equal(result.caseStateProtocol, CASE_STATE_PROTOCOL);
+    const firstAnswer = partials.find(row => row.phase === 'answer');
+    assert.ok(firstAnswer.metricRows.some(row => row.metric === 'pipeline_first_body_ms'));
+    assert.ok(firstAnswer.metrics.groups.some(row => row.metric === 'pipeline_first_body_ms'));
+    assert.ok(firstAnswer.metricRows.length < result.metricRows.length, 'partial samples must not grow after a later case');
     assert.equal(result.judgePreflight.passed, true);
     assert.equal(result.judgePreflight.knownCaseAccuracy.numerator, 12);
     assert.equal(result.results.length, 140);
@@ -406,6 +480,12 @@ test('all planned questions still run when real action targets are missing, whil
     await assert.rejects(evaluateCoreOnStack(ctx, options), /CM_JUDGE_CALIBRATION_FAILED/);
     assert.equal(calls.length - before.calls, 24, 'only the two fixed judge passes are invoked on calibration failure');
     assert.equal(sourceSaves, before.sources, 'no source replay or foreground probe starts when the ruler fails');
+    wrongCalibration = false;
+    const savedBeforeFailure = saved.length;
+    const restoreFailureCtx = { ...ctx, captureIngestCheckpoint: async () => {},
+        restoreIngestCheckpoint: async () => { throw new Error('ISOLATION_CASE_CHECKPOINT_FAILED'); } };
+    await assert.rejects(evaluateCoreOnStack(restoreFailureCtx, options), { message: 'ISOLATION_CASE_CHECKPOINT_FAILED' });
+    assert.equal(saved.length, savedBeforeFailure, 'a failed restore must abort the round before another answer is generated');
 });
 
 test('rank instrumentation changes only the disposable copy and observes before budget clipping', async () => {

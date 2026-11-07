@@ -7,7 +7,7 @@ import { createRoundBudget } from './chat-memory-budget.mjs';
 import { loadEvaluationConfiguration } from './chat-memory-config.mjs';
 import { generateChatMemoryDataset } from './chat-memory-dataset.mjs';
 import { createSyntheticAnswerStore } from './chat-memory-answers.mjs';
-import { JUDGE_RUBRIC_VERSION } from './chat-memory-scoring.mjs';
+import { JUDGE_RUBRIC_VERSION, CASE_STATE_PROTOCOL } from './chat-memory-scoring.mjs';
 import { attributeMemoryFailures, compareMemoryRounds, freezeBaselineNoise } from './chat-memory-round-statistics.mjs';
 import { compareSamples, comparisonMarkdown, summarizeSamples } from './chat-memory-metrics.mjs';
 import { startEvaluationMeter } from '../../integrations/sillytavern/scripts/lib/real-model-meter.mjs';
@@ -63,6 +63,7 @@ export async function preflightEvaluation({ round, configRef, mode = 'tokens', o
 export function qualityGates(report) {
     const q = report.quality;
     return {
+        independentCases: report.caseStateProtocol === CASE_STATE_PROTOCOL,
         extractionPrecision: q.extraction.supportedRecordRate.value >= .95,
         recallAt5: q.retrieval.final[5].macro >= .90,
         recallAt20: q.retrieval.final[20].macro >= .95,
@@ -82,7 +83,10 @@ export function qualityGates(report) {
 export function compareQuality(baseline, candidate) {
     if (baseline.dataset.hashes.dataset !== candidate.dataset.hashes.dataset
         || JSON.stringify(baseline.configuration) !== JSON.stringify(candidate.configuration)
-        || baseline.judgeRubricVersion !== candidate.judgeRubricVersion) throw new Error('CM_COMPARISON_GROUP_MISMATCH');
+        || baseline.judgeRubricVersion !== candidate.judgeRubricVersion
+        || baseline.caseStateProtocol !== CASE_STATE_PROTOCOL || candidate.caseStateProtocol !== CASE_STATE_PROTOCOL) {
+        throw new Error('CM_COMPARISON_GROUP_MISMATCH');
+    }
     return Object.fromEntries(Object.keys(baseline.quality.byCategory).map(category => {
         const before = baseline.quality.byCategory[category].accuracy, after = candidate.quality.byCategory[category].accuracy;
         return [category, { baseline: before, candidate: after, delta: after.value - before.value,
@@ -141,7 +145,7 @@ export async function runRealEvaluation({ round, configRef, seed = 20261106, var
     const budgetFile = path.join(dir, 'budget.json');
     const budgetOptions = { file: budgetFile, round, profiles: roles.map(row => row.profile), mode, ownerTokenOnly, maxCalls,
         tokenReference, recipe: evaluationTokenRecipe(dataset) };
-    const provenance = { round, variant, judgeRubricVersion: JUDGE_RUBRIC_VERSION,
+    const provenance = { round, variant, judgeRubricVersion: JUDGE_RUBRIC_VERSION, caseStateProtocol: CASE_STATE_PROTOCOL,
         dataset: { version: dataset.version, seed, hashes: dataset.hashes, sourceCounts: dataset.sourceCounts },
         configuration: config.manifest, replayMode: resume ? 'full-replay-existing-ledger' : 'fresh' };
     let artifacts, budget, meter, outboundObserver, pipelineFailureCode, failureCode;
@@ -174,7 +178,7 @@ export async function runRealEvaluation({ round, configRef, seed = 20261106, var
             let prior;
             try { prior = JSON.parse(await fs.readFile(path.join(dir, 'manifest.json'), 'utf8')); }
             catch { throw new Error('ARTIFACT_RESUME_INVALID'); }
-            if (prior.variant !== variant || prior.dataset?.hashes?.dataset !== dataset.hashes.dataset
+            if (prior.caseStateProtocol !== CASE_STATE_PROTOCOL || prior.variant !== variant || prior.dataset?.hashes?.dataset !== dataset.hashes.dataset
                 || JSON.stringify(prior.configuration) !== JSON.stringify(config.manifest)) throw new Error('CM_COMPARISON_GROUP_MISMATCH');
             priorManifest = prior;
             try { priorSummary = JSON.parse(await fs.readFile(path.join(dir, 'summary.json'), 'utf8')); } catch { /* journal is authoritative */ }
@@ -248,7 +252,8 @@ export async function runRealEvaluation({ round, configRef, seed = 20261106, var
             const baseline = JSON.parse(await fs.readFile(baselineFile, 'utf8'));
             if (baseline.dataset?.hashes?.dataset !== dataset.hashes.dataset
                 || JSON.stringify(baseline.configuration) !== JSON.stringify(config.manifest)
-                || baseline.judgeRubricVersion !== JUDGE_RUBRIC_VERSION) throw new Error('CM_COMPARISON_GROUP_MISMATCH');
+                || baseline.judgeRubricVersion !== JUDGE_RUBRIC_VERSION
+                || baseline.caseStateProtocol !== CASE_STATE_PROTOCOL) throw new Error('CM_COMPARISON_GROUP_MISMATCH');
         }
         runSignal.throwIfAborted();
         meter = await startMeter({ routes: roles.map(row => row.profile), budget,

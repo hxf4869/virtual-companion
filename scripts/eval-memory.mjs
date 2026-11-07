@@ -113,7 +113,7 @@ async function main(){
                 judgeOnly: process.argv.includes('--judge-only'),
                 diagnosticsOnly: process.argv.includes('--diagnostics-only'), signal: controller.signal,
                 onProgress: progress => console.log(JSON.stringify(progress)) });
-            console.log(JSON.stringify({ executionStatus: report.executionStatus, verdict: report.verdict,
+            console.log(JSON.stringify({ executionStatus: report.executionStatus, verdict: report.verdict, caseStateProtocol: report.caseStateProtocol,
                 diagnosticSupplement: report.diagnosticSupplement,
                 judgeReevaluation: report.judgeReevaluation, judgeCalibration: report.judgeCalibration,
                 accuracy: report.quality.accuracy, byCategory: report.quality.byCategory, gates: report.gates,

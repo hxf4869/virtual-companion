@@ -8,6 +8,9 @@ export const JUDGE_REASON_CODES = Object.freeze([
 // Bump whenever instructions, reason precedence, input semantics or compatibility change.
 // Persist this beside judgments, never as an extra model-output field.
 export const JUDGE_RUBRIC_VERSION = 'cm3-judge-v4';
+// The action protocol is independent of judge wording. Old shared-state rounds
+// cannot be compared with cases restored from one real ingest checkpoint.
+export const CASE_STATE_PROTOCOL = 'ingest-checkpoint-per-case-v1';
 export const JUDGE_REASON_RUBRIC = Object.freeze([
     { reasonCode: 'LEAK', definition: '回答披露了 forbiddenEvidence 中的禁止事实，包括以否认、猜测、引用或举例形式复述；优先于新旧值、时间及其他错误。',
         correct: [false], grounded: [false], abstains: [false] },

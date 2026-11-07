@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { FORGET_STAGES, forgetStageCase, generateChatMemoryDataset } from '../../../scripts/lib/chat-memory-dataset.mjs';
 import { freezeBaselineNoise, compareMemoryRounds, attributeMemoryFailures } from '../../../scripts/lib/chat-memory-round-statistics.mjs';
+import { CASE_STATE_PROTOCOL } from '../../../scripts/lib/chat-memory-scoring.mjs';
 
 const dataset = generateChatMemoryDataset();
 const configuration = { profiles: [{ modelId: 'fixture-model' }], rerank: true };
@@ -12,7 +13,8 @@ function observation(testCase) {
         legalCandidateFactIds: [...testCase.goldFactIds], finalRankedFactIds: [[...testCase.goldFactIds]], injectedFactIds: [...testCase.goldFactIds] };
 }
 function round(correct = () => true) {
-    return { dataset: { version: dataset.version, seed: dataset.seed, hashes: dataset.hashes }, configuration: structuredClone(configuration),
+    return { caseStateProtocol: CASE_STATE_PROTOCOL,
+        dataset: { version: dataset.version, seed: dataset.seed, hashes: dataset.hashes }, configuration: structuredClone(configuration),
         results: dataset.cases.map(testCase => {
             const result = testCase.category === 'forget' ? { caseId: testCase.id, status: 'COMPLETED',
                 forgetStages: Object.fromEntries(FORGET_STAGES.map(stage => [stage, {
@@ -24,6 +26,18 @@ function round(correct = () => true) {
 }
 const comparison = (before, after, options = {}) => compareMemoryRounds(dataset, before, after,
     { noiseReference: freezeBaselineNoise(dataset, before, structuredClone(before)), ...options });
+
+test('shared-state or unknown case protocols cannot establish noise or enter independent-case comparisons', () => {
+    const baseline = round();
+    for (const protocol of [undefined, 'shared-mutable-cases']) {
+        const legacy = { ...round(), caseStateProtocol: protocol };
+        assert.throws(() => freezeBaselineNoise(dataset, legacy, structuredClone(legacy)), /CM_ROUND_CONFIGURATION_MISMATCH/);
+        assert.throws(() => comparison(baseline, legacy), /CM_ROUND_CONFIGURATION_MISMATCH/);
+    }
+    const noiseReference = structuredClone(freezeBaselineNoise(dataset, baseline, round()));
+    delete noiseReference.caseStateProtocol;
+    assert.throws(() => compareMemoryRounds(dataset, baseline, round(), { noiseReference }), /CM_ROUND_NOISE_MISMATCH/);
+});
 const first = category => dataset.cases.find(row => row.category === category);
 const resultFor = (summary, id) => summary.results.find(row => row.caseId === id);
 function metric(metricName, value, sample, variant = 'baseline', outcome = 'ok') {

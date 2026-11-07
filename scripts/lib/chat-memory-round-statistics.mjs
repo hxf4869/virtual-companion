@@ -3,6 +3,7 @@
 import { isDeepStrictEqual } from 'node:util';
 import { CASE_CATEGORIES, FORGET_STAGES, forgetStageCase } from './chat-memory-dataset.mjs';
 import { pairedBootstrap, percentile, summarizeSamples } from './chat-memory-metrics.mjs';
+import { CASE_STATE_PROTOCOL } from './chat-memory-scoring.mjs';
 
 const STATUSES = new Set(['COMPLETED', 'TIMEOUT', 'NOT_READY', 'BUDGET_STOP', 'FAILED', 'NOT_RUN']);
 const NOISE_METHOD = 'max-absolute-endpoint-of-category-stratified-paired-bootstrap-95';
@@ -78,7 +79,8 @@ function readRound(dataset, summary) {
 
 function checkConfiguration(before, after) {
     if (!before.configuration || !after.configuration || !equal(before.configuration, after.configuration)
-        || before.judgeRubricVersion !== after.judgeRubricVersion) {
+        || before.judgeRubricVersion !== after.judgeRubricVersion
+        || before.caseStateProtocol !== CASE_STATE_PROTOCOL || after.caseStateProtocol !== CASE_STATE_PROTOCOL) {
         throw new Error('CM_ROUND_CONFIGURATION_MISMATCH');
     }
 }
@@ -131,7 +133,8 @@ export function freezeBaselineNoise(dataset, baselineA, baselineB) {
     const diff = differences(a, b);
     const actionsComplete = [...a, ...b].every(row => !row.testCase.action || (row.completed && actionComplete(row.result)));
     return deepFreeze({ schemaVersion: 1, actionsComplete, qualityBaselineReady: actionsComplete, dataset: identity(dataset),
-        judgeRubricVersion: baselineA.judgeRubricVersion ?? null, configuration: structuredClone(baselineA.configuration),
+        judgeRubricVersion: baselineA.judgeRubricVersion ?? null, caseStateProtocol: CASE_STATE_PROTOCOL,
+        configuration: structuredClone(baselineA.configuration),
         method: NOISE_METHOD, iterations: 2000,
         overall: noiseGroup(diff.overall), answerable: noiseGroup(diff.answerable),
         byCategory: Object.fromEntries(CASE_CATEGORIES.map(category => [category, noiseGroup(diff.byCategory[category])])) });
@@ -139,7 +142,7 @@ export function freezeBaselineNoise(dataset, baselineA, baselineB) {
 
 function checkNoise(dataset, baseline, noise) {
     if (!noise) throw new Error('CM_ROUND_NOISE_REQUIRED');
-    if (noise.method !== NOISE_METHOD || !equal(noise.dataset, identity(dataset))
+    if (noise.caseStateProtocol !== CASE_STATE_PROTOCOL || noise.method !== NOISE_METHOD || !equal(noise.dataset, identity(dataset))
         || !equal(noise.configuration, baseline.configuration)
         || noise.judgeRubricVersion !== (baseline.judgeRubricVersion ?? null)) throw new Error('CM_ROUND_NOISE_MISMATCH');
     for (const group of [noise.overall, noise.answerable, ...CASE_CATEGORIES.map(category => noise.byCategory?.[category])]) {
@@ -195,14 +198,16 @@ export function compareMemoryRounds(dataset, baseline, candidate, { noiseReferen
     const acceptedImprovement = complete && (overall.credibleImprovement || answerable.credibleImprovement);
     const noiseBounds = { overall: noiseReference.overall.bound, answerable: noiseReference.answerable.bound,
         byCategory: Object.fromEntries(CASE_CATEGORIES.map(category => [category, noiseReference.byCategory[category].bound])) };
-    if (!Array.isArray(priorImprovementRounds) || priorImprovementRounds.some(row => !equal(row.dataset, identity(dataset))
+    if (!Array.isArray(priorImprovementRounds) || priorImprovementRounds.some(row => row.caseStateProtocol !== CASE_STATE_PROTOCOL
+        || !equal(row.dataset, identity(dataset))
         || !equal(row.noiseBounds, noiseBounds) || !equal(row.configuration, baseline.configuration) || typeof row.complete !== 'boolean' || typeof row.acceptedImprovement !== 'boolean')) {
         throw new Error('CM_ROUND_HISTORY_MISMATCH');
     }
     const completed = [...priorImprovementRounds, { complete, acceptedImprovement }].filter(row => row.complete);
     let consecutiveWithoutImprovement = 0;
     for (const row of completed.toReversed()) { if (row.acceptedImprovement) break; consecutiveWithoutImprovement++; }
-    return { schemaVersion: 1, dataset: identity(dataset), configuration: structuredClone(baseline.configuration),
+    return { schemaVersion: 1, caseStateProtocol: CASE_STATE_PROTOCOL,
+        dataset: identity(dataset), configuration: structuredClone(baseline.configuration),
         noiseBounds, complete, actionsComplete, qualityBaselineReady: complete && actionsComplete, overall, answerable, byCategory, acceptedImprovement,
         missing: { baseline: missing(before), candidate: missing(after) }, latency: latencyComparison(baseline, candidate),
         stagnation: { consecutiveWithoutImprovement, stop: consecutiveWithoutImprovement >= 5,
