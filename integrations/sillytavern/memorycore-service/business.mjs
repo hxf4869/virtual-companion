@@ -5,6 +5,7 @@ import { isDeepStrictEqual } from 'node:util';
 import { ownerDirectory, privateDirectory } from './storage.mjs';
 import { OWNER_DATABASE_FILES } from './native-engine.mjs';
 import { forgetCallbackResume, rememberCallbackResume } from './llm-runner.mjs';
+import { extractionPrimary, requireUserEvidence, savedExtractionInput } from './extraction-window.mjs';
 
 const fail = code => { throw new Error(`MEMORYCORE_${code}`); };
 const safeId = value => typeof value === 'string' && /^[a-zA-Z0-9_-]{1,120}$/.test(value);
@@ -173,7 +174,9 @@ export function createControlledEngine({ dataRoot, nativeFactory, embeddingFacto
             for (const scope of cleanup.scopes) {
                 const revision = native.getScope(scope.key).revision;
                 if (revision === scope.revision - 1) native.invalidateScope(scope.key);
-                else if (revision !== scope.revision) fail('REVISION_CONFLICT');
+                // The durable intent blocks new commits until cleanup ends.
+                // An older invalidator may already have advanced this fence.
+                else if (revision < scope.revision) fail('REVISION_CONFLICT');
             }
             native.forgetRecords(cleanup.removed, request.action === 'forget' ? mapScope(request.scope) : undefined);
             const retainedSources = new Set(native.list().flatMap(r => r.metadata?.vcDependencies || []));
@@ -246,7 +249,10 @@ export function createControlledEngine({ dataRoot, nativeFactory, embeddingFacto
         if (!['clear-owner', 'export-owner', 'operation-status'].includes(action) && await readJSON(path.join(dir, 'deleted.json'))) fail('OWNER_DELETED');
         if (action === 'scope-status') return { revision: native.getScope(key).revision };
         if (action === 'invalidate-scope') return serial(input.scope.ownerId, async () => {
-            if (!Number.isSafeInteger(input.revision) || input.revision < native.getScope(key).revision) fail('REVISION_CONFLICT');
+            if (!Number.isSafeInteger(input.revision) || input.revision < 0) fail('REVISION_CONFLICT');
+            const file = path.join(dir, 'cleanup.json'), cleanup = await readJSON(file);
+            if (cleanup && (await runCleanup(ctx, cleanup, file)).status !== 'cleared') fail('CLEANUP_PENDING');
+            if (input.revision < native.getScope(key).revision) fail('REVISION_CONFLICT');
             if (native.getScope(key).revision === input.revision) return { revision: input.revision };
             while (native.getScope(key).revision < input.revision) native.invalidateScope(key);
             for (const { id, op } of await operationEntries(ctx)) {
@@ -326,7 +332,9 @@ export function createControlledEngine({ dataRoot, nativeFactory, embeddingFacto
             const ids = allowed(input);
             if (!Array.isArray(input.messages) || !input.messages.length || input.messages.length > 100 ||
                 input.messages.some(m => !safeId(m.id) || typeof m.content !== 'string' || m.content.length > 100000 || !Number.isFinite(Date.parse(m.timestamp)))) fail('MESSAGES');
-            const request = { scope: input.scope, revision: input.revision, embedding: input.embedding, allowedRecordIds: ids, messages: input.messages };
+            const primary = extractionPrimary(input.messages, input.primarySourceId);
+            const request = { scope: input.scope, revision: input.revision, embedding: input.embedding, allowedRecordIds: ids, messages: input.messages,
+                ...(input.primarySourceId !== undefined ? { primarySourceId: input.primarySourceId } : {}) };
             // Reserve under the owner lock, but never hold it while calling a model.
             // Returning a task container avoids promise adoption by serial().
             const slot = await serial(input.scope.ownerId, async () => {
@@ -334,7 +342,7 @@ export function createControlledEngine({ dataRoot, nativeFactory, embeddingFacto
                 await configure(ctx, input.embedding);
                 const { file, stored } = await operation(ctx, input);
                 if (stored) {
-                    if (stored.request && JSON.stringify(stored.request) !== JSON.stringify(request)) fail('OPERATION_CONFLICT');
+                    if (stored.request && !isDeepStrictEqual(stored.request, request)) fail('OPERATION_CONFLICT');
                     if (stored.status === 'proposed') return { work: Promise.resolve(stored.proposal) };
                     if (stored.status === 'preparing' && pending.has(file)) return { work: pending.get(file) };
                     if (stored.status !== 'failed' && !(stored.status === 'preparing' && !pending.has(file))) fail('OPERATION_NOT_PROPOSABLE');
@@ -351,19 +359,35 @@ export function createControlledEngine({ dataRoot, nativeFactory, embeddingFacto
                     try {
                         const embedding = await embeddingCall(embeddingFactory, input);
                         const proposal = await native.prepare({ messages: input.messages, scope: mapped, allowedRecordIds: ids,
-                            runner: runnerFactory(input.operationToken), embedding, recordedAt: input.messages.at(-1).timestamp, sourceTime: input.sourceTime });
+                            runner: runnerFactory(input.operationToken), embedding, recordedAt: primary.timestamp, sourceTime: input.sourceTime, primarySourceId: primary.id });
                         const targets = proposal.targets || [];
-                        if (targets.some(t => !ids.includes(t.id))) fail('TARGET_NOT_ALLOWED');
-                        const existing = native.list(ids, mapped);
-                        const dependencies = [...new Set([...input.messages.map(m => m.id), ...existing.filter(r => targets.some(t => t.id === r.id)).flatMap(r => r.metadata?.vcDependencies || [])])];
+                        const targetIds = new Set(targets.map(t => t.id));
+                        if (targetIds.size !== targets.length || targets.some(t => !ids.includes(t.id))) fail('TARGET_NOT_ALLOWED');
+                        const existing = new Map(native.list([...targetIds], mapped).map(r => [r.id, r]));
+                        const linkedTargets = new Set();
                         for (const record of proposal.records) {
                             if (!safeId(record.id)) fail('RECORD_ID');
+                            const { cited, primarySourceId } = requireUserEvidence(record, input.messages, primary, input.primarySourceId === undefined);
+                            const conflictTargetIds = record.conflictTargetIds ?? [];
+                            if (!Array.isArray(conflictTargetIds) || new Set(conflictTargetIds).size !== conflictTargetIds.length) fail('TARGET_NOT_ALLOWED');
+                            const inherited = conflictTargetIds.flatMap(id => {
+                                if (!targetIds.has(id)) fail('TARGET_NOT_ALLOWED');
+                                const dependencies = existing.get(id)?.metadata?.vcDependencies;
+                                if (!Array.isArray(dependencies) || !dependencies.length || !dependencies.every(safeId)) fail('TARGET_NOT_ALLOWED');
+                                linkedTargets.add(id);
+                                return dependencies;
+                            });
+                            const dependencies = [...new Set([...cited, ...inherited])];
                             Object.assign(record, mapped);
-                            record.source_message_ids = [...dependencies];
-                            record.metadata = { ...record.metadata, vcDependencies: dependencies, vcScopeKey: key };
+                            record.source_message_ids = dependencies;
+                            record.conflictTargetIds = conflictTargetIds;
+                            record.metadata = { ...record.metadata, vcDependencies: dependencies, vcScopeKey: key, vcPrimarySourceId: primarySourceId };
                         }
+                        if (linkedTargets.size !== targetIds.size) fail('TARGET_NOT_ALLOWED');
                         const vectors = await embedding.embedBatch(proposal.records.map(r => r.content));
-                        proposal.vectors = vectors.map(v => [...v]); proposal.dependencies = dependencies;
+                        proposal.vectors = vectors.map(v => [...v]);
+                        proposal.dependencies = [...new Set(proposal.records.flatMap(r => r.source_message_ids))];
+                        proposal.contextDependencies = input.messages.map(m => m.id);
                         return await serial(input.scope.ownerId, async () => {
                             await liveOperation(ctx, file, input.scope, input.revision, 'preparing');
                             return currentSpace(ctx, input.embedding, async () => {
@@ -400,11 +424,14 @@ export function createControlledEngine({ dataRoot, nativeFactory, embeddingFacto
             return currentSpace(ctx, stored.request.embedding, async () => {
                 if (stored.status === 'published') return stored.receipt;
                 const p = stored.proposal;
+                const evidenceMessages = stored.request.messages.filter(m => p.dependencies.includes(m.id));
                 const receipt = native.commitPrepared({ operationId: input.operationId, scopeKey: key, revision: input.revision,
                     spaceId: stored.request.embedding.spaceId, filter: mapped,
-                    l0Records: stored.request.messages.map(m => ({ id: m.id, ...mapped, role: m.role || 'user', messageText: m.content,
-                        recordedAt: m.timestamp, timestamp: Date.parse(m.timestamp) })), records: p.records.map((record, i) => ({ record, embedding: Float32Array.from(p.vectors[i]) })), targets: p.targets });
+                    l0Records: evidenceMessages.map(m => ({
+                        id: m.id, ...mapped, role: m.role || 'user', messageText: m.content,
+                        recordedAt: m.timestamp, timestamp: Date.parse(m.timestamp), timestampFallback: m.timestampFallback })), records: p.records.map((record, i) => ({ record, embedding: Float32Array.from(p.vectors[i]) })), targets: p.targets });
                 if (receipt.status === 'revoked') fail('REVISION_CONFLICT');
+                stored.request.messages = evidenceMessages;
                 stored.status = 'publishing'; stored.receipt = receipt; await writeJSON(file, stored);
                 await scrubSuperseded(ctx, input.operationId, p.targets || [], p.dependencies);
                 await publishHook();
@@ -424,7 +451,7 @@ export function createControlledEngine({ dataRoot, nativeFactory, embeddingFacto
             if (['preparing', 'building-profile'].includes(stored.status) && !pending.has(file)) {
                 await fs.rm(path.join(dir, 'staging', input.operationId), { recursive: true, force: true });
                 await writeJSON(file, { scope: stored.scope, ...(stored.request ? { request: stored.request } : {}), ...(stored.calls ? { calls: stored.calls } : {}), status: 'failed' });
-                return { status: 'failed' };
+                return { status: 'failed', ...savedExtractionInput(stored) };
             }
             const nativeReceipt = native.getOperation(input.operationId);
             const revoked = nativeReceipt?.status === 'revoked';
@@ -432,7 +459,8 @@ export function createControlledEngine({ dataRoot, nativeFactory, embeddingFacto
             // committed record IDs even after a partial file publication.
             return revoked ? { status: 'revoked', receipt: { operationId: nativeReceipt.operationId,
                 recordIds: nativeReceipt.recordIds || [], sourceIds: nativeReceipt.sourceIds || [], status: 'revoked' } } : { status: stored.status, ...(stored.receipt ? { receipt: stored.receipt } : {}), ...(stored.proposal ? { proposal: stored.proposal } : {}),
-                ...(stored.dependencies ? { dependencies: stored.dependencies } : {}), ...(Number.isSafeInteger(stored.revision) ? { revision: stored.revision } : {}) };
+                ...(stored.dependencies ? { dependencies: stored.dependencies } : {}), ...(Number.isSafeInteger(stored.revision) ? { revision: stored.revision } : {}),
+                ...(stored.status === 'failed' ? savedExtractionInput(stored) : {}) };
         });
         if (action === 'read-profile') return serial(input.scope.ownerId, async () => {
             if (await readJSON(path.join(dir, 'cleanup.json'))) return {};

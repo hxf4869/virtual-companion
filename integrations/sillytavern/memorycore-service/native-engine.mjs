@@ -4,6 +4,7 @@ import { createControlledEngine } from './business.mjs';
 import { createOllamaEmbedding, embeddingCacheStats } from './embedding.mjs';
 import { createCallbackRunner } from './llm-runner.mjs';
 import { extractionRunner, prepareMemoryFact } from './memory-policy.mjs';
+import { citedWindowUser } from './extraction-window.mjs';
 import { engineRerank, looseRetrievalFilter, rerankCacheStats, summaryUnits, RERANK } from './rerank.mjs';
 
 // Calibrated on fixtures/memorycore-calibration.json (88 synthetic Chinese
@@ -373,13 +374,24 @@ export async function createNativeFactory(api) {
             list,
             listSources: () => store.getRawDb().prepare('SELECT * FROM l0_conversations ORDER BY record_id').all(),
             forgetSources(ids, scope) { invalidateSearch(); return store.forgetSources(ids, scope); },
-            async prepare({ messages, scope, allowedRecordIds, runner, embedding, recordedAt, sourceTime }) {
+            async prepare({ messages, scope, allowedRecordIds, runner, embedding, recordedAt, sourceTime, primarySourceId }) {
+                // Upstream filters each message before constructing the prompt.
+                // A rejected user anchor must not leave only assistant context
+                // while the policy prompt still names that user as evidence.
+                if (primarySourceId !== undefined && !api.shouldExtractL1(messages.find(message => message.id === primarySourceId)?.content || '')) {
+                    return { records: [], targets: [], emptyDisposition: 'DROPPED_GATE' };
+                }
+                const sourceTimes = messages.length > 1 || messages.some(m => m.sourceTime)
+                    ? Object.fromEntries(messages.filter(m => (m.role || 'user') === 'user' && m.sourceTime).map(m => [m.id, m.sourceTime])) : undefined;
                 const queryEmbedding = { ...embedding, embed: embedding.embedQuery || embedding.embed,
                     embedBatch: async texts => { const out = []; for (const text of texts) out.push(await (embedding.embedQuery || embedding.embed)(text)); return out; } };
                 const result = await api.extractL1Memories({ messages, ...scope, baseDir: dir, config: {},
-                    options: { prepareOnly: true, allowedRecordIds, recordedAt, transformMemory: memory => prepareMemoryFact(memory, sourceTime),
+                    options: { prepareOnly: true, allowedRecordIds, recordedAt,
+                        recordedAtForMemory: memory => citedWindowUser(memory, messages)?.timestamp,
+                        transformMemory: memory => prepareMemoryFact(memory,
+                            citedWindowUser(memory, messages)?.sourceTime ?? (sourceTimes === undefined ? sourceTime : undefined)),
                         relevance: { ...RELEVANCE }, vectorStore: store,
-                        embeddingService: store.getSpace()?.rebuilding ? undefined : queryEmbedding, llmRunner: extractionRunner(runner, sourceTime) } });
+                        embeddingService: store.getSpace()?.rebuilding ? undefined : queryEmbedding, llmRunner: extractionRunner(runner, sourceTime, primarySourceId, sourceTimes) } });
                 if (!result.success) throw new Error('MEMORYCORE_EXTRACTION_FAILED');
                 const proposal = JSON.parse(JSON.stringify(result.proposal || { records: [], targets: [] }));
                 if (typeof result.emptyDisposition === 'string' && /^[A-Z0-9_]+$/u.test(result.emptyDisposition)) proposal.emptyDisposition = result.emptyDisposition;

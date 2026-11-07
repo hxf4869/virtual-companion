@@ -47,20 +47,24 @@ func (s *Store) SyncMemoryEngineScope(ctx context.Context, owner, relationship i
 }
 
 type EngineRecord struct {
-	ID       string         `json:"id"`
-	Content  string         `json:"content"`
-	Version  int64          `json:"version"`
-	Metadata map[string]any `json:"metadata"`
+	ID                string         `json:"id"`
+	Content           string         `json:"content"`
+	Version           int64          `json:"version"`
+	Metadata          map[string]any `json:"metadata"`
+	SourceMessageIDs  []string       `json:"source_message_ids,omitempty"`
+	ConflictTargetIDs []string       `json:"conflictTargetIds,omitempty"`
 }
 type EngineTarget struct {
 	ID      string `json:"id"`
 	Version int64  `json:"version"`
 }
 type EngineProposal struct {
-	Records          []EngineRecord `json:"records"`
-	Targets          []EngineTarget `json:"targets"`
-	Dependencies     []string       `json:"dependencies"`
-	EmptyDisposition string         `json:"emptyDisposition,omitempty"`
+	Records             []EngineRecord      `json:"records"`
+	Targets             []EngineTarget      `json:"targets"`
+	Dependencies        []string            `json:"dependencies"`
+	ContextDependencies []string            `json:"contextDependencies,omitempty"`
+	RecordSourceRefs    map[string][]string `json:"record_source_refs,omitempty"`
+	EmptyDisposition    string              `json:"emptyDisposition,omitempty"`
 }
 type EngineOperation struct {
 	ProfileOperationID   string
@@ -331,61 +335,70 @@ func (s *Store) EngineCall(ctx context.Context, action string, in, out any) erro
 	return s.memoryEngine.Call(ctx, action, in, out)
 }
 
-// ValidateEngineProposal derives dependencies from trusted source rows and old
-// target evidence. Model-supplied dependency IDs are checked, never authorized.
+// ValidateEngineProposal stages a proposal after checking its context and evidence.
 func (s *Store) ValidateEngineProposal(ctx context.Context, c JobClaim, op EngineOperation, raw json.RawMessage) ([]string, error) {
+	sources, err := s.validateEngineProposal(ctx, c, op, raw)
+	return sources.refs, err
+}
+
+func (s *Store) validateEngineProposal(ctx context.Context, c JobClaim, op EngineOperation, raw json.RawMessage) (engineProposalSources, error) {
 	var p EngineProposal
+	var sources engineProposalSources
 	if json.Unmarshal(raw, &p) != nil || len(p.Records) > 100 {
-		return nil, ErrInvalid
+		return sources, ErrInvalid
 	}
 	in, e := s.ReadSTMemoryExtractInput(ctx, c.OwnerID, c.JobID, c.RefID)
 	if e != nil {
-		return nil, e
+		return sources, e
 	}
 	if !in.ModelEligible || in.SourceRef != op.SourceRef {
-		return nil, ErrConflict
+		return sources, ErrConflict
 	}
 	embedding, e := s.ResolveEmbeddingConfig(ctx, c.OwnerID)
 	if e != nil {
-		return nil, e
+		return sources, e
 	}
 	if embedding.SpaceID != op.Embedding.SpaceID || embedding.Revision != op.Embedding.Revision {
-		return nil, ErrConflict
+		return sources, ErrConflict
 	}
 	current, e := s.engineCandidates(ctx, c.OwnerID, in.RelationshipID, in.ConversationID)
 	if e != nil {
-		return nil, e
+		return sources, e
 	}
 	projections, e := s.engineProjections(ctx, c.OwnerID, in.RelationshipID)
 	if e != nil {
-		return nil, e
+		return sources, e
 	}
 	versions := map[string]int64{}
 	for _, v := range projections {
 		versions[v.RecordID] = v.Version
 	}
 	refs := []string{op.SourceRef}
-	seen := map[string]bool{op.SourceRef: true}
+	targetRefs := make(map[string][]string, len(p.Targets))
 	for _, t := range p.Targets {
 		m, ok := current[t.ID]
 		if !ok || versions[t.ID] != t.Version {
-			return nil, ErrConflict
+			return sources, ErrConflict
 		}
+		if _, duplicate := targetRefs[t.ID]; duplicate || len(m.Sources) == 0 {
+			return sources, ErrInvalid
+		}
+		targetRefs[t.ID] = m.Sources
 		for _, ref := range m.Sources {
-			if !seen[ref] {
+			if !slices.Contains(refs, ref) {
 				refs = append(refs, ref)
-				seen[ref] = true
 			}
 		}
 	}
 	for _, r := range p.Records {
 		if r.ID == "" || r.Content == "" || len(r.Content) > 16000 || r.Version < 1 {
-			return nil, ErrInvalid
+			return sources, ErrInvalid
 		}
 	}
 	if e = s.reconcileSTEvidence(ctx, c.OwnerID, refs); e != nil {
-		return nil, e
+		return sources, e
 	}
+	sources.refs = refs
 	e = s.WithOwner(ctx, c.OwnerID, func(ctx context.Context, tx pgx.Tx) error {
 		// Match forget's owner-barrier-before-source-row lock order. Staging
 		// takes this same transaction-scoped barrier again after the guards.
@@ -399,69 +412,55 @@ func (s *Store) ValidateEngineProposal(ctx context.Context, c JobClaim, op Engin
 		if !valid {
 			return ErrConflict
 		}
-		deps := map[string]bool{}
-		for _, ref := range refs {
-			var key string
-			var valid bool
-			if e := tx.QueryRow(ctx, `SELECT 'source-'||id||'-'||source_revision||'-'||source_generation,vc.guard_st_memory_source($1,$2,source_ref) FROM vc.st_message_source WHERE owner_user_id=$1 AND source_ref=$3`, c.OwnerID, in.RelationshipID, ref).Scan(&key, &valid); e != nil {
-				return e
-			}
-			if !valid {
-				return ErrConflict
-			}
-			deps[key] = true
+		validated, e := validateExtractionSupport(ctx, tx, c, op, in.RelationshipID, p, refs, targetRefs)
+		if e != nil {
+			return e
 		}
-		if len(deps) != len(p.Dependencies) {
-			return ErrInvalid
-		}
-		for _, key := range p.Dependencies {
-			if !deps[key] {
-				return ErrInvalid
-			}
-		}
-		_, e := tx.Exec(ctx, `SELECT vc.go_memorycore_stage($1,$2,$3)`, c.OwnerID, c.JobID, raw)
+		sources = validated
+		_, e = tx.Exec(ctx, `SELECT vc.go_memorycore_stage($1,$2,$3)`, c.OwnerID, c.JobID, raw)
 		return e
 	})
-	return refs, mapStoreErr(e)
+	return sources, mapStoreErr(e)
 }
+
 func (s *Store) PublishEngineProposal(ctx context.Context, c JobClaim, op EngineOperation, raw json.RawMessage) error {
-	refs, e := s.ValidateEngineProposal(ctx, c, op, raw)
+	sources, e := s.validateEngineProposal(ctx, c, op, raw)
+	if e != nil {
+		return e
+	}
+	raw, e = enginePublicationProposal(raw)
 	if e != nil {
 		return e
 	}
 	return mapStoreErr(s.WithOwner(ctx, c.OwnerID, func(ctx context.Context, tx pgx.Tx) error {
-		if _, e := tx.Exec(ctx, `SELECT vc.go_publish_memorycore($1,$2,$3,$4,$5,$6)`, c.OwnerID, c.JobID, c.Token, c.Fence, raw, refs); e != nil {
+		if _, e := tx.Exec(ctx, `SELECT vc.go_publish_memorycore($1,$2,$3,$4,$5,$6,$7::jsonb)`, c.OwnerID, c.JobID, c.Token, c.Fence, raw, sources.refs, sources.recordRefs); e != nil {
 			return e
 		}
-		rows, e := tx.Query(ctx, `SELECT memory_id FROM vc.go_memorycore_projection($1,$2) WHERE operation_id=$3`, c.OwnerID, op.Input.RelationshipID, op.ID)
+		rows, e := tx.Query(ctx, `SELECT memory_id,record_id FROM vc.go_memorycore_projection($1,$2) WHERE operation_id=$3`, c.OwnerID, op.Input.RelationshipID, op.ID)
 		if e != nil {
 			return e
 		}
-		ids := []int64{}
-		for rows.Next() {
-			var id int64
-			if e = rows.Scan(&id); e != nil {
-				rows.Close()
-				return e
-			}
-			ids = append(ids, id)
+		type publishedRecord struct {
+			MemoryID int64
+			RecordID string
 		}
-		e = rows.Err()
-		rows.Close()
+		records, e := pgx.CollectRows(rows, pgx.RowToStructByPos[publishedRecord])
 		if e != nil {
 			return e
 		}
-		if len(ids) == 0 {
-			var clarified int64
-			if clarified, e = s.clarificationMemory(ctx, tx, c, op); e != nil {
+		if len(records) == 0 {
+			clarified, e := s.clarificationMemory(ctx, tx, c, op)
+			if e != nil || clarified == 0 {
 				return e
 			}
-			if clarified > 0 {
-				ids = append(ids, clarified)
-			}
+			return s.writeVerifiedSourceTime(ctx, tx, c.OwnerID, clarified, op.SourceRef)
 		}
-		for _, id := range ids {
-			if e = s.writeVerifiedSourceTime(ctx, tx, c.OwnerID, id, op.Input.UserContent, c.RefID); e != nil {
+		for _, record := range records {
+			ref := sources.recordPrimaryRefs[record.RecordID]
+			if ref == "" {
+				return ErrConflict
+			}
+			if e = s.writeVerifiedSourceTime(ctx, tx, c.OwnerID, record.MemoryID, ref); e != nil {
 				return e
 			}
 		}

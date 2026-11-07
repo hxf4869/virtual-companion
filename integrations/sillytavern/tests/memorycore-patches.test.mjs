@@ -99,6 +99,37 @@ test('date-restricted lexical search does not reuse the calendar expression', as
     await recall(input);
     assert.equal(seen, '参加什么');
 });
+test('controlled prepare returns each replacement’s own conflict targets', async () => {
+    const spec = JSON.parse(await fs.readFile(new URL('01-prepare.json', patchDir), 'utf8'));
+    const source = await fs.readFile(path.join(MEMORYCORE_DIR, spec.target), 'utf8');
+    const { output } = applySpecToText(source, spec);
+    const controlled = output.slice(output.indexOf('  // Controlled prepare'), output.indexOf('  // Original immediate-write'));
+    const prepare = new Function('fixture', stripTypeScriptTypes(`
+        async function run(fixture) {
+            const { options, memoriesWithIds, batchDedup, prepareMemoryRecord } = fixture;
+            const teamId = 'team', userId = 'user', agentId = 'agent', sessionKey = 'session', sessionId = 'session';
+            const taskId = 'task', config = {}, extracted = memoriesWithIds, sceneNames = [];
+            ${controlled}
+        }
+    `, { mode: 'transform' }) + 'return run(fixture);');
+    const proposal = (await prepare({
+        options: { prepareOnly: true, llmRunner: {}, recordedAt: '2026-11-07', allowedRecordIds: ['old-a', 'old-b'],
+            recordedAtForMemory: memory => memory.record_id === 'a' ? '2026-11-05' : undefined,
+            vectorStore: { queryL1Records: () => [{ record_id: 'old-b', version: 9 }, { record_id: 'old-a', version: 2 }] } },
+        memoriesWithIds: ['a', 'b', 'c'].map(record_id => ({ record_id })),
+        batchDedup: async () => [
+            { record_id: 'a', action: 'merge', target_ids: ['old-a'] },
+            { record_id: 'b', action: 'update', target_ids: ['old-b'] },
+            { record_id: 'c', action: 'store', target_ids: [] },
+        ],
+        prepareMemoryRecord: (memory, _decision, _scope, recordedAt, version) => ({ id: memory.record_id, version, recordedAt }),
+    })).proposal;
+    assert.deepEqual(proposal.records, [
+        { id: 'a', version: 3, recordedAt: '2026-11-05', conflictTargetIds: ['old-a'] },
+        { id: 'b', version: 10, recordedAt: '2026-11-07', conflictTargetIds: ['old-b'] },
+        { id: 'c', version: 1, recordedAt: '2026-11-07', conflictTargetIds: [] },
+    ]);
+});
 test('strict conflict parse keeps an update target when a sibling store omits target_ids', async t => {
     const spec = JSON.parse(await fs.readFile(new URL('03-dedup.json', patchDir), 'utf8'));
     const source = await fs.readFile(path.join(MEMORYCORE_DIR, 'MemoryCore/src/core/record/l1-dedup.ts'), 'utf8');

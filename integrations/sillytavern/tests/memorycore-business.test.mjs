@@ -44,6 +44,106 @@ async function fixture(t, options = {}) {
 }
 const proposalInput = () => ({ scope, revision: 0, operationId: 'op1', embedding, allowedRecordIds: [], operationToken: 'ephemeral',
     messages: [{ id: 'message1', content: 'synthetic content', timestamp: '2026-10-28T00:00:00Z' }] });
+test('extraction window keeps actual support through replay and omits unused context from native evidence', async t => {
+    const { engine, native } = await fixture(t);
+    const input = proposalInput();
+    input.messages = [
+        { id: 'unused', role: 'user', content: '未被引用的上下文', timestamp: '2026-10-26T00:00:00Z' },
+        { id: 'assistant1', role: 'assistant', content: '你说的是每周三去游泳？', timestamp: '2026-10-27T00:00:00Z' },
+        { ...input.messages[0], role: 'user', content: '对，每周都去。' },
+    ];
+    input.primarySourceId = 'message1';
+    let seen;
+    native.prepare = async p => {
+        seen = p;
+        return { records: [{ id: 'record1', content: '用户每周三游泳。', source_message_ids: ['assistant1', 'message1'] }], targets: [] };
+    };
+    const proposal = await engine.invoke('propose', input);
+    assert.equal(seen.primarySourceId, 'message1');
+    assert.equal(seen.recordedAt, input.messages[2].timestamp);
+    assert.deepEqual(proposal.dependencies, ['assistant1', 'message1']);
+    assert.deepEqual(proposal.contextDependencies, ['unused', 'assistant1', 'message1']);
+    assert.equal(proposal.records[0].metadata.vcPrimarySourceId, 'message1');
+    assert.deepEqual(await engine.invoke('propose', structuredClone(input)), proposal);
+    await assert.rejects(engine.invoke('propose', { ...input, primarySourceId: 'assistant1' }), /PRIMARY_SOURCE/);
+    await assert.rejects(engine.invoke('propose', { ...input, messages: [input.messages[0], { ...input.messages[1], content: '改过的澄清' }, input.messages[2]] }), /OPERATION_CONFLICT/);
+    await engine.invoke('commit', { scope, revision: 0, operationId: input.operationId });
+    assert.deepEqual(native.listSources().map(s => [s.id, s.role]), [['assistant1', 'assistant'], ['message1', 'user']]);
+});
+test('sibling facts retain only their citations and own conflict target evidence', async t => {
+    const { engine, native } = await fixture(t);
+    native.records.set('old-a', { id: 'old-a', ...mapScope(scope), metadata: { vcDependencies: ['old-source-a'] } });
+    native.records.set('old-b', { id: 'old-b', ...mapScope(scope), metadata: { vcDependencies: ['old-source-b'] } });
+    const input = { ...proposalInput(), primarySourceId: 'message1', allowedRecordIds: ['old-a', 'old-b'],
+        messages: [
+            { id: 'user-a', role: 'user', content: '用户事实 A', timestamp: '2026-10-27T00:00:00Z' },
+            { id: 'assistant-b', role: 'assistant', content: '澄清 B', timestamp: '2026-10-27T00:00:01Z' },
+            { ...proposalInput().messages[0], role: 'user', content: '用户确认 B' },
+        ] };
+    native.prepare = async () => ({ targets: [{ id: 'old-a', version: 1 }, { id: 'old-b', version: 1 }], records: [
+        { id: 'record-a', content: '独立事实 A', source_message_ids: ['user-a'], conflictTargetIds: ['old-a'] },
+        { id: 'record-b', content: '独立事实 B', source_message_ids: ['assistant-b', 'message1'], conflictTargetIds: ['old-b'] },
+    ] });
+    const proposal = await engine.invoke('propose', input);
+    const a = ['user-a', 'old-source-a'], b = ['assistant-b', 'message1', 'old-source-b'];
+    assert.deepEqual(proposal.records.map(r => r.source_message_ids), [a, b]);
+    assert.deepEqual(proposal.records.map(r => r.metadata.vcDependencies), [a, b]);
+    assert.deepEqual(proposal.records.map(r => r.metadata.vcPrimarySourceId), ['user-a', 'message1']);
+    assert.deepEqual(proposal.dependencies, [...a, ...b]);
+    await engine.invoke('commit', input);
+    await engine.invoke('forget', { scope, revision: 0, recordIds: ['record-b'], sourceIds: b });
+    const exported = await engine.invoke('export-owner', { scope });
+    assert.deepEqual(exported.records.map(r => r.id), ['record-a']);
+    assert.deepEqual(exported.jsonl.map(shard => JSON.parse(shard.content).id), ['record-a']);
+});
+test('prepare rejects a batch with an undeclared target before changing either old fact', async t => {
+    const { engine, native } = await fixture(t);
+    const old = ['old-a', 'old-b'].map(id => ({ id, content: `synthetic ${id}`, ...mapScope(scope),
+        metadata: { vcDependencies: [`source-${id}`] } }));
+    for (const record of old) native.records.set(record.id, structuredClone(record));
+    const input = { ...proposalInput(), primarySourceId: 'message1', allowedRecordIds: ['old-a', 'old-b'] };
+    native.prepare = async () => ({ targets: [{ id: 'old-a', version: 1 }, { id: 'old-b', version: 1 }],
+        records: [{ id: 'replacement-a', content: 'synthetic replacement', source_message_ids: ['message1'], conflictTargetIds: ['old-a'] }] });
+    await assert.rejects(engine.invoke('propose', input), /MEMORYCORE_TARGET_NOT_ALLOWED/);
+    assert.deepEqual([...native.records.values()], old);
+    assert.equal((await engine.invoke('operation-status', input)).status, 'failed');
+});
+test('assistant-only request or fact cannot become a user fact', async t => {
+    const { engine, native } = await fixture(t);
+    const input = proposalInput();
+    await assert.rejects(engine.invoke('propose', { ...input, messages: [{ ...input.messages[0], role: 'assistant' }] }), /PRIMARY_SOURCE/);
+    input.messages = [{ ...input.messages[0], id: 'assistant1', role: 'assistant' }, { ...input.messages[0], role: 'user' }];
+    input.primarySourceId = 'message1';
+    native.prepare = async () => ({ records: [{ id: 'record1', content: '助手猜测的用户事实', source_message_ids: ['assistant1'] }], targets: [] });
+    await assert.rejects(engine.invoke('propose', input), /PRIMARY_SOURCE/);
+    assert.equal(native.records.size, 0);
+});
+test('failed and orphaned legacy operations expose only replay keys and retain exact singleton requests', async t => {
+    for (const state of ['failed', 'preparing']) {
+        await t.test(state, async t => {
+            const { engine, native, root } = await fixture(t);
+            const input = proposalInput();
+            // The old Go map encoder ordered keys alphabetically. The new
+            // typed messages may have a different JSON object key order.
+            input.messages = [{ content: input.messages[0].content, id: 'message1', role: 'user', timestamp: input.messages[0].timestamp }];
+            native.prepare = async () => { throw new Error('MEMORYCORE_CALLBACK_TIMEOUT'); };
+            await assert.rejects(engine.invoke('propose', input), /CALLBACK_TIMEOUT/);
+            if (state === 'preparing') {
+                const file = path.join(root, 'owners', '1', 'operations', 'op1.json');
+                const stored = JSON.parse(await fs.readFile(file, 'utf8'));
+                stored.status = 'preparing';
+                await fs.writeFile(file, JSON.stringify(stored));
+            }
+            const status = await engine.invoke('operation-status', { scope, operationId: input.operationId });
+            assert.equal(status.status, 'failed');
+            assert.deepEqual(status.extractionInput, { messages: [{ id: 'message1', timestamp: input.messages[0].timestamp }] });
+            assert.equal(JSON.stringify(status).includes(input.messages[0].content), false);
+            native.prepare = async ({ messages }) => ({ records: [{ id: 'record1', content: messages[0].content }], targets: [] });
+            const proposal = await engine.invoke('propose', { ...input, messages: input.messages.map(m => ({ id: m.id, content: m.content, role: m.role, timestamp: m.timestamp })) });
+            assert.deepEqual(proposal.dependencies, ['message1']);
+        });
+    }
+});
 test('trusted identity maps logical memory domain, never real chat', () => {
     const s = mapScope(scope); assert.equal(s.teamId, 'owner:1'); assert.equal(s.agentId, 'instance:7:mode:COMPANION');
     assert.equal(s.sessionId, s.sessionKey); assert.equal(s.sessionId, 'daily-7');
@@ -403,6 +503,46 @@ test('legacy forget cleanup resumes after restart only for the same request with
     assert.equal(native.records.size, 0);
     assert.equal(native.listSources().length, 0);
 });
+test('pending cleanup finishes its original intent before a stronger recovery', async t => {
+    const { engine, native, root } = await fixture(t);
+    const proposal = { ...proposalInput(), primarySourceId: 'source-b', messages: [
+        { id: 'source-a', role: 'user', content: '独立事实 A', timestamp: '2026-11-04T00:00:00Z' },
+        { id: 'source-b', role: 'user', content: '独立事实 B', timestamp: '2026-11-06T00:00:00Z' },
+    ] };
+    native.prepare = async () => ({ targets: [], records: proposal.messages.map((m, i) => ({
+        id: i === 0 ? 'record-a' : 'record-b', content: m.content, source_message_ids: [m.id],
+    })) });
+    await engine.invoke('propose', proposal);
+    await engine.invoke('commit', proposal);
+    await engine.invoke('invalidate-scope', { scope, revision: 1 });
+    let blocked = true;
+    native.checkpoint = () => { if (blocked) throw new Error('SYNTHETIC_CHECKPOINT_PENDING'); };
+    const first = { scope, revision: 1, revisionAdvanced: true, matchSourceRecords: false,
+        recordIds: ['record-b'], sourceIds: ['source-b'] };
+    assert.equal((await engine.invoke('forget', first)).status, 'pending');
+    assert.deepEqual([...native.records.keys()], ['record-a']);
+    const file = path.join(root, 'owners/1/cleanup.json');
+    const old = await fs.readFile(file, 'utf8');
+    const stronger = { ...first, revision: 2, recordIds: ['record-a', 'record-b'], sourceIds: ['source-a', 'source-b'] };
+    await assert.rejects(engine.invoke('invalidate-scope', { scope, revision: 2 }), /CLEANUP_PENDING/);
+    assert.equal((await engine.invoke('scope-status', { scope })).revision, 1);
+    await assert.rejects(engine.invoke('forget', stronger), /CLEANUP_PENDING/);
+    assert.equal(await fs.readFile(file, 'utf8'), old);
+    // A pre-upgrade invalidator could have moved the fence while this same
+    // durable intent was already blocking native commits.
+    native.invalidateScope('7:COMPANION:daily-7:main');
+    await assert.rejects(engine.invoke('commit', { ...proposal, revision: 2 }), /CLEANUP_PENDING/);
+    blocked = false;
+    await assert.rejects(engine.invoke('forget', stronger), /CLEANUP_PENDING/);
+    assert.equal(await fs.readFile(file, 'utf8'), old);
+    assert.deepEqual(await engine.invoke('invalidate-scope', { scope, revision: 2 }), { revision: 2 });
+    await assert.rejects(fs.access(file));
+    assert.deepEqual([...native.records.keys()], ['record-a']);
+    for (let i = 0; i < 2; i++) assert.equal((await engine.invoke('forget', stronger)).status, 'cleared');
+    const state = await engine.invoke('export-owner', { scope });
+    assert.deepEqual([state.records, state.sources, state.jsonl], [[], [], []]);
+    assert.equal(state.cleanup, 'clear');
+});
 test('replacement scrubs superseded JSONL and proposal and exports published profiles without capability', async t => {
     const { engine, native, root } = await fixture(t);
     await engine.invoke('propose', proposalInput()); await engine.invoke('commit', { scope, revision: 0, operationId: 'op1' });
@@ -411,7 +551,7 @@ test('replacement scrubs superseded JSONL and proposal and exports published pro
     const exported = await engine.invoke('export-owner', { scope });
     assert.equal(exported.profiles[0].files['persona.md'], 'synthetic profile'); assert.equal(exported.sources.length, 1);
     assert.equal(JSON.stringify(exported).includes('ephemeral'), false);
-    native.prepare = async ({ scope: mapped }) => ({ records: [{ id:'record2', content:'corrected content', ...mapped }], targets:[{id:'record1',version:1}] });
+    native.prepare = async ({ scope: mapped }) => ({ records: [{ id:'record2', content:'corrected content', conflictTargetIds: ['record1'], ...mapped }], targets:[{id:'record1',version:1}] });
     await engine.invoke('propose', { ...proposalInput(), operationId:'op2', allowedRecordIds:['record1'], messages:[{...proposalInput().messages[0],id:'message2',content:'corrected content'}] });
     await engine.invoke('commit', { scope, revision:0,operationId:'op2' });
     const old = await fs.readFile(path.join(root,'owners/1/operations/op1.json'),'utf8'); assert.equal(old.includes('synthetic content'),false);
@@ -736,7 +876,7 @@ test('abandoned merge cleanup preserves valid old targets while collecting only 
     const { engine, native } = await fixture(t);
     await engine.invoke('propose', proposalInput());
     await engine.invoke('commit', { scope, revision: 0, operationId: 'op1' });
-    native.prepare = async () => ({ records: [{ id: 'abandoned-record', content: 'never published', metadata: {}, ...mapScope(scope) }], targets: [{ id: 'record1', version: 1 }] });
+    native.prepare = async () => ({ records: [{ id: 'abandoned-record', content: 'never published', conflictTargetIds: ['record1'], metadata: {}, ...mapScope(scope) }], targets: [{ id: 'record1', version: 1 }] });
     await engine.invoke('propose', { ...proposalInput(), operationId: 'abandoned-merge', allowedRecordIds: ['record1'],
         messages: [{ id: 'message2', content: 'pending correction', timestamp: '2026-10-29T00:00:00Z' }] });
     await engine.invoke('invalidate-scope', { scope, revision: 1 });

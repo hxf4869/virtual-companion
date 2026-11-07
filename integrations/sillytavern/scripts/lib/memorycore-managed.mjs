@@ -74,6 +74,7 @@ export function memorycoreBuild({ sourceDir = MEMORYCORE_DIR, serviceDir = MEMOR
         files['upstream-api.mjs'] = [
             ['VectorStore', 'core/store/sqlite/memory-store'],
             ['extractL1Memories', 'core/record/l1-extractor'],
+            ['shouldExtractL1', 'utils/sanitize'],
             ['SceneExtractor', 'core/scene/scene-extractor'],
             ['PersonaGenerator', 'core/persona/persona-generator'],
             ['StorageAdapter, createScopedStorageAdapter', 'core/storage/adapter'],

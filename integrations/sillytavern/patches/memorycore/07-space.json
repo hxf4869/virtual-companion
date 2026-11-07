@@ -8,8 +8,8 @@
   },
   "removal_condition": "Upstream supports artifact/preprocessing space identity, complete rebuilding and strict space guards.",
   "target": "MemoryCore/src/core/store/sqlite/memory-store.ts",
-  "expected_input_sha256": "e735f77ed14a492a6f93fb88f912b55c28897c20c6eae7e4ae5742da07e28973",
-  "expected_output_sha256": "1de0f43f97022f334cc74645d94c2deb22137850beac3e7f6abfb193c17ba0b0",
+  "expected_input_sha256": "8c34d04eee3efc8b91609030eb7ec8ca7e3033ccb5b807c96ca97d03ae06b183",
+  "expected_output_sha256": "c43f5149816178ecd4385b46df8a0f3bff9a8fe411dc90efb60ac56481553396",
   "changed_lines": {
     "added": 42,
     "removed": 1

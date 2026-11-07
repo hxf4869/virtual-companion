@@ -9,6 +9,37 @@ import { createCallbackRunner, CALL_DEADLINE_CAP_MS, rememberCallbackResume, for
 const snapshot = { provider: 'OLLAMA', endpoint: 'http://127.0.0.1:11438', model: 'qwen3-embedding:0.6b',
     artifactVersion: 'sha256:fixture', dimensions: 2, queryPreprocessingVersion: 'qwen3-retrieval-v1',
     documentPreprocessingVersion: 'identity-v1', normalization: 'l2', state: 'ENABLED', revision: 1, spaceId: 'space-1' };
+
+test('native extraction checks the supplied upstream gate before passing an anchored window to extraction', async () => {
+    const { createNativeFactory } = await import('../memorycore-service/native-engine.mjs');
+    // Real pinned filtering is exercised by w08-native-store-checks. This
+    // offline adapter check verifies the gate's authority and call order.
+    const checked = [];
+    const shouldExtractL1 = content => { checked.push(content); return content === '对'; };
+    let extractions = 0, modelCalls = 0;
+    const native = await (await createNativeFactory({
+        VectorStore: class { async init() {} getSpace() { return { rebuilding: false }; } },
+        shouldExtractL1,
+        async extractL1Memories(params) {
+            extractions++;
+            await params.options.llmRunner.run({ taskId: 'l1-extraction', systemPrompt: 'base' });
+            return { success: true, proposal: { records: [], targets: [] } };
+        },
+    }))('/synthetic-unused');
+    const assistant = { id: 'assistant', role: 'assistant', content: '你说过自己每周三会去游泳。' };
+    const prepare = content => native.prepare({ messages: [assistant, { id: 'user', role: 'user', content }],
+        primarySourceId: 'user', scope: {}, allowedRecordIds: [], embedding: {}, recordedAt: '2026-11-07T00:00:00Z',
+        runner: { run: async () => { modelCalls++; return '[]'; } } });
+    for (const rejected of ['?', '？？', '!!!', '/help', '']) {
+        assert.deepEqual(await prepare(rejected), { records: [], targets: [], emptyDisposition: 'DROPPED_GATE' });
+    }
+    assert.equal(extractions, 0);
+    assert.equal(modelCalls, 0);
+    assert.deepEqual(checked, ['?', '？？', '!!!', '/help', '']);
+    await prepare('对');
+    assert.equal(extractions, 1, 'a real user confirmation retains the original extraction path');
+    assert.equal(modelCalls, 1);
+});
 test('embedding pins artifact, query preprocessing, dimensions and normalization', async () => {
     const inputs = [];
     const embedding = await createOllamaEmbedding(snapshot, { fetchImpl: async (url, init) => {

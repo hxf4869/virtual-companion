@@ -70,7 +70,7 @@ func TestForgetMemoryWhileValidatingEngineProposal(t *testing.T) {
 		t.Fatal(err)
 	}
 	memory := addSTMemory(t, binding, "合成记忆", op.SourceRef)
-	raw, err := json.Marshal(EngineProposal{Records: []EngineRecord{{ID: "proposal-lock-record", Content: "合成记忆", Version: 1}}, Dependencies: []string{op.SourceKey}})
+	raw, err := json.Marshal(EngineProposal{Records: []EngineRecord{{ID: "proposal-lock-record", Content: "合成记忆", Version: 1, SourceMessageIDs: []string{op.SourceKey}}}, Dependencies: []string{op.SourceKey}})
 	if err != nil {
 		t.Fatal(err)
 	}

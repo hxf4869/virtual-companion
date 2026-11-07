@@ -40,6 +40,9 @@ func (s *recoveryEngineStore) RecordEmptyExtractDecision(_ context.Context, _, _
 func (s *recoveryEngineStore) PrepareEngineOperation(context.Context, postgres.JobClaim) (postgres.EngineOperation, error) {
 	return postgres.EngineOperation{ID: "job-8", State: "PROPOSED"}, nil
 }
+func (s *recoveryEngineStore) ReadEngineExtractionWindow(context.Context, postgres.JobClaim, postgres.EngineOperation) ([]postgres.EngineExtractionMessage, error) {
+	return []postgres.EngineExtractionMessage{{ID: "source-1", Role: "user", Content: "synthetic"}}, nil
+}
 func (s *recoveryEngineStore) EngineCall(_ context.Context, action string, _ any, out any) error {
 	s.calls = append(s.calls, action)
 	if action == "operation-status" {

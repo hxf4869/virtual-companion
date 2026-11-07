@@ -103,7 +103,7 @@ func (s *Store) writeMemoryTime(ctx context.Context, tx pgx.Tx, owner, id int64,
 // writeVerifiedSourceTime normalizes an engine publication from the verified
 // source text and that source row's frozen clock. A rewritten summary and
 // evidence collected from superseded records do not choose the anchor.
-func (s *Store) writeVerifiedSourceTime(ctx context.Context, tx pgx.Tx, owner, id int64, basis string, sourceID int64) error {
+func (s *Store) writeVerifiedSourceTime(ctx context.Context, tx pgx.Tx, owner, id int64, sourceRef string) error {
 	existing, err := s.readMemoryTime(ctx, tx, owner, id)
 	if err != nil {
 		return err
@@ -112,7 +112,8 @@ func (s *Store) writeVerifiedSourceTime(ctx context.Context, tx pgx.Tx, owner, i
 		return nil
 	}
 	out := MemoryTime{RecordedAt: time.Now().UTC()}
-	err = tx.QueryRow(ctx, `SELECT source_timestamp,source_timezone FROM vc.st_message_source WHERE owner_user_id=$1 AND id=$2`, owner, sourceID).Scan(&out.SourceTimestamp, &out.SourceTimezone)
+	var basis string
+	err = tx.QueryRow(ctx, `SELECT source_timestamp,source_timezone,content_cipher FROM vc.st_message_source WHERE owner_user_id=$1 AND source_ref=$2 AND role='user'`, owner, sourceRef).Scan(&out.SourceTimestamp, &out.SourceTimezone, &basis)
 	if err != nil {
 		return err
 	}

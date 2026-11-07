@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 
@@ -334,123 +335,229 @@ func (s *Store) RecoverEngineOperations(ctx context.Context) error {
 		return e
 	}
 	for _, t := range tasks {
-		var rel int64
-		var operation string
-		var saved json.RawMessage
-		e = s.WithOwner(ctx, t[0], func(ctx context.Context, tx pgx.Tx) error {
-			return tx.QueryRow(ctx, `SELECT relationship_id,operation_id,proposal FROM vc.memorycore_operation WHERE owner_user_id=$1 AND job_id=$2 AND state='REVOKED'`, t[0], t[1]).Scan(&rel, &operation, &saved)
+		owner, job := t[0], t[1]
+		e = s.WithOwner(ctx, owner, func(ctx context.Context, tx pgx.Tx) error {
+			// Use the existing SECURITY DEFINER lock entry point: runtime
+			// has SELECT, not UPDATE privileges needed for row-lock clauses.
+			// Preserve owner -> export -> memory -> authority before sources.
+			if _, err := tx.Exec(ctx, `SELECT * FROM vc.lock_chat_authority($1,true)`, owner); err != nil {
+				return err
+			}
+			var rel int64
+			var operation string
+			var saved json.RawMessage
+			e := tx.QueryRow(ctx, `SELECT relationship_id,operation_id,proposal FROM vc.memorycore_operation WHERE owner_user_id=$1 AND job_id=$2 AND state='REVOKED'`, owner, job).Scan(&rel, &operation, &saved)
+			if errors.Is(e, pgx.ErrNoRows) {
+				return nil // Another recovery already finished this operation.
+			}
+			if e != nil {
+				return e
+			}
+			// Capture durable IDs before scope invalidation scrubs engine proposals.
+			// Both sides can have stopped between native commit and Go publication.
+			var proposal EngineProposal
+			if len(saved) > 0 && string(saved) != "null" {
+				if e = json.Unmarshal(saved, &proposal); e != nil {
+					return e
+				}
+			}
+			recordIDs, sourceIDs := map[string]bool{}, map[string]bool{}
+			collect := func(p EngineProposal) {
+				for _, r := range p.Records {
+					recordIDs[r.ID] = true
+				}
+				for _, id := range p.Dependencies {
+					sourceIDs[id] = true
+				}
+			}
+			collect(proposal)
+			scope := EngineScope(owner, rel)
+			retainedIDs, retainedSources, e := keepValidEngineRecords(ctx, tx, owner, rel, operation, proposal, recordIDs)
+			if e != nil {
+				return e
+			}
+			// V292 independently classifies complete persisted evidence and
+			// pauses on FROZEN, unsettled sources or a GO mirror watermark gap.
+			// Stage completion in this transaction BEFORE any native mutation;
+			// PUBLISHED is not visible until cleanup and readback both succeed.
+			// Any native error rolls this state change back to REVOKED.
+			if _, e = tx.Exec(ctx, `SELECT vc.go_memorycore_cleaned($1,$2,$3::text[])`, owner, job, retainedIDs); e != nil {
+				return e
+			}
+			var status struct {
+				Proposal EngineProposal `json:"proposal"`
+				Receipt  struct {
+					RecordIDs []string `json:"recordIds"`
+					SourceIDs []string `json:"sourceIds"`
+				} `json:"receipt"`
+			}
+			if e = s.memoryEngine.Call(ctx, "operation-status", map[string]any{"scope": scope, "operationId": operation}, &status); e != nil {
+				return e
+			}
+			collect(status.Proposal)
+			for _, id := range status.Receipt.RecordIDs {
+				recordIDs[id] = true
+			}
+			for _, id := range status.Receipt.SourceIDs {
+				sourceIDs[id] = true
+			}
+			for _, id := range retainedIDs {
+				delete(recordIDs, id)
+			}
+			ids, sources := []string{}, []string{}
+			for id := range recordIDs {
+				ids = append(ids, id)
+			}
+			for id := range sourceIDs {
+				if !retainedSources[id] {
+					sources = append(sources, id)
+				}
+			}
+			sort.Strings(ids)
+			sort.Strings(sources)
+			var revision int64
+			if e = tx.QueryRow(ctx, `SELECT vc.go_memorycore_scope($1,$2)`, owner, rel).Scan(&revision); e != nil {
+				return e
+			}
+			if e = s.memoryEngine.Call(ctx, "invalidate-scope", map[string]any{"scope": scope, "revision": revision}, nil); e != nil {
+				return e
+			}
+			var result struct {
+				Status string `json:"status"`
+			}
+			if e = s.memoryEngine.Call(ctx, "forget", map[string]any{"scope": scope, "revision": revision, "revisionAdvanced": true, "recordIds": ids, "sourceIds": sources, "matchSourceRecords": false}, &result); e != nil {
+				return e
+			}
+			if result.Status != "cleared" {
+				return fmt.Errorf("memory engine cleanup pending")
+			}
+			// Do not mark cleaned merely because the record left the allowlist.
+			// Check all text-bearing export copies before dropping the durable IDs.
+			var snapshot struct {
+				Records    []EngineRecord `json:"records"`
+				Operations []struct {
+					Proposal EngineProposal `json:"proposal"`
+				} `json:"operations"`
+				JSONL []struct {
+					Content string `json:"content"`
+				} `json:"jsonl"`
+			}
+			if e = s.memoryEngine.Call(ctx, "export-owner", map[string]any{"scope": scope}, &snapshot); e != nil {
+				return e
+			}
+			check := func(records []EngineRecord) error {
+				for _, r := range records {
+					if recordIDs[r.ID] {
+						return fmt.Errorf("memory engine cleanup incomplete")
+					}
+				}
+				return nil
+			}
+			if e = check(snapshot.Records); e != nil {
+				return e
+			}
+			for _, op := range snapshot.Operations {
+				if e = check(op.Proposal.Records); e != nil {
+					return e
+				}
+			}
+			for _, shard := range snapshot.JSONL {
+				for _, line := range strings.Split(shard.Content, "\n") {
+					if strings.TrimSpace(line) == "" {
+						continue
+					}
+					var record EngineRecord
+					if e = json.Unmarshal([]byte(line), &record); e != nil {
+						return e
+					}
+					if e = check([]EngineRecord{record}); e != nil {
+						return e
+					}
+				}
+			}
+			return nil // Commit the staged completion only after physical readback.
 		})
 		if e != nil {
 			return e
 		}
-		// Capture durable IDs before scope invalidation scrubs engine proposals.
-		// Both sides can have stopped between native commit and Go publication.
-		var proposal EngineProposal
-		if len(saved) > 0 && string(saved) != "null" {
-			if e = json.Unmarshal(saved, &proposal); e != nil {
-				return e
-			}
-		}
-		recordIDs, sourceIDs := map[string]bool{}, map[string]bool{}
-		collect := func(p EngineProposal) {
-			for _, r := range p.Records {
-				recordIDs[r.ID] = true
-			}
-			for _, id := range p.Dependencies {
-				sourceIDs[id] = true
-			}
-		}
-		collect(proposal)
-		scope := EngineScope(t[0], rel)
-		var status struct {
-			Proposal EngineProposal `json:"proposal"`
-			Receipt  struct {
-				RecordIDs []string `json:"recordIds"`
-				SourceIDs []string `json:"sourceIds"`
-			} `json:"receipt"`
-		}
-		if e = s.memoryEngine.Call(ctx, "operation-status", map[string]any{"scope": scope, "operationId": operation}, &status); e != nil {
-			return e
-		}
-		collect(status.Proposal)
-		for _, id := range status.Receipt.RecordIDs {
-			recordIDs[id] = true
-		}
-		for _, id := range status.Receipt.SourceIDs {
-			sourceIDs[id] = true
-		}
-		ids, sources := []string{}, []string{}
-		for id := range recordIDs {
-			ids = append(ids, id)
-		}
-		for id := range sourceIDs {
-			sources = append(sources, id)
-		}
-		sort.Strings(ids)
-		sort.Strings(sources)
-		scope, revision, e := s.SyncMemoryEngineScope(ctx, t[0], rel)
-		if e != nil {
-			return e
-		}
-		var result struct {
-			Status string `json:"status"`
-		}
-		if e = s.memoryEngine.Call(ctx, "forget", map[string]any{"scope": scope, "revision": revision, "revisionAdvanced": true, "recordIds": ids, "sourceIds": sources, "matchSourceRecords": false}, &result); e != nil {
-			return e
-		}
-		if result.Status != "cleared" {
-			return fmt.Errorf("memory engine cleanup pending")
-		}
-		// Do not mark cleaned merely because the record left the allowlist.
-		// Check all text-bearing export copies before dropping the durable IDs.
-		var snapshot struct {
-			Records    []EngineRecord `json:"records"`
-			Operations []struct {
-				Proposal EngineProposal `json:"proposal"`
-			} `json:"operations"`
-			JSONL []struct {
-				Content string `json:"content"`
-			} `json:"jsonl"`
-		}
-		if e = s.memoryEngine.Call(ctx, "export-owner", map[string]any{"scope": scope}, &snapshot); e != nil {
-			return e
-		}
-		check := func(records []EngineRecord) error {
-			for _, r := range records {
-				if recordIDs[r.ID] {
-					return fmt.Errorf("memory engine cleanup incomplete")
-				}
-			}
-			return nil
-		}
-		if e = check(snapshot.Records); e != nil {
-			return e
-		}
-		for _, op := range snapshot.Operations {
-			if e = check(op.Proposal.Records); e != nil {
-				return e
-			}
-		}
-		for _, shard := range snapshot.JSONL {
-			for _, line := range strings.Split(shard.Content, "\n") {
-				if strings.TrimSpace(line) == "" {
-					continue
-				}
-				var record EngineRecord
-				if e = json.Unmarshal([]byte(line), &record); e != nil {
-					return e
-				}
-				if e = check([]EngineRecord{record}); e != nil {
-					return e
-				}
-			}
-		}
-		if e = s.WithOwner(ctx, t[0], func(ctx context.Context, tx pgx.Tx) error {
-			_, e := tx.Exec(ctx, `SELECT vc.go_memorycore_cleaned($1,$2)`, t[0], t[1])
-			return e
-		}); e != nil {
-			return e
-		}
 	}
 	return nil
+}
+
+// keepValidEngineRecords removes only proven survivors from the cleanup set.
+// Source guards pin the current source and conversation rows until cleanup ends.
+func keepValidEngineRecords(ctx context.Context, tx pgx.Tx, owner, rel int64, operation string, proposal EngineProposal, remove map[string]bool) ([]string, map[string]bool, error) {
+	rows, err := tx.Query(ctx, `
+        SELECT m.record_id, m.version, ARRAY(SELECT e.out_source_ref
+            FROM vc.list_memory_evidence($1,m.memory_id) e ORDER BY e.out_id)
+        FROM vc.go_memorycore_projection($1,$2) m
+        WHERE m.operation_id=$3
+          AND (vc.memory_management_row($1,m.memory_id)->>'recallEligible')::boolean
+          AND NOT vc.account_deletion_intent_active_current()`, owner, rel, operation)
+	if err != nil {
+		return nil, nil, err
+	}
+	type projection struct {
+		ID      string
+		Version int64
+		Refs    []string
+	}
+	projections, err := pgx.CollectRows(rows, pgx.RowToStructByPos[projection])
+	if err != nil {
+		return nil, nil, err
+	}
+	retainedIDs := []string{}
+	retainedSources := map[string]bool{}
+	for _, p := range projections {
+		if !remove[p.ID] || len(p.Refs) == 0 {
+			continue
+		}
+		index := slices.IndexFunc(proposal.Records, func(r EngineRecord) bool { return r.ID == p.ID && r.Version == p.Version })
+		if index < 0 {
+			continue
+		}
+		if proposal.RecordSourceRefs != nil && !sameEngineEvidence(p.Refs, proposal.RecordSourceRefs[p.ID]) {
+			continue
+		}
+		keys := make([]string, 0, len(p.Refs))
+		for _, ref := range p.Refs {
+			var key string
+			var valid bool
+			err := tx.QueryRow(ctx, `SELECT 'source-'||id||'-'||source_revision||'-'||source_generation,
+				vc.guard_st_memory_source($1,$2,source_ref) FROM vc.st_message_source
+				WHERE owner_user_id=$1 AND source_ref=$3`, owner, rel, ref).Scan(&key, &valid)
+			if errors.Is(err, pgx.ErrNoRows) {
+				break
+			}
+			if err != nil {
+				return nil, nil, err
+			}
+			if !valid {
+				break
+			}
+			keys = append(keys, key)
+		}
+		if len(keys) == len(p.Refs) && (proposal.RecordSourceRefs != nil || sameEngineEvidence(keys, proposal.Dependencies)) {
+			delete(remove, p.ID)
+			retainedIDs = append(retainedIDs, p.ID)
+			for _, key := range keys {
+				retainedSources[key] = true
+			}
+		}
+	}
+	sort.Strings(retainedIDs)
+	return retainedIDs, retainedSources, nil
+}
+
+// Compare complete sets, not the remaining evidence subset after a source row
+// has disappeared. Legacy six-argument publications used batch dependencies.
+func sameEngineEvidence(actual, expected []string) bool {
+	if len(actual) == 0 || len(expected) == 0 {
+		return false
+	}
+	actual = slices.Clone(actual)
+	expected = slices.Clone(expected)
+	slices.Sort(actual)
+	slices.Sort(expected)
+	return slices.Equal(slices.Compact(actual), slices.Compact(expected))
 }

@@ -8,8 +8,8 @@
   },
   "removal_condition": "Upstream prefilters both retrieval lanes and exposes raw calibration scores.",
   "target": "MemoryCore/src/core/store/sqlite/memory-store.ts",
-  "expected_input_sha256": "1de0f43f97022f334cc74645d94c2deb22137850beac3e7f6abfb193c17ba0b0",
-  "expected_output_sha256": "255da47c419baba9fb860ef3a7ccbc5e372769d8bb2e17a84e437af93fe4f5be",
+  "expected_input_sha256": "c43f5149816178ecd4385b46df8a0f3bff9a8fe411dc90efb60ac56481553396",
+  "expected_output_sha256": "f9c33261480fbb501ab0c8a142720efa18e0c50fcdfc250932aea7759d517792",
   "changed_lines": {
     "added": 36,
     "removed": 13

@@ -13,6 +13,7 @@ import (
 
 type engineExtractStore interface {
 	PrepareEngineOperation(context.Context, postgres.JobClaim) (postgres.EngineOperation, error)
+	ReadEngineExtractionWindow(context.Context, postgres.JobClaim, postgres.EngineOperation) ([]postgres.EngineExtractionMessage, error)
 	EngineCall(context.Context, string, any, any) error
 	ValidateEngineProposal(context.Context, postgres.JobClaim, postgres.EngineOperation, json.RawMessage) ([]string, error)
 	PublishEngineProposal(context.Context, postgres.JobClaim, postgres.EngineOperation, json.RawMessage) error
@@ -60,8 +61,9 @@ func (l *Loop) handleEngineExtract(ctx context.Context, c postgres.JobClaim) err
 	for attempt := 0; attempt <= revisionRebinds; attempt++ {
 		request := map[string]any{"scope": op.Scope, "operationId": op.ID, "revision": op.Revision}
 		var status struct {
-			Status   string          `json:"status"`
-			Proposal json.RawMessage `json:"proposal"`
+			Status          string                  `json:"status"`
+			Proposal        json.RawMessage         `json:"proposal"`
+			ExtractionInput *engineExtractionReplay `json:"extractionInput"`
 		}
 		// Every attempt checks durable engine state before any model call. A timeout
 		// never changes the operation ID or replays the retired extraction payload.
@@ -81,9 +83,17 @@ func (l *Loop) handleEngineExtract(ctx context.Context, c postgres.JobClaim) err
 			if e != nil {
 				return l.failExtract(ctx, c, "MEMORYCORE_CAPABILITY")
 			}
+			messages, primary, e := extractionMessages(ctx, s, c, op, status.ExtractionInput)
+			if e != nil {
+				return l.failExtract(ctx, c, "MEMORYCORE_SOURCE")
+			}
 			input := map[string]any{"scope": op.Scope, "operationId": op.ID, "revision": op.Revision, "operationToken": token, "embedding": op.Embedding, "allowedRecordIds": op.Allowed,
-				"sourceTime": op.SourceTime,
-				"messages":   []map[string]any{{"id": op.SourceKey, "content": op.Input.UserContent, "role": "user", "timestamp": op.Timestamp.Format(time.RFC3339Nano)}}}
+				"messages": messages}
+			if primary != "" {
+				input["primarySourceId"] = primary
+			} else {
+				input["sourceTime"] = op.SourceTime
+			}
 			if err = s.EngineCall(ctx, "propose", input, &proposal); err != nil {
 				if code := memoryengine.ClosedCode(err); code != "" {
 					if status, ok := admissionOutcome(code); ok {
@@ -302,7 +312,7 @@ func deterministicExtractCode(code string) bool {
 		return true
 	}
 	switch code {
-	case "MEMORYCORE_OPERATION_CONFLICT", "MEMORYCORE_TARGET_NOT_ALLOWED", "MEMORYCORE_RECORD_ID":
+	case "MEMORYCORE_OPERATION_CONFLICT", "MEMORYCORE_TARGET_NOT_ALLOWED", "MEMORYCORE_RECORD_ID", "MEMORYCORE_PRIMARY_SOURCE":
 		return true
 	default:
 		return false

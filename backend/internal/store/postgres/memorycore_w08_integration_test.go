@@ -111,7 +111,7 @@ func publishEngineMemory(t *testing.T, s *Store, snapshots map[string]stsource.S
 	if targets == nil {
 		targets = []EngineTarget{}
 	}
-	raw, _ := json.Marshal(EngineProposal{Records: []EngineRecord{{ID: in.recordID, Content: in.summary, Version: 1}}, Targets: targets, Dependencies: deps})
+	raw, _ := json.Marshal(EngineProposal{Records: []EngineRecord{{ID: in.recordID, Content: in.summary, Version: 1, SourceMessageIDs: deps}}, Targets: targets, Dependencies: deps})
 	if err = s.PublishEngineProposal(ctx, c, op, raw); err != nil {
 		t.Fatalf("publish: %v", err)
 	}

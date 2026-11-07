@@ -8,8 +8,8 @@
   },
   "removal_condition": "Upstream source deletion covers every persisted reference with strict error semantics.",
   "target": "MemoryCore/src/core/store/sqlite/memory-store.ts",
-  "expected_input_sha256": "faaa2c063dea734ed8cad2061c3174f5c705f3c25bcd2aba37f5e2f97e82b1a3",
-  "expected_output_sha256": "e735f77ed14a492a6f93fb88f912b55c28897c20c6eae7e4ae5742da07e28973",
+  "expected_input_sha256": "60b56f2055f7fed96b3066cee90aeaa62b2f1ecdcc4cc4a51811afba004a02b4",
+  "expected_output_sha256": "8c34d04eee3efc8b91609030eb7ec8ca7e3033ccb5b807c96ca97d03ae06b183",
   "changed_lines": {
     "added": 34,
     "removed": 1

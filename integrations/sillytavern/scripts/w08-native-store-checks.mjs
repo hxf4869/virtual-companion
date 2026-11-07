@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createNativeFactory } from '../memorycore-service/native-engine.mjs';
 
 // Called only by accept-managed's native scene: real locked upstream + SQLite,
 // synthetic inputs and injected LLM/embedding. No second acceptance entrypoint.
@@ -105,6 +106,22 @@ export async function verifyNativeStore(api) {
                 recordedAt: time, vectorStore: store, llmRunner: { run: async () => JSON.stringify([{ scene_name: '喜好',
                     message_ids: [source.id], memories: [{ content: '我最喜欢蓝色', type: 'persona', priority: 50,
                         source_message_ids: [source.id], metadata: {} }] }]) } } };
+        await check(async () => {
+            // Use the same real locked gate and extractor as production. The
+            // existing in-memory store keeps this check within the native scene.
+            const native = await (await createNativeFactory({ ...api, VectorStore: class { constructor() { return store; } } }))('/unused-synthetic');
+            const assistant = { id: 'assistant', role: 'assistant', content: '你说过自己每周三会去游泳。', timestamp: source.timestamp };
+            assert.equal(api.shouldExtractL1(assistant.content), true);
+            let modelCalls = 0;
+            for (const content of ['?', '？？', '!!!', '/help', '']) {
+                assert.equal(api.shouldExtractL1(content), false);
+                const result = await native.prepare({ messages: [assistant, { id: source.id, role: 'user', content, timestamp: source.timestamp }],
+                    primarySourceId: source.id, scope: filter, allowedRecordIds: [], recordedAt: time, embedding: {},
+                    runner: { run: async () => { modelCalls++; throw new Error('ASSISTANT_ONLY_EXTRACTION'); } } });
+                assert.deepEqual(result, { records: [], targets: [], emptyDisposition: 'DROPPED_GATE' });
+            }
+            assert.equal(modelCalls, 0);
+        });
         await check(async () => {
             const count = store.countL1();
             const result = await api.extractL1Memories(preparedInputs);
