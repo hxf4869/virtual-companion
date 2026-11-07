@@ -465,6 +465,7 @@ export function createControlledEngine({ dataRoot, nativeFactory, embeddingFacto
             const results = (eligible.length || gateTexts?.length) ? await native.search({ query: input.query, topK: Math.min(input.topK || 5, 50), scope: mapped,
                 allowedRecordIds: eligible, embedding, eventDate: input.eventDate, dateRestricted: input.dateRestricted === true, gateTexts, observe: input.observe === true,
                 rerank: input.rerankEnabled === false ? false : input.rerank,
+                reuseInput: JSON.stringify({ scope: input.scope, revision, embedding: input.embedding }),
                 cacheOwnerId: input.scope.ownerId, cacheScope: scopeKey(input.scope) })
                 : [];
             return currentSpace(ctx, input.embedding, async () =>

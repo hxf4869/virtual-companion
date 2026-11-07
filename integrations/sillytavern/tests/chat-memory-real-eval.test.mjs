@@ -5,7 +5,7 @@ import { once } from 'node:events';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { factsInText, outboundMemoryText, readEvaluationResponse, evaluationQueryRows, diagnosticEvidence, assertDiagnosticControl, evaluateCoreOnStack, waitExtraction, createEvaluationReauthentication } from '../scripts/chat-memory-real-eval.mjs';
+import { factsInText, outboundMemoryText, readEvaluationResponse, evaluationQueryRows, diagnosticEvidence, assertDiagnosticControl, evaluateCoreOnStack, waitExtraction, createEvaluationReauthentication, recallWorkCounts } from '../scripts/chat-memory-real-eval.mjs';
 import { AI_FLAVOR_FIELDS, summarizeDiagnosticControls } from '../../../scripts/lib/chat-memory-scoring.mjs';
 import { prepareSourceIdentities, sourceMessages } from '../server-plugin/virtual-companion/lib/source-identity.js';
 import { getF2Store } from '../server-plugin/virtual-companion/lib/f2-store.js';
@@ -231,6 +231,19 @@ test('diagnostics-only uses the real observer/ask/judge for 14 fixed controls wi
         const testCase = dataset.cases.find(testCase => testCase.id === row.caseId);
         assert.equal(row.status, testCase.goldFactIds.length ? 'FAILED' : 'COMPLETED');
     }
+});
+
+test('recall accounting keeps both HTTP checks and does not turn failed calls into known computation counts', () => {
+    assert.deepEqual(recallWorkCounts([{ status: 200, stats: { searchReuseHit: 0 } },
+        { status: 200, stats: { searchReuseHit: 1 } }, { status: 503, stats: {} }]),
+    { httpCalls: 3, searchExecutions: 1, searchReuseHits: 1, unknownExecutions: 1 });
+    // Old observed native responses carry timing stats but no reuse counter.
+    assert.deepEqual(recallWorkCounts([{ status: 200, stats: { originalGateMs: 0 } }, { status: 200, stats: { originalGateMs: 3 } }]),
+        { httpCalls: 2, searchExecutions: 2, searchReuseHits: 0, unknownExecutions: 0 });
+    // An empty business response may bypass native search or discard a stale
+    // result. HTTP success alone cannot prove native computation occurred.
+    assert.deepEqual(recallWorkCounts([{ status: 200, stats: {} }]),
+        { httpCalls: 1, searchExecutions: 0, searchReuseHits: 0, unknownExecutions: 1 });
 });
 
 test('rank instrumentation changes only the disposable copy and observes before budget clipping', async () => {

@@ -157,7 +157,17 @@ func (s *Store) RecallSTMemory(ctx context.Context, owner int64, in STMemoryRequ
 		queryZone = in.QueryTimezone
 	}
 	queryTime := memorytime.Normalize(querySource.text, queryAt, queryZone)
-	recall := recallQuery{Text: querySource.text, Date: queryTime.EventDate, Limit: 20}
+	contextStarted = time.Now()
+	queryText, err := s.stRecallQueryText(ctx, owner, b, querySource)
+	contextMs += time.Since(contextStarted).Milliseconds()
+	if err != nil {
+		return out, err
+	}
+	if queryText == "" {
+		out.Status = "skipped"
+		return out, s.verifySTMemoryTarget(ctx, owner, b)
+	}
+	recall := recallQuery{Text: queryText, Date: queryTime.EventDate, Limit: 20}
 	recall.GateTexts = profileGateTexts(profile)
 	engineStarted := time.Now()
 	found, err := s.searchEngineRecall(ctx, owner, b.relationship, b.id, recall)

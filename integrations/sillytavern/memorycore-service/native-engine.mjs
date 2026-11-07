@@ -4,7 +4,7 @@ import { createControlledEngine } from './business.mjs';
 import { createOllamaEmbedding, embeddingCacheStats } from './embedding.mjs';
 import { createCallbackRunner } from './llm-runner.mjs';
 import { extractionRunner, prepareMemoryFact } from './memory-policy.mjs';
-import { engineRerank, looseRetrievalFilter, rerankCacheStats, summaryUnits } from './rerank.mjs';
+import { engineRerank, looseRetrievalFilter, rerankCacheStats, summaryUnits, RERANK } from './rerank.mjs';
 
 // Calibrated on fixtures/memorycore-calibration.json (88 synthetic Chinese
 // questions, 18 memories) with local qwen3-embedding:0.6b and
@@ -180,7 +180,7 @@ async function keywordRecover(questions, records, embedding, taken) {
     return found.filter(Boolean);
 }
 function emptyRecallStats() {
-    return { summaryGateAllow: 0, summaryGateReject: 0, profileGateAllow: 0, profileGateReject: 0, embeddingCacheHit: 0, embeddingCacheMiss: 0, recallEmpty: 0,
+    return { searchReuseHit: 0, summaryGateAllow: 0, summaryGateReject: 0, profileGateAllow: 0, profileGateReject: 0, embeddingCacheHit: 0, embeddingCacheMiss: 0, recallEmpty: 0,
         rerankDecision: 'disabled', rerankCandidates: 0, rerankKept: 0, rerankOnly: 0, rerankFallback: 0, rerankGateFallback: 0,
         queryEmbeddingMs: 0, looseRetrievalMs: 0, originalGateMs: 0, keywordRecoveryMs: 0, rerankMs: 0, summaryProfileGateMs: 0,
         rerankCacheHit: 0, rerankCacheMiss: 0 };
@@ -348,20 +348,31 @@ export async function createNativeFactory(api) {
         if (typeof store.getRawDb === 'function') store.getRawDb().exec('PRAGMA secure_delete = ON');
         await store.init();
         const list = (ids, scope) => store.queryL1Records({ ...scope, ...(ids ? { recordIds: ids } : {}) }).map(toRecord);
+        // Only the last successful observed search is retained, in this native
+        // instance. Business authorization still runs before and after every call.
+        const reuseTTL = 10000, reuseByteLimit = 256 * 1024;
+        let searchEpoch = 0, searchReuse;
+        const invalidateSearch = () => { searchEpoch++; searchReuse = undefined; };
         return {
             getScope: key => store.getScope(key), getSpace: () => store.getSpace(),
-            configureSpace: (id, dimensions) => store.configureSpace(id, dimensions),
-            finishSpaceRebuild: (id, failures) => store.finishSpaceRebuild(id, failures),
-            rebuildVector: (r, vector, id) => store.writeRebuiltVector(r.id, vector, id),
-            getOperation: id => store.getOperation(id), invalidateScope: key => store.invalidateScope(key),
-            commitPrepared: p => store.commitPrepared(p), forgetRecords: (ids, scope) => store.forgetRecords(ids, scope),
+            configureSpace(id, dimensions) {
+                const saved = store.getSpace();
+                if (saved?.spaceId !== id || saved?.dimensions !== dimensions) invalidateSearch();
+                return store.configureSpace(id, dimensions);
+            },
+            finishSpaceRebuild(id, failures) { invalidateSearch(); return store.finishSpaceRebuild(id, failures); },
+            rebuildVector(r, vector, id) { invalidateSearch(); return store.writeRebuiltVector(r.id, vector, id); },
+            getOperation: id => store.getOperation(id),
+            invalidateScope(key) { invalidateSearch(); return store.invalidateScope(key); },
+            commitPrepared(p) { invalidateSearch(); return store.commitPrepared(p); },
+            forgetRecords(ids, scope) { invalidateSearch(); return store.forgetRecords(ids, scope); },
             checkpoint() {
                 const row = store.getRawDb().prepare('PRAGMA wal_checkpoint(TRUNCATE)').get();
                 if (!row || Number(row.busy) !== 0) throw new Error('MEMORYCORE_WAL_CHECKPOINT');
             },
             list,
             listSources: () => store.getRawDb().prepare('SELECT * FROM l0_conversations ORDER BY record_id').all(),
-            forgetSources: (ids, scope) => store.forgetSources(ids, scope),
+            forgetSources(ids, scope) { invalidateSearch(); return store.forgetSources(ids, scope); },
             async prepare({ messages, scope, allowedRecordIds, runner, embedding, recordedAt, sourceTime }) {
                 const queryEmbedding = { ...embedding, embed: embedding.embedQuery || embedding.embed,
                     embedBatch: async texts => { const out = []; for (const text of texts) out.push(await (embedding.embedQuery || embedding.embed)(text)); return out; } };
@@ -374,13 +385,39 @@ export async function createNativeFactory(api) {
                 if (typeof result.emptyDisposition === 'string' && /^[A-Z0-9_]+$/u.test(result.emptyDisposition)) proposal.emptyDisposition = result.emptyDisposition;
                 return proposal;
             },
-            async search({ query, topK, scope, allowedRecordIds, embedding, eventDate, dateRestricted = false, gateTexts, observe = false, rerank, cacheOwnerId = '', cacheScope = '' }) {
+            async search({ query, topK, scope, allowedRecordIds, embedding, eventDate, dateRestricted = false, gateTexts, observe = false, rerank, cacheOwnerId = '', cacheScope = '', reuseInput }) {
                 if (typeof query !== 'string' || !query || query.length > 20000) throw new Error('MEMORYCORE_QUERY');
+                const client = resolveRerank(rerank);
+                const epoch = searchEpoch;
+                const space = store.getSpace?.();
+                // reuseInput is constructed by business after its checks, never
+                // accepted from the HTTP payload. Include actual native inputs too.
+                const key = observe && typeof reuseInput === 'string' && !space?.rebuilding ? JSON.stringify({
+                    reuseInput, query, topK, scope, allowedRecordIds, eventDate, dateRestricted, gateTexts, cacheOwnerId, cacheScope,
+                    space, embedding: embedding ? { available: true, spaceId: embedding.spaceId, snapshot: embedding.snapshot,
+                        embed: typeof embedding.embed === 'function', embedQuery: typeof embedding.embedQuery === 'function', embedBatch: typeof embedding.embedBatch === 'function' } : { available: false },
+                    rerank: { ...client, deploymentPort: process.env.VC_RERANK_PORT || String(RERANK.port) },
+                }) : undefined;
+                const reusable = key !== undefined && Buffer.byteLength(key) <= reuseByteLimit;
+                const rank = client.enabled ? rerank?.rank : undefined;
+                if (reusable && searchReuse?.key === key && searchReuse.rank === rank && performance.now() < searchReuse.expires) {
+                    const body = structuredClone(searchReuse.body);
+                    body.stats = { ...emptyRecallStats(), searchReuseHit: 1, recallEmpty: body.stats.recallEmpty };
+                    return body;
+                }
+                // Misses/failures cannot leave an older successful entry usable.
+                searchReuse = undefined;
+                const remember = body => {
+                    if (reusable && epoch === searchEpoch && !body.stats.rerankFallback && !body.stats.rerankGateFallback &&
+                        Buffer.byteLength(JSON.stringify(body)) <= reuseByteLimit) {
+                        searchReuse = { key, rank, expires: performance.now() + reuseTTL, body: structuredClone(body) };
+                    }
+                    return body;
+                };
                 const cacheBefore = observe ? embeddingCacheStats() : null;
                 const rerankBefore = observe ? rerankCacheStats() : null;
                 const stats = observe ? emptyRecallStats() : null;
                 if (stats && embedding) embedding = timeQueryEmbedding(embedding, stats);
-                const client = resolveRerank(rerank);
                 let gateFallback = 0;
                 // Go already dropped other days when dateRestricted is set. Passing
                 // eventDate again would drop records whose summary omits metadata.
@@ -403,7 +440,7 @@ export async function createNativeFactory(api) {
                     stats.rerankGateFallback = gateFallback;
                     return { hits: ranked, gated, stats };
                 };
-                if (!ids?.length) return finish([], false, null);
+                if (!ids?.length) return remember(await finish([], false, null));
                 // Independent questions are embedded separately so one topic cannot
                 // dilute another. Each part uses the same gates. Only a dated
                 // generic schedule question may use the lower cosine floor.
@@ -456,7 +493,7 @@ export async function createNativeFactory(api) {
                             body.rerankRank = capped.map((hit, index) => ({ id: hit.record_id, score: scores[index] }));
                             body.rerankOriginal = original.map((hit) => hit.record_id);
                         }
-                        return body;
+                        return remember(body);
                     } finally {
                         if (!consumedOriginal) void originalP.then(() => {}, () => {});
                     }
@@ -465,7 +502,7 @@ export async function createNativeFactory(api) {
                     stats.rerankFallback = 0;
                 }
                 const ranked = (await originalGateHits(api, store, queries, ids, scope, embedding, dated, topK, stats)).slice(0, topK);
-                return finish(ranked, true);
+                return remember(await finish(ranked, true));
             },
             async rebuildProfile({ records, stagingDir, scope, runner }) {
                 const storage = new api.StorageAdapter(new api.LocalStorageBackend({ rootDir: stagingDir }));

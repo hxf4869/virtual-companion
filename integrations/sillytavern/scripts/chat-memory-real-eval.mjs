@@ -75,6 +75,14 @@ export function assertDiagnosticControl({ control, memoryText, goldEvidence, gol
     if (goldEvidence && !goldEvidenceObserved) throw new Error('CM_CONTROL_GOLD_MISSING');
 }
 
+export function recallWorkCounts(searches) {
+    const observed = searches.filter(row => row.status === 200 &&
+        ([0, 1].includes(row.stats?.searchReuseHit) || Number.isFinite(row.stats?.originalGateMs)));
+    const reused = observed.filter(row => row.stats.searchReuseHit === 1).length;
+    return { httpCalls: searches.length, searchExecutions: observed.length - reused,
+        searchReuseHits: reused, unknownExecutions: searches.length - observed.length };
+}
+
 export async function readEvaluationResponse(response, { signal, stream, onBody = () => {} } = {}) {
     if (!response.ok) throw new Error(`CM_HTTP_${response.status}`);
     if (!(stream ?? response.headers.get('content-type')?.includes('text/event-stream'))) {
@@ -407,7 +415,7 @@ export async function evaluateCoreOnStack(ctx, { dataset, roles, modelRoutes, me
             retrievedFactIds: (observed?.recordIds || []).map(id => recordMap.get(id) || []),
             finalRankedFactIds: (run.finalMemoryIds || []).map(id => memories.find(row => row.memoryId === id)?.mapping.factIds || []),
             preflightPostBudgetFactIds: (recalled.memoryIds || []).map(id => memories.find(row => row.memoryId === id)?.mapping.factIds || []),
-            injectedFactIds: run.injectedFactIds, recallCalls: searches.length,
+            injectedFactIds: run.injectedFactIds, recallCalls: searches.length, recallWork: recallWorkCounts(searches),
             ...(run.cleanupStateAtFinalBody ? { cleanupStateAtFinalBody: run.cleanupStateAtFinalBody } : {}),
             ...(control ? { control, goldEvidenceObserved: !goldEvidence || run.goldEvidenceObserved } : {}),
             rule: scoreRules(testCase, { answer, injectedFactIds: run.injectedFactIds, forbiddenText: run.memoryText, requireInjection: !control }) };
@@ -551,6 +559,7 @@ export async function evaluateCoreOnStack(ctx, { dataset, roles, modelRoutes, me
     const modelCalls = meter.snapshot().calls.map(call => ({ ...call, ...callCases.get(call.id) }));
     if (diagnosticsOnly) return { diagnosticControls, modelCalls };
     const quality = summarizeChatMemoryEvaluation(dataset.cases, results, { facts: dataset.facts, extractionRecords });
+    const recallRows = results.flatMap(row => row.forgetStages ? Object.values(row.forgetStages) : [row]).filter(row => row.recallWork);
     return { schemaVersion: 1, variant, dataset: { version: dataset.version, seed: dataset.seed, hashes: dataset.hashes, sourceCounts: dataset.sourceCounts },
         results, quality, reply: summarizeReplyQuality(replyQuality.drain()), metrics: summarizeSamples(metricRows), metricRows,
         extraction: { planned: dataset.sourceCounts.eligibleUserTurns, jobs: extraction.jobs.length,
@@ -567,6 +576,9 @@ export async function evaluateCoreOnStack(ctx, { dataset, roles, modelRoutes, me
             notRunSecondReviews: doublePlanned - doubleCount - doubleFailed,
             agree: doubleAgree, agreement: doublePlanned ? doubleAgree / doublePlanned : null, humanReview: 'NOT_RUN' },
         diagnosticControls,
+        recallWork: { observedAnswers: recallRows.length,
+            ...Object.fromEntries(['httpCalls', 'searchExecutions', 'searchReuseHits', 'unknownExecutions']
+                .map(key => [key, recallRows.reduce((sum, row) => sum + row.recallWork[key], 0)])) },
         measurementLimits: ['pipeline-not-visible-paint', 'late-stage-original-source-reconcile-not-inflight', 'same-model-judge-see-config'],
         modelCalls,
         budget: budget.snapshot(), embedding: { model: embedding.model, artifactVersion: embedding.artifactVersion, dimensions: embedding.dimensions },
