@@ -44,6 +44,11 @@ DO $$ BEGIN
    '00000000-0000-4000-8000-000000038821','enc2:synthetic',2,false,true,true,false);
   RAISE EXCEPTION 'foreign message edited';
  EXCEPTION WHEN OTHERS THEN IF SQLERRM<>'p_owner_user_id does not match server-trusted current_owner_id' THEN RAISE; END IF; END;
+ BEGIN
+  PERFORM vc.shift_stored_chat_positions(38801,'00000000-0000-4000-8000-000000038801',1,1);
+  RAISE EXCEPTION 'foreign insert shifted positions';
+ EXCEPTION WHEN OTHERS THEN IF SQLERRM<>'p_owner_user_id does not match server-trusted current_owner_id' THEN RAISE; END IF; END;
+ PERFORM vc.shift_stored_chat_positions(38802,'00000000-0000-4000-8000-000000038801',1,1);
  IF vc.finish_stored_chat_run(38802,'00000000-0000-4000-8000-000000038801','00000000-0000-4000-8000-000000038831','settled') THEN
   RAISE EXCEPTION 'foreign run matched another owner';
  END IF;
@@ -61,6 +66,13 @@ DO $$ BEGIN
  EXCEPTION WHEN insufficient_privilege THEN NULL; END;
  BEGIN DELETE FROM vc.stored_chat_inbox; RAISE EXCEPTION 'direct inbox receipt deletion accepted';
  EXCEPTION WHEN insufficient_privilege THEN NULL; END;
+ IF (SELECT position FROM vc.stored_message WHERE message_id='00000000-0000-4000-8000-000000038811')<>1 THEN
+  RAISE EXCEPTION 'foreign insert changed position';
+ END IF;
+ PERFORM vc.shift_stored_chat_positions(38801,'00000000-0000-4000-8000-000000038801',1,2);
+ IF (SELECT position FROM vc.stored_message WHERE message_id='00000000-0000-4000-8000-000000038811')<>3 THEN
+  RAISE EXCEPTION 'own insert did not shift position';
+ END IF;
  PERFORM vc.wipe_all_chats(38801);
  IF EXISTS(SELECT 1 FROM vc.chat_generation_run) OR EXISTS(SELECT 1 FROM vc.stored_chat_inbox) THEN
   RAISE EXCEPTION 'wipe retained run or inbox rights';

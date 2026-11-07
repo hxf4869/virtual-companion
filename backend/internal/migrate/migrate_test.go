@@ -13,8 +13,8 @@ func TestEmbeddedMigrationsAreOrderedAndComplete(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(items) != 209 {
-		t.Fatalf("migration count = %d, want 209", len(items))
+	if len(items) != 210 {
+		t.Fatalf("migration count = %d, want 210", len(items))
 	}
 	// Versions must be strictly ascending.
 	for i := 1; i < len(items); i++ {
@@ -22,7 +22,7 @@ func TestEmbeddedMigrationsAreOrderedAndComplete(t *testing.T) {
 			t.Fatalf("migration[%d].Version = %d not after %d", i, items[i].Version, items[i-1].Version)
 		}
 	}
-	if items[len(items)-1].File != "V288__stored_chat_operations.sql" {
+	if items[len(items)-1].File != "V289__stored_chat_insert.sql" {
 		t.Fatalf("latest migration = %q", items[len(items)-1].File)
 	}
 }

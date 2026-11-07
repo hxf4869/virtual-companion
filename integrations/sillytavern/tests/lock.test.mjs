@@ -1,13 +1,14 @@
-// 锁文件与补丁规格一致性（离线，不需要 upstream/ 或 dev/）。
+// 锁文件、补丁规格与锁定运行产物的离线校验。
 // 受管（managed）核心补丁规格只做结构校验：输入/输出 SHA 与真实 upstream 文件的比对在
 // assemble-managed / start-managed 预检运行（需要 upstream/ 克隆）。
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import vm from 'node:vm';
 import { fileURLToPath } from 'node:url';
-import { validateSpec } from '../scripts/lib/patcher.mjs';
-import { CORE_PATCH_SPECS } from '../scripts/lib/paths.mjs';
+import { applySpecToText, validateSpec } from '../scripts/lib/patcher.mjs';
+import { CORE_PATCH_SPECS, HELPER_DIR, ST_DIR } from '../scripts/lib/paths.mjs';
 
 const INTEG = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const upstream = JSON.parse(fs.readFileSync(path.join(INTEG, 'upstream.lock.json'), 'utf8'));
@@ -58,7 +59,7 @@ test('vendor.lock：每个包有版本/许可/registry sha512/逐文件 sha256�
     assert.equal(vendor.packages.find((p) => p.name === 'vue-router').version, '5.4.0');
 });
 
-test('Helper补丁：锁定输入、12处自托管资源与实际异步变量回调守卫均有明确目标', () => {
+test('Helper补丁：锁定输入、12处自托管资源与原生变量补丁均有明确目标', () => {
     assert.deepEqual(validateSpec(spec), []);
     const helper = upstream.components.find((c) => c.id === 'tavern-helper');
     assert.equal(spec.expected_input_sha256, helper.artifact_sha256['dist/index.js']);
@@ -69,11 +70,16 @@ test('Helper补丁：锁定输入、12处自托管资源与实际异步变量回
     const prefix = vendor.served_prefix + '/';
     let total = 0;
     let updaterGuards = 0;
+    let nativeSaveSchedulers = 0;
     for (const r of spec.replacements) {
         if (r.where === 'W05 async variable updater') {
             assert.match(r.from, /^function WI\(/);
             assert.match(r.to, /vcG\.capture/); assert.match(r.to, /vcG\.assert/);
             assert.equal(r.count, 1); updaterGuards++;
+            continue;
+        }
+        if (r.where === 'native chat save scheduler') {
+            assert.equal(r.count, 1); nativeSaveSchedulers++;
             continue;
         }
         assert.match(r.from, /^https:\/\/testingcf\.jsdelivr\.net\//, r.from);
@@ -85,7 +91,66 @@ test('Helper补丁：锁定输入、12处自托管资源与实际异步变量回
     }
     assert.equal(total, 12, '选定运行链共 12 处引用（1+1+1+1+1+3+2+2）');
     assert.equal(updaterGuards, 1, '实际updater只接一次来源守卫');
+    assert.equal(nativeSaveSchedulers, 1, 'Helper 只替换一次延迟保存调度');
     assert.ok(spec.reason && spec.removal_condition && spec.upstream.version);
+});
+
+test('原生 Helper 消息变量和局部刷新由同一次 F2 保存覆盖，召回版本不受迟到保存推进', async () => {
+    const helper = applySpecToText(fs.readFileSync(path.join(HELPER_DIR, spec.target), 'utf8'), spec).output;
+    const setterStart = helper.indexOf('function HI(');
+    const setter = helper.slice(setterStart, helper.indexOf('function UI(', setterStart));
+    const helperDebounce = helper.match(/var Nk=[^;]+;/)[0];
+    const refreshStart = helper.indexOf('async function pU(');
+    const refresh = helper.slice(refreshStart, helper.indexOf('function mU(', refreshStart));
+    const extensionsSpec = JSON.parse(fs.readFileSync(path.join(INTEG, 'patches/st-f2-extensions.json'), 'utf8'));
+    const extensions = applySpecToText(fs.readFileSync(path.join(ST_DIR, extensionsSpec.target), 'utf8'), extensionsSpec).output;
+    const nativeDebounce = extensions.slice(extensions.indexOf('let saveMetadataTimeout'), extensions.indexOf('\n}', extensions.indexOf('export function saveMetadataDebounced')) + 2);
+    const clientSpec = JSON.parse(fs.readFileSync(path.join(INTEG, 'patches/st-client-f2.json'), 'utf8'));
+    const flush = clientSpec.replacements.find(({ from }) => from.startsWith('export async function saveChatConditional()')).to;
+
+    const timers = new Set();
+    const schedule = (fn, delay) => { assert.equal(delay, 1000); timers.add(fn); return fn; };
+    const cancel = (fn) => timers.delete(fn);
+    const chat = [{ swipe_id: 1, variables: [{ trust: 10 }, { trust: 8 }], extra: { keep: true } }];
+    let revision = 1;
+    const saved = [];
+    const rows = { removeClass() {}, last: () => rows, addClass() {} };
+    const host = vm.createContext({
+        x: chat, VV: false, $: () => rows,
+        _: {
+            inRange: (value, start, end) => value >= start && value < end,
+            has: Object.hasOwn,
+            get: (object, key, fallback) => object[key] ?? fallback,
+            isPlainObject: (value) => value?.constructor === Object,
+            set: (object, keys, value) => { object[keys[0]][keys[1]] = value; },
+            debounce(fn, delay) {
+                let timer;
+                return () => { cancel(timer); timer = schedule(fn, delay); };
+            },
+        },
+        getContext: () => ({ characterId: 0, saveMetadata: host.saveChatConditional }),
+        debounce_timeout: { relaxed: 1000 }, setTimeout: schedule, clearTimeout: cancel,
+        vcPendingSaves: 0, isChatSaving: false, selected_group: '',
+        cancelDebouncedChatSave() {}, saveTokenCache() {}, saveItemizedPrompts() {}, getCurrentChatId: () => 'synthetic',
+        saveChat() { saved.push({ revision: ++revision, chat: structuredClone(chat) }); },
+    });
+    vm.runInContext(`${nativeDebounce.replaceAll('export ', '')}
+        ${flush.replace('export ', '')}
+        const De = saveChatConditional, gt = saveMetadataDebounced;
+        ${helperDebounce}${setter}${refresh}`, host);
+    const variables = { trust: 15, discussed_book: true };
+    host.HI(variables, { type: 'message', message_id: 0 });
+    assert.equal(timers.size, 1);
+    await host.pU('none', () => assert.fail('none 不重绘消息'));
+    let refreshed = 0;
+    await host.pU('affected', () => { refreshed++; });
+    assert.equal(refreshed, 1);
+    await host.saveChatConditional();
+    const recallRevision = revision;
+    assert.deepEqual(saved, [{ revision: 2, chat: [{ swipe_id: 1, variables: [{ trust: 10 }, variables], extra: { keep: true } }] }]);
+
+    for (const timer of timers) await timer();
+    assert.equal(revision, recallRevision, '完整保存已覆盖 Helper 编辑，旧 debounce 不得再次推进来源版本');
 });
 
 test('补丁规格：坏输入必须被拒绝（缺字段 / count 非法 / from==to / sha 非 hex）', () => {

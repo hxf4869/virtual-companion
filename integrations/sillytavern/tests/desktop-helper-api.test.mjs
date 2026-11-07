@@ -371,6 +371,7 @@ function createFixture() {
     const capturedDocs = {};
     const client = {
         headers: () => ({}),
+        getChatStorage: () => ({ mode: 'ST', authorityEpoch: '1' }),
         documents: {
             captureWorldbook(name, next) {
                 capturedDocs[name] = structuredClone(next);

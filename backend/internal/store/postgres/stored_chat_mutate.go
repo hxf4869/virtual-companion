@@ -52,6 +52,9 @@ func (s *Store) mutateStoredChat(ctx context.Context, owner int64, chatID, resou
 	}
 	appends := 0
 	for i := range commands {
+		if commands[i].kind == "insert" && generation != nil {
+			return out, chatError("CHAT_INVALID_OPERATION")
+		}
 		if err := normalizeCommandIDs(&commands[i]); err != nil {
 			return out, err
 		}
@@ -186,7 +189,22 @@ func (m *storedChatMutation) prepare(ctx context.Context, tx pgx.Tx, commands []
 	for _, c := range commands {
 		start := m.start[c.messageID]
 		switch c.kind {
-		case "append":
+		case "append", "insert":
+			if c.kind == "insert" {
+				var present bool
+				if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM vc.stored_message WHERE owner_user_id=$1 AND chat_id=$2 AND message_id=$3 AND deleted_at IS NULL)`, m.owner, m.chat.ChatID, c.firstID).Scan(&present); err != nil {
+					return err
+				}
+				if !present {
+					return ErrNotFound
+				}
+				if deletes[c.firstID] {
+					return chatError("CHAT_INVALID_OPERATION")
+				}
+				if c.orderRevision != m.chat.OrderRevision {
+					return chatError("REVISION_CONFLICT")
+				}
+			}
 			for _, entry := range c.messages {
 				if deletes[entry.MessageID] {
 					return chatError("CHAT_INVALID_OPERATION")
@@ -314,6 +332,38 @@ func (m *storedChatMutation) apply(ctx context.Context, tx pgx.Tx, commands []ch
 	for _, c := range commands {
 		row := m.messages[c.messageID]
 		switch c.kind {
+		case "insert":
+			if err := m.insert(ctx, tx, c); err != nil {
+				return err
+			}
+		case "reorder":
+			rows, err := tx.Query(ctx, `SELECT position FROM vc.stored_message WHERE owner_user_id=$1 AND chat_id=$2 AND message_id=ANY($3::uuid[]) ORDER BY position`, m.owner, m.chat.ChatID, c.messageIDs)
+			if err != nil {
+				return err
+			}
+			var positions []int64
+			for rows.Next() {
+				var p int64
+				if err = rows.Scan(&p); err != nil {
+					rows.Close()
+					return err
+				}
+				positions = append(positions, p)
+			}
+			rows.Close()
+			if rows.Err() != nil {
+				return rows.Err()
+			}
+			for i, id := range c.messageIDs {
+				m.positions[id] = positions[i]
+				if row, ok := m.messages[id]; ok {
+					row.Position = strconv.FormatInt(positions[i], 10)
+					m.messages[id] = row
+				}
+				if _, err = tx.Exec(ctx, `SELECT vc.reorder_stored_message($1,$2,$3,$4)`, m.owner, m.chat.ChatID, id, positions[i]); err != nil {
+					return err
+				}
+			}
 		case "append":
 			for _, entry := range c.messages {
 				if err := m.append(ctx, tx, entry); err != nil {
@@ -369,6 +419,50 @@ func (m *storedChatMutation) apply(ctx context.Context, tx pgx.Tx, commands []ch
 	if m.generation != nil && !generatedOutput {
 		return chatError("CHAT_INVALID_OPERATION")
 	}
+	return nil
+}
+
+func (m *storedChatMutation) insert(ctx context.Context, tx pgx.Tx, command chatCommand) error {
+	var anchor int64
+	if err := tx.QueryRow(ctx, `SELECT position FROM vc.stored_message WHERE owner_user_id=$1 AND chat_id=$2 AND message_id=$3 AND deleted_at IS NULL`, m.owner, m.chat.ChatID, command.firstID).Scan(&anchor); err != nil {
+		return err
+	}
+	var inserted []string
+	newIDs := map[string]bool{}
+	for _, entry := range command.messages {
+		before := m.nextPosition
+		if err := m.append(ctx, tx, entry); err != nil {
+			return err
+		}
+		if m.nextPosition > before {
+			inserted = append(inserted, entry.MessageID)
+			newIDs[entry.MessageID] = true
+		}
+	}
+	if len(inserted) == 0 {
+		return nil
+	}
+	delta := int64(len(inserted))
+	if _, err := tx.Exec(ctx, `SELECT vc.shift_stored_chat_positions($1,$2,$3,$4)`, m.owner, m.chat.ChatID, anchor, delta); err != nil {
+		return err
+	}
+	for id, row := range m.messages {
+		if !newIDs[id] && chatPosition(row) >= anchor {
+			row.Position = strconv.FormatInt(chatPosition(row)+delta, 10)
+			m.messages[id] = row
+		}
+	}
+	for id, position := range m.positions {
+		if position >= anchor {
+			m.positions[id] = position + delta
+		}
+	}
+	for i, id := range inserted {
+		row := m.messages[id]
+		row.Position = strconv.FormatInt(anchor+int64(i), 10)
+		m.messages[id] = row
+	}
+	m.orderChanged = true
 	return nil
 }
 
@@ -545,10 +639,7 @@ func (m *storedChatMutation) persist(ctx context.Context, tx pgx.Tx, requestID, 
 		}
 	}
 	// A reorder changes only indexed positions; do not decrypt untouched history.
-	for id, position := range m.positions {
-		if _, err := tx.Exec(ctx, `SELECT vc.reorder_stored_message($1,$2,$3,$4)`, m.owner, chat.ChatID, id, position); err != nil {
-			return commit, err
-		}
+	for id := range m.positions {
 		changedIDs = append(changedIDs, id)
 	}
 	if clearReceipts {

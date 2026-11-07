@@ -294,7 +294,7 @@
 |---|---|---|---|
 | edit / `ChatEditOperation` | messageId，可选 candidateId | baseRevision（messageRevision）；旧字段值在 changes.before | changes[{path,before,after}] |
 | append / `ChatAppendOperation` | 会话根 `{}` | `{}`，不校验无关 chatRevision | messages[{clientMessageId,data}] |
-| insert / `ChatInsertOperation`（SX-6 待审） | 已有 beforeMessageId | 精确 orderRevision | messages；同批计入 100 条新消息限制 |
+| insert / `ChatInsertOperation`（SX-6 已复审） | 已有 beforeMessageId | 精确 orderRevision | messages；同批计入 100 条新消息限制 |
 | delete / `ChatDeleteOperation` | messageId | 精确 messageRevision | null |
 | metadata / `ChatMetadataOperation` | 会话根 `{}` | baseRevision（metadataRevision）；旧字段值在 changes.before | changes，路径以 title/header/metadata 开头 |
 | addSwipe / `ChatAddSwipeOperation` | messageId | 精确 messageRevision | candidate{candidateId,data}，默认保留旧选择 |
@@ -367,17 +367,19 @@ Owner 批准增加过渡内部接口 `POST /api/v1/service/chats/{chatId}/genera
   栅栏明细；紧凑 runId/requestId/摘要/结果记录至少保留至聊天删除与权利屏障完成，账号删除级联清除，过期不能重启旧 run。
 - **退出安排**：SX-9/SX-10 生成迁入 Go 后改为同规则的 Go 内部登记；SX-15 移除 Node 调用面。
 
-### 4.4.2 SX-6 历史插入补充（2026-11-07，具体契约待 Owner 复审）
+### 4.4.2 SX-6 历史插入补充（2026-11-07，具体契约 a3e7e426 已经 Owner 复审通过）
 
 Helper `createChatMessages(insert_before/insert_at)` 对应类型化 insert：已有 beforeMessageId + 精确 orderRevision + messages，沿用请求幂等、clientMessageId 墓碑和整批 100 命令/100 新消息/8 MiB 上限。锚点不存在/已删除/不属本聊天为404；版本不符409留稿。首条之前与同锚点连续插入均可表达；单批共用初始版本，跨请求用上次 ACK 的新版本。
 
-成功事务推进一次 orderRevision，旧游标410，活动run因顺序变化被 fence；changes 包含新消息ID及 orderChanged。来源和入队沿 append 的 no_memory/无痕规则，不能带 generation 提交终态（整批422）。无关尾部追加不推进 orderRevision，因此与插入均可成功且互不覆盖；先发生的插入/重排会让旧版本插入409。既有候选/消息来源身份不因位置变化重建。契约审过后再实施 Go/Helper 闭环。
+成功事务推进一次 orderRevision，旧游标410，活动run因顺序变化被 fence；changes 包含新消息ID及 orderChanged。来源和入队沿 append 的 no_memory/无痕规则，不能带 generation 提交终态（整批422）。无关尾部追加不推进 orderRevision，因此与插入均可成功且互不覆盖；先发生的插入/重排会让旧版本插入409。既有候选/消息来源身份不因位置变化重建。同一前台操作中的嵌套 Helper 插入也会 fence 自己的活动 run，不设豁免；生成结果保留为待处理草稿。
+
+独立 Helper `generate/generateRaw` 只返回文本、不写聊天时不需要存储 run，空聊天也沿用既有用量预留和受控用途调用模型。只有带 generation 的助手生成提交需要已登记 run；有开场助手消息时先保存开场消息并以其选中候选为输入，真正空聊天不能提交生成终态，结果保留为待处理草稿，列为 SX-8 真实切换前置；不伪造输入消息，不绕过栅栏。
 
 ### 4.5 Session 与读取整段聊天的脚本兼容
 
 **SX-6 Owner 补充边界（2026-11-07，按需字段契约 63fa64e5 已复审通过）**：已认证 `GET /api/v1/auth/session?include=chatStorage` 按需增加
 `chatStorage: {mode: ST|GO|FROZEN, authorityEpoch}`；不带 include 的响应与每请求插件核验保持原样，不查询存储权威。
-只有宿主页面启动注入与 Session 初始化请求 include；其查询失败为 503，客户端视为暂时不可用，保留身份与草稿，稍后重试，不当作登出。
+宿主页面启动注入与 Session 初始化请求 include；旧 ST 聊天存储入口是 Owner 批准的窄例外，必须用这次带 include 的核验替换普通核验（每请求只一次），不缓存权威；只有确认 ST 才允许旧盘读写，GO/FROZEN/查询失败均在触盘前拒绝，其他插件、资源与模型请求保持普通核验。其查询失败为 503，客户端视为暂时不可用，保留身份与草稿，稍后重试，不当作登出。
 它仅用于选择存储，
 服务端每次写仍校验当前权威与 epoch；查询失败不默认 ST。409 `CHAT_AUTHORITY_CHANGED` 后只重新读取 session、
 保留草稿，不自动重发；FROZEN 显示“正在迁移”，界面只读、本地留稿，不回退 ST、不排队写入。

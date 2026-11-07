@@ -257,6 +257,8 @@ func TestStoredChatWriteBodyValidation(t *testing.T) {
 			testStoredMessageID + `"},"preconditions":{"messageRevision":"7","baseRevision":"7"},"payload":null}]}`, 400},
 		{"explicit null preconditions", http.MethodPost, operationsPath, bodyPrefix + `"operations":[{"kind":"delete","target":{"messageId":"` +
 			testStoredMessageID + `"},"preconditions":null,"payload":null}]}`, 400},
+		{"insert absent order revision", http.MethodPost, operationsPath, bodyPrefix + `"operations":[{"kind":"insert","target":{"beforeMessageId":"` + testStoredMessageID + `"},"preconditions":{},"payload":{"messages":[` + message + `]}}]}`, 428},
+		{"insert invalid anchor", http.MethodPost, operationsPath, bodyPrefix + `"operations":[{"kind":"insert","target":{"beforeMessageId":"bad-id"},"preconditions":{"orderRevision":"7"},"payload":{"messages":[` + message + `]}}]}`, 400},
 		{"unknown kind", http.MethodPost, operationsPath, bodyPrefix + `"operations":[{"kind":"merge","target":{},"preconditions":{},"payload":null}]}`, 400},
 	}
 	for _, tc := range tests {
@@ -289,6 +291,7 @@ func TestStoredChatWriteOperationKinds(t *testing.T) {
 		{"edit", messageTarget, baseRevision, changes},
 		{"metadata", `{}`, baseRevision, changes},
 		{"append", `{}`, `{}`, `{"messages":[{"clientMessageId":"` + testStoredMessageID + `","data":{}}]}`},
+		{"insert", `{"beforeMessageId":"` + testStoredMessageID + `"}`, `{"orderRevision":"7"}`, `{"messages":[{"clientMessageId":"` + testStoredMessageID + `","data":{}}]}`},
 		{"delete", messageTarget, messageRevision, `null`},
 		{"addSwipe", messageTarget, messageRevision, `{"candidate":{"candidateId":"` + testStoredCandidateID + `","data":{}}}`},
 		{"selectSwipe", candidateTarget, selection, `null`},

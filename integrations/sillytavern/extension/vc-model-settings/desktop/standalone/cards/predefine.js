@@ -11,9 +11,11 @@ if (iframeId) {
   }
 }
 const parentHelper = _.get(window.parent, 'TavernHelper');
+const { _createRawCharacter, ...frameMethods } = parentHelper._bind;
 const boundMethods = Object.fromEntries(
-  Object.entries(parentHelper._bind).map(([key, value]) => [key.replace(/^_/, ''), value.bind(window)]),
+  Object.entries(frameMethods).map(([key, value]) => [key.replace(/^_/, ''), value.bind(window)]),
 );
+boundMethods.RawCharacter = _createRawCharacter.call(window);
 let result = _(window);
 result = result.merge(_.pick(window.parent, ['EjsTemplate', 'YAML', 'showdown', 'toastr', 'z']));
 result = result.merge(_.omit(parentHelper, '_bind'));

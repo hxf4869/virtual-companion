@@ -286,7 +286,7 @@ func normalizeCommandIDs(c *chatCommand) error {
 			return ErrInvalid
 		}
 	}
-	if c.messageID == "" && c.kind != "metadata" && c.kind != "append" && c.kind != "reorder" {
+	if c.messageID == "" && c.kind != "metadata" && c.kind != "append" && c.kind != "insert" && c.kind != "reorder" {
 		return ErrInvalid
 	}
 	if (c.kind == "selectSwipe" || c.kind == "removeSwipe") && (c.candidateID == "" || c.selectedID == "") {
@@ -295,7 +295,10 @@ func normalizeCommandIDs(c *chatCommand) error {
 	if c.kind == "reorder" && (c.firstID == "" || c.lastID == "" || len(c.messageIDs) == 0) {
 		return ErrInvalid
 	}
-	if c.kind == "append" && (len(c.messages) < 1 || len(c.messages) > 100) {
+	if c.kind == "insert" && c.firstID == "" {
+		return ErrInvalid
+	}
+	if (c.kind == "append" || c.kind == "insert") && (len(c.messages) < 1 || len(c.messages) > 100) {
 		return chatError("CHAT_INVALID_OPERATION")
 	}
 	return nil

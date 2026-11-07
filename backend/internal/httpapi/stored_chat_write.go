@@ -438,6 +438,10 @@ func checkChatOperationFields(fields map[string]json.RawMessage) error {
 	case "append":
 		target, preconditions = chatWireObject(), chatWireObject()
 		payload = chatWireObject(chatRequired("messages", chatWireMessages))
+	case "insert":
+		target = chatWireObject(chatRequired("beforeMessageId", chatWireUUID))
+		preconditions = chatWireObject(chatPrecondition("orderRevision", chatWireRevision))
+		payload = chatWireObject(chatRequired("messages", chatWireMessages))
 	case "delete", "addSwipe":
 		target, preconditions = chatWireObject(messageID), chatWireObject(messageRevision)
 		payload = chatWireNull

@@ -274,6 +274,23 @@ func decodeChatCommand(op ChatOperation) (chatCommand, error) {
 			}
 			c.replacement = payload.Replacement
 		}
+	case "insert":
+		target := struct {
+			Before string `json:"beforeMessageId"`
+		}{}
+		pre := struct {
+			Revision int64 `json:"orderRevision,string"`
+		}{}
+		payload := struct {
+			Messages []ChatAppendMessage `json:"messages"`
+		}{}
+		if err = decodeChatObject(op.Target, &target, "beforeMessageId"); err == nil {
+			err = decodeChatObject(op.Preconditions, &pre, "orderRevision")
+		}
+		if err == nil {
+			err = decodeChatObject(op.Payload, &payload, "messages")
+		}
+		c.firstID, c.orderRevision, c.messages = target.Before, pre.Revision, payload.Messages
 	case "reorder":
 		target := struct {
 			First string `json:"firstMessageId"`

@@ -54,6 +54,9 @@ const EXACT_WHITELIST = new Set([
     'memory-injection-logic.js',
     // Plan §2 desktop/standalone/** 允许集合
     'desktop/standalone/client.js',
+    'desktop/standalone/chat-history.js',
+    'desktop/standalone/chat-operations.js',
+    'desktop/standalone/chat-store.js',
     'desktop/standalone/business.js',
     'desktop/standalone/personas.js',
     'desktop/standalone/input-markdown.js',

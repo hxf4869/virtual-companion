@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useSyncExternalStore, type ReactNode } from 'react';
 import type { QueryClient } from '@tanstack/react-query';
+import { storedChatRecords } from '../../../extension/vc-model-settings/desktop/standalone/chat-store.js';
 import { resolveDesktopConversation } from '../../../extension/vc-model-settings/desktop/standalone/business.js';
 import { EventEmitter } from '../../../extension/vc-model-settings/desktop/standalone/engine/events.js';
 import { event_types } from '../../../extension/vc-model-settings/desktop/standalone/engine/st/events.js';
@@ -216,15 +217,25 @@ export interface SessionBridgeDeps {
 }
 
 interface LeafEntry {
+    conversationKey: string;
     key: string;
-    raw: any;
     index: number;
     renderedText: string;
     renderedSwipe: number | undefined;
     renderedStreaming: boolean;
     renderedWithCards: boolean;
+    renderedEpoch: number;
     cardCleanup?: (() => void) | void;
 }
+
+interface CardActionsEntry {
+    key: string;
+    mountedEpoch: number;
+    cleanup?: (() => void) | void;
+}
+
+const MIGRATING_NOTICE = '正在迁移';
+const HISTORY_RETRY_NOTICE = '聊天没有加载出来，请重试。';
 
 export function createSessionBridge(
     client: AppClient,
@@ -235,6 +246,18 @@ export function createSessionBridge(
     const listeners = new Set<() => void>();
     const drafts = new Map<string, string>();
     const mountedLeaves = new Map<HTMLElement, LeafEntry>();
+    const cardActions = new Map<HTMLElement, CardActionsEntry>();
+
+    function chatStorage() {
+        if (typeof client?.getChatStorage !== 'function') {
+            return { mode: 'ST', authorityEpoch: '' };
+        }
+        try {
+            return client.getChatStorage();
+        } catch {
+            return null;
+        }
+    }
 
     let popupSeq = 0;
     let personaSeq = 0;
@@ -256,6 +279,10 @@ export function createSessionBridge(
     }
 
     let activeRow: NormalizedRow | null = null;
+    let activeStorage: ReturnType<typeof chatStorage> = null;
+    let activatingEpoch = -1;
+    let activatedEpoch = -1;
+
     let committedRow: NormalizedRow | null = null;
     let committedMetadata: Record<string, any> | null = null;
     let committedSnapshot: ChatSnapshot | null = null;
@@ -269,8 +296,16 @@ export function createSessionBridge(
     let dead = false;
     const pendingConfiguration: Array<(runtime: any) => unknown> = [];
 
+    function isCurrentStorage(storage: ReturnType<typeof chatStorage>): boolean {
+        const current = chatStorage();
+        return Boolean(storage && current?.mode === storage.mode &&
+            current?.authorityEpoch === storage.authorityEpoch);
+    }
+
     async function applyConfiguration(apply: (runtime: any) => unknown): Promise<void> {
-        if (dead) return;
+        const mode = chatStorage()?.mode;
+        if (dead || !mode || mode === 'FROZEN') return;
+        if (mode === 'GO' && runtimeInstance && !hasActivatedChat()) return;
         if (!runtimeInstance) {
             pendingConfiguration.push(apply);
             void ensureRuntime().catch(() => {});
@@ -280,12 +315,18 @@ export function createSessionBridge(
     }
 
     const eventSource = new EventEmitter([event_types.APP_INITIALIZED, event_types.APP_READY]);
-    let firstDisplayedState: { key: string; id: number | null } = { key: '', id: null };
+    let firstDisplayedState: { key: string; id: number | null; messageKey?: string } = { key: '', id: null };
 
     function readFirstDisplayedMessageId(): number | null {
         const currentKey = snapshot.key || committedRow?.key || activeRow?.key || '';
         if (!currentKey || firstDisplayedState.key !== currentKey) {
             return null;
+        }
+        if (activeStorage?.mode === 'FROZEN') return null;
+        if (activeStorage?.mode === 'GO') {
+            if (!firstDisplayedState.messageKey || activatingEpoch !== commitEpoch ||
+                committedRow?.key !== currentKey) return null;
+            return findFullIndex(firstDisplayedState.messageKey, firstDisplayedState.id);
         }
         return firstDisplayedState.id;
     }
@@ -357,7 +398,15 @@ export function createSessionBridge(
     const fallbackMessageKeys = new WeakMap<object, string>();
     let fallbackMessageSeq = 0;
 
+    function goMessageKey(raw: any): string | undefined {
+        return activeStorage?.mode === 'GO' && raw?.vc_message_id
+            ? `${committedRow?.key}:${raw.vc_message_id}`
+            : undefined;
+    }
+
     function messageKeyFromSession(raw: any, index: number): string {
+        const stableKey = goMessageKey(raw);
+        if (stableKey) return stableKey;
         if (runtimeInstance && typeof runtimeInstance.messageKey === 'function') {
             const k = runtimeInstance.messageKey(raw, index);
             if (k) return k;
@@ -397,7 +446,7 @@ export function createSessionBridge(
 
     function mapMessages(rawList: any[], keys?: string[]): readonly ChatMessage[] {
         return (Array.isArray(rawList) ? rawList : []).map((raw, index) => ({
-            key: keys?.[index] || messageKeyFromSession(raw, index),
+            key: goMessageKey(raw) || keys?.[index] || messageKeyFromSession(raw, index),
             index,
             name: raw?.name,
             mes: String(raw?.mes ?? ''),
@@ -448,81 +497,108 @@ export function createSessionBridge(
         }
     }
 
-    function renderLeaf(host: HTMLElement, entry: LeafEntry) {
-        const rawMsg =
-            entry.raw ??
-            context.chat[entry.index] ?? {
-                mes: snapshot.messages[entry.index]?.mes ?? '',
-                is_user: snapshot.messages[entry.index]?.is_user,
-                is_system: snapshot.messages[entry.index]?.is_system,
-                swipe_id: snapshot.messages[entry.index]?.swipe_id,
-            };
-        const streaming = Boolean(
-            snapshot.busy &&
-                entry.index === context.chat.length - 1 &&
-                !rawMsg.is_user &&
-                !rawMsg.is_system,
-        );
+    function hasActivatedChat(): boolean {
+        return !dead && !readAbort && !activeAbort?.signal.aborted && snapshot.status === 'ready' &&
+            committedRow?.key === snapshot.key && activatedEpoch === commitEpoch &&
+            isCurrentStorage(activeStorage);
+    }
 
-        if (runtimeInstance?.renderMessage && snapshot.status === 'ready') {
-            entry.cardCleanup = runtimeInstance.renderMessage(
-                host,
-                entry.index,
-                rawMsg,
-                streaming,
-            );
+    function chatRuntimeAvailable(): boolean {
+        const mode = chatStorage()?.mode;
+        return mode === 'ST' || (mode === 'GO' && hasActivatedChat());
+    }
+
+    function findFullIndex(key: string, hint: number | null): number | null {
+        if (hint !== null && context.chat[hint] && messageKeyFromSession(context.chat[hint], hint) === key) {
+            return hint;
+        }
+        const index = context.chat.findIndex((raw: any, i: number) => messageKeyFromSession(raw, i) === key);
+        return index < 0 ? null : index;
+    }
+
+    function fullMessage(message: ChatMessage | undefined): { index: number; raw: any } | null {
+        if (!message || !hasActivatedChat()) return null;
+        const index = findFullIndex(message.key, message.index);
+        return index === null ? null : { index, raw: context.chat[index] };
+    }
+
+    function clearChatContext() {
+        context.chat = [];
+        context.chatMetadata = {};
+        context.chatId = '';
+        context.characterId = undefined;
+    }
+
+    function renderLeaf(host: HTMLElement, entry: LeafEntry, message: ChatMessage) {
+        const full = fullMessage(message);
+        const raw = full?.raw ?? message;
+        const streaming = snapshot.streamingKey === message.key;
+        if (full && runtimeInstance?.renderMessage) {
+            entry.cardCleanup = runtimeInstance.renderMessage(host, full.index, raw, streaming);
             entry.renderedWithCards = true;
         } else {
-            if (entry.renderedWithCards) {
-                entry.cardCleanup?.();
-                entry.cardCleanup = undefined;
-            }
+            entry.cardCleanup?.();
+            entry.cardCleanup = undefined;
             let textEl = host.querySelector<HTMLElement>(':scope > .mes_text');
             if (!textEl) {
                 textEl = host.ownerDocument.createElement('div');
                 textEl.className = 'mes_text';
                 host.replaceChildren(textEl);
             }
-            textEl.textContent = String(rawMsg.mes ?? '');
+            textEl.textContent = String(raw.mes ?? '');
             entry.renderedWithCards = false;
         }
 
-        entry.renderedText = String(rawMsg.mes ?? '');
-        entry.renderedSwipe = rawMsg.swipe_id;
+        entry.index = message.index;
+        entry.renderedText = String(raw.mes ?? '');
+        entry.renderedSwipe = raw.swipe_id;
         entry.renderedStreaming = streaming;
+        entry.renderedEpoch = commitEpoch;
     }
 
     function syncMountedLeaves() {
-        for (const [host, entry] of mountedLeaves.entries()) {
+        const hasCards = Boolean(hasActivatedChat() && runtimeInstance?.renderMessage);
+        for (const [host, entry] of mountedLeaves) {
             if (!host.isConnected) continue;
-            let nextIndex = entry.raw ? context.chat.indexOf(entry.raw) : -1;
-            if (nextIndex < 0) {
-                const byKeyIdx = snapshot.messages.findIndex(m => m.key === entry.key);
-                if (byKeyIdx >= 0 && context.chat[byKeyIdx]) {
-                    nextIndex = byKeyIdx;
-                    entry.raw = context.chat[byKeyIdx];
-                }
+            const atIndex = snapshot.messages[entry.index];
+            const message = entry.conversationKey !== snapshot.key
+                ? undefined
+                : atIndex?.key === entry.key
+                    ? atIndex
+                    : snapshot.messages.find(item => item.key === entry.key);
+            if (!message) {
+                entry.cardCleanup?.();
+                entry.cardCleanup = undefined;
+                entry.renderedWithCards = false;
+                entry.renderedEpoch = -1;
+                host.replaceChildren();
+                continue;
             }
-            if (nextIndex < 0) continue;
+            if (
+                message.index !== entry.index ||
+                message.mes !== entry.renderedText ||
+                message.swipe_id !== entry.renderedSwipe ||
+                (snapshot.streamingKey === message.key) !== entry.renderedStreaming ||
+                hasCards !== entry.renderedWithCards ||
+                entry.renderedEpoch !== commitEpoch
+            ) {
+                renderLeaf(host, entry, message);
+            }
+        }
+    }
 
-            const rawMsg = context.chat[nextIndex];
-            const streaming = Boolean(
-                snapshot.busy &&
-                    nextIndex === context.chat.length - 1 &&
-                    !rawMsg?.is_user &&
-                    !rawMsg?.is_system,
-            );
-            const hasCards = Boolean(runtimeInstance?.renderMessage && snapshot.status === 'ready');
-            const needsUpdate =
-                nextIndex !== entry.index ||
-                String(rawMsg?.mes ?? '') !== entry.renderedText ||
-                rawMsg?.swipe_id !== entry.renderedSwipe ||
-                streaming !== entry.renderedStreaming ||
-                (hasCards && !entry.renderedWithCards);
-
-            if (needsUpdate) {
-                entry.index = nextIndex;
-                renderLeaf(host, entry);
+    function syncCardActions() {
+        const ready = hasActivatedChat();
+        for (const [node, entry] of cardActions) {
+            const canMount = ready && node.isConnected && entry.key === snapshot.key;
+            if (!canMount || entry.mountedEpoch !== commitEpoch) {
+                entry.cleanup?.();
+                entry.cleanup = undefined;
+                entry.mountedEpoch = -1;
+            }
+            if (canMount && entry.mountedEpoch === -1 && runtimeInstance?.mountCardActions) {
+                entry.cleanup = runtimeInstance.mountCardActions(node);
+                entry.mountedEpoch = commitEpoch;
             }
         }
     }
@@ -534,6 +610,7 @@ export function createSessionBridge(
         }
         syncGeneratingAttr(snapshot.busy);
         syncMountedLeaves();
+        syncCardActions();
         for (const listener of listeners) {
             listener();
         }
@@ -633,8 +710,13 @@ export function createSessionBridge(
     context.callGenericPopup = callGenericPopup;
     context.callPopup = callGenericPopup;
 
-    function ensureRuntime(): Promise<any> {
+    function ensureRuntime(historyEpoch?: number): Promise<any> {
+        const mode = chatStorage()?.mode;
         if (dead) return Promise.resolve(null);
+        if (mode !== 'ST') {
+            const fullReady = historyEpoch === commitEpoch && isCurrentStorage(activeStorage);
+            if (mode !== 'GO' || (!fullReady && !hasActivatedChat())) return Promise.resolve(null);
+        }
         if (runtimePromise) return runtimePromise;
         if (!deps.prepareRuntime && (!client || typeof (client as any).settings !== 'function')) {
             return Promise.resolve(null);
@@ -727,6 +809,30 @@ export function createSessionBridge(
                     input: readScopedDraft(activeKey, false),
                     code: error?.code || 'VC_REVISION_CONFLICT',
                 };
+                if (error?.code === 'CHAT_AUTHORITY_CHANGED' && committedSnapshot?.status === 'ready') {
+                    activeAbort?.abort();
+                    activatingEpoch = -1;
+                    activatedEpoch = -1;
+                    clearChatContext();
+                    pendingConfiguration.length = 0;
+                    committedSnapshot = {
+                        ...committedSnapshot,
+                        status: 'error',
+                        canSend: false,
+                        busy: false,
+                        streamingKey: null,
+                        notice: chatStorage()?.mode === 'FROZEN'
+                            ? MIGRATING_NOTICE
+                            : '登录状态或聊天已变化，请重新打开页面。',
+                        conflict: true,
+                        conflictSnapshot: nextConflictSnapshot,
+                    };
+                    if (!readAbort) {
+                        snapshot = committedSnapshot;
+                        emit();
+                    }
+                    return;
+                }
                 if (committedSnapshot) {
                     committedSnapshot = {
                         ...committedSnapshot,
@@ -745,14 +851,20 @@ export function createSessionBridge(
             },
             onChange: (state: any) => {
                 if (isDeadOrAborted()) return;
+                if (activeStorage?.mode === 'FROZEN' || (activeStorage && !isCurrentStorage(activeStorage))) return;
                 const matchesCommitted = Boolean(
                     committedSnapshot && state.key === committedSnapshot.key,
                 );
-                const matchesVisible = !readAbort && state.key === snapshot.key;
+                const storedActivation = activeStorage?.mode === 'GO';
+                if (storedActivation && activatingEpoch !== commitEpoch) return;
+                const matchesVisible = !readAbort && state.key === snapshot.key &&
+                    (!storedActivation || activatedEpoch === commitEpoch);
                 if (!matchesCommitted && !matchesVisible) return;
 
                 const base = matchesVisible ? snapshot : committedSnapshot!;
-                const mapped = mapMessages(state.messages || context.chat, state.messageKeys);
+                const mapped = storedActivation && activatedEpoch !== commitEpoch
+                    ? base.messages
+                    : mapMessages(state.messages || context.chat, state.messageKeys);
                 const lastMsg = mapped.at(-1);
                 const streamingKey =
                     state.busy && lastMsg && !lastMsg.is_user && !lastMsg.is_system
@@ -979,12 +1091,21 @@ export function createSessionBridge(
                 }
                 return inFlightOpen;
             }
-            if (snapshot.status === 'ready' && snapshot.key === provisionalKey) {
+            if (snapshot.status === 'ready' && snapshot.key === provisionalKey && isCurrentStorage(activeStorage)) {
                 return 'opened';
             }
         }
 
         readAbort?.abort();
+        if (activeStorage?.mode === 'GO' && activeAbort && activatedEpoch !== commitEpoch) {
+            activeAbort.abort();
+            activeAbort = null;
+            activatingEpoch = -1;
+            clearChatContext();
+            if (committedSnapshot?.status === 'loading') {
+                committedSnapshot = { ...committedSnapshot, status: 'error', notice: HISTORY_RETRY_NOTICE };
+            }
+        }
         const readController = new AbortController();
         readAbort = readController;
         const ticket = ++openEpoch;
@@ -995,6 +1116,9 @@ export function createSessionBridge(
         let commitTicket = 0;
         let activeController: AbortController | null = null;
         let runOpen: Promise<OpenResult> | null = null;
+        let displayMessages: readonly ChatMessage[] = [];
+        let chatStore: ReturnType<AppClient['createChatStore']> | null = null;
+        let storeActivated = false;
         const callerSignals = new Set<AbortSignal>();
 
         const detachCallerSignals = () => {
@@ -1097,9 +1221,16 @@ export function createSessionBridge(
         emit();
 
         runOpen = (async (): Promise<OpenResult> => {
+            // Register the opening before branches that can finish without an I/O await.
+            await Promise.resolve();
             try {
+                if (dead || preflightCancelled || ticket !== openEpoch) return 'superseded';
+                const storage = chatStorage();
+                if (!storage) throw new Error('chat-storage-unavailable');
+                const go = storage.mode === 'GO';
+                const frozen = storage.mode === 'FROZEN';
                 if (
-                    (!target?.avatar || !target?.file) &&
+                    !frozen && (!target?.avatar || !target?.file) &&
                     client &&
                     typeof client.recent === 'function'
                 ) {
@@ -1136,12 +1267,16 @@ export function createSessionBridge(
                 const key = target.key;
                 readScopedDraft(key, true);
 
-                const runtimeTask = ensureRuntime();
-                void runtimeTask.catch(() => {});
-                const records = await client.readChat(
-                    { avatar: target.avatar, file: target.file },
-                    { signal: readController.signal },
-                );
+                chatStore = go ? client.createChatStore(target) : null;
+                let runtimeTask = storage.mode === 'ST' ? ensureRuntime() : null;
+                void runtimeTask?.catch(() => {});
+                const display = chatStore ? await chatStore.readDisplay({ signal: readController.signal, limit: 80 }) : null;
+                let records = storage.mode === 'ST'
+                    ? await client.readChat(
+                        { avatar: target.avatar, file: target.file },
+                        { signal: readController.signal },
+                    )
+                    : display ? storedChatRecords(display) : [];
 
                 if (
                     dead ||
@@ -1152,11 +1287,12 @@ export function createSessionBridge(
                 ) {
                     return 'superseded';
                 }
-                if (!Array.isArray(records) || !records[0]?.chat_metadata) {
+                if (!isCurrentStorage(storage)) throw new Error('chat-storage-unavailable');
+                if (!frozen && (!Array.isArray(records) || !records[0]?.chat_metadata)) {
                     throw new Error('聊天没有加载出来');
                 }
 
-                // Commit boundary: preflight readChat succeeded, detach caller route-leave signals
+                // Commit boundary: the display read succeeded, detach caller route-leave signals
                 // and promote this session to the committed active session.
                 committed = true;
                 inFlightCommitted = true;
@@ -1169,22 +1305,26 @@ export function createSessionBridge(
                 activeAbort = activeController;
                 commitTicket = ++commitEpoch;
 
+                if (go || frozen || activeStorage?.mode === 'GO') clearChatContext();
+                activeStorage = storage;
                 committedRow = target;
-                committedMetadata = records[0].chat_metadata;
+                committedMetadata = records[0]?.chat_metadata ?? null;
                 activeRow = target;
                 retryRow = null;
                 sessionPublishedKey = '';
                 readScopedDraft(key, true);
-                const binding = records[0].chat_metadata?.vc_binding;
+                let binding = committedMetadata?.vc_binding;
                 const initialCard = context.characters.find((c: any) => c.avatar === target!.avatar);
                 const initialTitle =
                     initialCard?.name || target.title || target.avatar.replace(/\.png$/i, '');
 
                 committedSnapshot = {
                     ...snapshot,
-                    status: 'switching',
+                    status: frozen ? 'ready' : go ? 'loading' : 'switching',
                     key,
-                    messages: !runtimeInstance ? mapMessages(records.slice(1)) : snapshot.messages,
+                    messages: go || (!frozen && !runtimeInstance)
+                        ? mapMessages(records.slice(1))
+                        : snapshot.messages,
                     avatar: target.avatar,
                     avatarUrl: avatarUrl(target.avatar),
                     characterName: initialTitle,
@@ -1201,15 +1341,33 @@ export function createSessionBridge(
                     mode: binding?.mode || target.mode || 'COMPANION',
                     busy: false,
                     streamingKey: null,
-                    notice: '',
+                    notice: frozen ? MIGRATING_NOTICE : '',
                     error: '',
                     conflict: false,
                     conflictSnapshot: null,
                     canSend: false,
                 };
+                displayMessages = committedSnapshot.messages;
                 if (!readAbort) {
                     snapshot = committedSnapshot;
                     emit();
+                }
+
+                if (frozen) {
+                    pendingConfiguration.length = 0;
+                    return 'opened';
+                }
+
+                if (chatStore) {
+                    const full = await chatStore.loadFull({ signal: activeController.signal });
+                    if (dead || commitTicket !== commitEpoch || activeController.signal.aborted) {
+                        return 'superseded';
+                    }
+                    if (!isCurrentStorage(storage)) throw new Error('chat-storage-unavailable');
+                    records = storedChatRecords(full);
+                    committedMetadata = records[0].chat_metadata;
+                    binding = committedMetadata?.vc_binding;
+                    runtimeTask = ensureRuntime(commitTicket);
                 }
 
                 const [rt] = await Promise.all([runtimeTask, charactersReady]);
@@ -1217,6 +1375,7 @@ export function createSessionBridge(
                 if (dead || commitTicket !== commitEpoch || activeController.signal.aborted) {
                     return 'superseded';
                 }
+                if (go && !rt) throw new Error('聊天没有加载出来');
 
                 let card = context.characters.find((c: any) => c.avatar === target!.avatar);
                 if (!card && typeof client.characters === 'function') {
@@ -1254,15 +1413,19 @@ export function createSessionBridge(
                     snapshot = committedSnapshot;
                 }
 
+                if (!isCurrentStorage(storage)) throw new Error('chat-storage-unavailable');
+                activatingEpoch = commitTicket;
                 if (rt) {
-                    await rt.activate(
+                    const activated = await rt.activate(
                         { avatar: target.avatar, file: target.file },
                         records,
                         {
                             signal: activeController.signal,
                             latest,
+                            ...(chatStore ? { chatStore } : {}),
                         },
                     );
+                    if (go && activated === false) throw new Error('聊天没有加载出来');
                 } else {
                     context.chat = records.slice(1);
                     context.chatMetadata = records[0].chat_metadata;
@@ -1273,6 +1436,9 @@ export function createSessionBridge(
                     return 'superseded';
                 }
 
+                if (!isCurrentStorage(storage)) throw new Error('chat-storage-unavailable');
+                storeActivated = Boolean(rt);
+                activatedEpoch = commitTicket;
                 const finalMessages = context.chat;
                 const baseReady = committedSnapshot ?? snapshot;
                 const readySnapshot: ChatSnapshot = {
@@ -1313,19 +1479,38 @@ export function createSessionBridge(
                     return 'superseded';
                 }
                 retryRow = target;
+                const identityRevoked = [401, 403].includes(error?.status) ||
+                    error?.code === 'ACCOUNT_CONTEXT_CHANGED';
+                const revoked = identityRevoked || error?.status === 404;
+                const keepDisplay = committed && activeStorage?.mode === 'GO' && !revoked;
+                if ((committed && activeStorage?.mode === 'GO') ||
+                    identityRevoked || (revoked && target?.key === committedRow?.key)) {
+                    activeAbort?.abort();
+                    activatingEpoch = -1;
+                    activatedEpoch = -1;
+                    clearChatContext();
+                }
+                const migrating = chatStorage()?.mode === 'FROZEN';
+                const unavailable = error?.message === 'chat-storage-unavailable';
                 const errorSnapshot: ChatSnapshot = {
                     ...(committed ? (committedSnapshot ?? snapshot) : snapshot),
                     status: 'error',
-                    messages: [],
+                    messages: keepDisplay ? displayMessages : migrating && !revoked ? snapshot.messages : [],
                     canSend: false,
                     busy: false,
+                    streamingKey: null,
+                    notice: migrating ? MIGRATING_NOTICE : keepDisplay ? HISTORY_RETRY_NOTICE : '',
                     error:
-                        error?.status === 401 || error?.status === 409
-                            ? '登录状态或聊天已变化，请重新打开页面。'
-                            : '聊天没有加载出来，请重试。',
+                        unavailable
+                            ? '暂时不可用，请稍后重试。'
+                            : error?.status === 401 || error?.status === 409
+                                ? '登录状态或聊天已变化，请重新打开页面。'
+                                : '聊天没有加载出来，请重试。',
                 };
-                if (committed) {
+                if (committed || (revoked && target?.key === committedRow?.key)) {
                     committedSnapshot = errorSnapshot;
+                } else if (identityRevoked) {
+                    committedSnapshot = null;
                 }
                 if (!readAbort || readAbort === readController) {
                     if (readAbort === readController) {
@@ -1336,6 +1521,7 @@ export function createSessionBridge(
                 }
                 return 'failed';
             } finally {
+                if (!storeActivated) chatStore?.close?.();
                 detachCallerSignals();
                 if (readAbort === readController) {
                     readAbort = null;
@@ -1364,7 +1550,7 @@ export function createSessionBridge(
         },
         open,
         async send(text, sendOpts = {}) {
-            if (dead) return false;
+            if (!hasActivatedChat()) return false;
             if (sendOpts.type === 'continue') {
                 const rt = runtimeInstance ?? (await ensureRuntime().catch(() => null));
                 if (dead || !rt) return false;
@@ -1392,58 +1578,60 @@ export function createSessionBridge(
         },
         async retry() {
             if (dead) return false;
+            if (snapshot.status === 'loading') return false;
             if (snapshot.conflict || !snapshot.canSend) {
                 const row = retryRow || activeRow;
                 if (row) {
                     return (await open(row, { latest: true })) === 'opened';
                 }
             }
+            if (!hasActivatedChat()) return false;
             const ok = Boolean(await runtimeInstance?.retry?.());
             if (!dead && ok) invalidateChatQueries();
             return !dead && ok;
         },
         async continue() {
-            if (dead) return false;
+            if (!hasActivatedChat()) return false;
             const ok = Boolean(await runtimeInstance?.continue?.());
             if (!dead && ok) invalidateChatQueries();
             return !dead && ok;
         },
         async regenerate() {
-            if (dead) return false;
+            if (!hasActivatedChat()) return false;
             const ok = Boolean(await runtimeInstance?.regenerate?.());
             if (!dead && ok) invalidateChatQueries();
             return !dead && ok;
         },
         async edit(index, text) {
-            if (dead) return false;
-            const message = context.chat[index];
-            const ok = Boolean(await runtimeInstance?.edit?.(index, text, message));
+            const message = fullMessage(snapshot.messages[index]);
+            if (!message) return false;
+            const ok = Boolean(await runtimeInstance?.edit?.(message.index, text, message.raw));
             if (!dead && ok) invalidateChatQueries();
             return !dead && ok;
         },
         async remove(index) {
-            if (dead) return false;
-            const message = context.chat[index];
-            const ok = Boolean(await runtimeInstance?.remove?.(index, message));
+            const message = fullMessage(snapshot.messages[index]);
+            if (!message) return false;
+            const ok = Boolean(await runtimeInstance?.remove?.(message.index, message.raw));
             if (!dead && ok) invalidateChatQueries();
             return !dead && ok;
         },
         async swipe(index, delta) {
-            if (dead) return false;
-            const message = context.chat[index];
-            const ok = Boolean(await runtimeInstance?.swipe?.(index, delta, message));
+            const message = fullMessage(snapshot.messages[index]);
+            if (!message) return false;
+            const ok = Boolean(await runtimeInstance?.swipe?.(message.index, delta, message.raw));
             if (!dead && ok) invalidateChatQueries();
             return !dead && ok;
         },
         async react(index, emoji) {
-            if (dead) return false;
-            const message = context.chat[index];
-            const ok = Boolean(await runtimeInstance?.react?.(index, emoji, message));
+            const message = fullMessage(snapshot.messages[index]);
+            if (!message) return false;
+            const ok = Boolean(await runtimeInstance?.react?.(message.index, emoji, message.raw));
             if (!dead && ok) invalidateChatQueries();
             return !dead && ok;
         },
         async pat() {
-            if (dead) return false;
+            if (!hasActivatedChat()) return false;
             const ok = Boolean(await runtimeInstance?.pat?.());
             if (!dead && ok) invalidateChatQueries();
             return !dead && ok;
@@ -1467,7 +1655,7 @@ export function createSessionBridge(
             return created;
         },
         async projectStory(job) {
-            if (dead) return undefined;
+            if (dead || !chatRuntimeAvailable()) return undefined;
             const rt = runtimeInstance ?? (await ensureRuntime());
             if (dead || !rt) return undefined;
             const result = await rt.projectStory(job);
@@ -1478,25 +1666,25 @@ export function createSessionBridge(
         },
         story: {
             async setRun(turn) {
-                if (dead) return;
+                if (dead || !chatRuntimeAvailable()) return;
                 const rt = runtimeInstance ?? (await ensureRuntime());
                 if (dead || !rt) return;
                 await rt.story?.setRun(turn);
             },
             async selectActor(actor) {
-                if (dead) return;
+                if (dead || !chatRuntimeAvailable()) return;
                 const rt = runtimeInstance ?? (await ensureRuntime());
                 if (dead || !rt) return;
                 await rt.story?.selectActor(actor);
             },
             async advance(turn) {
-                if (dead) return;
+                if (dead || !chatRuntimeAvailable()) return;
                 const rt = runtimeInstance ?? (await ensureRuntime());
                 if (dead || !rt) return;
                 await rt.story?.advance(turn);
             },
             async clear() {
-                if (dead) return;
+                if (dead || !chatRuntimeAvailable()) return;
                 const rt = runtimeInstance ?? (await ensureRuntime());
                 if (dead || !rt) return;
                 await rt.story?.clear();
@@ -1534,13 +1722,13 @@ export function createSessionBridge(
             });
         },
         async commitMetadata(changes, expectedKey = snapshot.key) {
-            if (dead) return;
+            if (!hasActivatedChat()) return;
             const rt = runtimeInstance ?? (await ensureRuntime());
             if (dead || !rt) return;
             await rt.commitMetadata(changes, expectedKey);
         },
         async deleteCharacter(avatar, deleteChats) {
-            if (dead) return;
+            if (dead || !chatRuntimeAvailable()) return;
             if (parseConversationKey(inFlightKey)?.avatar === avatar) {
                 readAbort?.abort();
                 readAbort = null;
@@ -1588,20 +1776,20 @@ export function createSessionBridge(
             await rt.setBudget(value);
         },
         mountLeaf(index, host) {
-            const raw = context.chat[index];
-            const msgSnap = snapshot.messages[index];
+            const message = snapshot.messages[index];
+            if (dead || !message) return () => {};
             const entry: LeafEntry = {
-                key: msgSnap?.key ?? (raw ? messageKeyFromSession(raw, index) : String(index)),
-                raw,
+                conversationKey: snapshot.key,
+                key: message.key,
                 index,
                 renderedText: '',
                 renderedSwipe: undefined,
                 renderedStreaming: false,
                 renderedWithCards: false,
-                cardCleanup: undefined,
+                renderedEpoch: -1,
             };
             mountedLeaves.set(host, entry);
-            renderLeaf(host, entry);
+            renderLeaf(host, entry, message);
 
             return () => {
                 if (mountedLeaves.get(host) !== entry) return;
@@ -1625,21 +1813,14 @@ export function createSessionBridge(
             },
         },
         mountCardActions(node) {
-            if (runtimeInstance?.mountCardActions) {
-                return runtimeInstance.mountCardActions(node);
-            }
-            let cleanup: (() => void) | void;
-            let disposed = false;
-            void ensureRuntime()
-                .then(rt => {
-                    if (!disposed && rt?.mountCardActions && node.isConnected) {
-                        cleanup = rt.mountCardActions(node);
-                    }
-                })
-                .catch(() => {});
+            if (dead) return;
+            const entry: CardActionsEntry = { key: snapshot.key, mountedEpoch: -1 };
+            cardActions.set(node, entry);
+            syncCardActions();
             return () => {
-                disposed = true;
-                if (typeof cleanup === 'function') cleanup();
+                if (cardActions.get(node) !== entry) return;
+                cardActions.delete(node);
+                entry.cleanup?.();
             };
         },
         resolvePopup(result) {
@@ -1677,7 +1858,7 @@ export function createSessionBridge(
             emit();
         },
         markVoicePlayed(index) {
-            const raw = context.chat[index];
+            const raw = fullMessage(snapshot.messages[index])?.raw;
             if (!raw?.extra?.vc_voice) return;
             raw.extra.vc_voice.played = true;
             void context.saveChatConditional?.();
@@ -1733,7 +1914,11 @@ export function createSessionBridge(
                 return;
             }
             if (typeof id === 'number' && Number.isInteger(id) && id >= 0) {
-                firstDisplayedState = { key, id };
+                firstDisplayedState = {
+                    key,
+                    id,
+                    messageKey: snapshot.key === key ? snapshot.messages[id]?.key : undefined,
+                };
             }
         },
         getContext() {
@@ -1767,6 +1952,8 @@ export function createSessionBridge(
                 }
             }
             mountedLeaves.clear();
+            for (const entry of cardActions.values()) entry.cleanup?.();
+            cardActions.clear();
             runtimeInstance?.destroy?.();
             if (typeof globalThis !== 'undefined') {
                 const currentSt = (globalThis as any).SillyTavern;
