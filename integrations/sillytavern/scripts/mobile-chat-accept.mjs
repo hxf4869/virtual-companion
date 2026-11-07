@@ -92,20 +92,74 @@ async function inspectConvoRowSwipeGeometry(page, conversationKey) {
         const timeRect = timeEl ? timeEl.getBoundingClientRect() : null;
         const timeCs = timeEl ? getComputedStyle(timeEl) : null;
 
+        const describeHitElement = (el) => {
+            if (!el) return null;
+            const tagName = el.tagName ? el.tagName.toLowerCase() : String(el.nodeName || '');
+            const className = typeof el.className === 'string' ? el.className.trim() : '';
+            const data = {};
+            if (el.dataset) {
+                for (const [k, v] of Object.entries(el.dataset)) {
+                    const attrName = `data-${k.replace(/[A-Z]/g, (m) => `-${m.toLowerCase()}`)}`;
+                    data[attrName] = v;
+                }
+            }
+            let ancestor = el.parentElement;
+            let nearestClassAncestor = null;
+            const ancestors = [];
+            while (ancestor && ancestor !== document.body && ancestors.length < 5) {
+                const aTag = ancestor.tagName ? ancestor.tagName.toLowerCase() : '';
+                const aCls = typeof ancestor.className === 'string' ? ancestor.className.trim() : '';
+                const aData = {};
+                if (ancestor.dataset) {
+                    for (const [k, v] of Object.entries(ancestor.dataset)) {
+                        const attrName = `data-${k.replace(/[A-Z]/g, (m) => `-${m.toLowerCase()}`)}`;
+                        aData[attrName] = v;
+                    }
+                }
+                const info = { tagName: aTag, className: aCls, data: aData };
+                ancestors.push(info);
+                if (!nearestClassAncestor && aCls) {
+                    nearestClassAncestor = info;
+                }
+                ancestor = ancestor.parentElement;
+            }
+            const rect =
+                typeof el.getBoundingClientRect === 'function' ? el.getBoundingClientRect() : null;
+            return {
+                tagName,
+                className,
+                data,
+                nearestClassAncestor,
+                ancestors,
+                rect: rect
+                    ? {
+                          left: Math.round(rect.left * 100) / 100,
+                          top: Math.round(rect.top * 100) / 100,
+                          width: Math.round(rect.width * 100) / 100,
+                          height: Math.round(rect.height * 100) / 100,
+                      }
+                    : null,
+            };
+        };
+
         let timeHitInsideCard = false;
+        let timeHitElement = null;
         if (timeRect && timeRect.width > 0 && timeRect.height > 0) {
             const cx = timeRect.left + timeRect.width / 2;
             const cy = timeRect.top + timeRect.height / 2;
             const hitEl = document.elementFromPoint(cx, cy);
             timeHitInsideCard = Boolean(hitEl && card.contains(hitEl));
+            timeHitElement = describeHitElement(hitEl);
         }
 
         let pinHitInsideOption = false;
+        let pinHitElement = null;
         if (pinRect && pinRect.width > 0 && pinRect.height > 0 && pinBtn) {
             const px = pinRect.left + pinRect.width / 2;
             const py = pinRect.top + pinRect.height / 2;
             const hitPinEl = document.elementFromPoint(px, py);
             pinHitInsideOption = Boolean(hitPinEl && pinBtn.contains(hitPinEl));
+            pinHitElement = describeHitElement(hitPinEl);
         }
 
         const pinHidden =
@@ -131,6 +185,7 @@ async function inspectConvoRowSwipeGeometry(page, conversationKey) {
             pinHidden,
             pinVisible,
             pinHitInsideOption,
+            pinHitElement,
             slidingActive: Boolean(sliding?.classList.contains('item-sliding-active-slide')),
             slidingClosing: Boolean(sliding?.classList.contains('item-sliding-closing')),
             optionsDisplay: optionsCs?.display ?? 'none',
@@ -143,6 +198,8 @@ async function inspectConvoRowSwipeGeometry(page, conversationKey) {
             slidingRight: Math.round(slidingRect.right * 100) / 100,
             rightEdgeDelta: Math.round(Math.abs(cardRect.right - slidingRect.right) * 100) / 100,
             timeText: timeEl?.textContent?.trim() ?? '',
+            timeLeft: Math.round((timeRect?.left ?? 0) * 100) / 100,
+            timeTop: Math.round((timeRect?.top ?? 0) * 100) / 100,
             timeWidth: Math.round((timeRect?.width ?? 0) * 100) / 100,
             timeHeight: Math.round((timeRect?.height ?? 0) * 100) / 100,
             timeVisible:
@@ -153,8 +210,63 @@ async function inspectConvoRowSwipeGeometry(page, conversationKey) {
                 timeCs?.visibility !== 'hidden' &&
                 timeHitInsideCard,
             timeHitInsideCard,
+            timeHitElement,
         };
     }, conversationKey);
+}
+
+async function convoRowViewportGeometry(page, conversationKey) {
+    return page.evaluate((key) => {
+        const el = document.querySelector(`[data-vc-mobile-convo-row=${JSON.stringify(key)}]`);
+        const rect = el ? el.getBoundingClientRect() : null;
+        const headerBottom =
+            document.querySelector('.vc-mobile-primary-header')?.getBoundingClientRect().bottom ?? 0;
+        const tabbar = document.querySelector('[data-vc-mobile-tabbar]');
+        const tabbarRect = tabbar ? tabbar.getBoundingClientRect() : null;
+        const bottomLimit =
+            tabbarRect && tabbarRect.height > 0 && tabbarRect.top < window.innerHeight
+                ? tabbarRect.top
+                : window.innerHeight;
+        return {
+            url: location.pathname,
+            innerWidth: window.innerWidth,
+            innerHeight: window.innerHeight,
+            headerBottom,
+            bottomLimit,
+            rowTop: rect?.top ?? null,
+            rowBottom: rect?.bottom ?? null,
+            rowHeight: rect?.height ?? null,
+            inView: Boolean(rect && rect.height > 0 && rect.top >= headerBottom && rect.bottom <= bottomLimit),
+        };
+    }, conversationKey);
+}
+
+// 其它场景共享受管数据时会话行可能不在首屏：像真实用户一样在列表上滚动滚轮，直到整行落在页头与标签栏之间
+async function waitForConvoRowInViewport(page, conversationKey) {
+    const rowLocator = page.locator(
+        `[data-vc-mobile-convo-row=${JSON.stringify(conversationKey)}]`,
+    );
+    await rowLocator.waitFor({ state: 'attached', timeout: 20000 });
+    await settleMobilePage(page);
+    let geo = await convoRowViewportGeometry(page, conversationKey);
+    for (let attempt = 0; attempt < 20 && !geo.inView; attempt += 1) {
+        const listBox = await page.locator('[data-vc-mobile-chat-list]').first().boundingBox();
+        if (!listBox) break;
+        const x = listBox.x + listBox.width / 2;
+        const y = Math.max(geo.headerBottom + 40, Math.min(listBox.y + listBox.height / 2, geo.bottomLimit - 40));
+        await page.mouse.move(x, y);
+        const below = geo.rowTop !== null && geo.rowBottom > geo.bottomLimit;
+        const delta = below
+            ? Math.min(400, geo.rowBottom - geo.bottomLimit + 24)
+            : -Math.min(400, geo.headerBottom - (geo.rowTop ?? 0) + 24);
+        await page.mouse.wheel(0, delta);
+        await settleMobilePage(page);
+        geo = await convoRowViewportGeometry(page, conversationKey);
+    }
+    if (!geo.inView) {
+        throw new Error(`会话行未完整落在页头与标签栏之间：${JSON.stringify(geo)}`);
+    }
+    await rowLocator.waitFor({ state: 'visible', timeout: 5000 });
 }
 
 function resolveArtifactDir(ctx) {
@@ -356,8 +468,7 @@ export async function sceneMb2Chat(ctx) {
         const rowLocator = page.locator(
             `[data-vc-mobile-convo-row=${JSON.stringify(fixture.conversationKey)}]`,
         );
-        await rowLocator.waitFor({ state: 'visible', timeout: 20000 });
-        await settleMobilePage(page);
+        await waitForConvoRowInViewport(page, fixture.conversationKey);
 
         // 1a. 静止状态几何断言：[data-vc-swipe-action="pin"] 不可见，会话卡片右边缘与所在行右边缘对齐，时间文字可见且未被遮盖
         const restGeo = await inspectConvoRowSwipeGeometry(page, fixture.conversationKey);
@@ -374,7 +485,7 @@ export async function sceneMb2Chat(ctx) {
         assert.equal(
             restGeo.timeVisible,
             true,
-            `静止状态下时间文字必须可见且未被遮盖，实际 timeText=${JSON.stringify(restGeo.timeText)}, timeWidth=${restGeo.timeWidth}, timeHitInsideCard=${restGeo.timeHitInsideCard}`,
+            `静止状态下时间文字必须可见且未被遮盖，实际 timeText=${JSON.stringify(restGeo.timeText)}, timeLeft=${restGeo.timeLeft}, timeTop=${restGeo.timeTop}, timeWidth=${restGeo.timeWidth}, timeHeight=${restGeo.timeHeight}, timeHitInsideCard=${restGeo.timeHitInsideCard}, timeHitElement=${JSON.stringify(restGeo.timeHitElement)}`,
         );
 
         // 1b. 用真实鼠标拖动手势在该行上向左滑，断言“置顶”按钮变为可见且宽度约为 88；再向右滑收起，断言恢复隐藏
@@ -422,7 +533,7 @@ export async function sceneMb2Chat(ctx) {
         assert.equal(
             swipedGeo.pinVisible,
             true,
-            `左滑后 [data-vc-swipe-action="pin"] 必须可见且未被卡片遮挡，实际 optionsDisplay=${swipedGeo.optionsDisplay}, optionsVisibility=${swipedGeo.optionsVisibility}, pinWidth=${swipedGeo.pinWidth}, cardRight=${swipedGeo.cardRight}, pinLeft=${swipedGeo.pinLeft}, pinHitInsideOption=${swipedGeo.pinHitInsideOption}`,
+            `左滑后 [data-vc-swipe-action="pin"] 必须可见且未被卡片遮挡，实际 optionsDisplay=${swipedGeo.optionsDisplay}, optionsVisibility=${swipedGeo.optionsVisibility}, pinWidth=${swipedGeo.pinWidth}, cardRight=${swipedGeo.cardRight}, pinLeft=${swipedGeo.pinLeft}, pinHitInsideOption=${swipedGeo.pinHitInsideOption}, pinHitElement=${JSON.stringify(swipedGeo.pinHitElement)}`,
         );
         assert.ok(
             Math.abs(swipedGeo.pinWidth - 88) <= 2,
@@ -466,7 +577,7 @@ export async function sceneMb2Chat(ctx) {
         assert.equal(
             closedGeo.timeVisible,
             true,
-            `右滑收起后时间文字必须恢复可见且未被遮盖，实际 timeVisible=${closedGeo.timeVisible}`,
+            `右滑收起后时间文字必须恢复可见且未被遮盖，实际 timeVisible=${closedGeo.timeVisible}, timeHitInsideCard=${closedGeo.timeHitInsideCard}, timeHitElement=${JSON.stringify(closedGeo.timeHitElement)}`,
         );
 
         // 2. 通过真实点击从会话列表进入对话页，验证历史消息、气泡分组、日期胶囊、已发送、导航栏与隐藏 TabBar
@@ -593,7 +704,7 @@ export async function sceneMb2Chat(ctx) {
         await composerInput.fill(draftText);
         await page.locator('[data-vc-chat-back]').click();
 
-        await rowLocator.waitFor({ state: 'visible', timeout: 15000 });
+        await waitForConvoRowInViewport(page, fixture.conversationKey);
         await page.waitForFunction(
             ({ key, expectedDraft }) => {
                 const detailPage = document.querySelector('[data-vc-page="secondary:chat-detail"]');
@@ -608,7 +719,7 @@ export async function sceneMb2Chat(ctx) {
             { key: fixture.conversationKey, expectedDraft: draftText },
             { timeout: 10000 },
         );
-        await settleMobilePage(page);
+        await waitForConvoRowInViewport(page, fixture.conversationKey);
 
         // 记录再次进入会话到历史可见的耗时（毫秒），通过真实点击触发
         const [reenterTiming] = await Promise.all([
@@ -786,8 +897,7 @@ export async function sceneMb2Chat(ctx) {
 
         // 8. 生成 390 与 1440、浅色与深色的截图：全程通过真实用户点击切换设置 Sheet 主题与进出会话
         await page.locator('[data-vc-chat-back]').click();
-        await rowLocator.waitFor({ state: 'visible', timeout: 15000 });
-        await settleMobilePage(page);
+        await waitForConvoRowInViewport(page, fixture.conversationKey);
 
         const writtenFiles = [];
         for (const vp of REPRESENTATIVE_SHOT_VIEWPORTS) {
@@ -801,7 +911,7 @@ export async function sceneMb2Chat(ctx) {
                 await closeSettingsSheetAndWaitDidDismiss(page, () =>
                     page.locator('[data-vc-settings-sheet] [data-vc-settings-done]').first().click(),
                 );
-                await settleMobilePage(page);
+                await waitForConvoRowInViewport(page, fixture.conversationKey);
 
                 const shotListGeo = await inspectConvoRowSwipeGeometry(
                     page,
@@ -819,7 +929,7 @@ export async function sceneMb2Chat(ctx) {
                 assert.equal(
                     shotListGeo?.timeVisible,
                     true,
-                    `[${vp.width} ${scheme}] 静止截图前时间文字必须可见且未被遮盖`,
+                    `[${vp.width} ${scheme}] 静止截图前时间文字必须可见且未被遮盖，实际 timeHitInsideCard=${shotListGeo?.timeHitInsideCard}, timeHitElement=${JSON.stringify(shotListGeo?.timeHitElement)}`,
                 );
 
                 const listShotName = `mb2-chat-list-${vp.width}-${scheme}.png`;

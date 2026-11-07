@@ -47,7 +47,23 @@ export function useComposer({
     const preferences = useChatSnapshot(s => s.preferences);
     const messages = useChatSnapshot(s => s.messages);
 
-    const submittingRef = useRef(false);
+    const submittingIdRef = useRef(0);
+    const activeSubmitIdRef = useRef<number | null>(null);
+    const submitUnsubscribeRef = useRef<(() => void) | null>(null);
+    const prevTargetKeyRef = useRef(targetKey);
+    if (prevTargetKeyRef.current !== targetKey) {
+        prevTargetKeyRef.current = targetKey;
+        submitUnsubscribeRef.current?.();
+        submitUnsubscribeRef.current = null;
+        activeSubmitIdRef.current = null;
+    }
+
+    useEffect(() => {
+        return () => {
+            submitUnsubscribeRef.current?.();
+            submitUnsubscribeRef.current = null;
+        };
+    }, []);
 
     const form = useForm<ComposerFormValues>({
         defaultValues: { text: draft },
@@ -74,19 +90,55 @@ export function useComposer({
         !busy &&
         Boolean(isNonBlank || (preferences?.continue_on_send && canContinue));
 
+    const runTrackedSend = useCallback(
+        (sendAction: () => Promise<boolean>) => {
+            const submitId = ++submittingIdRef.current;
+            activeSubmitIdRef.current = submitId;
+            submitUnsubscribeRef.current?.();
+
+            let sawBusy = false;
+            const unsubscribe = bridge.subscribe(() => {
+                const snap = bridge.getSnapshot();
+                const isSnapBusy =
+                    (conversationKey === undefined || snap.key === conversationKey) &&
+                    Boolean(snap.busy);
+                if (isSnapBusy) {
+                    sawBusy = true;
+                } else if (sawBusy) {
+                    if (activeSubmitIdRef.current === submitId) {
+                        activeSubmitIdRef.current = null;
+                    }
+                    if (submitUnsubscribeRef.current === unsubscribe) {
+                        submitUnsubscribeRef.current = null;
+                    }
+                    unsubscribe();
+                }
+            });
+            submitUnsubscribeRef.current = unsubscribe;
+
+            void sendAction().finally(() => {
+                if (submitUnsubscribeRef.current === unsubscribe) {
+                    submitUnsubscribeRef.current = null;
+                }
+                unsubscribe();
+                if (activeSubmitIdRef.current === submitId) {
+                    activeSubmitIdRef.current = null;
+                }
+            });
+        },
+        [bridge, conversationKey],
+    );
+
     const submitComposer = useCallback((): boolean => {
-        if (!canSubmit || submittingRef.current) return false;
+        if (!canSubmit || activeSubmitIdRef.current !== null) return false;
 
         const rawDraft = bridge.draft.read(targetKey);
         const parsed = composerMessageSchema.safeParse({ text: rawDraft });
 
         if (!parsed.success) {
             if (preferences?.continue_on_send && canContinue) {
-                submittingRef.current = true;
                 onSent?.();
-                void bridge.send('', { type: 'continue' }).finally(() => {
-                    submittingRef.current = false;
-                });
+                runTrackedSend(() => bridge.send('', { type: 'continue' }));
                 return true;
             }
             form.setError('text', {
@@ -96,7 +148,6 @@ export function useComposer({
             return false;
         }
 
-        submittingRef.current = true;
         form.clearErrors('text');
         onSent?.();
 
@@ -105,11 +156,9 @@ export function useComposer({
         if (quote) {
             onClearQuote?.();
         }
-        void bridge.send(payload, { draftInput: rawUserText }).finally(() => {
-            submittingRef.current = false;
-        });
+        runTrackedSend(() => bridge.send(payload, { draftInput: rawUserText }));
         return true;
-    }, [targetKey, bridge, canContinue, canSubmit, form, onClearQuote, onSent, preferences?.continue_on_send, quote]);
+    }, [targetKey, bridge, canContinue, canSubmit, form, onClearQuote, onSent, preferences?.continue_on_send, quote, runTrackedSend]);
 
     const handleFormSubmit = form.handleSubmit(() => {
         submitComposer();

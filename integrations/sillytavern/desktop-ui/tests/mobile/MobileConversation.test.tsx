@@ -1487,4 +1487,173 @@ describe('MB2-6b-1 MobileConversation Skeleton, Grouping, Date Capsules, Write-T
       );
     });
   });
+
+  it('shows [data-vc-composer-stop] and stops generation on consecutive send when post-merge bridge publishes busy=false/canSend=true before previous send promise settles', async () => {
+    const keyLinxi = '["林夕MB2_6cfc4b.png","MB2-chat-stop"]';
+    const bridge = createMockSessionBridge({
+      status: 'ready',
+      canSend: true,
+      busy: false,
+      streamingKey: null,
+      key: keyLinxi,
+      characterName: '林夕',
+      avatar: '林夕MB2_6cfc4b.png',
+      avatarUrl: '/thumbnail?type=avatar&file=%E6%9E%97%E5%A4%95MB2_6cfc4b.png',
+      messages: [
+        {
+          key: `${keyLinxi}:2026-11-07T00:00:00.000Z:0:1`,
+          index: 0,
+          name: '林夕',
+          mes: '欢迎回家，今天累不累？',
+          is_user: false,
+          is_system: false,
+          send_date: '2026-11-07T00:00:00.000Z',
+        },
+      ],
+    });
+
+    let resolveFirstSendPostHook!: (value: boolean) => void;
+    let sendCallCount = 0;
+
+    bridge.send = vi.fn((text: string, sendOpts?: { draftInput?: string | null }) => {
+      sendCallCount += 1;
+      const draftInput = sendOpts?.draftInput !== undefined ? sendOpts.draftInput : text;
+      if (draftInput && bridge.draft.read(keyLinxi) === draftInput) {
+        bridge.draft.write(keyLinxi, '');
+      }
+
+      if (sendCallCount === 1) {
+        const userMsg: ChatMessage = {
+          key: `${keyLinxi}:2026-11-07T00:00:01.000Z:1:2`,
+          index: 1,
+          name: '你',
+          mes: text,
+          is_user: true,
+          is_system: false,
+          send_date: '2026-11-07T00:00:01.000Z',
+        };
+        const streamReplyKey = `${keyLinxi}:2026-11-07T00:00:02.000Z:2:3`;
+        const replyMsg: ChatMessage = {
+          key: streamReplyKey,
+          index: 2,
+          name: '林夕',
+          mes: '测试流式回复：今晚的姜茶已经煮好了，趁热喝一杯吧。',
+          is_user: false,
+          is_system: false,
+          send_date: '2026-11-07T00:00:02.000Z',
+        };
+        // 1) User message appended -> busy=true, canSend=false, streamingKey=null
+        bridge.publish({
+          status: 'ready',
+          key: keyLinxi,
+          busy: true,
+          canSend: false,
+          streamingKey: null,
+          messages: [...bridge.getCurrentSnapshot().messages, userMsg],
+        });
+        // 2) Streaming reply chunk -> busy=true, canSend=false, streamingKey=streamReplyKey
+        bridge.publish({
+          status: 'ready',
+          key: keyLinxi,
+          busy: true,
+          canSend: false,
+          streamingKey: streamReplyKey,
+          messages: [...bridge.getCurrentSnapshot().messages, replyMsg],
+        });
+        // 3) Post-merge session.js clears job=null before GENERATION_ENDED finishes, and intermediate saveChat()
+        // publishes busy=false, canSend=true, streamingKey=null while bridge.send() promise is still awaiting
+        // post-stream source reconciliation.
+        bridge.publish({
+          status: 'ready',
+          key: keyLinxi,
+          busy: false,
+          canSend: true,
+          streamingKey: null,
+        });
+        return new Promise<boolean>((resolve) => {
+          resolveFirstSendPostHook = resolve;
+        });
+      }
+
+      // Second turn: user sends message and stops mid-stream
+      const userMsg2: ChatMessage = {
+        key: `${keyLinxi}:2026-11-07T00:00:03.000Z:3:4`,
+        index: 3,
+        name: '你',
+        mes: text,
+        is_user: true,
+        is_system: false,
+        send_date: '2026-11-07T00:00:03.000Z',
+      };
+      const streamReplyKey2 = `${keyLinxi}:2026-11-07T00:00:04.000Z:4:5`;
+      const partialReplyMsg2: ChatMessage = {
+        key: streamReplyKey2,
+        index: 4,
+        name: '林夕',
+        mes: '测试中途停止：窗外的风声渐渐小了，慢慢聊着今天发生的事。',
+        is_user: false,
+        is_system: false,
+        send_date: '2026-11-07T00:00:04.000Z',
+      };
+      bridge.publish({
+        status: 'ready',
+        key: keyLinxi,
+        busy: true,
+        canSend: false,
+        streamingKey: streamReplyKey2,
+        messages: [...bridge.getCurrentSnapshot().messages, userMsg2, partialReplyMsg2],
+      });
+      return Promise.resolve(true);
+    });
+
+    const client = createMockClient();
+    const queryClient = createQueryClient();
+
+    render(
+      <AppProviders client={client} queryClient={queryClient} sessionBridge={bridge}>
+        <MobileConversation conversationKey={keyLinxi} />
+      </AppProviders>,
+    );
+
+    const textarea = screen.getByRole('textbox', { name: '输入消息' }) as HTMLTextAreaElement;
+
+    // Step 3 equivalent: send first message
+    fireEvent.change(textarea, { target: { value: '测试：我换好衣服啦' } });
+    await act(async () => {
+      fireEvent.click(document.querySelector('[data-vc-composer-send]') as HTMLElement);
+    });
+
+    expect(document.body.textContent).toContain('今晚的姜茶已经煮好了，趁热喝一杯吧。');
+    expect(document.querySelector('[data-vc-composer-stop]')).toBeNull();
+    expect(textarea.value).toBe('');
+
+    // Step 4 equivalent: immediately type and send second message while first send's post-hook promise is still pending
+    fireEvent.change(textarea, { target: { value: '测试：继续讲讲今天的事' } });
+    const sendBtnTurn2 = document.querySelector('[data-vc-composer-send]') as HTMLButtonElement;
+    expect(sendBtnTurn2).toBeTruthy();
+    expect(sendBtnTurn2.disabled).toBe(false);
+
+    await act(async () => {
+      fireEvent.click(sendBtnTurn2);
+    });
+
+    // Stop button MUST be visible during Turn 2 streaming
+    const stopBtn = document.querySelector('[data-vc-composer-stop]') as HTMLButtonElement;
+    expect(stopBtn).toBeTruthy();
+    expect(document.body.textContent).toContain('窗外的风声渐渐小了');
+
+    // First send's post-hook promise settling late must not break Turn 2
+    await act(async () => {
+      resolveFirstSendPostHook(true);
+    });
+    expect(document.querySelector('[data-vc-composer-stop]')).toBeTruthy();
+
+    // Clicking Stop button stops generation and preserves partial streamed text
+    await act(async () => {
+      fireEvent.click(stopBtn);
+    });
+    expect(bridge.stop).toHaveBeenCalledTimes(1);
+    expect(document.querySelector('[data-vc-composer-stop]')).toBeNull();
+    expect(document.body.textContent).toContain('窗外的风声渐渐小了');
+  });
 });
