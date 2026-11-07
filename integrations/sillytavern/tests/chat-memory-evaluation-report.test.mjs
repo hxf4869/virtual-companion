@@ -211,6 +211,47 @@ test('resume archives a legacy complete attempt and a failed replay on the same 
     await assertClosed(f);
 });
 
+test('a failed judge preflight can resume after a rubric fix while retaining its paid ledger', async t => {
+    const f = await fixture(t);
+    const originalRuntime = f.deps.loadRuntime;
+    f.deps.loadRuntime = async () => ({
+        withIsolatedChatMemoryStack: async (_options, evaluate) => evaluate({}),
+        evaluateCoreOnStack: async (_ctx, { meter, checkpoint }) => {
+            await meter.makeCall('judge');
+            await checkpoint({ phase: 'judge-preflight', judgePreflight: { passed: false } });
+            throw new Error('CM_JUDGE_CALIBRATION_FAILED');
+        },
+    });
+    await assert.rejects(f.run(), { message: 'CM_JUDGE_CALIBRATION_FAILED' });
+    const manifest = await f.read('manifest.json');
+    manifest.judgeRubricVersion = 'previous-rubric';
+    manifest.attempts[0].judgeRubricVersion = 'previous-rubric';
+    await f.write('manifest.json', manifest);
+    f.deps.loadRuntime = originalRuntime;
+    const report = await f.run({ resume: true });
+    assert.equal(report.executionStatus, 'COMPLETE');
+    assert.equal(report.budget.calls, 2);
+    assert.equal(report.budget.inputTokens, 84);
+    assert.equal(report.budget.outputTokens, 56);
+    assert.deepEqual(report.modelCalls.map(row => row.id), [1, 2]);
+    const resumed = await f.read('manifest.json');
+    assert.equal(resumed.attempts[0].judgeRubricVersion, 'previous-rubric');
+    assert.equal(resumed.attempts[0].failureCode, 'CM_JUDGE_CALIBRATION_FAILED');
+    assert.equal(resumed.attempts[1].judgeRubricVersion, report.judgeRubricVersion);
+    await assertClosed(f);
+});
+
+test('a changed rubric cannot fully replay a round that already reached answers', async t => {
+    const f = await fixture(t);
+    await f.run();
+    const manifest = await f.read('manifest.json');
+    await f.write('manifest.json', { ...manifest, judgeRubricVersion: 'previous-rubric' });
+    await assert.rejects(f.run({ resume: true }), { message: 'CM_COMPARISON_GROUP_MISMATCH' });
+    assert.equal((await f.read('budget.json')).calls.length, 1);
+    assert.equal(f.state.runs, 1);
+    await assertClosed(f);
+});
+
 test('diagnostic supplement preserves baseline core, controls, calibration, provenance and metrics on the same budget', async t => {
     const f = await fixture(t);
     f.state.coreCoverage = 132 / 140; f.state.controlCoverage = 0;

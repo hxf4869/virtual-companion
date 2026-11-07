@@ -176,11 +176,15 @@ export async function runRealEvaluation({ round, configRef, seed = 20261106, var
             catch { throw new Error('ARTIFACT_RESUME_INVALID'); }
             if (prior.variant !== variant || prior.dataset?.hashes?.dataset !== dataset.hashes.dataset
                 || JSON.stringify(prior.configuration) !== JSON.stringify(config.manifest)) throw new Error('CM_COMPARISON_GROUP_MISMATCH');
-            if (!judgeOnly && prior.judgeRubricVersion !== undefined && prior.judgeRubricVersion !== JUDGE_RUBRIC_VERSION) {
-                throw new Error('CM_COMPARISON_GROUP_MISMATCH');
-            }
             priorManifest = prior;
             try { priorSummary = JSON.parse(await fs.readFile(path.join(dir, 'summary.json'), 'utf8')); } catch { /* journal is authoritative */ }
+            // A calibration failure precedes all source replay and answer generation.
+            // Its rubric repair restarts only this preflight, on the same paid ledger.
+            const failedPreflight = priorSummary?.phase === 'judge-preflight'
+                && priorSummary.failureCode === 'CM_JUDGE_CALIBRATION_FAILED'
+                && priorSummary.attempt === prior.attempt && !priorSummary.quality && !priorSummary.extraction;
+            if (!judgeOnly && prior.judgeRubricVersion !== undefined && prior.judgeRubricVersion !== JUDGE_RUBRIC_VERSION
+                && !failedPreflight) throw new Error('CM_COMPARISON_GROUP_MISMATCH');
             if ((diagnosticsOnly || judgeOnly) && (!priorSummary?.quality || !priorSummary?.extraction || !priorSummary?.judgeCalibration
                 || !Array.isArray(priorSummary?.modelCalls) || priorSummary.modelCalls.length !== budget.snapshot().calls
                 || priorSummary.attempt !== prior.attempt

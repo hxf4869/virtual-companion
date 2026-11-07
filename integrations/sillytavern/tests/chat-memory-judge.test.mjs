@@ -68,6 +68,17 @@ test('prompt freezes reason definitions, precedence and forbidden/time context w
     assert.ok(!prompt.includes('secret-candidate') && !prompt.includes('private-route'));
 });
 
+test('temporal grounding requires the supported subject and relation while keeping time correctness separate', () => {
+    const dataset = generateChatMemoryDataset();
+    const testCase = dataset.cases.find(row => row.category === 'update');
+    const prompt = scoring.buildJudgePrompt(testCase, { answer: testCase.expectedAnswer, facts: dataset.facts });
+    assert.ok(prompt.includes('合法支持只来自 acceptableEvidence 或 recentContext'));
+    assert.ok(prompt.includes('同一主体、同一关系的回答值'));
+    assert.ok(prompt.includes('唯一错误是将该值对应到错误时点，则 grounded=true、correct=false'));
+    assert.ok(prompt.includes('仅有词面出现不算支持'));
+    assert.ok(prompt.includes('expectedAnswer、wrongAnswerValues、forbiddenEvidence 不能单独作为合法支持'));
+});
+
 test('two reviews preserve sanitized results and separate fact/style disagreements', () => {
     const first = judgment();
     const second = judgment({ aiFlavor: { ...cleanStyle(), templateEnding: true } });
