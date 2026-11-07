@@ -1718,7 +1718,7 @@ operations:
   path: /api/v1/chats/imports
   currentH5Callers: []
   decision: DEFER
-  replacementOrImpact: 'SX-2 / ADR-0013: frozen planned contract only, NOT implemented or routed. SX-3–SX-6 must
+  replacementOrImpact: 'SX-2 / ADR-0013: frozen planned contract only, NOT implemented or routed. SX-8 must
     implement and validate before promoting this operation to KEEP; DEFER records implementation deferral, not rejection
     of the approved ST-exit direction.'
 - operationId: getStoredChatImport
@@ -1726,7 +1726,7 @@ operations:
   path: /api/v1/chats/imports/{importId}
   currentH5Callers: []
   decision: DEFER
-  replacementOrImpact: 'SX-2 / ADR-0013: frozen planned contract only, NOT implemented or routed. SX-3–SX-6 must
+  replacementOrImpact: 'SX-2 / ADR-0013: frozen planned contract only, NOT implemented or routed. SX-8 must
     implement and validate before promoting this operation to KEEP; DEFER records implementation deferral, not rejection
     of the approved ST-exit direction.'
 - operationId: exportStoredChat
@@ -1734,7 +1734,7 @@ operations:
   path: /api/v1/chats/{chatId}/export
   currentH5Callers: []
   decision: DEFER
-  replacementOrImpact: 'SX-2 / ADR-0013: frozen planned contract only, NOT implemented or routed. SX-3–SX-6 must
+  replacementOrImpact: 'SX-2 / ADR-0013: frozen planned contract only, NOT implemented or routed. SX-8 must
     implement and validate before promoting this operation to KEEP; DEFER records implementation deferral, not rejection
     of the approved ST-exit direction.'
 - operationId: registerStoredChatGeneration

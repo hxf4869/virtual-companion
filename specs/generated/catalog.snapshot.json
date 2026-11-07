@@ -3259,7 +3259,7 @@
             "method": "POST",
             "operationId": "importStoredChat",
             "path": "/api/v1/chats/imports",
-            "replacementOrImpact": "SX-2 / ADR-0013: frozen planned contract only, NOT implemented or routed. SX-3–SX-6 must implement and validate before promoting this operation to KEEP; DEFER records implementation deferral, not rejection of the approved ST-exit direction."
+            "replacementOrImpact": "SX-2 / ADR-0013: frozen planned contract only, NOT implemented or routed. SX-8 must implement and validate before promoting this operation to KEEP; DEFER records implementation deferral, not rejection of the approved ST-exit direction."
           },
           {
             "currentH5Callers": [],
@@ -3267,7 +3267,7 @@
             "method": "GET",
             "operationId": "getStoredChatImport",
             "path": "/api/v1/chats/imports/{importId}",
-            "replacementOrImpact": "SX-2 / ADR-0013: frozen planned contract only, NOT implemented or routed. SX-3–SX-6 must implement and validate before promoting this operation to KEEP; DEFER records implementation deferral, not rejection of the approved ST-exit direction."
+            "replacementOrImpact": "SX-2 / ADR-0013: frozen planned contract only, NOT implemented or routed. SX-8 must implement and validate before promoting this operation to KEEP; DEFER records implementation deferral, not rejection of the approved ST-exit direction."
           },
           {
             "currentH5Callers": [],
@@ -3275,7 +3275,7 @@
             "method": "GET",
             "operationId": "exportStoredChat",
             "path": "/api/v1/chats/{chatId}/export",
-            "replacementOrImpact": "SX-2 / ADR-0013: frozen planned contract only, NOT implemented or routed. SX-3–SX-6 must implement and validate before promoting this operation to KEEP; DEFER records implementation deferral, not rejection of the approved ST-exit direction."
+            "replacementOrImpact": "SX-2 / ADR-0013: frozen planned contract only, NOT implemented or routed. SX-8 must implement and validate before promoting this operation to KEEP; DEFER records implementation deferral, not rejection of the approved ST-exit direction."
           },
           {
             "currentH5Callers": [],
@@ -3324,7 +3324,7 @@
           }
         ]
       },
-      "sha256": "89a146df4e18fe8e4d8fc67c66a7023401ad6aaa84b2079075153667a88bc1c9"
+      "sha256": "fa273d9f3eb5539573d1303d392c83ed14b80bdfa08e0442a7a868fdf98d7727"
     },
     "memory-candidate-statuses.yaml": {
       "document": {

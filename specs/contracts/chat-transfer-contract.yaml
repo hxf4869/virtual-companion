@@ -1,0 +1,243 @@
+schemaVersion: 1
+contractId: SX8_CHAT_TRANSFER_AND_NATIVE_COMPATIBILITY
+status: OWNER_REVIEW_PENDING
+scope:
+  publicApi: specs/openapi/virtual-companion.yaml
+  implementationStatus: NOT_IMPLEMENTED
+  execution: synthetic_data_and_isolated_database_only
+  realAccountCutover: separate_owner_authorization_required
+  databaseMigration: one_SX8_migration_after_CM4_version_is_known
+
+# This proposal supplements the frozen public API. It is not permission to
+# expose a new route or to switch a real account. Concrete HTTP schemas remain
+# in OpenAPI; the private migration artifact/CLI contract belongs here.
+publicJsonl:
+  maxFileBytes: 268435456
+  maxMessageBytes: 1048576
+  maxHeaderBytes: 8388608 # NEW capacity limit, explicitly pending Owner review
+  maxIssues: 100
+  activeImportsPerOwner: 1
+  resultAndStagingRetentionHours: 24
+  encryptedStagingChunkBytes: 1048576
+  requestDeduplication:
+    key: [ownerAccountId, canonicalResource, requestId]
+    digest: normalized_request_fields_and_exact_file_sha256
+    excludes: [uploadFilename, multipartBoundary]
+    replay: original_202_acceptance_and_statusUrl_even_if_job_has_finished
+    acceptedStatusIs: acceptance_receipt_not_current_job_status
+    expired: CHAT_IMPORT_EXPIRED_without_republishing
+    differentDigest: IDEMPOTENCY_KEY_REUSED
+    compactRetention: until_owner_deletion
+  pendingFailurePolicy:
+    invalidInput: FAILED_with_existing_fixed_line_issues
+    authorityChanged: FAILED_CHAT_AUTHORITY_CHANGED
+    transientStorageFailure: remain_PENDING_retry_with_existing_worker_lease_until_expiry
+    secondDistinctActiveImport: HTTP_429_RATE_LIMITED_with_Retry_After
+  header:
+    line: 1
+    metadata: chat_metadata_object_or_empty_object_when_absent
+    storedHeader: all_other_header_keys
+    export: storedHeader_plus_chat_metadata_from_current_metadata_and_protected_identity
+  input:
+    encoding: strict_UTF8
+    lineEndings: [LF, CRLF]
+    finalNewlineRequired: false
+    blankLines: INVALID_JSON
+    trailingJsonValues: INVALID_JSON
+    numericValues: preserve_exact_JSON_numbers
+    publication: only_after_entire_file_validated_and_epoch_rechecked
+  identity:
+    newChatAndBinding: allocated_by_server_from_authenticated_owner_and_request_scope
+    newMessageAndCandidateIds: generated_once_per_import_checkpoint
+    recognizedIdentityLocations:
+      - header.chat_metadata.vc_f2.id
+      - header.chat_metadata.vc_binding.chatIdentity
+      - header.chat_metadata.vc_branch_root
+      - message.vc_message_id
+      - message.extra.vc_source.id
+      - message.swipe_info[*].extra.vc_source.id
+    selectedCandidateDuplicate: top_level_extra_and_selected_swipe_info_must_identify_same_candidate
+    duplicateAcrossDistinctMessagesOrCandidates: DUPLICATE_ID
+    protectedFields: regenerate_vc_f2_vc_binding_vc_branch_root_vc_source_vc_message_id
+    pendingParentToken: discard_header_chat_metadata_vc_f2_parent
+    inboxAndSourceRights: never_import_old_inbox_event_id_revision_generation_or_suppression_authority
+    knownReferences: remap_only_the_recognized_identity_locations_above
+    metadataType: absent_means_empty_object_explicit_null_or_non_object_is_INVALID_HEADER
+    unknownExtensionReferences:
+      detection: string_value_equal_to_an_old_chat_message_or_candidate_UUID_outside_recognized_locations
+      action: preserve_value_and_count_each_occurrence
+      arbitraryUuidRewrite: forbidden
+  objectLifecycle:
+    uploadIntent: durable_before_first_object_write
+    encryption: existing_FieldCipher_per_bounded_blobstore_chunk
+    cleanup: success_failure_expiry_and_interrupted_uploads_use_existing_worker_scheduler
+    cleanupLimitPerPass: 256_objects
+    accountDeletion: retain_cleanup_intent_until_all_import_objects_deleted
+    wholeFileInMemory: forbidden
+  export:
+    snapshot: one_current_revision_with_no_mixed_message_or_candidate_versions
+    staleRequestedRevision: HTTP_409_REVISION_CONFLICT
+    rights: check_authorization_and_deletion_barriers_before_snapshot_and_delivery
+    format: UTF8_JSONL_with_LF_all_messages_all_swipes_and_unknown_fields
+    partialResultAsSuccess: forbidden
+
+nativeCompatibilityProposal:
+  channel: existing_serviceToken_only_not_browser_admin_bridge
+  verifiedOwner: supplied_by_Node_after_current_session_and_account_mapping_checks
+  browserOrigin: reject_any_Origin_header
+  publicCreateAndForkSemantics: unchanged_server_allocated_ids
+  aliases:
+    key: [ownerAccountId, kind, characterRef_or_groupRef, fileName]
+    path: logical_filename_not_an_absolute_filesystem_path
+    traversalAndSymlinks: reject
+    oldNames: retain_as_lookup_aliases_after_rename
+    ambiguousLookup: reject_never_pick_first
+    deletedNames: resolve_to_deleted_identity_never_rebind_to_another_chat
+    favorites: resolve_existing_chatFile_with_its_relationship_scope_without_rewriting_saved_text_or_mesId
+    freshChatDefaultName: chatId_dot_jsonl
+  newIdentity:
+    proposedChatId: native_preallocated_UUID_only_when_expected_revision_is_zero
+    condition: no_live_pending_or_deleted_identity_with_same_owner_and_id
+    collision: CHAT_ID_REUSED
+    ownerBindingAndBranch: derived_by_server_never_restored_from_uploaded_metadata
+  wholeSave:
+    expected: exact_chat_id_and_revision_and_authorityEpoch
+    documentLimitBytes: 268435456
+    messageLimitBytes: 1048576
+    staging: validate_and_prepare_diff_outside_final_short_transaction
+    commit: exact_revision_CAS_and_all_differences_and_source_barriers_and_receipt_atomically
+    publicOperationBatchLimit: not_reused_to_split_a_native_save_into_multiple_commits
+    ack: same_chat_id_and_exactly_one_revision_increment
+    staleIncludingUnrelatedTailAppend: HTTP_409_REVISION_CONFLICT_and_keep_draft
+    sourceRights: existing_message_candidate_identity_validation_and_generation_fence_still_required
+    noChangeSave: increments_chat_revision_once_to_preserve_F2_ACK
+  fork:
+    parent: exact_owned_parent_id_and_revision
+    child: fresh_native_preallocated_id_at_revision_zero
+    branchRoot: inherit_from_parent
+    messageAndCandidateIdentity: remap_to_new_child_identities
+    suppression: preserve_existing_fork_suppression_rules
+    staleParent: HTTP_409_REVISION_CONFLICT
+  renameAndDelete:
+    expected: exact_owned_chat_id_and_revision
+    batchDirectoryOperations: all_target_baselines_and_target_set_checked_atomically
+    oldDiskFallbackInGoOrFrozen: forbidden
+  httpContractNextStep: add_typed_private_native_routes_and_alias_read_fields_to_OpenAPI_after_review
+
+trustedMigration:
+  channel: operator_CLI_and_private_ST_control_never_public_upload
+  authentication: existing_private_service_token_and_explicit_owner_mapping
+  browserOrigin: reject_any_Origin_header
+  ownerFromManifestAlone: never_authorizes_access
+  authorityTransition:
+    freeze: CAS_expected_mode_and_epoch_to_FROZEN_with_incremented_epoch
+    activate: only_verified_run_CAS_same_FROZEN_epoch_to_GO_with_incremented_epoch
+    rollback: freeze_GO_export_latest_and_restore_isolated_ST_then_CAS_to_ST_with_incremented_epoch
+    error: remain_FROZEN_no_automatic_reopen_or_epoch_relabel
+  order:
+    - freeze_database_authority_and_commit
+    - close_ST_local_admission_synchronously_before_await
+    - durably_record_closed_gate
+    - wait_for_all_admitted_server_handlers_to_finish_finally
+    - export_frozen_manifest_and_files
+    - verify_and_stage_each_chat_in_isolated_target
+    - compare_all_raw_source_alias_and_rights_records
+    - mark_run_verified
+    - activate_only_if_this_execution_is_separately_authorized
+  drain:
+    ownerScoped: true
+    covers: [private_sources, private_inbox, native_chat_file_reads_and_writes]
+    lifecycleEnd: handler_completion_in_finally_not_response_finish_or_close
+    lateRequests: reject_without_old_chat_disk_access
+    clientDisconnectOrTimeout: does_not_release_handler_or_count_as_drained
+    cancellationOfWait: keep_admission_closed_and_abort_export
+    localMarker: .vc-f2/chat-cutover.json
+    markerFields: [version, ownerAccountId, closed, runId, epoch]
+    restart: load_marker_before_accepting_requests_and_keep_closed
+    corruptOrUnreadableMarker: fail_closed
+    sameRunAndEpoch: idempotent
+    conflictingRunOrEpoch: reject_without_reopening
+    STQueriesGoForAuthority: false
+  manifest:
+    formatVersion: 1
+    fields:
+      - formatVersion
+      - migrationRunId
+      - direction
+      - ownerAccountId
+      - frozenAuthorityEpoch
+      - chats
+      - deletionAndSuppressionRecords
+    direction: [ST_TO_GO, GO_TO_ST]
+    perChat:
+      - oldIdentity
+      - kind
+      - characterRef_or_groupRef
+      - conversationId_and_relationshipId_or_null
+      - primaryFileName_and_aliases
+      - branchRoot
+      - chatRevision
+      - metadataRevision
+      - orderRevision
+      - sourceFile_relative_path
+      - sourceFile_sha256
+      - sourceFile_byteCount
+      - messageCount
+      - candidateCount
+      - state_live_or_deleted
+      - messageAndCandidateIdentityRecords
+    identityRecords:
+      message: [messageId, messageRevision, position, selectedCandidateId, deleted]
+      candidate: [messageId, candidateId, ordinal, sourceRevision, sourceGeneration, settled, everSelected, deleted]
+      includes: live_and_tombstoned_identities_even_when_absent_from_JSONL
+      deletedChatFile: no_JSONL_required_but_identity_and_rights_tombstones_required
+    stRevisionDomains: preserve_F2_revision_as_chatRevision_and_initialize_new_metadata_order_domains_to_one
+    goRevisionDomains: preserve_all_existing_revision_domains_including_messageRevision_and_candidate_ordinal
+    counters: decimal_strings_except_legacy_F2_wire_safe_integers
+    files: private_local_relative_paths_no_symlink_or_traversal
+    unknownFields: retain_all_JSONL_header_message_and_candidate_fields
+    hashes: ADR0013_required_integrity_and_checkpoint_identity_not_logging
+    logs: aggregate_counts_and_fixed_errors_only_no_content_paths_owner_or_source_ids
+  checkpoint:
+    key: [migrationRunId, ownerAccountId, oldIdentity, sourceFile_sha256]
+    state: [STAGED, VERIFIED]
+    repeatedSameInput: resume_without_duplicate_chat_messages_candidates_or_jobs
+    differentInputForSameRunAndIdentity: reject_do_not_overwrite
+    accountVisibility: raw_staging_never_visible_until_verified_activation
+    identityCollision: require_exact_same_checkpoint_never_replace_existing_data
+    publication: preserve_original_ids_and_revisions_do_not_call_public_new_identity_constructors
+  sourceAndRights:
+    sourceFields: [messageId, candidateId, sourceRevision, sourceGeneration, settled, sourceTimestamp, sourceTimezone]
+    projectionFields: [present, eligible, suppressed, conversationId, appliedRevision, branchRoot]
+    include: all_observed_sources_including_deselected_suppressed_and_absent_candidates
+    merge: current_authority_rights_UNION_latest_external_rights_UNION_current_target_root_rights
+    suppression: monotonic_OR_never_clear_existing_suppression
+    deletedIdentity: never_recreate_live_chat_message_or_candidate
+    unknownOrUnverifiableSource: UNAVAILABLE_and_block_verification_not_DELETED
+    existingMemoryAndInbox: preserve_bindings_and_event_deduplication_do_not_reenqueue_old_history
+    projectionWatermark: raw_and_conversation_watermark_must_match_before_activation
+    isolatedRestorePrerequisite: existing_Go_memory_and_rights_domain_restored_and_reconciled_before_chat_activation
+  reverseExport:
+    input: frozen_current_GO_state_including_changes_since_original_cutover
+    output: JSONL_plus_identity_alias_tombstone_suppression_manifest
+    destination: new_empty_isolated_ST_root
+    plainPublicJsonlAsRollbackArchive: forbidden
+    oldSnapshotAsRollbackSource: forbidden
+  retention:
+    artifacts: latest_verified_encrypted_backup_and_current_migration_snapshot_only
+    oldSTRootDays: 7
+    cleanupAfterWindow: requires_owner_confirmation
+    temporaryStage: remove_unreferenced_chunks_and_failed_isolated_resources_by_owned_manifest
+
+requiredSyntheticChecks:
+  - public_import_unknown_fields_swipes_variables_and_large_numbers_round_trip
+  - last_line_invalid_publishes_nothing_and_diagnostics_are_bounded
+  - repeated_request_same_file_and_expired_result_never_republishes
+  - concurrent_import_and_epoch_change_are_fenced
+  - export_current_snapshot_survives_concurrent_edit_delete_without_mixed_revisions
+  - native_create_fork_same_id_plus_one_ACK_and_stale_whole_save_conflict
+  - aliases_and_old_favorites_never_resolve_wrong_scope_or_resurrect_deleted_chat
+  - sources_and_inbox_paused_after_admission_block_export
+  - disconnected_client_still_blocks_export_until_server_finally
+  - restart_keeps_admission_closed_and_late_requests_do_not_touch_old_disk
+  - trusted_migration_checkpoint_resume_and_reverse_restore_preserve_rights

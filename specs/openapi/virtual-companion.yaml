@@ -8678,8 +8678,8 @@ paths:
     post:
       operationId: importStoredChat
       summary: Stage an asynchronous JSONL import as a new chat
-      description: SX-2 frozen contract only; not implemented. DEFER in specs/catalog/go-v1-api-scope.yaml until SX-3–SX-6
-        implement and validate it. Owner/RLS scoped cookieAuth; expected account/session headers are preconditions,
+      description: SX-2 frozen public shape; SX-8 semantic clarification pending Owner review in specs/contracts/chat-transfer-contract.yaml.
+        Not implemented; DEFER in specs/catalog/go-v1-api-scope.yaml until SX-8 validates it. Owner/RLS scoped cookieAuth; expected account/session headers are preconditions,
         never authorization. State-changing requests use existing CSRF and exact Origin checks. requestId and authorityEpoch
         are multipart BODY fields. Return 202 and owner-scoped statusUrl. Validate the complete UTF-8 JSONL file before
         publication, remap protected identities, preserve unknown fields/references and report counts. Recheck epoch
@@ -8714,7 +8714,7 @@ paths:
         '503':
           $ref: '#/components/responses/ChatUnavailable'
         '410':
-          $ref: '#/components/responses/ChatResultExpired'
+          $ref: '#/components/responses/ChatImportExpired'
         '413':
           $ref: '#/components/responses/ChatTooLarge'
         '422':
@@ -8733,8 +8733,8 @@ paths:
     get:
       operationId: getStoredChatImport
       summary: Read asynchronous import status and bounded diagnostics
-      description: SX-2 frozen contract only; not implemented. DEFER in specs/catalog/go-v1-api-scope.yaml until SX-3–SX-6
-        implement and validate it. Owner/RLS scoped cookieAuth; expected account/session headers are preconditions,
+      description: SX-2 frozen public shape; SX-8 semantic clarification pending Owner review in specs/contracts/chat-transfer-contract.yaml.
+        Not implemented; DEFER in specs/catalog/go-v1-api-scope.yaml until SX-8 validates it. Owner/RLS scoped cookieAuth; expected account/session headers are preconditions,
         never authorization. State-changing requests use existing CSRF and exact Origin checks. PENDING, FAILED or
         DONE. Failure reports line numbers and fixed reasons, never input text. Result retention is 24h, independent
         of longer compact requestId deduplication.
@@ -8772,8 +8772,8 @@ paths:
     get:
       operationId: exportStoredChat
       summary: Export complete current chat as UTF-8 JSONL
-      description: SX-2 frozen contract only; not implemented. DEFER in specs/catalog/go-v1-api-scope.yaml until SX-3–SX-6
-        implement and validate it. Owner/RLS scoped cookieAuth; expected account/session headers are preconditions,
+      description: SX-2 frozen public shape; SX-8 semantic clarification pending Owner review in specs/contracts/chat-transfer-contract.yaml.
+        Not implemented; DEFER in specs/catalog/go-v1-api-scope.yaml until SX-8 validates it. Owner/RLS scoped cookieAuth; expected account/session headers are preconditions,
         never authorization. State-changing requests use existing CSRF and exact Origin checks. One internally consistent
         current read includes original header, all messages/candidates, hidden data, variables and unknown fields.
         Optional revision is a precondition for the CURRENT chatRevision, never a request for old data; mismatch is
@@ -10149,7 +10149,19 @@ components:
         all message/candidate IDs and recognized internal references; preserve and report unknown extension references.
         Never trust input owner, binding, revision or branchRoot; trusted migration is a separate private channel. The
         canonical replay digest includes the file content hash, not its upload filename. See ChatRequestId for body-only
-        idempotency, replay and retention.
+        idempotency. SX-8 clarification pending review — this import's acceptance/result expires after 24h (overriding
+        the generic seven-day receipt period); compact owner/requestId/content-digest deduplication lasts until owner
+        deletion. A same-content retry returns the original 202 acceptance, even when the status resource has become
+        DONE or FAILED; its PENDING field describes original acceptance, not current status. After 24h return 410
+        CHAT_IMPORT_EXPIRED without starting another import. A different active request for this owner returns
+        429 RATE_LIMITED with Retry-After. Transient database/object failures remain PENDING under the existing retry lease until
+        expiry; they do not become malformed-input errors. The header's chat_metadata object becomes metadata;
+        absent chat_metadata means an empty metadata object; explicit null/non-object is INVALID_HEADER.
+        Other header fields are preserved. The proposed NEW header record is limited to 8 MiB and each raw message record to
+        1 MiB, excluding CRLF; the existing 1 MiB canonical stored-message bound still applies after remapping.
+        Blank lines and trailing JSON values are invalid. Known identity fields
+        and extension-reference counting are enumerated in specs/contracts/chat-transfer-contract.yaml; no arbitrary
+        UUID-string replacement is permitted.
       oneOf:
       - properties:
           kind:
@@ -10222,6 +10234,7 @@ components:
           - DUPLICATE_ID
           - INVALID_REFERENCE
           - MESSAGE_TOO_LARGE
+          - HEADER_TOO_LARGE
           - FILE_TOO_LARGE
       description: Fixed diagnostic and 1-based JSONL line only; no raw text, extension values or sensitive identifiers
         in logs/errors.
@@ -17023,7 +17036,7 @@ components:
             $ref: '#/components/schemas/ErrorEnvelope'
     ChatTooLarge:
       description: 'CHAT_PAYLOAD_TOO_LARGE: message exceeds 1 MiB including candidates, operation exceeds 8 MiB UTF-8
-        JSON, or staged import file exceeds 256 MiB. Reject explicitly; never truncate unknown fields or a message.'
+        JSON, staged import file exceeds 256 MiB, or import header exceeds the proposed SX-8 8 MiB bound. Reject explicitly; never truncate unknown fields or a message.'
       content:
         application/json:
           schema:
