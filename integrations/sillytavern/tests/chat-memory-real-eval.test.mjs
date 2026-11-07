@@ -5,7 +5,7 @@ import { once } from 'node:events';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { factsInText, outboundMemoryText, readEvaluationResponse, evaluationQueryRows, diagnosticEvidence, waitExtraction } from '../scripts/chat-memory-real-eval.mjs';
+import { factsInText, outboundMemoryText, readEvaluationResponse, evaluationQueryRows, diagnosticEvidence, waitExtraction, createEvaluationReauthentication } from '../scripts/chat-memory-real-eval.mjs';
 import { summarizeDiagnosticControls } from '../../../scripts/lib/chat-memory-scoring.mjs';
 import { prepareSourceIdentities, sourceMessages } from '../server-plugin/virtual-companion/lib/source-identity.js';
 import { getF2Store } from '../server-plugin/virtual-companion/lib/f2-store.js';
@@ -15,6 +15,25 @@ import { createRoundArtifacts } from '../../../scripts/lib/chat-memory-artifacts
 import { instrumentEvaluationBuild } from '../scripts/lib/chat-memory-observation-build.mjs';
 import { createEvaluationStClient } from '../scripts/lib/chat-memory-isolated-stack.mjs';
 import { refreshMemorySlot } from '../server-plugin/virtual-companion/lib/memory-guard.js';
+
+test('evaluation reuses recent reauthentication within an account without exhausting the real attempt budget', async () => {
+    let now = 0, calls = 0, otherCalls = 0;
+    const ensure = createEvaluationReauthentication({ now: () => now });
+    const admin = { reauth: async () => ({ status: ++calls <= 5 ? 200 : 429, json: { ok: true } }) };
+    const other = { reauth: async () => { otherCalls++; return { status: 200, json: { ok: true } }; } };
+    for (let i = 0; i < 12; i++) await ensure(admin, 'synthetic-password');
+    assert.equal(calls, 1);
+    await ensure(other, 'other-synthetic-password');
+    assert.equal(otherCalls, 1);
+    now = 5 * 60 * 1000;
+    await ensure(admin, 'synthetic-password');
+    assert.equal(calls, 2);
+    let rejected = 0;
+    const denied = { reauth: async () => { rejected++; return { status: 429, json: {} }; } };
+    await assert.rejects(ensure(denied, 'synthetic-password'), /CM_HTTP_429/);
+    await assert.rejects(ensure(denied, 'synthetic-password'), /CM_HTTP_429/);
+    assert.equal(rejected, 2, 'a rejected authentication never creates a fresh proof');
+});
 
 test('terminal extraction failure does not hide an independently valid published profile', async () => {
     const jobs = [{ status: 'DEAD_LETTERED', published: 1, message_id: 'synthetic-message' }];
@@ -151,6 +170,23 @@ test('real answer reader ignores role and reasoning, streams UTF-8 and requires 
         { headers: { 'content-type': 'text/event-stream' } })), /INTERRUPTED/);
     await assert.rejects(() => readEvaluationResponse(new Response('{}', { status: 503 })), /CM_HTTP_503/);
 });
+test('real answer reader drains terminal streams so downstream cancellation cannot interrupt usage settlement', async () => {
+    let sent = false, cancelled = false, ended = false;
+    const wire = new TextEncoder().encode('data: {"choices":[{"delta":{"content":"合成正文"}}]}\n\ndata: [DONE]\n\n');
+    const response = new Response(new ReadableStream({
+        async pull(controller) {
+            if (!sent) { sent = true; controller.enqueue(wire); return; }
+            // The proxy still has to persist aggregate usage before ending HTTP.
+            await new Promise(resolve => setTimeout(resolve, 10));
+            ended = true;
+            if (!cancelled) controller.close();
+        },
+        cancel() { cancelled = true; },
+    }), { headers: { 'content-type': 'text/event-stream' } });
+    assert.equal(await readEvaluationResponse(response), '合成正文');
+    assert.equal(cancelled, false);
+    assert.equal(ended, true);
+});
 test('engine observation proxy preserves production calls and keeps only a bounded authenticated RAM trace', async () => {
     const token = 'synthetic-test-service-token-at-least-32';
     const upstream = http.createServer(async (req, res) => {
@@ -186,6 +222,28 @@ test('artifact resume preserves an existing round and journal, and cannot silent
         await resumed.close();
         await assert.rejects(() => createRoundArtifacts(root, { round: 'round-missing', resume: true }), /RESUME_MISSING/);
     } finally { await fs.rm(root, { recursive: true, force: true }); }
+});
+
+test('artifact capacity scan tolerates the budget journal atomic rename without ignoring retained bytes', async t => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'vc-cm-artifact-race-'));
+    const artifacts = await createRoundArtifacts(root, { round: 'round-budget-rename' });
+    const budget = path.join(artifacts.dir, 'budget.json');
+    const temporary = budget + '.0123456789abcdef.tmp';
+    await fs.writeFile(budget, '{"calls":0}');
+    await fs.writeFile(temporary, '{"calls":1}');
+    const stat = fs.stat;
+    t.mock.method(fs, 'stat', async (file, ...args) => {
+        if (file === temporary) await fs.rename(temporary, budget);
+        return stat(file, ...args);
+    });
+    try {
+        await artifacts.write('summary.json', { processed: 104 });
+        assert.deepEqual(JSON.parse(await fs.readFile(budget, 'utf8')), { calls: 1 });
+        assert.deepEqual(JSON.parse(await fs.readFile(path.join(artifacts.dir, 'summary.json'), 'utf8')), { processed: 104 });
+        // A rename that grows the retained journal must not bypass the cap.
+        await fs.writeFile(temporary, 'x'.repeat(10 * 1024 * 1024));
+        await assert.rejects(artifacts.write('summary.json', {}), { message: 'ARTIFACT_ROUND_CAPACITY' });
+    } finally { await artifacts.close(); await fs.rm(root, { recursive: true, force: true }); }
 });
 
 test('forget observation holds only the selected record until final outbound has been checked', async () => {

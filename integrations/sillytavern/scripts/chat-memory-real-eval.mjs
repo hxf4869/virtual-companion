@@ -22,6 +22,19 @@ const expect = (response, status = 200) => {
 const quote = text => "'" + String(text).replaceAll("'", "''") + "'";
 const numberID = value => String(BigInt(value));
 
+export function createEvaluationReauthentication({ now = () => performance.now() } = {}) {
+    const fresh = new WeakMap();
+    return async (admin, password) => {
+        // The isolated runtime keeps the production 15-minute reauth window.
+        // Reuse its proof for five minutes; protected writes still check it
+        // server-side. Reauth on every case exhausts the 5/15-minute limit.
+        const last = fresh.get(admin);
+        if (last !== undefined && now() - last < 5 * 60 * 1000) return;
+        expect(await admin.reauth(password));
+        fresh.set(admin, now());
+    };
+}
+
 export function factsInText(text, facts) {
     // Never assemble one fact from the subject of one memory and the value of
     // another. Ambiguous compound clauses remain unmapped, rather than hits.
@@ -68,6 +81,9 @@ export async function readEvaluationResponse(response, { signal, stream, onBody 
     const decoder = new TextDecoder(); let pending = '', text = '', terminal = false;
     reading: for await (const chunk of response.body) {
         signal?.throwIfAborted();
+        // Keep the HTTP stream open through EOF: the meter persists aggregate
+        // usage after forwarding DONE, before it closes the response.
+        if (terminal) continue;
         pending += decoder.decode(chunk, { stream: true });
         if (pending.length > 1024 * 1024) throw new Error('CM_STREAM_LIMIT');
         let end;
@@ -75,7 +91,7 @@ export async function readEvaluationResponse(response, { signal, stream, onBody 
             const separator = pending.slice(end).match(/^\r?\n\r?\n/)[0].length;
             const block = pending.slice(0, end); pending = pending.slice(end + separator);
             for (const { data } of parseSSEText(block + '\n\n')) {
-                if (data === '[DONE]') { terminal = true; break reading; }
+                if (data === '[DONE]') { terminal = true; continue reading; }
                 if (data?.error) throw new Error('CM_PROVIDER_ERROR');
                 const content = data?.choices?.[0]?.delta?.content;
                 if (typeof content === 'string' && content) { text += content; onBody(); }
@@ -94,8 +110,8 @@ function ownerSQL(ctx, owner, sql) {
     return sqlJSON(ctx, `BEGIN; SELECT vc.set_owner_context(${id},${quote(nonce)},vc._owner_binding_expected(${id},${quote(nonce)})); ${sql} COMMIT;`);
 }
 
-async function registerModels(ctx, roles, modelRoutes, namespaceBase) {
-    expect(await ctx.admin.reauth(ctx.secrets.password));
+async function registerModels(ctx, roles, modelRoutes, namespaceBase, reauthenticate) {
+    await reauthenticate(ctx.admin, ctx.secrets.password);
     for (let index = 0; index < roles.length; index++) {
         const { profile, purpose, name } = roles[index], local = modelRoutes[index];
         const baseUrl = namespaceBase + new URL(local.baseUrl).pathname;
@@ -106,7 +122,7 @@ async function registerModels(ctx, roles, modelRoutes, namespaceBase) {
                 generationParams: profile.generationParams, capabilities: profile.capabilities,
                 reasoningLevels: profile.generationParams?.reasoningEffort ? [profile.generationParams.reasoningEffort] : [],
                 pricing: {} }] }));
-        if (purpose) await bindPurpose(ctx, purpose, name);
+        if (purpose) await bindPurpose(ctx, purpose, name, reauthenticate);
     }
     const prior = await ctx.admin.call('GET', '/api/v1/admin/embedding-config');
     const embedding = expect(await ctx.admin.call('PUT', '/api/v1/admin/embedding-config', {
@@ -117,8 +133,8 @@ async function registerModels(ctx, roles, modelRoutes, namespaceBase) {
     return embedding;
 }
 
-async function bindPurpose(ctx, purpose, name) {
-    expect(await ctx.admin.reauth(ctx.secrets.password));
+async function bindPurpose(ctx, purpose, name, reauthenticate) {
+    await reauthenticate(ctx.admin, ctx.secrets.password);
     const current = expect(await ctx.admin.listPurposes()).find(row => row.purpose === purpose);
     return expect(await ctx.admin.savePurpose(purpose, { providerId: `cm-${name}`, profileKey: 'eval', state: 'ENABLED', expectedRevision: current.revision }));
 }
@@ -194,6 +210,7 @@ export async function waitExtraction(ctx, expected, { signal, onProgress, timeou
 export async function evaluateCoreOnStack(ctx, { dataset, roles, modelRoutes, meter, budget, variant = 'baseline',
     signal, onProgress, extractionTimeoutMs = 7_200_000, caseTimeoutMs = 330000, checkpoint = async () => {} } = {}) {
     if (!ctx.second || !ctx.judge || !ctx.readEngineObservations) throw new Error('CM_ISOLATION_CONTEXT');
+    const reauthenticate = createEvaluationReauthentication();
     const accounts = new Map([[dataset.owners[0].id, { admin: ctx.admin, st: ctx.st, session: ctx.secrets.session, password: ctx.secrets.password }],
         [dataset.owners[1].id, ctx.second]]);
     const sourceMap = new Map(), savedAt = new Map(), sessionsByTurn = new Map(), instances = new Map(), cards = new Map();
@@ -234,7 +251,7 @@ export async function evaluateCoreOnStack(ctx, { dataset, roles, modelRoutes, me
     // The outer runner owns the single meter; replacing this observer does not
     // add an outbound route or alter a serialized provider request.
     ctx.setOutboundObserver(inspectOutbound);
-    const embedding = await registerModels(ctx, roles, modelRoutes, ctx.meterBase);
+    const embedding = await registerModels(ctx, roles, modelRoutes, ctx.meterBase, reauthenticate);
     const marker = await foregroundMarker(ctx, 'foreground');
     const probe = await ctx.st.generate({ chat_completion_source: 'custom', model: roles[1].profile.modelId,
         custom_url: marker, max_tokens: roles[1].profile.maxOutputTokens, stream: true,
@@ -394,7 +411,7 @@ export async function evaluateCoreOnStack(ctx, { dataset, roles, modelRoutes, me
                 const current = await listMemory(account, local.relationshipId, sourceMap, dataset, local);
                 const target = current.find(row => row.lifecycle === 'ACTIVE' && row.mapping.factIds.includes(testCase.action.targetFactId));
                 if (!target) throw new Error('CM_CORRECTION_TARGET_MISSING');
-                expect(await account.admin.reauth(account.password));
+                await reauthenticate(account.admin, account.password);
                 expect(await account.admin.call('PATCH', `/api/v1/memories/${target.memoryId}`, { expectedVersion: target.version, summary: testCase.action.replacementContent }));
             }
             if (testCase.action?.kind !== 'forget') result = await ask(testCase, caseIndex);
@@ -409,7 +426,7 @@ export async function evaluateCoreOnStack(ctx, { dataset, roles, modelRoutes, me
                 const target = (await listMemory(account, local.relationshipId, sourceMap, dataset, local))
                     .find(row => row.lifecycle === 'ACTIVE' && row.mapping.factIds.includes(testCase.action.targetFactId));
                 if (!target) throw new Error('CM_FORGET_TARGET_MISSING');
-                expect(await account.admin.reauth(account.password));
+                await reauthenticate(account.admin, account.password);
                 const deletionStarted = performance.now();
                 const recordId = sqlJSON(ctx, `SELECT to_json(engine_record_id) FROM vc.memory_item WHERE owner_user_id=${numberID(account.session.accountId)} AND id=${numberID(target.memoryId)};`);
                 if (!recordId) throw new Error('CM_FORGET_TARGET_MISSING');
@@ -476,7 +493,7 @@ export async function evaluateCoreOnStack(ctx, { dataset, roles, modelRoutes, me
         onProgress?.({ phase: 'diagnostic-control', control, completed: controls[control].length, planned: controlCases.length });
     }
 
-    await bindPurpose(ctx, 'FOREGROUND_CHAT', 'judge');
+    await bindPurpose(ctx, 'FOREGROUND_CHAT', 'judge', reauthenticate);
     const judgeMarker = await foregroundMarker(ctx, 'judge');
     const doubles = new Set(dataset.cases.filter((_row, index) => index % 20 < 2).map(row => row.id));
     const doublePlanned = dataset.cases.filter(testCase => doubles.has(testCase.id)).reduce((n, testCase) => n + (testCase.category === 'forget' ? FORGET_STAGES.length : 1), 0);
