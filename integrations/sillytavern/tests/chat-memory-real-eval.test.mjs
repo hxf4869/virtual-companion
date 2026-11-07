@@ -5,8 +5,8 @@ import { once } from 'node:events';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { factsInText, outboundMemoryText, readEvaluationResponse, evaluationQueryRows, diagnosticEvidence, waitExtraction, createEvaluationReauthentication } from '../scripts/chat-memory-real-eval.mjs';
-import { summarizeDiagnosticControls } from '../../../scripts/lib/chat-memory-scoring.mjs';
+import { factsInText, outboundMemoryText, readEvaluationResponse, evaluationQueryRows, diagnosticEvidence, assertDiagnosticControl, evaluateCoreOnStack, waitExtraction, createEvaluationReauthentication } from '../scripts/chat-memory-real-eval.mjs';
+import { AI_FLAVOR_FIELDS, summarizeDiagnosticControls } from '../../../scripts/lib/chat-memory-scoring.mjs';
 import { prepareSourceIdentities, sourceMessages } from '../server-plugin/virtual-companion/lib/source-identity.js';
 import { getF2Store } from '../server-plugin/virtual-companion/lib/f2-store.js';
 import { startEngineObservationProxy } from '../scripts/lib/chat-memory-engine-proxy.mjs';
@@ -131,6 +131,106 @@ test('gold diagnostic exposes only allowed evidence and controls keep their own 
     const summary = summarizeDiagnosticControls(selected, results);
     assert.equal(summary.planned, 7); assert.equal(summary.coverage.numerator, 1);
     assert.equal(summary.accuracy.denominator, 7); assert.equal(summary.accuracy.numerator, 1);
+});
+
+test('diagnostic controls accept empty observed memory and still require actual gold injection', () => {
+    const dataset = generateChatMemoryDataset(), testCase = dataset.cases[0];
+    const goldEvidence = diagnosticEvidence(testCase, dataset.facts);
+    assert.ok(goldEvidence);
+    // The observer inserts a separator even when the final body has no slot.
+    const memoryText = '\n' + outboundMemoryText({ messages: [{ role: 'user', content: testCase.query }] });
+    for (const control of ['memory-off', 'gold-evidence']) {
+        assert.doesNotThrow(() => assertDiagnosticControl({ control, memoryText,
+            goldEvidence: control === 'gold-evidence' ? goldEvidence : '', goldEvidenceObserved: true }));
+        assert.throws(() => assertDiagnosticControl({ control,
+            memoryText: outboundMemoryText({ messages: [{ role: 'system', content: '<vc-core-memory>真实非空记忆</vc-core-memory>' }] }) }),
+        { message: 'CM_CONTROL_MEMORY_PRESENT' });
+    }
+    assert.throws(() => assertDiagnosticControl({ control: 'gold-evidence', memoryText, goldEvidence, goldEvidenceObserved: false }),
+        { message: 'CM_CONTROL_GOLD_MISSING' });
+});
+
+test('diagnostics-only uses the real observer/ask/judge for 14 fixed controls without replaying sources or core', async () => {
+    const dataset = generateChatMemoryDataset(), calls = [], queries = [], reviews = [], checkpoints = [];
+    let observer, bindings = 0, memories = 0, omitGold = false;
+    const ok = json => ({ status: 200, json });
+    const admin = {
+        reauth: async () => ok({}), saveProvider: async () => ok({}), savePurpose: async () => ok({}),
+        listPurposes: async () => ok(['FOREGROUND_CHAT', 'MEMORY_EXTRACTION_DEDUP_SUMMARY'].map(purpose => ({ purpose, revision: 1 }))),
+        listProviders: async () => ok(['extraction', 'foreground', 'judge'].map(name => ({ providerId: `cm-${name}`, revision: 1 }))),
+        async call(method, route, body) {
+            if (route === '/api/v1/admin/embedding-config') return ok({ revision: 1 });
+            if (method === 'POST' && route === '/api/v1/st/bindings') {
+                if (!body.relationshipId) bindings++;
+                return ok({ relationshipId: '2', conversationId: '3', mode: body.mode });
+            }
+            if (method === 'POST' && route === '/api/v1/st/memory/recall') {
+                assert.equal(body.enabled, false);
+                return ok({ status: 'disabled', block: '', memoryIds: [] });
+            }
+            if (method === 'GET' && route.startsWith('/api/v1/relationships/2/memories?')) { memories++; return ok([]); }
+            assert.fail(`unexpected admin operation: ${method} ${route}`);
+        },
+    };
+    const generate = route => async body => {
+        if (route === 1 && body.vc_memory) {
+            assert.equal(body.vc_memory.enabled, false);
+            queries.push(body);
+        }
+        if (route === 2) reviews.push(body);
+        const id = calls.length + 1;
+        calls.push({ id, state: 'SETTLED' });
+        const observed = omitGold ? { ...body, messages: body.messages.filter(message => !message.content.includes('<cm-diagnostic-evidence>')) } : body;
+        await observer({ route, id, body: observed });
+        const answer = route === 2 ? JSON.stringify({ correct: true, grounded: true, abstains: false, reasonCode: 'OK',
+            aiFlavor: Object.fromEntries(AI_FLAVOR_FIELDS.map(key => [key, false])) }) : '合成回答';
+        return { res: new Response(`data: ${JSON.stringify({ choices: [{ delta: { content: answer } }] })}\n\ndata: [DONE]\n\n`) };
+    };
+    const st = { generate: generate(1), async call(method, route, body) {
+        if (route === '/api/characters/import') return ok({ file_name: 'synthetic-card' });
+        if (route === '/api/chats/save') {
+            assert.match(body.file_name, /^cm-q-\d+-(?:memory-off|gold-evidence)$/);
+            assert.ok(body.chat.slice(1).every(row => row.extra.vc_source.settled === false));
+            return ok({ vc_f2: body.chat[0].chat_metadata.vc_f2 });
+        }
+        assert.fail(`unexpected ST operation: ${method} ${route}`);
+    } };
+    const ctx = { admin, st, secrets: { password: 'synthetic', session: { accountId: '1' } }, second: {},
+        judge: { st: { generate: generate(2) } }, meterBase: 'http://meter.test', scope: 'round-fixture',
+        embeddingModel: { name: 'synthetic', digest: 'synthetic' },
+        setOutboundObserver: value => { observer = value; },
+        readEngineObservations: async () => ({ sequence: 0, searches: [], incomplete: false }),
+        w08: { psql: sql => { assert.match(sql, /FROM vc\.memory_item/); return '[]'; } },
+    };
+    const roles = ['extraction', 'foreground', 'judge'].map(name => ({ name, profile: {
+        modelId: 'synthetic', protocol: 'OPENAI_CHAT_COMPLETIONS', maxOutputTokens: 128, contextWindowTokens: 2048 } }));
+    const options = { dataset, roles, modelRoutes: roles.map((_role, at) => ({ baseUrl: `http://meter.test/${at}`, credential: 'synthetic' })),
+        meter: { snapshot: () => ({ calls }) }, budget: { snapshot: () => ({ calls: calls.length }) }, diagnosticsOnly: true,
+        checkpoint: async partial => checkpoints.push(partial) };
+    const result = await evaluateCoreOnStack(ctx, options);
+    assert.equal(queries.length, 14);
+    assert.equal(reviews.length, 14, 'controls have one review and never inherit core double reviews');
+    assert.equal(calls.length, 29, 'only one provider probe plus 14 answers and 14 judges');
+    assert.equal(bindings, 1); assert.equal(memories, 14);
+    assert.deepEqual(Object.keys(result).sort(), ['diagnosticControls', 'modelCalls']);
+    for (const control of ['memory-off', 'gold-evidence']) {
+        assert.deepEqual(result.diagnosticControls[control].results.map(row => row.caseId),
+            dataset.cases.filter((_row, at) => at % 20 === 0).map(row => row.id));
+        assert.equal(result.diagnosticControls[control].planned, 7);
+        assert.equal(result.diagnosticControls[control].coverage.value, 1);
+    }
+    assert.ok(checkpoints.every(row => ['diagnostic-control', 'judge'].includes(row.phase) && !row.results));
+    // Dropping evidence at the final wire must still reject the affected gold
+    // controls even though the evaluator put evidence into its initial body.
+    omitGold = true;
+    const missing = await evaluateCoreOnStack(ctx, options);
+    assert.equal(missing.diagnosticControls['memory-off'].coverage.value, 1);
+    const goldRows = missing.diagnosticControls['gold-evidence'].results;
+    assert.ok(goldRows.some(row => row.failureCode === 'CM_CONTROL_GOLD_MISSING'));
+    for (const row of goldRows) {
+        const testCase = dataset.cases.find(testCase => testCase.id === row.caseId);
+        assert.equal(row.status, testCase.goldFactIds.length ? 'FAILED' : 'COMPLETED');
+    }
 });
 
 test('rank instrumentation changes only the disposable copy and observes before budget clipping', async () => {

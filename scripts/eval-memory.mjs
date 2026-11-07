@@ -108,12 +108,14 @@ async function main(){
                 mode: arg('--budget-mode', 'cny'), ownerTokenOnly: process.argv.includes('--owner-token-only'),
                 seed: Number(arg('--seed', '20261106')), variant: arg('--variant', 'baseline'),
                 quoteFile: arg('--quote-file', undefined), root: arg('--output', undefined), maxCalls: Number(arg('--max-calls', '6000')),
-                baselineFile: arg('--baseline', undefined), resume: process.argv.includes('--resume'), signal: controller.signal,
+                baselineFile: arg('--baseline', undefined), resume: process.argv.includes('--resume'),
+                diagnosticsOnly: process.argv.includes('--diagnostics-only'), signal: controller.signal,
                 onProgress: progress => console.log(JSON.stringify(progress)) });
             console.log(JSON.stringify({ executionStatus: report.executionStatus, verdict: report.verdict,
+                diagnosticSupplement: report.diagnosticSupplement,
                 accuracy: report.quality.accuracy, byCategory: report.quality.byCategory, gates: report.gates,
                 budget: report.budget, actualCostCny: report.actualCostCny }));
-            if (report.executionStatus !== 'COMPLETE') process.exitCode = 1;
+            if ((process.argv.includes('--diagnostics-only') ? report.diagnosticSupplement?.executionStatus : report.executionStatus) !== 'COMPLETE') process.exitCode = 1;
         } finally { process.removeListener('SIGINT', interrupt); process.removeListener('SIGTERM', interrupt); }
         return;
     }

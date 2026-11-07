@@ -587,6 +587,10 @@ node scripts/eval-memory.mjs --mode real --config-ref local-catalog --round roun
 保留上限见 `scripts/lib/chat-memory-artifacts.mjs`；退出清理本轮容器、卷、镜像和临时目录，保留共享模型。
 失败后加 `--resume` 会在**原预算账本**上从头重放全部数据和题目，不恢复上次数据快照或题目进度；不得改
 seed、variant 或配置，历史尝试与调用计量保留。比较候选时用相同数据和配置，并传 `--baseline <summary.json>`。
+已有核心报告需要补跑诊断对照时，可加 `--resume --diagnostics-only`：只在空的隔离实例中运行固定两组各7题与评审，
+不重放历史提取或核心题。结果追加到 `summary.json.diagnosticSupplement`，标明补跑版本和空历史差异；原核心结果、
+失败对照、二审、性能样本及执行身份保持不变，预算与所有调用继续累计。CLI 退出状态只表示补充对照执行是否完整，
+不将原核心 `FAIL / INCOMPLETE` 改为通过。
 提取失败、超时、预算停止和评审失败仍保留在计划分母；报告区分执行覆盖与质量门槛，不把首次失败基线报成通过。
 
 篇幅效果可在本机运行 `node scripts/reply-length-stats.mjs <chat.jsonl或目录>`（仓库根，RQ-9）。按新回复保存的实际 `extra.vc_reply_length_tier` 输出各档数量、最小 / 最大 / 平均与 P50 / P90 字符数；Unicode 字符含标点、去空白和语音 / 表情控制标记。历史无档位记录单列，不猜测。目录只读最多 30 个 JSONL，每文件上限 2 MiB；只输出统计，不创建报告或记录正文。

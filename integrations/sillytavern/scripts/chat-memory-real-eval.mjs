@@ -70,6 +70,11 @@ export function diagnosticEvidence(testCase, facts) {
         + '\n</cm-diagnostic-evidence>';
 }
 
+export function assertDiagnosticControl({ control, memoryText, goldEvidence, goldEvidenceObserved }) {
+    if (control && memoryText?.trim()) throw new Error('CM_CONTROL_MEMORY_PRESENT');
+    if (goldEvidence && !goldEvidenceObserved) throw new Error('CM_CONTROL_GOLD_MISSING');
+}
+
 export async function readEvaluationResponse(response, { signal, stream, onBody = () => {} } = {}) {
     if (!response.ok) throw new Error(`CM_HTTP_${response.status}`);
     if (!(stream ?? response.headers.get('content-type')?.includes('text/event-stream'))) {
@@ -208,13 +213,14 @@ export async function waitExtraction(ctx, expected, { signal, onProgress, timeou
 }
 
 export async function evaluateCoreOnStack(ctx, { dataset, roles, modelRoutes, meter, budget, variant = 'baseline',
-    signal, onProgress, extractionTimeoutMs = 7_200_000, caseTimeoutMs = 330000, checkpoint = async () => {} } = {}) {
+    signal, onProgress, diagnosticsOnly = false, extractionTimeoutMs = 7_200_000, caseTimeoutMs = 330000, checkpoint = async () => {} } = {}) {
     if (!ctx.second || !ctx.judge || !ctx.readEngineObservations) throw new Error('CM_ISOLATION_CONTEXT');
     const reauthenticate = createEvaluationReauthentication();
     const accounts = new Map([[dataset.owners[0].id, { admin: ctx.admin, st: ctx.st, session: ctx.secrets.session, password: ctx.secrets.password }],
         [dataset.owners[1].id, ctx.second]]);
     const sourceMap = new Map(), savedAt = new Map(), sessionsByTurn = new Map(), instances = new Map(), cards = new Map();
     const metricRows = [], results = [], answerTasks = [], callCases = new Map();
+    const controlCases = dataset.cases.filter((_testCase, index) => index % 20 === 0);
     const replyQuality = createReplyQualityMetrics({ capacity: 1000 });
     const sampleIds = new Map();
     dataset.instances.flatMap(instance => instance.sessions.flatMap(session => session.messages)).forEach((row, index) => sampleIds.set(row.id, 10000 + index));
@@ -238,7 +244,7 @@ export async function evaluateCoreOnStack(ctx, { dataset, roles, modelRoutes, me
             const observedCase = activeCase;
             const memoryText = outboundMemoryText(body);
             observedCase.outbound = true;
-            observedCase.memoryText += '\n' + memoryText;
+            if (memoryText) observedCase.memoryText += '\n' + memoryText;
             observedCase.injectedFactIds = [...new Set([...observedCase.injectedFactIds, ...factsInText(memoryText, dataset.facts)])];
             if (observedCase.goldEvidence) observedCase.goldEvidenceObserved = (body.messages || [])
                 .some(message => typeof message.content === 'string' && message.content.includes(observedCase.goldEvidence));
@@ -259,8 +265,18 @@ export async function evaluateCoreOnStack(ctx, { dataset, roles, modelRoutes, me
     { signal: AbortSignal.any([...(signal ? [signal] : []), AbortSignal.timeout(caseTimeoutMs)]) });
     await readEvaluationResponse(probe.res, { signal, stream: true });
     onProgress?.({ phase: 'provider-probe', status: 'PASS', budget: budget.snapshot() });
+    let extraction = { jobs: [], timedOut: false };
+    const extractionRecords = [];
+    if (diagnosticsOnly) {
+        // Controls disable recall. Empty bindings reproduce their runtime path
+        // without replaying sources, extraction, corrections or forgetting.
+        for (const instance of dataset.instances.filter(row => controlCases.some(testCase => testCase.instanceId === row.id))) {
+            const account = accounts.get(instance.ownerId), cardKey = instance.ownerId + '/' + instance.roleKey;
+            if (!cards.has(cardKey)) cards.set(cardKey, await importSyntheticCard(account.st, 'CM合成角色'));
+            instances.set(instance.id, { ...instance, account, card: cards.get(cardKey), relationshipId: null });
+        }
+    } else {
     const extractionController = new AbortController();
-    let extraction;
     const extractionTask = waitExtraction(ctx, dataset.sourceCounts.eligibleUserTurns, {
         signal: AbortSignal.any([extractionController.signal, ...(signal ? [signal] : [])]), onProgress,
         timeoutMs: extractionTimeoutMs, savedAt, sourceMap, measure, instances,
@@ -305,12 +321,12 @@ export async function evaluateCoreOnStack(ctx, { dataset, roles, modelRoutes, me
     await extractionTask;
     if (extraction.error) throw extraction.error;
     } catch (error) { extractionController.abort(); await extractionTask; throw error; }
-    const extractionRecords = [];
     for (const local of instances.values()) {
         local.memories = await listMemory(local.account, local.relationshipId, sourceMap, dataset, local);
         extractionRecords.push(...local.memories.map(row => row.mapping));
     }
     await checkpoint({ phase: 'extracted', sourceCounts: dataset.sourceCounts, jobs: extraction.jobs.map(row => ({ status: row.status, published: Number(row.published) })), budget: budget.snapshot() });
+    }
 
     async function ask(testCase, caseIndex, stage = null, beforeSend, control = null) {
         signal?.throwIfAborted();
@@ -323,7 +339,8 @@ export async function evaluateCoreOnStack(ctx, { dataset, roles, modelRoutes, me
         prepareSourceIdentities(rows, { settled: false, sourceTimezone: local.sourceTimezone });
         const saved = expect(await account.st.call('POST', '/api/chats/save', { avatar_url: card.avatar, file_name: file, chat: rows }));
         const binding = expect(await account.admin.call('POST', '/api/v1/st/bindings', { chatIdentity: identity, characterRef: card.avatar,
-            mode: local.mode, displayName: 'CM合成查询', relationshipId: local.relationshipId }));
+            mode: local.mode, displayName: 'CM合成查询', ...(local.relationshipId ? { relationshipId: local.relationshipId } : {}) }));
+        if (!local.relationshipId) local.relationshipId = binding.relationshipId;
         rows[0].chat_metadata = { vc_f2: saved.vc_f2, vc_binding: binding };
         const beforeTrace = await ctx.readEngineObservations(0);
         let recalled = { memoryIds: [] };
@@ -373,8 +390,7 @@ export async function evaluateCoreOnStack(ctx, { dataset, roles, modelRoutes, me
             throw error;
         } finally { activeCase = null; }
         if (!run.outbound) throw new Error('CM_OUTBOUND_NOT_OBSERVED');
-        if (control && run.memoryText) throw new Error('CM_CONTROL_MEMORY_PRESENT');
-        if (goldEvidence && !run.goldEvidenceObserved) throw new Error('CM_CONTROL_GOLD_MISSING');
+        assertDiagnosticControl(run);
         measureAnswer(testCase.id + (stage ? ':' + stage : ''), 'pipeline_first_body_ms', first);
         measureAnswer(testCase.id + (stage ? ':' + stage : ''), 'pipeline_complete_ms', performance.now() - started);
         const trace = await ctx.readEngineObservations(beforeTrace.sequence);
@@ -403,7 +419,7 @@ export async function evaluateCoreOnStack(ctx, { dataset, roles, modelRoutes, me
         return result;
     }
 
-    for (let caseIndex = 0; caseIndex < dataset.cases.length; caseIndex++) {
+    for (let caseIndex = 0; !diagnosticsOnly && caseIndex < dataset.cases.length; caseIndex++) {
         const testCase = dataset.cases[caseIndex], local = instances.get(testCase.instanceId), account = local.account;
         let result;
         try {
@@ -481,8 +497,9 @@ export async function evaluateCoreOnStack(ctx, { dataset, roles, modelRoutes, me
         await checkpoint({ phase: 'answer', results, budget: budget.snapshot() });
     }
 
-    const controlCases = dataset.cases.filter((_testCase, index) => index % 20 === 0);
     const controls = { 'memory-off': [], 'gold-evidence': [] };
+    const summarizeControls = () => Object.fromEntries(Object.entries(controls).map(([control, rows]) =>
+        [control, summarizeDiagnosticControls(controlCases, rows)]));
     for (const control of Object.keys(controls)) for (const testCase of controlCases) {
         try { controls[control].push(await ask(testCase, dataset.cases.indexOf(testCase), null, undefined, control)); }
         catch (error) {
@@ -491,6 +508,7 @@ export async function evaluateCoreOnStack(ctx, { dataset, roles, modelRoutes, me
                 failureCode: /^CM_[A-Z0-9_]+$/.test(error.message) ? error.message : 'CM_CONTROL_FAILED' });
         }
         onProgress?.({ phase: 'diagnostic-control', control, completed: controls[control].length, planned: controlCases.length });
+        if (diagnosticsOnly) await checkpoint({ phase: 'diagnostic-control', diagnosticControls: summarizeControls() });
     }
 
     await bindPurpose(ctx, 'FOREGROUND_CHAT', 'judge', reauthenticate);
@@ -520,13 +538,18 @@ export async function evaluateCoreOnStack(ctx, { dataset, roles, modelRoutes, me
         } catch (error) { if (signal?.aborted) throw error; task.result.status = 'FAILED'; task.result.failureCode = 'CM_JUDGE_FAILED'; }
         task.answer = ''; reviewed++;
         onProgress?.({ phase: 'judge', completed: reviewed, planned: answerTasks.length });
-        await checkpoint({ phase: 'judge', results, budget: budget.snapshot() });
+        await checkpoint(diagnosticsOnly ? { phase: 'judge', diagnosticControls: summarizeControls() }
+            : { phase: 'judge', results, budget: budget.snapshot() });
     }
     for (const result of results) if (result.forgetStages && result.status === 'COMPLETED') {
         const failed = FORGET_STAGES.map(stage => result.forgetStages[stage]).find(stage => stage?.status !== 'COMPLETED');
         if (failed) result.status = failed.status;
     }
-    // No response text survives the stack callback.
+    // No response text survives the stack callback. Supplements contain no
+    // core quality/metrics that could be mistaken for a fresh core baseline.
+    const diagnosticControls = summarizeControls();
+    const modelCalls = meter.snapshot().calls.map(call => ({ ...call, ...callCases.get(call.id) }));
+    if (diagnosticsOnly) return { diagnosticControls, modelCalls };
     const quality = summarizeChatMemoryEvaluation(dataset.cases, results, { facts: dataset.facts, extractionRecords });
     return { schemaVersion: 1, variant, dataset: { version: dataset.version, seed: dataset.seed, hashes: dataset.hashes, sourceCounts: dataset.sourceCounts },
         results, quality, reply: summarizeReplyQuality(replyQuality.drain()), metrics: summarizeSamples(metricRows), metricRows,
@@ -543,9 +566,9 @@ export async function evaluateCoreOnStack(ctx, { dataset, roles, modelRoutes, me
         judgeCalibration: { plannedSecondReviews: doublePlanned, secondReviews: doubleCount, failedSecondReviews: doubleFailed,
             notRunSecondReviews: doublePlanned - doubleCount - doubleFailed,
             agree: doubleAgree, agreement: doublePlanned ? doubleAgree / doublePlanned : null, humanReview: 'NOT_RUN' },
-        diagnosticControls: Object.fromEntries(Object.entries(controls).map(([control, rows]) => [control, summarizeDiagnosticControls(controlCases, rows)])),
+        diagnosticControls,
         measurementLimits: ['pipeline-not-visible-paint', 'late-stage-original-source-reconcile-not-inflight', 'same-model-judge-see-config'],
-        modelCalls: meter.snapshot().calls.map(call => ({ ...call, ...callCases.get(call.id) })),
+        modelCalls,
         budget: budget.snapshot(), embedding: { model: embedding.model, artifactVersion: embedding.artifactVersion, dimensions: embedding.dimensions },
     };
 }
