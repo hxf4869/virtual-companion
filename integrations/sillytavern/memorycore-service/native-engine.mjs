@@ -392,8 +392,10 @@ export async function createNativeFactory(api) {
                 const space = store.getSpace?.();
                 // reuseInput is constructed by business after its checks, never
                 // accepted from the HTTP payload. Include actual native inputs too.
+                // Go's candidate map has no ordering; normalize the allow-set
+                // only in the key, leaving the actual retrieval input intact.
                 const key = observe && typeof reuseInput === 'string' && !space?.rebuilding ? JSON.stringify({
-                    reuseInput, query, topK, scope, allowedRecordIds, eventDate, dateRestricted, gateTexts, cacheOwnerId, cacheScope,
+                    reuseInput, query, topK, scope, allowedRecordIds: allowedRecordIds?.slice().sort(), eventDate, dateRestricted, gateTexts, cacheOwnerId, cacheScope,
                     space, embedding: embedding ? { available: true, spaceId: embedding.spaceId, snapshot: embedding.snapshot,
                         embed: typeof embedding.embed === 'function', embedQuery: typeof embedding.embedQuery === 'function', embedBatch: typeof embedding.embedBatch === 'function' } : { available: false },
                     rerank: { ...client, deploymentPort: process.env.VC_RERANK_PORT || String(RERANK.port) },

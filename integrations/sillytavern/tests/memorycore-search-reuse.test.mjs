@@ -240,14 +240,15 @@ test('native instances and reopened engines never share a search result', async 
     assert.equal(state.calls, 3);
 });
 
-async function businessFixture(t) {
+async function businessFixture(t, recordIds = ['r1']) {
     const context = await fixture();
+    context.state.rows = recordIds.map(record_id => ({ ...context.state.rows[0], record_id }));
     const root = await fs.mkdtemp(path.join(os.tmpdir(), 'vc-search-reuse-'));
     const dir = path.join(root, 'owners', '1');
     const operation = path.join(dir, 'operations', 'published.json');
     await fs.mkdir(path.dirname(operation), { recursive: true });
-    const publish = async status => fs.writeFile(operation, JSON.stringify({ scope, status, receipt: { recordIds: ['r1'] },
-        proposal: { records: [{ id: 'r1', metadata: { vcDependencies: ['source1'] } }] } }));
+    const publish = async status => fs.writeFile(operation, JSON.stringify({ scope, status, receipt: { recordIds },
+        proposal: { records: recordIds.map(id => ({ id, metadata: { vcDependencies: ['source1'] } })) } }));
     await publish('published');
     let embeddings = 0, searches = 0;
     const nativeSearch = context.native.search;
@@ -272,6 +273,29 @@ test('two business requests retain two pre/post checks but execute native retrie
     assert.equal(state.scopeChecks, 4, 'scope revision checked before and after both requests');
     assert.equal(state.configures, 2, 'space setup is still validated on both requests');
     assert.deepEqual(counts(), { embeddings: 2, searches: 2 });
+});
+
+test('business reuses a permuted allowed set without reordering retrieval or accepting changed membership', async t => {
+    const { engine, state, request } = await businessFixture(t, ['r1', 'r2']);
+    const seen = [];
+    state.recall = ({ filter }) => {
+        seen.push([...filter.allowedRecordIds]);
+        return { hits: state.rows.filter(row => filter.allowedRecordIds.includes(row.record_id))
+            .map(row => ({ record_id: row.record_id, content: row.content, score: 0.9, cosine: 0.9 })) };
+    };
+    const firstIds = ['r2', 'r1'];
+    const first = await engine.invoke('search', { ...request, allowedRecordIds: firstIds });
+    const second = await engine.invoke('search', { ...request, allowedRecordIds: ['r1', 'r2'] });
+    assert.equal(second.stats.searchReuseHit, 1);
+    assert.deepEqual(second.hits, first.hits);
+    assert.deepEqual(firstIds, ['r2', 'r1']);
+    assert.deepEqual(seen, [['r2', 'r1']], 'only the cache key may normalize the unordered set');
+    assert.equal(state.scopeChecks, 4, 'both HTTP requests still check current scope before and after search');
+    assert.equal(state.configures, 2);
+    const narrowed = await engine.invoke('search', { ...request, allowedRecordIds: ['r2'] });
+    assert.equal(narrowed.stats.searchReuseHit, 0);
+    assert.deepEqual(narrowed.hits.map(row => row.record_id), ['r2']);
+    assert.deepEqual(seen, [['r2', 'r1'], ['r2']]);
 });
 
 test('business checks current publication, cleanup and space configuration on every repeat', async t => {
