@@ -561,6 +561,7 @@ func (m *storedChatMutation) persist(ctx context.Context, tx pgx.Tx, requestID, 
 		Revision: chat.Revision, MetadataRevision: chat.MetadataRevision, OrderRevision: chat.OrderRevision,
 		AuthorityEpoch: chat.AuthorityEpoch, Changed: []StoredMessage{}, DeletedIDs: []string{}}
 	changedIDs, sourceChanges := []string{}, []string{}
+	projectionRows, projectionIDs := []ChatData{}, []string{}
 	clearReceipts := false
 	for id, row := range m.messages {
 		before, existed := m.start[id]
@@ -572,6 +573,7 @@ func (m *storedChatMutation) persist(ctx context.Context, tx pgx.Tx, requestID, 
 			chat.MessageCount--
 			commit.DeletedIDs = append(commit.DeletedIDs, id)
 			sourceChanges = append(sourceChanges, id)
+			projectionIDs = append(projectionIDs, id)
 			clearReceipts = true
 			continue
 		}
@@ -630,6 +632,12 @@ func (m *storedChatMutation) persist(ctx context.Context, tx pgx.Tx, requestID, 
 		if sourceChanged {
 			sourceChanges = append(sourceChanges, id)
 		}
+		// Settling a candidate affects source availability without changing its
+		// signature or generation. Publish it even when sourceChanged is false.
+		if contentChanged {
+			projectionRows = append(projectionRows, storedSourceProjection(row))
+			projectionIDs = append(projectionIDs, id)
+		}
 		if m.returned[id] || positionChanged {
 			full, err := projectStoredMessage(row, "full")
 			if err != nil {
@@ -651,6 +659,9 @@ func (m *storedChatMutation) persist(ctx context.Context, tx pgx.Tx, requestID, 
 		return commit, err
 	}
 	if _, err := tx.Exec(ctx, `SELECT vc.revoke_stored_chat_sources($1,$2,$3,false)`, m.owner, chat.ChatID, sourceChanges); err != nil {
+		return commit, err
+	}
+	if err := publishStoredSources(ctx, tx, m.owner, chat.ChatID, projectionRows, projectionIDs, m.orderChanged); err != nil {
 		return commit, err
 	}
 	if m.generation != nil {

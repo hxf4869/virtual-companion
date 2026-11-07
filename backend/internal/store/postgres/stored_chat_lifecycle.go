@@ -40,6 +40,9 @@ func (s *Store) DeleteStoredChat(ctx context.Context, owner int64, chatID string
 			if _, err = tx.Exec(ctx, `SELECT vc.revoke_stored_chat_sources($1,$2,'{}',true)`, owner, id); err != nil {
 				return chatWriteResult{}, err
 			}
+			if err = publishStoredSources(ctx, tx, owner, id, nil, nil, false); err != nil {
+				return chatWriteResult{}, err
+			}
 			if _, err = tx.Exec(ctx, `SELECT vc.fence_changed_stored_chat_runs($1,$2)`, owner, id); err != nil {
 				return chatWriteResult{}, err
 			}
@@ -141,6 +144,9 @@ func (s *Store) ForkStoredChat(ctx context.Context, owner int64, chatID string, 
 				return chatWriteResult{}, err
 			}
 			if _, err = tx.Exec(ctx, `SELECT vc.copy_stored_chat_prefix($1,$2,$3,$4,$5)`, owner, id, child.ChatID, through, encodedMapping); err != nil {
+				return chatWriteResult{}, err
+			}
+			if _, err = tx.Exec(ctx, `SELECT vc.copy_stored_chat_sources($1,$2,$3,$4)`, owner, id, child.ChatID, encodedMapping); err != nil {
 				return chatWriteResult{}, err
 			}
 			changed := make([]string, len(mapping))

@@ -409,6 +409,11 @@ GO/FROZEN；本轮这两种模式只出现在隔离测试库。会话字段先�
 
 消息编辑、切候选、删除、no_memory、分支变化须在同一事务先提交来源撤销/版本屏障；异步 outbox 可负责补充派生/提取，检索和 MemoryCore commit 必须看到最新屏障，不能等待异步镜像更新后才禁止旧记忆。未更改来源签名的纯 UI extra/标题改动不推进 sourceRevision；签名按已有文本、说话者、hidden/type/no_memory、候选 variables 及时间规则保持。可信迁移保留所有 revision/generation 和遗忘状态；来源未知返回 UNAVAILABLE，不能当 DELETED。
 
+
+SX-7 私有来源/inbox 由 Go 调用方在每次 HTTP 调用前读取当前权威（不缓存）：只有 ST 才发请求；GO 直接走同库来源/追加，FROZEN 或查询失败拒绝旧路径。不新增 ST→Go 权威回查接口。SX-8 切换前置按 Owner 2026-11-07 决定执行：先置 FROZEN，停止产生新的旧存储请求，再排空 ST 侧已经进入的来源读取/inbox 保存；只有确认排空后才导出迁移。排空判定必须覆盖服务端处理生命周期（含已断开客户端但尚未完成的处理），不能以 Go 请求数、超时或固定等待时长替代：在 ST 私有 sources/inbox 入口维护活动处理计数，finally 完成时递减；冻结后切换控制先原子关闭 ST 本地准入闸门（不回查 Go），拒绝已通过 Go 检查但尚未到达 ST 的迟到请求，再等待活动计数为零，才能进入导出。实际计数/切换控制实现归 SX-8，未具备时不得切换真实账号。
+
+SX-8 对应合成测试：分别暂停 sources 读与 inbox 落盘于准入后，置 FROZEN 后新 Go 调用均零 ST 请求；迁移流程在活动计数非零时不得导出。释放暂停操作并等待服务端完成后才允许导出，已完成 inbox 只出现一次；再覆盖客户端先取消/超时而服务端仍在保存的情况，导出仍须等待 finally 排空。切换失败保持冻结或按已批准回滚流程处理，不以重新查询权威代替排空。
+
 JSONL 新 API 在一个一致的当前读取中导出**完整**头部与全部消息/candidates/extra/variables/未知字段；可选 revision 只作当前 chatRevision 的精确前置条件，过旧返回 409 `REVISION_CONFLICT`，不提供历史版本下载，UTF-8+LF；当前 MVU 的 `/api/chats/export` 兼容门面仍返回 `{message,result}`。JSONL 行语义往返，不承诺重新序列化后的逐字节相同；原始备份另保留原字节哈希。
 
 用户导入是新会话：流式解析、有界总量（建议暂存上限 256 MiB、24 小时到期、每账号同时 1 个导入）、逐行校验、全文件成功才发布；新 Owner/绑定/身份由服务端确定，输入的 vc_f2、binding、branchRoot 不能接管已有会话。候选/消息 ID 需要重映射并重建内部引用，无法识别的扩展引用保留并报告。异步返回 importId/statusUrl，状态 PENDING/FAILED/DONE；发布前再次校验 authorityEpoch。导入失败最多提供 100 个行号/固定错误原因及 issuesTruncated 标记，无原文日志；超限显式报错，不截断。暂存/状态结果 24h 到期清理，requestId 的紧凑去重保留长于状态结果，结果过期不能再次发布。内部可信迁移使用独立 manifest+checkpoint 通道，允许保留旧 ID/版本，不能拿公开上传接口做身份恢复。

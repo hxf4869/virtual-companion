@@ -51,13 +51,17 @@ func (s *Store) DeliverStoredInbox(ctx context.Context, owner int64, chatID, eve
 		if !exists || chat.ConversationID == nil || event.ConversationID != *chat.ConversationID {
 			return ErrNotFound
 		}
+		markLink := func(status string) error {
+			out.LinkStatus = status
+			_, err := tx.Exec(ctx, `SELECT vc.set_inbox_link_status($1,$2,$3)`, owner, eventID, status)
+			return err
+		}
 		if event.Intent == "WAITING_HOST" {
 			out.WaitingHost = true
 			return nil
 		}
 		if event.Branch != nil && *event.Branch != "" && *event.Branch != chat.BranchRoot {
-			out.LinkStatus = "invalidated"
-			return nil
+			return markLink("invalidated")
 		}
 		var messageID string
 		err = tx.QueryRow(ctx, `SELECT message_id::text FROM vc.stored_chat_inbox WHERE owner_user_id=$1 AND chat_id=$2 AND event_id=$3`, owner, id, eventID).Scan(&messageID)
@@ -68,8 +72,7 @@ func (s *Store) DeliverStoredInbox(ctx context.Context, owner int64, chatID, eve
 			// Previously delivered legacy messages never reopen a delivery after a
 			// deletion, rollback or missing migration association.
 			if event.MessageID == nil || !stsource.ValidIdentity(*event.MessageID) {
-				out.LinkStatus = "removed"
-				return nil
+				return markLink("removed")
 			}
 			messageID = *event.MessageID
 		}
@@ -109,8 +112,7 @@ func (s *Store) DeliverStoredInbox(ctx context.Context, owner int64, chatID, eve
 		}
 		message, err := s.loadStoredMessage(ctx, tx, owner, id, messageID)
 		if errors.Is(err, ErrNotFound) {
-			out.LinkStatus = "removed"
-			return nil
+			return markLink("removed")
 		}
 		if err != nil {
 			return err
@@ -118,8 +120,7 @@ func (s *Store) DeliverStoredInbox(ctx context.Context, owner int64, chatID, eve
 		selected := message.Candidates[candidateIndex(message, message.SelectedCandidateID)]
 		source := asChatData(asChatData(selected.Data["extra"])["vc_source"])
 		if source["inbox_event_id"] != eventID || (event.MessageRevision != nil && selected.SourceRevision < *event.MessageRevision) {
-			out.LinkStatus = "invalidated"
-			return nil
+			return markLink("invalidated")
 		}
 		if err = tx.QueryRow(ctx, `SELECT coalesce(lease_token=$3 AND lease_expires_at>clock_timestamp(),false)
  FROM vc.inbox_event WHERE owner_user_id=$1 AND event_id=$2`, owner, eventID, leaseToken).Scan(&leaseAlive); err != nil {

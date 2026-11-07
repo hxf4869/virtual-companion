@@ -289,6 +289,9 @@ func (s *Store) CreateStoredChat(ctx context.Context, owner int64, in ChatCreate
 		if err != nil {
 			return chatWriteResult{}, err
 		}
+		if err = publishStoredSources(ctx, tx, owner, id, nil, nil, false); err != nil {
+			return chatWriteResult{}, err
+		}
 		event := ChatChange{OperationID: op, Revision: c.Revision, MetadataRevision: c.MetadataRevision, OrderRevision: c.OrderRevision, AuthorityEpoch: epoch, ChangedIDs: []string{}, DeletedIDs: []string{}, MetadataChanged: true}
 		if err = storeChatChange(ctx, tx, owner, id, event); err != nil {
 			return chatWriteResult{}, err

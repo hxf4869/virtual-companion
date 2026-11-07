@@ -71,13 +71,14 @@ func TestStoredChatSX5SourceRevocationIsSynchronous(t *testing.T) {
 		t.Fatal(err)
 	}
 	var present, hasBody bool
-	var actualGeneration int64
-	if err := fixture.QueryRow(ctx, `SELECT present,content_cipher<>'',source_generation FROM vc.st_message_source WHERE owner_user_id=1 AND id=$1`, sourceID).
-		Scan(&present, &hasBody, &actualGeneration); err != nil {
+	var actualGeneration, actualRevision int64
+	var actualRef string
+	if err := fixture.QueryRow(ctx, `SELECT present,content_cipher<>'',source_generation,source_revision,source_ref FROM vc.st_message_source WHERE owner_user_id=1 AND id=$1`, sourceID).
+		Scan(&present, &hasBody, &actualGeneration, &actualRevision, &actualRef); err != nil {
 		t.Fatal(err)
 	}
-	if present || hasBody || actualGeneration != generation+1 {
-		t.Fatal("ACK preceded source revocation/body erasure")
+	if !present || !hasBody || actualGeneration != generation+1 || actualRevision != revision+1 || actualRef == sourceRef {
+		t.Fatal("ACK preceded source replacement and old-reference revocation")
 	}
 	var stale int
 	if err := fixture.QueryRow(ctx, `SELECT count(*) FROM vc.memory_item m JOIN vc.memory_evidence e ON(e.owner_user_id,e.memory_item_id)=(m.owner_user_id,m.id)

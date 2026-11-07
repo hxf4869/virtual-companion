@@ -34,8 +34,9 @@ func useSTExtractRoute(t *testing.T, store *Store) {
 	if err := IsolationSuperExec(ctx, `
 INSERT INTO vc.vc_user(id, display_name) VALUES (7, 'admin') ON CONFLICT (id) DO NOTHING;
 INSERT INTO vc.identity_account(id, username, password_hash, role, status, display_name)
-VALUES (7, 'w08-admin', 'synthetic', 'ADMIN', 'ACTIVE', 'admin')
-ON CONFLICT (id) DO UPDATE SET role = 'ADMIN', status = 'ACTIVE';
+VALUES (1, 'w08-owner', 'synthetic', 'USER', 'ACTIVE', 'owner'),
+       (7, 'w08-admin', 'synthetic', 'ADMIN', 'ACTIVE', 'admin')
+ON CONFLICT (id) DO UPDATE SET role = EXCLUDED.role, status = 'ACTIVE';
 UPDATE vc.model_purpose_binding
    SET provider_id = NULL, profile_key = NULL, state = 'DISABLED'
  WHERE provider_id = 'prov-a';

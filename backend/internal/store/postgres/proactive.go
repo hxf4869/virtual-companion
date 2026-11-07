@@ -10,6 +10,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/hxf4869/virtual-companion/internal/proactive"
+	"github.com/hxf4869/virtual-companion/internal/stsource"
 	"github.com/hxf4869/virtual-companion/internal/voice"
 	"github.com/jackc/pgx/v5"
 )
@@ -121,8 +122,22 @@ func (s *Store) reconcileOpenTopic(ctx context.Context, owner, relationshipID in
 		return mapFollowUpErr(err)
 	}
 	if chats := sourceChats([]string{topicRef}); len(chats) > 0 {
-		if _, err := s.ReconcileSTSources(ctx, owner, chats); err != nil {
+		states, err := s.ReconcileSTSources(ctx, owner, chats)
+		if err != nil {
 			return err
+		}
+		for _, state := range states {
+			if state.State == "UNAVAILABLE" {
+				authority, err := s.GetChatStorageState(ctx, owner)
+				if err != nil {
+					return err
+				}
+				// Legacy reconcile marks the stored topic unavailable; its
+				// established no-topic fallback remains unchanged.
+				if authority.Mode != "ST" {
+					return stsource.ErrUnavailable
+				}
+			}
 		}
 	}
 	return nil
