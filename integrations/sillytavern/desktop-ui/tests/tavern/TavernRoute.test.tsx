@@ -19,8 +19,10 @@ import { queryKeys } from '../../src/data/queryKeys';
 import { SessionBridgeProvider, type SessionBridge } from '../../src/runtime/session-bridge';
 import { TavernRoute, type TavernRouteProps } from '../../src/features/tavern/TavernRoute';
 import { useTavernController } from '../../src/features/tavern/useTavernController';
+import { ST_CHAT_STORAGE_SESSION_URL, stChatStorageSession, stSessionIdentity } from '../st-session-fixture';
 
-function setIdentityMeta(accountId = '9007199254740993', sessionId = '17') {
+function setIdentityMeta() {
+  const { accountId, sessionId } = stSessionIdentity;
   document.head.innerHTML = `
     <meta name="vc-account-id" content="${accountId}">
     <meta name="vc-session-id" content="${sessionId}">
@@ -111,6 +113,7 @@ describe('TavernRoute (409 conflict recovery & unknown keys preservation)', () =
     globalThis.fetch = (async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url === '/csrf-token') return jsonResponse({ token: 'csrf-1' });
+      if (url === ST_CHAT_STORAGE_SESSION_URL) return jsonResponse(stChatStorageSession);
       if (url === '/api/settings/get') {
         return jsonResponse({
           settings: JSON.stringify(makeSettings(serverN)),
@@ -205,6 +208,7 @@ describe('TavernRoute (409 conflict recovery & unknown keys preservation)', () =
     globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url === '/csrf-token') return jsonResponse({ token: 'csrf-1' });
+      if (url === ST_CHAT_STORAGE_SESSION_URL) return jsonResponse(stChatStorageSession);
       if (url === '/api/settings/get') {
         return jsonResponse({
           settings: JSON.stringify(rawServerSettings),
@@ -305,6 +309,7 @@ describe('TavernRoute (409 conflict recovery & unknown keys preservation)', () =
     globalThis.fetch = (async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url === '/csrf-token') return jsonResponse({ token: 'csrf-1' });
+      if (url === ST_CHAT_STORAGE_SESSION_URL) return jsonResponse(stChatStorageSession);
       if (url === '/api/settings/get') {
         return jsonResponse({
           settings: JSON.stringify({
@@ -458,6 +463,7 @@ describe('TavernRoute (409 conflict recovery & unknown keys preservation)', () =
     globalThis.fetch = (async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url === '/csrf-token') return jsonResponse({ token: 'csrf-1' });
+      if (url === ST_CHAT_STORAGE_SESSION_URL) return jsonResponse(stChatStorageSession);
       if (url === '/api/settings/get') {
         settingsGetCount += 1;
         // 1st call is client.settings() warm-up (seed=100);
@@ -557,6 +563,7 @@ describe('TavernRoute (409 conflict recovery & unknown keys preservation)', () =
     globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url === '/csrf-token') return jsonResponse({ token: 'csrf-1' });
+      if (url === ST_CHAT_STORAGE_SESSION_URL) return jsonResponse(stChatStorageSession);
       if (url === '/api/settings/get') {
         return jsonResponse({
           settings: JSON.stringify({
@@ -632,6 +639,7 @@ describe('TavernRoute (409 conflict recovery & unknown keys preservation)', () =
     globalThis.fetch = (async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url === '/csrf-token') return jsonResponse({ token: 'csrf-1' });
+      if (url === ST_CHAT_STORAGE_SESSION_URL) return jsonResponse(stChatStorageSession);
       if (url === '/api/settings/get') {
         return jsonResponse({
           settings: JSON.stringify({
@@ -759,6 +767,7 @@ describe('TavernRoute (409 conflict recovery & unknown keys preservation)', () =
     globalThis.fetch = (async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url === '/csrf-token') return jsonResponse({ token: 'csrf-1' });
+      if (url === ST_CHAT_STORAGE_SESSION_URL) return jsonResponse(stChatStorageSession);
       if (url === '/api/settings/get') {
         return jsonResponse({
           settings: JSON.stringify({
@@ -842,6 +851,7 @@ describe('TavernRoute (409 conflict recovery & unknown keys preservation)', () =
     globalThis.fetch = (async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url === '/csrf-token') return jsonResponse({ token: 'csrf-1' });
+      if (url === ST_CHAT_STORAGE_SESSION_URL) return jsonResponse(stChatStorageSession);
       if (url === '/api/settings/get') {
         return jsonResponse({
           settings: JSON.stringify({
@@ -958,6 +968,7 @@ describe('TavernRoute (409 conflict recovery & unknown keys preservation)', () =
     globalThis.fetch = (async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url === '/csrf-token') return jsonResponse({ token: 'csrf-1' });
+      if (url === ST_CHAT_STORAGE_SESSION_URL) return jsonResponse(stChatStorageSession);
       if (url === '/api/settings/get') {
         return jsonResponse({
           settings: JSON.stringify({

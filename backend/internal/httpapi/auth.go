@@ -1,10 +1,12 @@
 package httpapi
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -138,9 +140,18 @@ func (s *Server) handleRegistrationClosed(w http.ResponseWriter, r *http.Request
 	s.writeAPIError(w, http.StatusForbidden, "ACCESS_DENIED", "registration is closed")
 }
 
+type chatStorageStateGetter interface {
+	GetChatStorageState(ctx context.Context, owner int64) (postgres.ChatStorageState, error)
+}
+
 func (s *Server) handleSession(w http.ResponseWriter, r *http.Request) {
 	p := s.corePrincipal(w, r, false)
 	if p == nil {
+		return
+	}
+	includeChatStorage, valid := sessionIncludesChatStorage(r)
+	if !valid {
+		s.writeAPIError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid request")
 		return
 	}
 	if s.core.AuthFlow == nil {
@@ -157,7 +168,7 @@ func (s *Server) handleSession(w http.ResponseWriter, r *http.Request) {
 		s.writeStoreErr(w, err)
 		return
 	}
-	s.writeJSON(w, http.StatusOK, sessionIdentityJSON{
+	body := sessionIdentityJSON{
 		NextStep:             "ACTIVE",
 		AccountID:            strconv.FormatInt(p.AccountID, 10),
 		SessionID:            strconv.FormatInt(p.SessionID, 10),
@@ -168,7 +179,44 @@ func (s *Server) handleSession(w http.ResponseWriter, r *http.Request) {
 		DeletionPending:      deleting,
 		STDataConfigured:     s.cfg.STPlugin.HostBaseURL != "" && s.cfg.STPlugin.ServiceToken != "",
 		ExpiresInSeconds:     int64(s.sessionTTL().Seconds()),
-	})
+	}
+	if !includeChatStorage {
+		s.writeJSON(w, http.StatusOK, body)
+		return
+	}
+	getter, ok := s.core.Store.(chatStorageStateGetter)
+	if !ok {
+		s.writeAPIError(w, http.StatusServiceUnavailable, "SCHEMA_UNAVAILABLE", "temporarily unavailable")
+		return
+	}
+	state, err := getter.GetChatStorageState(r.Context(), p.AccountID)
+	if err != nil {
+		s.writeAPIError(w, http.StatusServiceUnavailable, "SCHEMA_UNAVAILABLE", "temporarily unavailable")
+		return
+	}
+	s.writeJSON(w, http.StatusOK, sessionContextJSON{sessionIdentityJSON: body, ChatStorage: state})
+}
+
+func sessionIncludesChatStorage(r *http.Request) (include, valid bool) {
+	// The GET mux pattern also serves HEAD; the hint is only for GET.
+	if r.Method != http.MethodGet {
+		return false, true
+	}
+	// Check only include so unrelated parameters keep their existing behavior.
+	// URL.Query would silently drop an include with a malformed escape.
+	for field := range strings.SplitSeq(r.URL.RawQuery, "&") {
+		key, value, _ := strings.Cut(field, "=")
+		name, err := url.QueryUnescape(key)
+		if err != nil || name != "include" {
+			continue
+		}
+		decoded, err := url.QueryUnescape(value)
+		if include || err != nil || decoded != "chatStorage" {
+			return false, false
+		}
+		include = true
+	}
+	return include, true
 }
 
 func (s *Server) handleAuthenticatorSetup(w http.ResponseWriter, r *http.Request) {
@@ -772,6 +820,11 @@ type sessionIdentityJSON struct {
 	PasswordMustChange   bool   `json:"passwordMustChange"`
 	AuthenticatorEnabled bool   `json:"authenticatorEnabled"`
 	ExpiresInSeconds     int64  `json:"expiresInSeconds"`
+}
+
+type sessionContextJSON struct {
+	sessionIdentityJSON
+	ChatStorage postgres.ChatStorageState `json:"chatStorage"`
 }
 
 type authNextStepJSON struct {

@@ -4292,19 +4292,53 @@ paths:
     get:
       operationId: getAuthSession
       summary: Restore the current authenticated account state
-      description: Returns ACTIVE only for a live opaque vc_session. This is the sole page refresh source for account, role
-        and authenticator state; clients must not infer admission from local storage.
+      description: 'Returns ACTIVE only for a live opaque vc_session. This is the sole page refresh source for account, role
+        and authenticator state; clients must not infer admission from local storage. SX-6 contract approved in 63fa64e5,
+        implementation pending: only include=chatStorage adds the owner-scoped chatStorage hint; without include the response
+        and ordinary plugin Owner verification stay unchanged and MUST NOT query storage authority. The hint is never authorization.
+        It reports the persisted ST/GO/FROZEN mode and authorityEpoch; a missing authority row has the defined initial ST/1
+        value. Only an included hint lookup can fail this read with 503 SCHEMA_UNAVAILABLE. Clients treat that failure as
+        temporarily unavailable, retain their identity and drafts, and retry later; they must not infer logout or fall back
+        to ST. Each write still checks the current server authority and epoch. Host page bootstrap injection and Session initialization
+        request the include; routine per-request plugin session checks do not. After 409 CHAT_AUTHORITY_CHANGED, clients re-read
+        this endpoint with the same page identity, retain the draft and never automatically resend the rejected write. FROZEN
+        is read-only: display the approved "正在迁移" notice, keep drafts locally, and do not fall back to ST or queue automatic
+        writes. GO/FROZEN may be exercised only in isolated test databases until SX-8 native filename aliases, create/fork
+        compatibility and migration contracts are complete and the Owner separately authorizes cutover.'
       security:
       - cookieAuth: []
+      parameters:
+      - name: include
+        in: query
+        required: false
+        schema:
+          type: string
+          enum:
+          - chatStorage
+        description: Opt in to the storage hint for page bootstrap or Session initialization; omitted for ordinary session
+          verification.
       responses:
         '200':
           description: Current authenticated account state
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/AuthSessionResponse'
+                $ref: '#/components/schemas/AuthSessionContextResponse'
         '401':
           description: No live opaque session
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '400':
+          description: INVALID_REQUEST for an unsupported or repeated include parameter
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '503':
+          description: SCHEMA_UNAVAILABLE from a chatStorage lookup only when include=chatStorage was requested; existing
+            session-state unavailability may use INVALID_REQUEST. An included hint may not be guessed or omitted on success.
           content:
             application/json:
               schema:
@@ -5929,6 +5963,101 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/service/chats/{chatId}/generation-runs:
+    parameters:
+    - $ref: '#/components/parameters/ChatId'
+    post:
+      operationId: registerStoredChatGeneration
+      summary: Register a persisted chat input fence before a Node generation
+      description: 'SX-5 implemented transitional interface; Owner approved the revised contract 5f55e4c6. KEEP in the API
+        catalog. This is exclusively the existing serviceToken channel used by model-usage reservations: the Node plugin supplies
+        the Owner it has already verified through the Go session. Cookie authentication alone never authorizes this route,
+        any browser Origin is refused, and the browser Go proxy must not expose it. Existing browser generation CSRF/Origin/expected-identity
+        checks remain unchanged. In one owner-bound transaction, check GO authority and exact authorityEpoch, then require
+        inputMessageId and inputCandidateId to identify a currently persisted, live, selected candidate in this same owned
+        chat. chatRevision is the baseline used to assemble the client context, not an exact current revision precondition.
+        Compare that baseline with the same relevant-change fence used at finalization: changed/deleted input, input selection
+        changes, source-signature/selection changes within the history prefix already present at the baseline, and metadata/order/branch
+        changes reject registration with 409 REVISION_CONFLICT. Missing/unpersisted input, a deselected input candidate or
+        an unprovable/future baseline also returns REVISION_CONFLICT, with no registration. Stale/frozen/ST authority is 409
+        CHAT_AUTHORITY_CHANGED. Unrelated tail appends, including background inbox or another device, do not reject registration
+        or extend its original history prefix. For example, save the user input at revision 10, append an inbox message at
+        revision 11, then register with chatRevision 10 and that saved input: registration succeeds. For continue, inputMessageId
+        is the assistant message being continued and inputCandidateId its selected candidate. For regenerate, inputMessageId
+        is the user message preceding the reply being regenerated, with that user''s selected candidate. Neither operation
+        uses an unsaved synthetic input. Capture the input message/source revisions and generation, branchRoot, metadata/order
+        revisions and the existing history boundary, without persisting input text in the run record. At most ONE active logical
+        storage run exists per owner/chat. A successfully registered fresh run atomically fences the previous active run;
+        this supports an explicit new generation/regeneration after stopping the previous one and never grants the old run
+        a second terminal commit. Nested Helper/EJS/tool calls that belong to the same foreground operation reuse its run
+        and registration requestId; they do not register competing runs. A stop with partial output commits aborted using
+        the existing run when its causal fence is still valid. A zero-output stop writes no message or terminal operation;
+        the Session cancels the upstream request, releases its usage reservation through the existing flow and discards late
+        fragments, never using the stopped run for a later terminal write. The unfinished run expires after 15 minutes or
+        is fenced by a new registration; cleanup retains expired as a distinct internal compact outcome. Fencing a run does
+        not by itself resend or cancel a provider request; existing generation/usage controls remain responsible for those
+        side effects. requestId is the sole registration idempotency key, scoped to owner + method + canonical resource. Same
+        requestId and canonical payload returns the original 201 registration, including original timestamps, after checking
+        current authorization, epoch and chat deletion; it does not reactivate a fenced/expired/ terminal run or renew its
+        deadline. A successful registration ACK is not authorization to repeat an uncertain provider send. Reusing requestId
+        with different content is IDEMPOTENCY_KEY_REUSED. A runId is owner-unique and cannot be registered by a different
+        requestId, even for the same input; any such reuse is CHAT_GENERATION_FENCED. Registration and its receipt commit
+        atomically. The active run expires 15 minutes after its first successful registration (server clock; no renewal).
+        Its only terminal storage transition is settled or aborted through ChatGenerationCommit. Before that transition, a
+        run whose owner or chatId differs from the committing owner/chat, expired/superseded runs, changed/deleted input,
+        changed input selection, changes to existing history source signatures/selections, metadata/order changes, branch
+        changes or an authority change fence the run. Unrelated tail appends do not invalidate the captured history prefix.
+        All guards and the terminal transition share the message transaction. A terminal retry with the same successful write
+        requestId returns that write receipt; another terminal write is CHAT_GENERATION_FENCED. The Session retains rejected
+        final/partial output as a pending draft; it never appends it to a newer context. Registration/finalization and the
+        existing retention worker expire overdue active rows. After seven days, response bodies and historical fence detail
+        are cleared; compact owner/runId/requestId/digest/ outcome records remain through chat deletion and completion of
+        its rights barrier, so expiry cannot restart a run. Account deletion cascades all remaining records. Deadline validation
+        is synchronous and never depends on cleanup having run. SX-9/SX-10 replace Node registration with an internal Go call
+        using the same transaction rules; SX-15 removes this Node-facing service route. The public /chats terminal request
+        shapes are unchanged.'
+      security:
+      - serviceToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChatGenerationRegistrationRequest'
+      responses:
+        '201':
+          description: Original immutable registration, including on an authorized idempotent replay
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatGenerationRegistration'
+        '400':
+          $ref: '#/components/responses/ChatBadRequest'
+        '401':
+          description: Missing or invalid service token; cookie-only requests are never accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: ACCESS_DENIED for browser Origin or a non-ACTIVE plugin-verified Owner
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          $ref: '#/components/responses/ChatNotFound'
+        '409':
+          $ref: '#/components/responses/ChatConflict'
+        '410':
+          $ref: '#/components/responses/ChatResultExpired'
+        '503':
+          description: INVALID_REQUEST when the existing service channel is not configured; SCHEMA_UNAVAILABLE for chat storage
+            or restore-gate unavailability. No registration ACK before durable commit.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
   /api/v1/service/model-usage/reservations:
     post:
       operationId: reserveModelUsage
@@ -7340,12 +7469,11 @@ paths:
     get:
       operationId: listStoredChats
       summary: List chat summaries by descending update keyset
-      description: 'SX-2 frozen contract only; not implemented. DEFER in specs/catalog/go-v1-api-scope.yaml until SX-3–SX-6
-        implement and validate it. Owner/RLS scoped cookieAuth; expected account/session headers are preconditions, never
-        authorization. State-changing requests use existing CSRF and exact Origin checks. Sort by (updatedAt DESC, chatId
-        DESC). cursor is an exclusive opaque tuple bound to owner/filter/expiry, not a snapshot. No body scans. Concurrent
-        updates may move rows between pages: deduplicate by chatId and refresh the head. authorityEpoch is always returned,
-        including for an empty account, for first create/import.'
+      description: 'SX-4 implemented and validated; KEEP in specs/catalog/go-v1-api-scope.yaml. Owner/RLS scoped cookieAuth;
+        expected account/session headers are preconditions, never authorization. State-changing requests use existing CSRF
+        and exact Origin checks. Sort by (updatedAt DESC, chatId DESC). cursor is an exclusive opaque tuple bound to owner/filter/expiry,
+        not a snapshot. No body scans. Concurrent updates may move rows between pages: deduplicate by chatId and refresh the
+        head. authorityEpoch is always returned, including for an empty account, for first create/import.'
       security:
       - cookieAuth: []
       parameters:
@@ -7403,11 +7531,10 @@ paths:
     post:
       operationId: createStoredChat
       summary: Create an empty single or group chat
-      description: SX-2 frozen contract only; not implemented. DEFER in specs/catalog/go-v1-api-scope.yaml until SX-3–SX-6
-        implement and validate it. Owner/RLS scoped cookieAuth; expected account/session headers are preconditions, never
-        authorization. State-changing requests use existing CSRF and exact Origin checks. Server validates binding and issues
-        stable identities. requestId and authorityEpoch are body fields; replay returns the original 201 and canonical chat.
-        No idempotency header.
+      description: SX-5 implemented and validated; KEEP in specs/catalog/go-v1-api-scope.yaml. Owner/RLS scoped cookieAuth;
+        expected account/session headers are preconditions, never authorization. State-changing requests use existing CSRF
+        and exact Origin checks. Server validates binding and issues stable identities. requestId and authorityEpoch are body
+        fields; replay returns the original 201 and canonical chat. No idempotency header.
       security:
       - cookieAuth: []
       parameters:
@@ -7456,10 +7583,9 @@ paths:
     get:
       operationId: getStoredChat
       summary: Read full chat header, metadata and versions
-      description: SX-2 frozen contract only; not implemented. DEFER in specs/catalog/go-v1-api-scope.yaml until SX-3–SX-6
-        implement and validate it. Owner/RLS scoped cookieAuth; expected account/session headers are preconditions, never
-        authorization. State-changing requests use existing CSRF and exact Origin checks. Current state only; protected binding/source
-        fields remain server-owned.
+      description: SX-4 implemented and validated; KEEP in specs/catalog/go-v1-api-scope.yaml. Owner/RLS scoped cookieAuth;
+        expected account/session headers are preconditions, never authorization. State-changing requests use existing CSRF
+        and exact Origin checks. Current state only; protected binding/source fields remain server-owned.
       security:
       - cookieAuth: []
       parameters:
@@ -7489,11 +7615,11 @@ paths:
     delete:
       operationId: deleteStoredChat
       summary: Delete chat with source and rights barriers
-      description: SX-2 frozen contract only; not implemented. DEFER in specs/catalog/go-v1-api-scope.yaml until SX-3–SX-6
-        implement and validate it. Owner/RLS scoped cookieAuth; expected account/session headers are preconditions, never
-        authorization. State-changing requests use existing CSRF and exact Origin checks. Required JSON body carries requestId,
-        authorityEpoch and exact chatRevision. Complete deletion, source revocation and receipt atomically. deleted=true invalidates
-        the entire client cache; the compact deletion receipt prevents identity resurrection. No If-Match or idempotency header.
+      description: SX-5 implemented and validated; KEEP in specs/catalog/go-v1-api-scope.yaml. Owner/RLS scoped cookieAuth;
+        expected account/session headers are preconditions, never authorization. State-changing requests use existing CSRF
+        and exact Origin checks. Required JSON body carries requestId, authorityEpoch and exact chatRevision. Complete deletion,
+        source revocation and receipt atomically. deleted=true invalidates the entire client cache; the compact deletion receipt
+        prevents identity resurrection. No If-Match or idempotency header.
       security:
       - cookieAuth: []
       parameters:
@@ -7542,17 +7668,32 @@ paths:
     get:
       operationId: listStoredMessages
       summary: Read current message history with before/after keysets
-      description: 'SX-2 frozen contract only; not implemented. DEFER in specs/catalog/go-v1-api-scope.yaml until SX-3–SX-6
-        implement and validate it. Owner/RLS scoped cookieAuth; expected account/session headers are preconditions, never
-        authorization. State-changing requests use existing CSRF and exact Origin checks. Same direction semantics as existing
-        listMessages: no before/after returns the LAST limit messages; before returns the nearest strictly older page, after
-        returns the nearest strictly later page. Rows ALWAYS ascend in display order; before/after are mutually exclusive
-        (400). Cursors bind owner, chatId, authorityEpoch, orderRevision, view, boundary and 15-minute expiry. Ordinary tail
-        append/edit/delete does not invalidate orderRevision; reorder/explicit insertion does and old cursors return 410 CHAT_CURSOR_EXPIRED.
-        No snapshotRevision or historical reads. Track chatRevision with changes for concurrent edits/deletes/appends. anchorMessageId
-        is a fresh current read ending at and including that stable message, with up to limit-1 older messages; mutually exclusive
-        with before/after. Deleted/foreign anchor is 404; clients then reopen the tail. include=chat returns full header/metadata
-        and domain versions from the SAME read for one-request first opening. Empty chats return an empty page, not a header-as-message.'
+      description: 'SX-4 implemented and validated; KEEP in specs/catalog/go-v1-api-scope.yaml. Owner/RLS scoped cookieAuth;
+        expected account/session headers are preconditions, never authorization. State-changing requests use existing CSRF
+        and exact Origin checks. Same direction semantics as existing listMessages: no before/after returns the LAST limit
+        messages; before returns the nearest strictly older page, after returns the nearest strictly later page. Rows ALWAYS
+        ascend in display order; before/after are mutually exclusive (400). Cursors bind owner, chatId, authorityEpoch, orderRevision,
+        view, boundary and 15-minute expiry. Ordinary tail append/edit/delete does not invalidate orderRevision; reorder/explicit
+        insertion does and old cursors return 410 CHAT_CURSOR_EXPIRED. No snapshotRevision or historical reads. Track chatRevision
+        with changes for concurrent edits/deletes/appends. anchorMessageId is a fresh current read ending at and including
+        that stable message, with up to limit-1 older messages; mutually exclusive with before/after. Deleted/foreign anchor
+        is 404; clients then reopen the tail. include=chat returns full header/metadata and domain versions from the SAME
+        read for one-request first opening. Empty chats return an empty page, not a header-as-message. Owner-approved SX-4
+        extension (2026-11-07): q searches current selected-candidate text across the entire chat, using a trimmed, Unicode
+        case-insensitive substring. A nonmatching anchor returns 404 and is checked directly, without searching older bodies.
+        Search never filters only the already-loaded client page and never searches deselected candidates. SX-7F bounded-search
+        revision: each q request examines at most 200 selected-candidate documents (including anchor validation), with an
+        8 MiB ciphertext scan target; one first candidate may exceed that byte target so a supported large message cannot
+        prevent progress. Existence probes use only indexed message positions, never another body scan. A page can contain
+        fewer than limit matches, including zero, while more history remains. For q, beforeCursor/afterCursor are exclusive
+        boundaries of the scanned window, and hasOlder/hasNewer mean accessible history remains in that direction, not that
+        another match is known. Clients must follow the matching flag and cursor even after an empty page until that direction
+        is exhausted. Every nonterminal continuation advances its position. Response byte limits must not skip a found match
+        omitted from items: in that case the resume boundary stops at the last returned match. Query, Owner, authority/order
+        fences and expiry remain bound to each cursor. This is current-state traversal, not a frozen search result; clients
+        use changes for concurrent edits. A search transaction timeout before a page can commit returns 503 CHAT_SEARCH_TIMEOUT,
+        with no SQL/body details, and the client may retry the input cursor; it never returns an opaque storage error or pretends
+        the remaining history was searched.'
       security:
       - cookieAuth: []
       parameters:
@@ -7577,6 +7718,17 @@ paths:
           type: string
           format: uuid
         description: Fresh page ending at and including this stable message after cursor expiration; excludes before/after.
+      - name: q
+        in: query
+        required: false
+        schema:
+          type: string
+          maxLength: 200
+        description: Trimmed, Unicode case-insensitive substring of the current selected candidate's mes across the full chat.
+          The supplied value is at most 200 Unicode code points before trimming; longer queries return 400 INVALID_REQUEST.
+          Empty means no filter. Bound to cursors; a nonmatching anchor returns 404. Stored bodies remain application-encrypted.
+          Each request scans a bounded current-history window; continuation flags can be true even when items is empty and
+          do not promise another matching message.
       - $ref: '#/components/parameters/ChatPageLimit'
       - $ref: '#/components/parameters/ChatView'
       - name: include
@@ -7607,18 +7759,22 @@ paths:
         '429':
           $ref: '#/components/responses/ChatRateLimited'
         '503':
-          $ref: '#/components/responses/ChatUnavailable'
+          description: SCHEMA_UNAVAILABLE for unavailable storage, or CHAT_SEARCH_TIMEOUT when a q request cannot complete
+            within the transaction deadline. Retry the input cursor; no scan progress is claimed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
         '410':
           $ref: '#/components/responses/ChatCursorExpired'
     post:
       operationId: appendStoredMessages
       summary: Append messages without whole-chat CAS
-      description: SX-2 frozen contract only; not implemented. DEFER in specs/catalog/go-v1-api-scope.yaml until SX-3–SX-6
-        implement and validate it. Owner/RLS scoped cookieAuth; expected account/session headers are preconditions, never
-        authorization. State-changing requests use existing CSRF and exact Origin checks. Equivalent to kind=append in operations.
-        Unrelated chatRevision changes never reject an append. The server allocates order; same clientMessageId cannot duplicate/resurrect
-        a message. Final/aborted generation output requires generation.generationRunId and state; validate persisted input/run
-        fences before commit.
+      description: SX-5 implemented and validated; KEEP in specs/catalog/go-v1-api-scope.yaml. Owner/RLS scoped cookieAuth;
+        expected account/session headers are preconditions, never authorization. State-changing requests use existing CSRF
+        and exact Origin checks. Equivalent to kind=append in operations. Unrelated chatRevision changes never reject an append.
+        The server allocates order; same clientMessageId cannot duplicate/resurrect a message. Final/aborted generation output
+        requires generation.generationRunId and state; validate persisted input/run fences before commit.
       security:
       - cookieAuth: []
       parameters:
@@ -7668,10 +7824,10 @@ paths:
     get:
       operationId: getStoredMessage
       summary: Read one full message by stable ID
-      description: SX-2 frozen contract only; not implemented. DEFER in specs/catalog/go-v1-api-scope.yaml until SX-3–SX-6
-        implement and validate it. Owner/RLS scoped cookieAuth; expected account/session headers are preconditions, never
-        authorization. State-changing requests use existing CSRF and exact Origin checks. Always view=full with all candidates,
-        variables and unknown fields; independent of current page. A deleted message never returns retained body data.
+      description: SX-4 implemented and validated; KEEP in specs/catalog/go-v1-api-scope.yaml. Owner/RLS scoped cookieAuth;
+        expected account/session headers are preconditions, never authorization. State-changing requests use existing CSRF
+        and exact Origin checks. Always view=full with all candidates, variables and unknown fields; independent of current
+        page. A deleted message never returns retained body data.
       security:
       - cookieAuth: []
       parameters:
@@ -7701,11 +7857,11 @@ paths:
     patch:
       operationId: editStoredMessage
       summary: Conditionally edit message or candidate fields
-      description: SX-2 frozen contract only; not implemented. DEFER in specs/catalog/go-v1-api-scope.yaml until SX-3–SX-6
-        implement and validate it. Owner/RLS scoped cookieAuth; expected account/session headers are preconditions, never
-        authorization. State-changing requests use existing CSRF and exact Origin checks. Convenience form of kind=edit. Old
-        baseRevision can rebase only if every before value still matches; return rebased=true. Real semantic conflicts preserve
-        the caller draft. Message deletion is ONLY kind=delete in operations.
+      description: SX-5 implemented and validated; KEEP in specs/catalog/go-v1-api-scope.yaml. Owner/RLS scoped cookieAuth;
+        expected account/session headers are preconditions, never authorization. State-changing requests use existing CSRF
+        and exact Origin checks. Convenience form of kind=edit. Old baseRevision can rebase only if every before value still
+        matches; return rebased=true. Real semantic conflicts preserve the caller draft. Message deletion is ONLY kind=delete
+        in operations.
       security:
       - cookieAuth: []
       parameters:
@@ -7754,11 +7910,10 @@ paths:
     patch:
       operationId: editStoredChatMetadata
       summary: Conditionally edit title, header extensions and metadata
-      description: SX-2 frozen contract only; not implemented. DEFER in specs/catalog/go-v1-api-scope.yaml until SX-3–SX-6
-        implement and validate it. Owner/RLS scoped cookieAuth; expected account/session headers are preconditions, never
-        authorization. State-changing requests use existing CSRF and exact Origin checks. Convenience form of kind=metadata.
-        baseRevision is metadataRevision; apply only named before/after paths, preserving unknown siblings and protecting
-        server-owned fields.
+      description: SX-5 implemented and validated; KEEP in specs/catalog/go-v1-api-scope.yaml. Owner/RLS scoped cookieAuth;
+        expected account/session headers are preconditions, never authorization. State-changing requests use existing CSRF
+        and exact Origin checks. Convenience form of kind=metadata. baseRevision is metadataRevision; apply only named before/after
+        paths, preserving unknown siblings and protecting server-owned fields.
       security:
       - cookieAuth: []
       parameters:
@@ -7807,13 +7962,13 @@ paths:
     post:
       operationId: applyStoredChatOperations
       summary: Atomically apply typed chat commands
-      description: 'SX-2 frozen contract only; not implemented. DEFER in specs/catalog/go-v1-api-scope.yaml until SX-3–SX-6
-        implement and validate it. Owner/RLS scoped cookieAuth; expected account/session headers are preconditions, never
-        authorization. State-changing requests use existing CSRF and exact Origin checks. Eight kind-discriminated variants:
-        edit, append, delete, metadata, addSwipe, selectSwipe, removeSwipe, reorder. Every target, precondition and payload
-        is typed and closed. Check all preconditions at transaction start; apply commands in order and validate final invariants.
-        Whole batch succeeds or fails, including source barriers/outbox/receipt. Allows one atomic MVU message-variable plus
-        metadata-variable change. 8 MiB maximum request, 1 MiB maximum stored full message.'
+      description: 'SX-5 implemented and validated; KEEP in specs/catalog/go-v1-api-scope.yaml. Owner/RLS scoped cookieAuth;
+        expected account/session headers are preconditions, never authorization. State-changing requests use existing CSRF
+        and exact Origin checks. Eight kind-discriminated variants: edit, append, delete, metadata, addSwipe, selectSwipe,
+        removeSwipe, reorder. Every target, precondition and payload is typed and closed. Check all preconditions at transaction
+        start; apply commands in order and validate final invariants. Whole batch succeeds or fails, including source barriers/outbox/receipt.
+        Allows one atomic MVU message-variable plus metadata-variable change. 8 MiB maximum request, 1 MiB maximum stored
+        full message.'
       security:
       - cookieAuth: []
       parameters:
@@ -7862,13 +8017,13 @@ paths:
     get:
       operationId: listStoredChatChanges
       summary: Catch up complete chat transactions by revision
-      description: SX-2 frozen contract only; not implemented. DEFER in specs/catalog/go-v1-api-scope.yaml until SX-3–SX-6
-        implement and validate it. Owner/RLS scoped cookieAuth; expected account/session headers are preconditions, never
-        authorization. State-changing requests use existing CSRF and exact Origin checks. Use the chatRevision from an initial
-        current page as afterRevision, then follow throughRevision until caught up. Read changed IDs in full and remove deleted
-        IDs; order changes invalidate cursor order. Responses do not retain old message bodies. Future afterRevision is 400
-        INVALID_REQUEST. Events survive 7 days. A full-history script baseline is runnable only after reconciliation with
-        current revisions; retry/rebuild if reorder or concurrent writes prevent a coherent baseline.
+      description: SX-4 implemented and validated; KEEP in specs/catalog/go-v1-api-scope.yaml. Owner/RLS scoped cookieAuth;
+        expected account/session headers are preconditions, never authorization. State-changing requests use existing CSRF
+        and exact Origin checks. Use the chatRevision from an initial current page as afterRevision, then follow throughRevision
+        until caught up. Read changed IDs in full and remove deleted IDs; order changes invalidate cursor order. Responses
+        do not retain old message bodies. Future afterRevision is 400 INVALID_REQUEST. Events survive 7 days. A full-history
+        script baseline is runnable only after reconciliation with current revisions; retry/rebuild if reorder or concurrent
+        writes prevent a coherent baseline.
       security:
       - cookieAuth: []
       parameters:
@@ -7918,12 +8073,11 @@ paths:
     post:
       operationId: forkStoredChat
       summary: Fork the current parent through a stable message ID
-      description: SX-2 frozen contract only; not implemented. DEFER in specs/catalog/go-v1-api-scope.yaml until SX-3–SX-6
-        implement and validate it. Owner/RLS scoped cookieAuth; expected account/session headers are preconditions, never
-        authorization. State-changing requests use existing CSRF and exact Origin checks. parentRevision is an exact current-state
-        precondition. No historical fork reads; stale parentRevision is REVISION_CONFLICT. New branch inherits branchRoot,
-        receives new chat/message/candidate/source identities, returns explicit mappings and cannot borrow sibling memory
-        evidence.
+      description: SX-5 implemented and validated; KEEP in specs/catalog/go-v1-api-scope.yaml. Owner/RLS scoped cookieAuth;
+        expected account/session headers are preconditions, never authorization. State-changing requests use existing CSRF
+        and exact Origin checks. parentRevision is an exact current-state precondition. No historical fork reads; stale parentRevision
+        is REVISION_CONFLICT. New branch inherits branchRoot, receives new chat/message/candidate/source identities, returns
+        explicit mappings and cannot borrow sibling memory evidence.
       security:
       - cookieAuth: []
       parameters:
@@ -8438,17 +8592,21 @@ components:
           minLength: 1
         hasOlder:
           type: boolean
-          description: For a nonempty page, whether an accessible message exists strictly before its first row at this read.
+          description: Without q, whether an accessible message exists before the first returned row. With q, whether accessible
+            history remains before the scanned window, even for an empty page; does not promise a match.
         hasNewer:
           type: boolean
-          description: For a nonempty page, whether an accessible message exists strictly after its last row at this read.
+          description: Without q, whether an accessible message exists after the last returned row. With q, whether accessible
+            history remains after the scanned window, even for an empty page; does not promise a match.
         chat:
           $ref: '#/components/schemas/StoredChat'
       description: A current read, not versioned history. Rows always ascend in display order. Nonempty pages return exclusive
-        first/last boundary cursors even at an edge; empty pages return null cursors and false flags. chat is present exactly
-        when include=chat and shares this read and all domain versions. chatRevision is the changes high-water mark for this
-        page, not a snapshot token. orderRevision changes on explicit reorder/insertion, not ordinary tail append, edit or
-        deletion.
+        first/last boundary cursors even at an edge. Without q, empty pages return null cursors and false flags. With q, cursors
+        delimit the scanned window and an empty page may have true continuation flags; clients must follow flags/cursors rather
+        than items length. A response truncated by its byte budget never advances past an unreturned match. chat is present
+        exactly when include=chat and shares this read and all domain versions. chatRevision is the changes high-water mark
+        for this page, not a snapshot token. orderRevision changes on explicit reorder/insertion, not ordinary tail append,
+        edit or deletion.
     ChatFieldValue:
       type: object
       additionalProperties: false
@@ -8592,6 +8750,104 @@ components:
       description: clientMessageId becomes the stable messageId. The server assigns order and candidate identities, preserving
         a canonical mapping in the returned full message. Same ID and same initial content never creates a second message;
         reuse for different content is CHAT_ID_REUSED. Tombstoned IDs cannot resurrect messages.
+    ChatGenerationRegistrationRequest:
+      type: object
+      additionalProperties: false
+      required:
+      - ownerAccountId
+      - requestId
+      - authorityEpoch
+      - generationRunId
+      - chatRevision
+      - inputMessageId
+      - inputCandidateId
+      properties:
+        ownerAccountId:
+          type: string
+          pattern: ^[1-9][0-9]*$
+          description: Owner already verified by the trusted Node plugin, as in ModelUsageReserveRequest; never browser authority.
+        requestId:
+          $ref: '#/components/schemas/ChatRequestId'
+        authorityEpoch:
+          $ref: '#/components/schemas/ChatAuthorityEpoch'
+        generationRunId:
+          type: string
+          format: uuid
+          description: Stable logical foreground storage run, shared by nested calls of that operation.
+        chatRevision:
+          $ref: '#/components/schemas/ChatRevision'
+          description: Context-assembly baseline. Relevant changes since this revision conflict; unrelated tail appends do
+            not.
+        inputMessageId:
+          type: string
+          format: uuid
+          description: Already-saved causal input. Continue uses the assistant message being continued; regenerate uses the
+            user message preceding the reply being regenerated. Never a pending client-only message.
+        inputCandidateId:
+          type: string
+          format: uuid
+          description: The currently selected candidate of inputMessageId at registration.
+    ChatGenerationRegistration:
+      type: object
+      additionalProperties: false
+      required:
+      - requestId
+      - chatId
+      - generationRunId
+      - inputMessageId
+      - inputCandidateId
+      - inputMessageRevision
+      - inputSourceRevision
+      - inputSourceGeneration
+      - chatRevision
+      - metadataRevision
+      - orderRevision
+      - authorityEpoch
+      - branchRoot
+      - registeredAt
+      - expiresAt
+      properties:
+        requestId:
+          $ref: '#/components/schemas/ChatRequestId'
+        chatId:
+          type: string
+          format: uuid
+        generationRunId:
+          type: string
+          format: uuid
+        inputMessageId:
+          type: string
+          format: uuid
+        inputCandidateId:
+          type: string
+          format: uuid
+        inputMessageRevision:
+          $ref: '#/components/schemas/ChatRevision'
+        inputSourceRevision:
+          $ref: '#/components/schemas/ChatRevision'
+        inputSourceGeneration:
+          $ref: '#/components/schemas/ChatRevision'
+        chatRevision:
+          $ref: '#/components/schemas/ChatRevision'
+          description: The accepted client context baseline, retained unchanged when unrelated tail appends preceded registration.
+        metadataRevision:
+          $ref: '#/components/schemas/ChatRevision'
+        orderRevision:
+          $ref: '#/components/schemas/ChatRevision'
+        authorityEpoch:
+          $ref: '#/components/schemas/ChatAuthorityEpoch'
+        branchRoot:
+          type: string
+          format: uuid
+        registeredAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+      description: Immutable registration facts including the accepted context baseline. The server retains that baseline's
+        original history boundary internally. No message body and no claim that the run is still active on replay. expiresAt
+        is registeredAt plus 15 minutes. Replaying this response does not renew or reactivate the run.
     ChatGenerationCommit:
       type: object
       additionalProperties: false
@@ -8608,11 +8864,12 @@ components:
           - settled
           - aborted
       description: Required for generated final/partial assistant output, including append, addSwipe or edit of a generated
-        reply. Same run has exactly one terminal commit. The server validates the run and its persisted input message/candidate
-        revisions, branch and authority fence; stale/changed/deleted input or a second terminal operation is CHAT_GENERATION_FENCED.
-        Keep that output as a draft. No token-by-token chat writes; tools/MVU/EJS must finish before settled evidence becomes
-        eligible. Replaying the same successful requestId returns its receipt before reapplying terminal-run checks; a different
-        terminal requestId is fenced.
+        reply. Same run has exactly one terminal commit. The server first verifies that both the run's owner and chatId match
+        the submitting owner and target chat; either mismatch is CHAT_GENERATION_FENCED. It validates the run and its persisted
+        input message/candidate revisions, branch and authority fence; stale/changed/deleted input or a second terminal operation
+        is CHAT_GENERATION_FENCED. Keep that output as a draft. No token-by-token chat writes; tools/MVU/EJS must finish before
+        settled evidence becomes eligible. Replaying the same successful requestId returns its receipt before reapplying terminal-run
+        checks; a different terminal requestId is fenced.
     ChatAppendPayload:
       type: object
       additionalProperties: false
@@ -8671,6 +8928,51 @@ components:
         lastMessageId:
           type: string
           format: uuid
+    ChatInsertTarget:
+      type: object
+      additionalProperties: false
+      required:
+      - beforeMessageId
+      properties:
+        beforeMessageId:
+          type: string
+          format: uuid
+      description: A live message in the owned target chat at transaction start. Missing, deleted or foreign anchors return
+        404 NOT_FOUND_OR_FORBIDDEN; do not resolve an array index or a newly inserted ID as the anchor.
+    ChatInsertOperation:
+      type: object
+      additionalProperties: false
+      required:
+      - kind
+      - target
+      - preconditions
+      - payload
+      properties:
+        kind:
+          type: string
+          const: insert
+        target:
+          $ref: '#/components/schemas/ChatInsertTarget'
+        preconditions:
+          $ref: '#/components/schemas/ChatOrderPreconditions'
+        payload:
+          $ref: '#/components/schemas/ChatAppendPayload'
+      description: 'SX-6 contract addition pending Owner review before implementation. Atomically insert the supplied new
+        messages immediately before the existing anchor, preserving their payload order. Resolve the owned live anchor first,
+        then require exact transaction-start orderRevision; mismatch is 409 REVISION_CONFLICT and the client retains its draft.
+        The surrounding requestId receipt and clientMessageId replay/tombstone rules are the same as append, so retry never
+        duplicates or resurrects a message. No implicit append-then-reorder sequence of separate transactions. Successful
+        insertion advances orderRevision once per transaction, expires old cursors with 410 CHAT_CURSOR_EXPIRED, fences active
+        generation runs through the existing order guard, and publishes inserted changedIds with orderChanged=true in changes.
+        Existing message and candidate source identities are preserved. New sources use the same transactional source barriers,
+        eligibility, no_memory/incognito checks and extraction enqueue rules as append. Insert cannot commit generated output:
+        any request combining insert with ChatGenerationCommit is rejected atomically with 422 CHAT_INVALID_OPERATION; generated
+        terminal output continues through append/edit/addSwipe with generation. Unrelated tail append does not advance orderRevision
+        and remains compatible with insertion; neither write may lose the other. A preceding insert/reorder does advance orderRevision
+        and conflicts with a stale insert. Two ordered insert commands may share the initial orderRevision and anchor in one
+        batch; their payloads appear before the anchor in command order. Separate successive insert requests use the first
+        ACK''s new orderRevision. Anchors deleted by the same batch are invalid commands. All command/message/byte limits
+        apply across append and insert together.'
     ChatOrderPreconditions:
       type: object
       additionalProperties: false
@@ -8859,6 +9161,7 @@ components:
       oneOf:
       - $ref: '#/components/schemas/ChatEditOperation'
       - $ref: '#/components/schemas/ChatAppendOperation'
+      - $ref: '#/components/schemas/ChatInsertOperation'
       - $ref: '#/components/schemas/ChatDeleteOperation'
       - $ref: '#/components/schemas/ChatMetadataOperation'
       - $ref: '#/components/schemas/ChatAddSwipeOperation'
@@ -8870,6 +9173,7 @@ components:
         mapping:
           edit: '#/components/schemas/ChatEditOperation'
           append: '#/components/schemas/ChatAppendOperation'
+          insert: '#/components/schemas/ChatInsertOperation'
           delete: '#/components/schemas/ChatDeleteOperation'
           metadata: '#/components/schemas/ChatMetadataOperation'
           addSwipe: '#/components/schemas/ChatAddSwipeOperation'
@@ -8879,9 +9183,9 @@ components:
       description: Closed, typed atomic commands. Validate all preconditions against the transaction-start state; apply payloads
         in array order and validate the final candidate/data invariants. Multiple commands may share the same observed messageRevision
         (e.g. add+select) without guessing intermediate revisions. New IDs created earlier in this batch may be payload/selection
-        references, but edit/delete targets and reorder interval membership must exist at transaction start. Contradictory
-        deletes, duplicate edits/overlapping paths or commands targeting deleted objects are rejected. Each changed domain
-        increments once per transaction. Any failure rolls back the complete batch, barriers and receipt.
+        references, but insert anchors, edit/delete targets and reorder interval membership must exist at transaction start.
+        Contradictory deletes, duplicate edits/overlapping paths or commands targeting deleted objects are rejected. Each
+        changed domain increments once per transaction. Any failure rolls back the complete batch, barriers and receipt.
     ChatCreateRequest:
       type: object
       additionalProperties: false
@@ -9044,9 +9348,9 @@ components:
           maxItems: 100
         generation:
           $ref: '#/components/schemas/ChatGenerationCommit'
-      description: At most 100 commands and 100 newly appended messages across the batch, at most 8 MiB UTF-8 JSON. One optional
-        generation describes the terminal run for the whole transaction; required whenever it commits generated output. See
-        ChatRequestId for body-only idempotency, replay and retention.
+      description: At most 100 commands and 100 newly appended or inserted messages across the batch, at most 8 MiB UTF-8
+        JSON. One optional generation describes the terminal run for the whole transaction; required whenever it commits generated
+        output and forbidden in a batch containing insert. See ChatRequestId for body-only idempotency, replay and retention.
     ChatCommit:
       type: object
       additionalProperties: false
@@ -9559,6 +9863,7 @@ components:
       - CHAT_PRECONDITION_REQUIRED
       - CHAT_IMPORT_INVALID
       - CHAT_IMPORT_EXPIRED
+      - CHAT_SEARCH_TIMEOUT
     ServiceModeStatus:
       type: object
       description: Current generation-service mode (FR-RES-005).
@@ -13766,6 +14071,33 @@ components:
           type: integer
           format: int64
           minimum: 1
+    ChatStorageState:
+      type: object
+      additionalProperties: false
+      required:
+      - mode
+      - authorityEpoch
+      properties:
+        mode:
+          type: string
+          enum:
+          - ST
+          - GO
+          - FROZEN
+        authorityEpoch:
+          $ref: '#/components/schemas/ChatAuthorityEpoch'
+      description: Server-read selection hint for the authenticated Owner. It grants no write permission and never replaces
+        per-request authority/epoch validation. FROZEN forbids automatic writes and storage fallback.
+    AuthSessionContextResponse:
+      allOf:
+      - $ref: '#/components/schemas/AuthSessionResponse'
+      - type: object
+        properties:
+          chatStorage:
+            $ref: '#/components/schemas/ChatStorageState'
+            description: Present exactly when include=chatStorage; omitted otherwise.
+      description: GET /auth/session preserves its original response by default. With include=chatStorage it must return the
+        hint or fail with 503; login/challenge response shapes remain unchanged.
     AuthenticatorSetupResponse:
       type: object
       required:

@@ -8,6 +8,7 @@ import { substituteParams, substituteParamsExtended, setExtensionPrompt } from '
 import { getContext, characters, this_chid, groups, selected_group, power_user, oai_settings } from '../engine/ports.js';
 import { configureFormatting, messageFormatting, MessageFormatter } from './format.js';
 import { accountStorage, configureAccountStorage } from './account-storage.js';
+import { readCharacterChats } from './helper-character.js';
 import {
     ARGUMENT_TYPE,
     SlashCommand,
@@ -59,7 +60,7 @@ export async function executeSlashCommandsWithOptions(text, options) {
     return result;
 }
 
-let owner;
+let owner, ownerHistory;
 export let user_avatar, world_info, selected_world_info, world_names;
 export let world_info_case_sensitive, world_info_match_whole_words, world_info_use_group_scoring, world_info_max_recursion_steps;
 export const DEFAULT_DEPTH = 4, DEFAULT_WEIGHT = 100, METADATA_KEY = 'world_info';
@@ -68,6 +69,10 @@ export const world_info_position = { before: 0, after: 1, ANTop: 2, ANBottom: 3,
 export const regex_placement = { USER_INPUT: 1, AI_OUTPUT: 2, SLASH_COMMAND: 3, WORLD_INFO: 5, REASONING: 6 };
 
 export function bindCardHost(options) {
+    if (owner !== options) {
+        ownerHistory?.abort();
+        ownerHistory = new AbortController();
+    }
     owner = options;
     const { context, settings, packet } = owner;
     user_avatar = context.userAvatar;
@@ -101,6 +106,8 @@ export function bindCardHost(options) {
 export const getCardHost = () => owner;
 export function clearCardHost(targetOwner) {
     if (!targetOwner || owner === targetOwner) {
+        ownerHistory?.abort();
+        ownerHistory = undefined;
         owner = undefined;
     }
 }
@@ -183,6 +190,32 @@ export function sanitizeRenderedHtml(html) {
         FORCE_BODY: true,
     });
 }
+export function captureCardHistoryScope({ assertActive, signal: callerSignal } = {}) {
+    assertActive?.();
+    const activeOwner = owner;
+    const context = activeOwner?.context;
+    if (!context || activeOwner.destroyed) throw createSanitizedError();
+    const metadata = context.chatMetadata;
+    const chatId = context.chatId;
+    const signals = [ownerHistory.signal, activeOwner.signal, activeOwner.historySignal, callerSignal].filter(Boolean);
+    const signal = AbortSignal.any(signals);
+    const assertCurrent = () => {
+        assertActive?.();
+        if (signal.aborted || owner !== activeOwner || activeOwner.destroyed ||
+            activeOwner.context !== context || context.chatMetadata !== metadata || context.chatId !== chatId) {
+            throw createSanitizedError();
+        }
+    };
+    assertCurrent();
+    return { context, client: activeOwner.client, signal, assertCurrent };
+}
+
+export function cardHistoryArgs(name, args, scope) {
+    if (name === 'getChatHistoryBrief') return [args[0], scope];
+    if (name === 'getChatHistoryDetail') return [args[0], args[1], scope];
+    return args;
+}
+
 const MESSAGE_MUTATION_INTERNAL_INDEX = new Map([
     ['setChatMessages', 2],
     ['createChatMessages', 2],
@@ -216,12 +249,13 @@ export function enterTemplateScope(data) {
     const activeContext = activeOwner?.context;
     const lease = activeContext?.captureHelperScope?.();
     const metadata = activeContext?.chatMetadata;
-    let valid = true;
+    const chatSignal = activeOwner?.historySignal;
+    const lifetime = new AbortController();
     let released = false;
     const release = () => {
         if (released) return;
         released = true;
-        valid = false;
+        lifetime.abort();
         lease?.release();
     };
     if (!data || typeof data !== 'object') {
@@ -229,7 +263,9 @@ export function enterTemplateScope(data) {
     }
 
     const isScopeValid = () => Boolean(
-        valid
+        !lifetime.signal.aborted
+        && !chatSignal?.aborted
+        && !activeOwner?.signal?.aborted
         && activeOwner
         && !activeOwner.destroyed
         && owner === activeOwner
@@ -244,6 +280,7 @@ export function enterTemplateScope(data) {
         }
     };
 
+    const historyScope = { assertActive: assertScopeValid, signal: lifetime.signal };
     const scopedData = Object.create(
         Object.getPrototypeOf(data),
         Object.getOwnPropertyDescriptors(data),
@@ -286,7 +323,7 @@ export function enterTemplateScope(data) {
                 return nextArgs;
             }
         }
-        return args;
+        return cardHistoryArgs(name, args, historyScope);
     };
 
     let scopedHelper;
@@ -348,7 +385,9 @@ export function enterTemplateScope(data) {
                         : bVal;
                 }
                 scopedHelper.builtin = scopedBuiltin;
-            } else if (typeof value === 'function' && key !== 'RawCharacter') {
+            } else if (key === 'RawCharacter') {
+                scopedHelper[key] = createScopedRawCharacter(historyScope);
+            } else if (typeof value === 'function') {
                 scopedHelper[key] = wrapMethod(key, value, rawHelper);
             } else {
                 scopedHelper[key] = value;
@@ -441,65 +480,50 @@ export function getRegexedString(...args) {
         substituteParams, substituteParamsExtended, getPresetManager: () => ({ apiId: 'openai', getSelectedPresetName: () => presetName,
             readPresetExtensionField: ({ path }) => lodash.get(preset.extensions, path) }) }).getRegexedString(...args);
 }
-// 与当前锁定 RawCharacter 的查找规则相同；不接触原生角色列表。
-export class RawCharacter {
-    constructor(character) {
-        Object.assign(this, character);
-        this.character = character;
+// Each public class closes over its caller's scope, including static methods extracted from the class.
+export function createScopedRawCharacter(scope) {
+    function currentContext() {
+        scope?.assertActive?.();
+        return owner?.context;
     }
-    getCardData() { return this.character; }
-    getAvatarId() { return this.character.avatar || ''; }
-    getRegexScripts() { return this.character.data?.extensions?.regex_scripts || []; }
-    getCharacterBook() { return this.character.data?.character_book || null; }
-    getWorldName() { return this.character.data?.extensions?.world || ''; }
-    static find({ name = 'current' } = {}) {
-        if (name === 'current') {
-            const current = characters[this_chid];
-            return current ? new RawCharacter(current) : null;
+
+    return class RawCharacter {
+        constructor(character) {
+            Object.assign(this, character);
+            this.character = character;
         }
-        const lowered = String(name).toLowerCase();
-        const found = characters.find(character => character.name?.toLowerCase() === lowered || character.avatar?.toLowerCase() === lowered);
-        return found ? new RawCharacter(found) : null;
-    }
-    static findIndex(arg = 'current') {
-        const name = (typeof arg === 'object' && arg !== null ? arg.name : arg) ?? 'current';
-        if (name === 'current') return this_chid != null && characters[this_chid] ? Number(this_chid) : -1;
-        const lowered = String(name).toLowerCase();
-        return characters.findIndex(character => character.name?.toLowerCase() === lowered || character.avatar?.toLowerCase() === lowered);
-    }
-    static async getChatsFromFiles(data, isGroupChat = false) {
-        if (typeof data === 'string') {
-            const res = await owner.client.request('/api/characters/chats', { avatar_url: data });
-            if (!res || (typeof res === 'object' && 'error' in res)) return undefined;
-            return res;
+        getCardData() { return this.character; }
+        getAvatarId() { return this.character.avatar || ''; }
+        getRegexScripts() { return this.character.data?.extensions?.regex_scripts || []; }
+        getCharacterBook() { return this.character.data?.character_book || null; }
+        getWorldName() { return this.character.data?.extensions?.world || ''; }
+
+        static find({ name = 'current' } = {}) {
+            const context = currentContext();
+            const card = context?.characters[findRawCharacterIndex(context, name)];
+            return card ? new RawCharacter(card) : null;
         }
-        const chat_dict = {};
-        const chat_list = Object.values(data ?? {})
-            .filter(item => typeof item?.file_name === 'string' && item.file_name.length > 0)
-            .sort((a, b) => a.file_name.localeCompare(b.file_name))
-            .reverse();
-        await Promise.all(
-            chat_list.map(async item => {
-                const ch_name = item.ch_name ?? item.character_name ?? item.file_name.split(' - ')[0];
-                const avatar_url = item.avatar_url || RawCharacter.find({ name: ch_name })?.avatar || '';
-                const currentChat = isGroupChat
-                    ? await owner.client.request('/api/chats/group/get', { id: item.file_name })
-                    : await owner.client.request('/api/chats/get', {
-                        ch_name,
-                        file_name: item.file_name.replace('.jsonl', ''),
-                        avatar_url,
-                    });
-                if (!Array.isArray(currentChat)) return;
-                const copy = [...currentChat];
-                if (!isGroupChat) {
-                    copy.shift();
-                }
-                chat_dict[item.file_name] = copy;
-            }),
-        );
-        return chat_dict;
-    }
+
+        static findIndex(arg = 'current') {
+            const name = (typeof arg === 'object' && arg !== null ? arg.name : arg) ?? 'current';
+            return findRawCharacterIndex(currentContext(), name);
+        }
+
+        static async getChatsFromFiles(data, isGroupChat = false) {
+            return readCharacterChats(data, isGroupChat, scope);
+        }
+    };
 }
+
+export function findRawCharacterIndex(context, name) {
+    if (!context) return -1;
+    const { characters: cards, characterId } = context;
+    if (name === 'current') return characterId != null && cards[characterId] ? Number(characterId) : -1;
+    const lowered = String(name).toLowerCase();
+    return cards.findIndex(card => card.name?.toLowerCase() === lowered || card.avatar?.toLowerCase() === lowered);
+}
+
+export const RawCharacter = createScopedRawCharacter();
 // 原解析规则，供 EJS/Helper 世界书条目的正则键使用。
 export function parseRegexFromString(input) {
     const match = input.match(/^\/([\w\W]+?)\/([gimsuy]*)$/);

@@ -520,7 +520,7 @@ Owner 选择 React，要求保留现有正常 UI、优先复用成熟开源组�
 | SX-1 | P0 | 调用面、补丁职责与阶段 0 合成测量归档（已随计划交付） |
 | SX-2 | P0 | 聊天存储与分页历史接口契约审定并冻结，之后同步 specs |
 | SX-3 | P0 | Go 聊天 / 候选 / 顺序 / metadata 存储、身份与 authority epoch、RLS、回执与 outbox |
-| SX-4 | P0 | 会话索引、双向快照分页、changes、按 messageId 定位与全聊搜索 |
+| SX-4 | P0 | 会话索引、双向当前状态 keyset 分页、changes、按 messageId 定位与全聊搜索 |
 | SX-5 | P0 | 消息批量操作、幂等、重排 / fork、生成终态与 inbox 去重 |
 | SX-6 | P0 | 共享 Session ChatStore、原生与卡片脚本兼容、完整历史屏障与窗口投影 |
 | SX-7 | P1 | Go 来源镜像切权威、source_ref / generation 同事务、inbox / 语音 / 收藏 / 记忆来源适配 |
@@ -533,6 +533,21 @@ Owner 选择 React，要求保留现有正常 UI、优先复用成熟开源组�
 | SX-14 | P2 | 资源权威切换与反向导出演练，停止 ST 内资源写入 |
 | SX-15 | P2 | ST 完全不启动跑全链；按 ADR-0012 退出 `/native/`；移除核心补丁与插件装配 |
 | SX-16 | P2 | 退役运行手册、发布 / 回滚制品、最终备份演练、OP-11 定向清理（真实操作另行授权） |
+
+**SX-4 [问]（2026-11-07，已答）**：冻结 OpenAPI 的 `listStoredMessages` 没有正文搜索参数/路由，`listStoredChats.q` 明确只搜索标题/角色，无法按原契约完成“全聊搜索”。建议给 `GET /api/v1/chats/{chatId}/messages` 增加可选 `q`，搜索当前选中候选正文、复用消息分页响应并将查询绑定到游标。**答（Owner 2026-11-07）**：批准上述 `q` 扩展；先补 OpenAPI 再实现，不将当前页过滤充作全聊搜索。
+
+**SX-5 [问]（2026-11-07，接口方向已答、具体契约待审）**：`ChatGenerationCommit` 要求生成前已持久化的 run/输入版本栅栏，但现有 Go/插件没有该注册入口，冻结聊天 API 只有终态提交。建议新增仅现有 serviceToken 通道可调用的 `POST /api/v1/service/chats/{chatId}/generation-runs`，携带 `ownerAccountId`、`requestId`、`authorityEpoch`、`generationRunId`、上下文基线 `chatRevision`；Node 生成桥在出站前登记当前输入/候选及分支栅栏，Session 在原有终态结构中引用同一 run。公开 `/chats*` 终态语义不变；未经注册或已失效的 run 一律拒绝。**答（Owner 2026-11-07）**：批准仅 serviceToken 的过渡登记入口，沿用 model-usage reservations 的已核验 Owner/Origin 边界；必须绑定已保存输入 messageId/选中候选并拒绝过期 epoch，明确活动 run 数量、新 run 失效规则、TTL 与清理；先单独提交 OpenAPI/catalog/生成物供 Owner 审阅，审完才实施依赖登记的逻辑。Owner 复审要求已纳入修订：登记按相关变化校验基线，允许无关尾部追加；明确 continue/regenerate 输入及终态 Owner/chat 绑定，内部接口移除 428；正文 q 上限 200 并补无命中扫描测量。具体候选见退出计划 §4.4.1；Owner 已复审通过 5f55e4c6，按修订契约实施。
+
+**SX-5 [问]（2026-11-07，零输出停止，已答）**：现有 append/edit/operations 均要求至少一项，登记后尚无任何输出就停止（包括登记 ACK 丢失）无法提交无消息的 `aborted`。建议不新增空操作或取消接口：零输出不做消息终态写入，原 run 沿用 15 分钟期限，后续新登记立即使其失效；有部分输出仍以原 run 提交 aborted。**答（Owner 2026-11-07）**：确认；Session 停止后丢弃迟到片段，不再用该 run 提交终态，取消上游并释放用量预留；过期未终结 run 在紧凑记录中标为内部 `expired`，不新增对外状态。
+
+**SX-6 [问]（2026-11-07，权威发现与旧门面阶段边界，方向已答）**：现有 `GET /api/v1/auth/session`/宿主 HTML 只有账号、会话身份；`GET /chats` 在 ST 权威时与故障同为 503，不能以失败回退 ST。建议给已认证 session 增加 `chatStorage: {mode: ST|GO|FROZEN, authorityEpoch: 十进制字符串}`，宿主从已核验响应注入页面和请求上下文；查询失败不默认 ST。旧 native 的文件名解析、新建/分支预分配 ID 与 F2 同 ID/+1 ACK 则缺少 Go 别名/原子全聊 CAS 契约（`stored_chat` 尚无别名；普通 operations 允许并发尾部追加，不能先读再伪装严格 whole-save）。建议本项先完成 Go 共享 Session/脚本全史与增量持久化；GO/FROZEN 权威下旧 ST 聊天入口明确拒绝且不触碰旧盘。完整旧文件名/新建/fork 门面随 SX-8 别名与迁移契约一起实施并作为切换前置。若 Owner 要求 SX-6 即具备完整 native GO 门面，先补别名、创建身份及仅 serviceToken 的严格 revision 兼容 operations 契约再实现；不以新 epoch 重新标记旧页面。**答（Owner 2026-11-07）**：同意先完成共享 Session/脚本并拒绝旧入口、native 完整门面归 SX-8 的边界；字段名用 `mode`。Owner 对 ecc25b73 复审后要求改为仅 `GET /auth/session?include=chatStorage` 按需返回，不带 include 的响应/插件每请求核验不变且不得查询权威；宿主页面启动与 Session 初始化才请求 include。其查询失败仅影响 included 请求，视为暂不可用而非登出；补故障注入证明普通 session 仍 200。按需修订 63fa64e5 已经 Owner 复审通过，开始依赖实现与查询隔离回归。 Owner 随后批准仅旧 ST 聊天存储路由使用 include 替换原核验（单次、不缓存）；GO/FROZEN/查询失败均拒绝读写且零触盘，其他插件/资源/模型保持普通核验，集中路由清单逐项回归并记录 ST 保存增量耗时。字段仅提示，写入仍查当前权威；409 后重读 session 留稿且不自动重发；FROZEN 提示“正在迁移”、只读、本地留稿、不回退或排队。SX-8 前置全部完成且 Owner 授权切换前，真实账号不得置为 GO/FROZEN，测试覆盖旧入口拒绝且零触盘。
+
+**SX-6 [问]（2026-11-07，Helper 历史插入，已复审通过）**：现有 `cards/helper-message.js:createChatMessages` 支持 `insert_before/insert_at`，但冻结 append 只允许尾部，reorder 又禁止新增 ID，不能原子表达该受支持调用。建议增加类型化 `insert` 命令：target 为已有 `beforeMessageId`，preconditions 为精确 `orderRevision`，payload 复用 `messages[{clientMessageId,data}]`；同批初始状态校验、整体回滚、总计 100 条新消息/100 命令/8 MiB 限制不变，推进 orderRevision 并使旧游标/生成顺序栅栏失效，既有来源身份不改。**答（Owner 2026-11-07）**：批准原子 insert，先独立提交契约复审；orderRevision 不符409、失效或外聊锚点404；成功推进orderRevision/变化流并失效旧游标与活动run；新来源沿append屏障/记忆入队，不绕过no_memory/无痕，不用于生成终态。测试覆盖Helper首条前插入、连续同位置插入及并发尾追加的版本冲突边界。Owner 已复审通过 a3e7e426；同一前台操作的嵌套 Helper insert 也会 fence 自己的 run，生成结果转待处理草稿，不设豁免，必须测试固定。
+
+**SX-6 [问]（2026-11-07，独立 Helper 无用户输入）**：已批准的 run 登记必须绑定已保存消息/选中候选；现有独立 `generate/generateRaw` 可在只有开场助手或空聊天时调用。当前 GO 适配只取最后一条用户消息，因此会在出站前明确拒绝（不伪造输入、无 provider 调用）。建议独立 Helper 使用当前实际上下文的最后一条已保存消息作为输入；开场助手先按普通 append 保存，再初始化卡片脚本。真正空聊天仍明确拒绝并保留脚本状态，列为 SX-8 真实切换前兼容前置。若本阶段要求无历史 Helper 也能生成，须先补无输入 run 的专门登记契约并复审，不能用虚构消息或无栅栏调用绕过。 **答（Owner 2026-11-07）**：仅助手生成写入（append/addSwipe/edit 带 generation）需要 run；只返回文本的 Helper 无需存储 run，空聊也允许模型，保留现有用量和受控用途。生成写入有开场助手时先保存并以它为输入；完全无已保存消息时拒绝该提交且留结果草稿，列 SX-8 前置。不伪造输入。测试纯文本空聊零存储、开场输入提交和空聊生成提交拒绝留稿，并核对 mb2-cards 的 MVU 空会话开场路径。
+
+
+**SX-7 [问]（2026-11-07，私有来源 / inbox 的权威核验，已答）**：私有 sources/inbox 使用服务令牌、没有浏览器 session；原建议新增只读 service/chat-storage 回查。**答（Owner）**：不新增接口、不让 ST 回查 Go。调用方本来就是 Go，每次调用前读取当前权威，仅 ST 发起 sources/inbox 请求；GO 走同库路径，FROZEN/查询失败明确不可用且零 ST 请求，不缓存。检查到触盘间的竞态由 SX-8 “置 FROZEN → ST 侧在途来源/inbox 排空 → 再导出迁移”解决，须给出排空判定与测试设计。测试覆盖 GO/FROZEN/故障零 ST 请求及 ST 行为不变。
 
 ## N. 聊天与记忆质量（CM，2026-11-06 Owner 决定以指标驱动）
 
@@ -554,3 +569,11 @@ Owner 选择 React，要求保留现有正常 UI、优先复用成熟开源组�
 | CM-11 | P1 | 记忆引擎收编评估：MemoryCore 存储与检索收回 Go + PostgreSQL（pgvector、中文全文检索）的方案、代价与迁移前后同评测对比；CM-3 基线后由 Owner 决定是否实施 |
 | CM-12 | P1 | 会话内滚动摘要：对话超过 N 轮或输入接近上下文预算时，把较早原文增量压缩成结构化摘要（关系状态 / 已发生事件 / 用户偏好 / 未解决话题），边界按稳定消息 ID，标注“可能不完整”；与“直接截断最早消息”和 L2 场景摘要在同一评测集对比（评测加长会话题型）；持久化如需新表交 SX 线 |
 | CM-13 | P1 | 去 AI 味与重复：CM-1 加回复重复率、`reply-pipeline.js` 规则命中率与重写额外耗时；CM-3 评审加 AI 味维度；按数据扩充规则与提示词（如“不是…而是”、过度安抚、固定括号动作、模板化收尾），权衡重写对末字耗时的代价 |
+
+## O. SX-7 审计修复（Owner 2026-11-07）
+
+| ID | 优先级 | 范围与验收 |
+|---|---|---|
+| SX-7F | P0 | 修复 server-sx@34a4a58c 审计七项：完整 Vitest session 夹具；正文搜索单请求有界扫描及连续游标；管理桥逐方法 chats 白名单与真实桥 GO 链路；conversation/relationship 删除锁序；retention 分批清理七天 changes；profile 最终写入权威/水位栅栏；append/fork 201 与回放状态。验证 quick、全 Go 单元、完整隔离 store/http、RLS、npm test、完整 test:desktop 与受影响受管场景；NOTES 逐项记录红绿证据。本条完成前不合 main，搜索契约调整独立提交复审后再实现。 |
+
+**SX-7F [问]（2026-11-07，正文搜索有界续扫，已复审通过）**：原 q 契约把 hasOlder/hasNewer 定义为已知匹配项，迫使单次请求扫描整聊。修订为每请求最多 200 条选中候选、密文扫描软目标 8 MiB（首条超目标可单独处理）；返回已找到项，允许零项但 has* 与 cursor 表示尚有历史可继续。游标为已扫描窗口排他边界；响应字节截断不得跳过已找到但未返回的项；锚点直接校验、不匹配404。超时明确503 CHAT_SEARCH_TIMEOUT，可重试输入游标；非 q 分页不变。契约 accd79b7 已经 Owner 复审通过，按此实施；同时登记 CHAT_SEARCH_TIMEOUT 的 HTTP 503/可重试语义并生成。NOTES 报 GOMAXPROCS=2 下单请求 P95，以及20k无命中遍历全部续扫的请求数与总耗时。

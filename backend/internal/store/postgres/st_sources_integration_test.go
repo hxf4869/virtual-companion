@@ -157,7 +157,7 @@ func TestSTSourcesReconcileAcceptsNewerCommittedSnapshot(t *testing.T) {
 				winner := observed
 				winner.Revision++
 				// A sibling reconciliation commits while this persisted read is in flight.
-				_, err := testEnv.store.applySTSourceSnapshot(ctx, owner, stSourceBase{Query: query}, winner)
+				_, err := testEnv.store.applySTSourceSnapshot(ctx, owner, 1, stSourceBase{Query: query}, winner)
 				if err != nil {
 					t.Fatalf("commit sibling snapshot: %v", err)
 				}
@@ -165,7 +165,7 @@ func TestSTSourcesReconcileAcceptsNewerCommittedSnapshot(t *testing.T) {
 					appliedRevision := winner.Revision
 					winner.Revision++
 					winner.State, winner.Messages = state, nil
-					if _, err := testEnv.store.applySTSourceSnapshot(ctx, owner, stSourceBase{Query: stsource.Query{ChatIdentity: sourceChat, Revision: &appliedRevision}}, winner); err != nil {
+					if _, err := testEnv.store.applySTSourceSnapshot(ctx, owner, 1, stSourceBase{Query: stsource.Query{ChatIdentity: sourceChat, Revision: &appliedRevision}}, winner); err != nil {
 						t.Fatalf("commit sibling availability decision: %v", err)
 					}
 				}

@@ -2,10 +2,10 @@
 import { lodash, yaml, showdown, hljs } from '../../locked-source/st/lib.js';
 import { bindCardHost, clearCardHost, refreshCardHost, messageFormatting, getCardHost, getChatCompletionModel, getTokenCountAsync, loadWorldInfo,
     getRegexedString, getThumbnailUrl, MessageFormatter, parseRegexFromString, isHelperExtensionEnabled, isEjsExtensionEnabled,
-    isEjsExecutionAllowed, getEnabledCardExtensions } from './ejs-host.js';
+    isEjsExecutionAllowed, getEnabledCardExtensions, cardHistoryArgs, createScopedRawCharacter } from './ejs-host.js';
 import { renderMarkdown } from './format.js';
 import { createScriptState, setHelperSchemaLibrary, notifyScriptButtons, onScriptButtonsChanged, waitUntil, getButtonId,
-    isCardExecutionAllowed, bindFrameInstance, disposeFrameInstance, getFrameOwner } from './helper-host.js';
+    isCardExecutionAllowed, bindFrameInstance, disposeFrameInstance, getFrameOwner, isInstanceDisposed, registerInstanceCleanup } from './helper-host.js';
 import * as variables from './helper-variables.js';
 import * as events from './helper-event.js';
 import * as util from './helper-util.js';
@@ -92,6 +92,9 @@ export async function initializeCards(options) {
     }
     const nodes = new Map(), byNode = new WeakMap(), pending = new Set(), frameUrls = new Map();
     const ownerScripts = new Map();
+    const frameHistoryScopes = new WeakMap();
+    let historyLifetime = new AbortController();
+    let chatOpenSignal;
     let ejs, serial = 0, openSerial = 0, activeMetadata, destroyed = false, renderQueue = Promise.resolve();
     const actions = document.createElement('div'); actions.className = 'vc-card-actions';
     const scriptFrames = document.createElement('div'); scriptFrames.dataset.vcCardScripts = '';
@@ -183,6 +186,9 @@ export async function initializeCards(options) {
     }, codeBlocks:decorateCodes, media() {}, reasoning() {} };
     const hostOwner = {
         ...options,
+        get historySignal() {
+            return chatOpenSignal ? AbortSignal.any([historyLifetime.signal, chatOpenSignal]) : historyLifetime.signal;
+        },
         surface,
         scripts: ownerScripts,
         notifyScriptButtons: () => {},
@@ -227,11 +233,14 @@ export async function initializeCards(options) {
     };
     context.eventSource.on(context.eventTypes.GENERATE_AFTER_DATA, onGenerateAfterData);
 
+    function assertHostOwner() {
+        if (destroyed || hostOwner.destroyed || signal?.aborted || getCardHost() !== hostOwner) {
+            throw new Error('VC_STALE_CARD_RUNTIME');
+        }
+    }
     function assertFrame(frame) {
+        assertHostOwner();
         if (
-            destroyed ||
-            hostOwner.destroyed ||
-            getCardHost() !== hostOwner ||
             !frame ||
             !frame.isConnected ||
             (getFrameOwner(frame) && getFrameOwner(frame) !== hostOwner) ||
@@ -239,6 +248,26 @@ export async function initializeCards(options) {
         ) {
             throw new Error('VC_STALE_CARD_RUNTIME');
         }
+    }
+    function frameHistoryScope(frame) {
+        if (frameHistoryScopes.has(frame)) return frameHistoryScopes.get(frame);
+        const metadata = context.chatMetadata;
+        const lifetime = new AbortController();
+        const historySignal = AbortSignal.any([hostOwner.historySignal, lifetime.signal]);
+        const scope = {
+            signal: historySignal,
+            assertActive() {
+                assertFrame(frame);
+                if (historySignal.aborted || context.chatMetadata !== metadata || isInstanceDisposed(frame)) {
+                    throw new Error('VC_STALE_CARD_RUNTIME');
+                }
+            },
+        };
+        if (frame) {
+            registerInstanceCleanup(frame, () => lifetime.abort());
+            frameHistoryScopes.set(frame, scope);
+        }
+        return scope;
     }
     const unsupportedHelper = name => function () {
         console.warn(`[TavernHelper] Unsupported helper interface called: ${name}`);
@@ -272,7 +301,9 @@ export async function initializeCards(options) {
         'replaceTavernRegexes', 'updateTavernRegexesWith',
     ];
     const unsupportedApi = Object.fromEntries(UNSUPPORTED_TOP_NAMES.map(name => [name, unsupportedHelper(name)]));
-    const bind = {};
+    const bind = {
+        _createRawCharacter() { return createScopedRawCharacter(frameHistoryScope(this.frameElement)); },
+    };
     for (const [name, fn] of Object.entries({ ...variables, ...events, ...util, ...scriptApi, ...globals, ...slashApi, ...injectApi })) {
         if (!name.startsWith('_') || typeof fn !== 'function') continue;
         bind[name] = function (...args) {
@@ -289,7 +320,14 @@ export async function initializeCards(options) {
     }
     for (const [name, fn] of Object.entries({ ...messages, ...books, ...generation, ...presetsApi, ...charactersApi, ...personasApi, ...injectApi, ...regexApi, ...unsupportedApi })) {
         if (name.startsWith('_') || name === 'RawCharacter' || typeof fn !== 'function' || Object.hasOwn(bind, '_' + name)) continue;
-        bind['_' + name] = function (...args) { assertFrame(this.frameElement); return fn.apply(this, args); };
+        bind['_' + name] = function (...args) {
+            const frame = this.frameElement;
+            assertFrame(frame);
+            if (name === 'getChatHistoryBrief' || name === 'getChatHistoryDetail') {
+                args = cardHistoryArgs(name, args, frameHistoryScope(frame));
+            }
+            return fn.apply(this, args);
+        };
     }
     const INTERNAL_HELPER_EXPORTS = new Set([
         'get_variables_without_clone',
@@ -312,6 +350,15 @@ export async function initializeCards(options) {
         ...publicOnly(presetsApi),
         ...publicOnly(scriptApi),
         ...publicOnly(charactersApi),
+        RawCharacter: createScopedRawCharacter({ assertActive: assertHostOwner }),
+        async getChatHistoryBrief(...args) {
+            assertHostOwner();
+            return charactersApi.getChatHistoryBrief(...args);
+        },
+        async getChatHistoryDetail(...args) {
+            assertHostOwner();
+            return charactersApi.getChatHistoryDetail(...args);
+        },
         ...publicOnly(personasApi),
         ...publicOnly(injectApi),
         ...publicOnly(regexApi),
@@ -388,6 +435,9 @@ export async function initializeCards(options) {
         }
     }
     async function closeScripts() {
+        historyLifetime.abort();
+        historyLifetime = new AbortController();
+        chatOpenSignal = undefined;
         const activeMvu = hostOwner.mvu;
         // Helper/MVU使用真实pagehide生命周期，等待其取消、解绑和唯一实例注销后才更换context。
         for (const frame of scriptFrames.querySelectorAll('iframe')) {
@@ -455,6 +505,7 @@ export async function initializeCards(options) {
             if (destroyed) return;
             destroyed = true;
             hostOwner.destroyed = true;
+            historyLifetime.abort();
             openSerial++;
             context.eventSource.removeListener?.(context.eventTypes.GENERATE_AFTER_DATA, onGenerateAfterData);
             ejs?.destroy?.();
@@ -578,6 +629,7 @@ export async function initializeCards(options) {
             await closeScripts();
             if (destroyed || hostOwner.destroyed || myOpenTicket !== openSerial) return;
             activeMetadata = context.chatMetadata;
+            chatOpenSignal = signal;
             if (!isHelperExtensionEnabled(hostOwner)) {
                 drawActions();
                 return;

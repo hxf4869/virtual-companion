@@ -1,7 +1,7 @@
 {
   "id": "helper-selfhost-runtime-assets",
   "kind": "deterministic-string-replacement",
-  "reason": "Tavern Helper 4.11.3 的脚本/渲染 iframe 模板（src/iframe/third_party_script.html、third_party_message.html）、iframe 构建器（src/panel/render/iframe.ts 的 log.js）与面板（src/Panel.vue 暴露 Vue 给 devtools）在运行期从 testingcf.jsdelivr.net 加载无版本 CDN 资源。V2 要求实际选定运行链不依赖可变 CDN（ADR-0009 §3 固定版本；执行计划 §6.5 R-CDN）。这些模板已编译进 dist/index.js，无公开扩展点可覆盖，故对复制到 dataRoot 的 dist 副本做确定性字串替换，指向由 vendor.lock.json 固定并自托管的同源路径。",
+  "reason": "Tavern Helper 4.11.3 的脚本/渲染 iframe 模板（src/iframe/third_party_script.html、third_party_message.html）、iframe 构建器（src/panel/render/iframe.ts 的 log.js）与面板（src/Panel.vue 暴露 Vue 给 devtools）在运行期从 testingcf.jsdelivr.net 加载无版本 CDN 资源。V2 要求实际选定运行链不依赖可变 CDN（ADR-0009 §3 固定版本；执行计划 §6.5 R-CDN）。这些模板已编译进 dist/index.js，无公开扩展点可覆盖，故对复制到 dataRoot 的 dist 副本做确定性字串替换，指向由 vendor.lock.json 固定并自托管的同源路径。Helper 延迟保存统一使用宿主的完整聊天保存调度，F2 显式保存可取消已覆盖的后台写入。",
   "upstream": {
     "component": "tavern-helper",
     "repo": "https://github.com/N0VI028/JS-Slash-Runner",
@@ -10,9 +10,9 @@
   },
   "target": "dist/index.js",
   "applies_to": "bootstrap 复制到 <dataRoot>/default-user/extensions/JS-Slash-Runner/ 的副本；upstream/ 原始检出不修改",
-  "removal_condition": "上游 Helper 改为相对/同源路径加载或提供可配置的资源基址；或 V2 替换 Helper 依赖。升级 Helper 版本时须重算 expected_input_sha256 / expected_output_sha256 并复核每条命中次数。",
+  "removal_condition": "上游 Helper 改为相对/同源路径加载或提供可配置的资源基址时移除自托管替换；上游延迟保存可由宿主完整保存取消时移除该调度替换。V2 替换 Helper 依赖时移除本补丁。升级 Helper 版本时须重算 expected_input_sha256 / expected_output_sha256 并复核每条命中次数。",
   "expected_input_sha256": "932c5267ad9ee0d6f36f3d70a9dd21a8f7effbcfef71cd26e87a1f310890da57",
-  "expected_output_sha256": "4a67f42a3822ba55e64eb877b344a5697c6ca43b7f88298377fae90834d3a4c0",
+  "expected_output_sha256": "be1e24c9201b0eae0bde81ec268e42690f91017f02c619d6ccccfeaca7edd450",
   "served_prefix": "/scripts/extensions/third-party/JS-Slash-Runner/lib/vendor",
   "replacements": [
     {
@@ -68,6 +68,12 @@
       "to": "function WI(e,t={type:`chat`}){const vcG=globalThis[Symbol.for('virtual-companion.f2-source')],vcS=vcG&&['chat','message'].includes(t.type)?vcG.capture(t.message_id):null,vcDone=vcS?vcG.begin(t.message_id):null;let n;try{n=e(zI(t))}catch(e){vcDone?.(!1);throw e}const vcWrite=e=>{try{if(vcS)vcG.assert(vcS,e);HI(e,t);vcDone?.(!0);return e}catch(e){vcDone?.(!1);throw e}};return pI(n)?n.then(vcWrite,e=>{vcDone?.(!1);throw e}):vcWrite(n)}",
       "count": 1,
       "where": "W05 async variable updater"
+    },
+    {
+      "from": "var Nk=_.debounce(De,1e3);",
+      "to": "var Nk=gt;",
+      "count": 1,
+      "where": "native chat save scheduler"
     }
   ],
   "left_as_is": [

@@ -11,6 +11,7 @@ import (
 	"github.com/hxf4869/virtual-companion/internal/memoryengine"
 	"github.com/hxf4869/virtual-companion/internal/stsource"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -241,6 +242,12 @@ func (s *Store) bindOwner(ctx context.Context, tx pgx.Tx, ownerUserID int64) err
 	proof := ProofFor(s.secret, ownerUserID, strconv.Itoa(int(pid)), xact, nonce)
 	// SELECT (not a DML tag) because set_owner_context RETURNS void; drain it.
 	if _, err := tx.Exec(ctx, "SELECT vc.set_owner_context($1, $2, $3)", ownerUserID, nonce, proof); err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "57014" {
+			// Keep the fail-closed sentinel, but expose a safe timeout cause for
+			// callers that distinguish retries. Never retain binding SQL/details.
+			return fmt.Errorf("%w: %w", ErrOwnerContextRejected, context.DeadlineExceeded)
+		}
 		return ErrOwnerContextRejected
 	}
 	return nil

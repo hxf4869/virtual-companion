@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import path from 'node:path';
 import fs from 'node:fs/promises';
+import { rmSync } from 'node:fs';
+import { copyTree } from './lib/util.mjs';
 import { createStClient } from './managed-lib.mjs';
 import { pinVcUi } from './vc-ui-pin.mjs';
 import { importSyntheticCard } from './w05-accept.mjs';
@@ -62,18 +64,33 @@ async function poll(test, label, timeout = 30000) {
     throw new Error(`等待超时：${label}`);
 }
 function assertNoCredential(text,ctx){
-    for(const key of [ctx.secrets.serviceToken,ctx.secrets.restKey,ctx.secrets.password,ctx.secrets.session.vcSession,ctx.secrets.session.vcCsrf]) assert.equal(text.includes(key),false,'普通副本不得包含凭据值');
+    for(const key of [ctx.secrets.serviceToken,ctx.secrets.restKey,ctx.secrets.password,ctx.secrets.session.vcSession,ctx.secrets.session.vcCsrf,ctx.secrets.rightsSession?.vcSession,ctx.secrets.rightsSession?.vcCsrf].filter(Boolean)) assert.equal(text.includes(key),false,'普通副本不得包含凭据值');
 }
 export async function sceneRightsBrowser(ctx){
-    expect(await ctx.admin.call('POST','/api/v1/st/bindings',{
+    // The default managed profile accumulates other scenarios' large assets.
+    // Use the harness's disposable rights account without changing export limits.
+    const {createGoAdminClient}=await import('./managed-lib.mjs');
+    const session=ctx.secrets.rightsSession;
+    const admin=createGoAdminClient({baseUrl:ctx.w05.goBase,origin:ctx.w05.stBase,session});
+    // Match the harness's normal browser-account consent precondition.
+    for(const consentType of ['SERVICE_TERMS','PRIVACY_POLICY','AI_CONTENT_NOTICE','THIRD_PARTY_MODEL_PROCESSING','SENSITIVE_DATA_PROCESSING']){
+        expect(await admin.call('PUT','/api/v1/consents',{consentType,version:'accept-managed',granted:true}),200,'合成账号同意前置');
+    }
+    expect(await admin.call('POST','/api/v1/st/bindings',{
         chatIdentity:crypto.randomUUID(),characterRef:crypto.randomUUID(),mode:'COMPANION',displayName:'数据权利合成前置',
     }),200,'数据权利场景的已初始化陪伴前置');
     const {chromium}=await import('playwright-core');
     const browser=await chromium.launch({headless:true,...(process.env.VC_W03_CHROMIUM_PATH?{executablePath:process.env.VC_W03_CHROMIUM_PATH}:{})});
+    const extensionRoot=path.join(ctx.w05.dataRoot,ctx.w06.handle,'extensions','vc-model-settings');
+    const removeExtension=()=>rmSync(extensionRoot,{recursive:true,force:true});
+    process.once('exit',removeExtension);
     try{
+        // Only the already verified managed application is installed; no shared
+        // profile settings, conversations or assets are copied into this account.
+        copyTree(path.join(ctx.w05.dataRoot,'default-user','extensions','vc-model-settings'),extensionRoot,{skip:['.git','harness']});
         const bc=await browser.newContext({viewport:{width:1440,height:1000},acceptDownloads:true});
         await pinVcUi(bc, 'on');
-        await bc.addCookies([{name:'vc_session',value:ctx.secrets.session.vcSession,url:ctx.w05.stBase},{name:'vc_csrf',value:ctx.secrets.session.vcCsrf,url:ctx.w05.stBase}]);
+        await bc.addCookies([{name:'vc_session',value:session.vcSession,url:ctx.w05.stBase},{name:'vc_csrf',value:session.vcCsrf,url:ctx.w05.stBase}]);
         const page=await bc.newPage();const errors=[];page.on('pageerror',()=>errors.push('pageerror'));
         await page.goto(ctx.w05.stBase + '/native/',{waitUntil:'domcontentloaded'});
         await page.waitForFunction(()=>window.SillyTavern?.getContext?.()?.eventSource);
@@ -81,10 +98,9 @@ export async function sceneRightsBrowser(ctx){
         const onboarding=page.locator('dialog[open].popup').filter({has:page.locator('.onboarding')});
         if(await onboarding.count()){await onboarding.locator('textarea').fill('合成验收用户');await onboarding.locator('.popup-button-ok').click();await onboarding.waitFor({state:'hidden'});}
         await page.waitForSelector('#preloader',{state:'hidden'});
-        // Use the current settings flow, including its sensitive-action reauthentication.
+        // Use the current native-host settings flow and real reauthentication.
         await page.getByRole('button',{name:'设置',exact:true}).click();
-        await page.locator('.vc-settings-shell [data-category="data"]').click();
-        await page.locator('.vc-settings-shell .vc-settings-open-account').click();
+        await page.locator('.vc-settings-form [data-action="data"]').click();
         const dialog=page.locator('.vc-data-dialog[open]');
         await dialog.waitFor();
         await page.screenshot({path:path.join(ctx.artifactsDir,'D05-data-desktop.png')});
@@ -102,11 +118,13 @@ export async function sceneRightsBrowser(ctx){
         const downloading=page.waitForEvent('download');await dialog.locator('[data-download]').click();
         const saved=await downloading;const file=await saved.path();assert.ok(file,'真实下载应产生文件');
         const text=await fs.readFile(file,'utf8');assertNoCredential(text,ctx);
-        const copy=JSON.parse(text);assert.equal(typeof copy.exportId,'string');assert.ok(copy.generatedAt&&copy.expiresAt&&copy.aiContentNotice);assert.ok(Array.isArray(copy.reminders)&&Array.isArray(copy.consents));assert.equal(copy.snapshotMode,'PER_FILE_AND_QUERY');assert.equal(copy.v2.st.state,'COMPLETE');
+        const copy=JSON.parse(text);assert.equal(typeof copy.exportId,'string');assert.ok(copy.generatedAt&&copy.expiresAt&&copy.aiContentNotice);assert.ok(Array.isArray(copy.reminders)&&Array.isArray(copy.consents));assert.equal(copy.snapshotMode,'PER_FILE_AND_QUERY');assert.equal(copy.v2.st.state,'COMPLETE');assert.equal(copy.v2.st.handle,ctx.w06.handle);
         assert.ok(copy.v2.domains.some((d)=>d.system==='ST_PRIVATE_CONTENT'&&d.state==='COMPLETE'));
         assert.equal(errors.length,0,'数据页面不得出现未捕获错误');
         return {cases:['D02','D05'],desktop:true,mobile:true,oneTimeDownload:true,privateFiles:copy.v2.st.fileCount};
-    }finally{await browser.close();}
+    }finally{
+        try{await browser.close();}finally{removeExtension();process.removeListener('exit',removeExtension);}
+    }
 }
 export async function sceneRightsNative(ctx){
     const {createGoAdminClient}=await import('./managed-lib.mjs');

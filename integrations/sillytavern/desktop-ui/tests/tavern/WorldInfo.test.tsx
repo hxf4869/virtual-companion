@@ -15,6 +15,7 @@ import {
   codeEditorDefaults,
 } from '../../src/features/tavern/CodeField';
 import { useTavernController } from '../../src/features/tavern/useTavernController';
+import { ST_CHAT_STORAGE_SESSION_URL, stChatStorageSession, stSessionIdentity } from '../st-session-fixture';
 
 interface FakeMonacoRecord {
   lastCreatedOptions: Record<string, unknown> | null;
@@ -127,7 +128,8 @@ vi.mock(
   }),
 );
 
-function setIdentityMeta(accountId = '9007199254740993', sessionId = '17') {
+function setIdentityMeta() {
+  const { accountId, sessionId } = stSessionIdentity;
   document.head.innerHTML = `
     <meta name="vc-account-id" content="${accountId}">
     <meta name="vc-session-id" content="${sessionId}">
@@ -239,6 +241,7 @@ describe('WorldInfo (B14 deleting world clears global/char/chat references in on
     globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url === '/csrf-token') return jsonResponse({ token: 'csrf-1' });
+      if (url === ST_CHAT_STORAGE_SESSION_URL) return jsonResponse(stChatStorageSession);
       if (url === '/api/settings/get') {
         return jsonResponse({
           settings: JSON.stringify(initialSettings),

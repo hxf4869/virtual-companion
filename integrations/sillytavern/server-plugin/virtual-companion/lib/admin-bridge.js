@@ -20,6 +20,8 @@ import { STORY_UI_ROUTES } from './story-ui-routes.js';
 const SEG = '[A-Za-z0-9](?:[A-Za-z0-9._:-]{0,200})';
 // 配置标识允许 @（如 m@chat）。仍排除 % 与 /，避免编码穿越。
 const PROFILE = '[A-Za-z0-9@](?:[A-Za-z0-9@._:-]{0,200})';
+const UUID = '[A-Fa-f0-9]{8}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{12}';
+const CHAT = `/api/v1/chats/${UUID}`;
 
 // 白名单：模型设置页真实所需 + 既有会话/登录。新增路径在这里加一行并注明消费者；
 // 权限判断全部由 Go 决定，本桥不做角色判定。
@@ -33,6 +35,18 @@ const ADMIN_BRIDGE_BASE = [
     { method: 'POST', path: /^\/api\/v1\/relationships\/[1-9][0-9]*\/voice-clips$/, where: 'VO-2 已持久化消息入队' },
     { method: 'GET', path: /^\/api\/v1\/voice-clips\/[1-9][0-9]*$/, where: 'VO-2 语音状态与转文字' },
     { method: 'GET', path: /^\/api\/v1\/voice-clips\/[1-9][0-9]*\/audio$/, where: 'VO-2 鉴权 WAV 与单范围下载' },
+    { method: 'GET', path: /^\/api\/v1\/chats$/, where: 'SX-6 聊天列表' },
+    { method: 'POST', path: /^\/api\/v1\/chats$/, where: 'SX-6 新建聊天' },
+    { method: 'GET', path: new RegExp(`^${CHAT}$`), where: 'SX-6 聊天详情' },
+    { method: 'DELETE', path: new RegExp(`^${CHAT}$`), where: 'SX-6 删除聊天' },
+    { method: 'GET', path: new RegExp(`^${CHAT}/messages$`), where: 'SX-6 聊天历史与搜索' },
+    { method: 'POST', path: new RegExp(`^${CHAT}/messages$`), where: 'SX-6 追加消息' },
+    { method: 'GET', path: new RegExp(`^${CHAT}/messages/${UUID}$`), where: 'SX-6 定位消息' },
+    { method: 'PATCH', path: new RegExp(`^${CHAT}/messages/${UUID}$`), where: 'SX-6 编辑消息' },
+    { method: 'PATCH', path: new RegExp(`^${CHAT}/metadata$`), where: 'SX-6 更新聊天元数据' },
+    { method: 'POST', path: new RegExp(`^${CHAT}/operations$`), where: 'SX-6 批量消息操作' },
+    { method: 'GET', path: new RegExp(`^${CHAT}/changes$`), where: 'SX-6 聊天增量同步' },
+    { method: 'POST', path: new RegExp(`^${CHAT}/forks$`), where: 'SX-6 创建聊天分支' },
     { method: 'GET', path: /^\/api\/v1\/relationships$/, where: 'W08 记忆页角色实例' },
     { method: 'GET', path: /^\/api\/v1\/relationships\/[1-9][0-9]*\/companion-state$/, where: 'HL 聊天心情与情绪提示' },
     { method: 'GET', path: /^\/api\/v1\/relationships\/[1-9][0-9]*\/memories$/, where: 'W08 记忆列表' },

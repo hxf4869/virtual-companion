@@ -108,7 +108,8 @@
       "CHAT_INVALID_OPERATION",
       "CHAT_PRECONDITION_REQUIRED",
       "CHAT_IMPORT_INVALID",
-      "CHAT_IMPORT_EXPIRED"
+      "CHAT_IMPORT_EXPIRED",
+      "CHAT_SEARCH_TIMEOUT"
     ],
     "FollowUpStatus": [
       "NEEDS_CLARIFICATION",
@@ -1002,11 +1003,18 @@
           {
             "code": "CHAT_IMPORT_EXPIRED",
             "order": 38
+          },
+          {
+            "code": "CHAT_SEARCH_TIMEOUT",
+            "httpStatus": 503,
+            "order": 39,
+            "retrySemantics": "Retry the same q request and input cursor. No completed scan progress is claimed; never fall back to an unbounded scan or silently truncate history.",
+            "retryable": true
           }
         ],
         "schemaVersion": 1
       },
-      "sha256": "f146ffa102203629508cb60302da952263a4f4560d3662cc0e97d204bc271a55"
+      "sha256": "e3b67466ef27ab53f354fd7c08a7a57ffa9d24b1c53eb1966fc7150dd76da5de"
     },
     "follow-up-statuses.yaml": {
       "document": {
@@ -1202,8 +1210,8 @@
         "adr": "docs/decisions/0007-go-companion-runtime.md",
         "catalogId": "go-v1-api-scope",
         "counts": {
-          "DEFER": 27,
-          "KEEP": 125,
+          "DEFER": 15,
+          "KEEP": 138,
           "RETIRE": 42,
           "SIMPLIFY": 5
         },
@@ -3103,99 +3111,147 @@
           },
           {
             "currentH5Callers": [],
-            "decision": "DEFER",
+            "decision": "KEEP",
+            "keepBecause": [
+              "owner-instruction",
+              "core-outcome"
+            ],
             "method": "GET",
             "operationId": "listStoredChats",
             "path": "/api/v1/chats",
-            "replacementOrImpact": "SX-2 / ADR-0013: frozen planned contract only, NOT implemented or routed. SX-3–SX-6 must implement and validate before promoting this operation to KEEP; DEFER records implementation deferral, not rejection of the approved ST-exit direction."
+            "replacementOrImpact": "SX-4: implemented owner-scoped Go chat reads with authenticated current-state keysets, full-message projections and changes reconciliation. Message q searches selected-candidate text across the full encrypted chat. ST authority remains unchanged until the separately authorized SX-8 cutover."
           },
           {
             "currentH5Callers": [],
-            "decision": "DEFER",
+            "decision": "KEEP",
+            "keepBecause": [
+              "owner-instruction",
+              "core-outcome"
+            ],
             "method": "POST",
             "operationId": "createStoredChat",
             "path": "/api/v1/chats",
-            "replacementOrImpact": "SX-2 / ADR-0013: frozen planned contract only, NOT implemented or routed. SX-3–SX-6 must implement and validate before promoting this operation to KEEP; DEFER records implementation deferral, not rejection of the approved ST-exit direction."
+            "replacementOrImpact": "SX-5: implemented owner-scoped transactional chat commands with conditional field rebasing, stable candidate identities, idempotent encrypted receipts, source revocation and outbox barriers. Generation terminal writes use the approved persisted run fence. Account authority stays ST until the separately authorized SX-8 cutover."
           },
           {
             "currentH5Callers": [],
-            "decision": "DEFER",
+            "decision": "KEEP",
+            "keepBecause": [
+              "owner-instruction",
+              "core-outcome"
+            ],
             "method": "GET",
             "operationId": "getStoredChat",
             "path": "/api/v1/chats/{chatId}",
-            "replacementOrImpact": "SX-2 / ADR-0013: frozen planned contract only, NOT implemented or routed. SX-3–SX-6 must implement and validate before promoting this operation to KEEP; DEFER records implementation deferral, not rejection of the approved ST-exit direction."
+            "replacementOrImpact": "SX-4: implemented owner-scoped Go chat reads with authenticated current-state keysets, full-message projections and changes reconciliation. Message q searches selected-candidate text across the full encrypted chat. ST authority remains unchanged until the separately authorized SX-8 cutover."
           },
           {
             "currentH5Callers": [],
-            "decision": "DEFER",
+            "decision": "KEEP",
+            "keepBecause": [
+              "owner-instruction",
+              "core-outcome"
+            ],
             "method": "DELETE",
             "operationId": "deleteStoredChat",
             "path": "/api/v1/chats/{chatId}",
-            "replacementOrImpact": "SX-2 / ADR-0013: frozen planned contract only, NOT implemented or routed. SX-3–SX-6 must implement and validate before promoting this operation to KEEP; DEFER records implementation deferral, not rejection of the approved ST-exit direction."
+            "replacementOrImpact": "SX-5: implemented owner-scoped transactional chat commands with conditional field rebasing, stable candidate identities, idempotent encrypted receipts, source revocation and outbox barriers. Generation terminal writes use the approved persisted run fence. Account authority stays ST until the separately authorized SX-8 cutover."
           },
           {
             "currentH5Callers": [],
-            "decision": "DEFER",
+            "decision": "KEEP",
+            "keepBecause": [
+              "owner-instruction",
+              "core-outcome"
+            ],
             "method": "GET",
             "operationId": "listStoredMessages",
             "path": "/api/v1/chats/{chatId}/messages",
-            "replacementOrImpact": "SX-2 / ADR-0013: frozen planned contract only, NOT implemented or routed. SX-3–SX-6 must implement and validate before promoting this operation to KEEP; DEFER records implementation deferral, not rejection of the approved ST-exit direction."
+            "replacementOrImpact": "SX-4: implemented owner-scoped Go chat reads with authenticated current-state keysets, full-message projections and changes reconciliation. Message q searches selected-candidate text across the full encrypted chat. ST authority remains unchanged until the separately authorized SX-8 cutover."
           },
           {
             "currentH5Callers": [],
-            "decision": "DEFER",
+            "decision": "KEEP",
+            "keepBecause": [
+              "owner-instruction",
+              "core-outcome"
+            ],
             "method": "POST",
             "operationId": "appendStoredMessages",
             "path": "/api/v1/chats/{chatId}/messages",
-            "replacementOrImpact": "SX-2 / ADR-0013: frozen planned contract only, NOT implemented or routed. SX-3–SX-6 must implement and validate before promoting this operation to KEEP; DEFER records implementation deferral, not rejection of the approved ST-exit direction."
+            "replacementOrImpact": "SX-5: implemented owner-scoped transactional chat commands with conditional field rebasing, stable candidate identities, idempotent encrypted receipts, source revocation and outbox barriers. Generation terminal writes use the approved persisted run fence. Account authority stays ST until the separately authorized SX-8 cutover."
           },
           {
             "currentH5Callers": [],
-            "decision": "DEFER",
+            "decision": "KEEP",
+            "keepBecause": [
+              "owner-instruction",
+              "core-outcome"
+            ],
             "method": "GET",
             "operationId": "getStoredMessage",
             "path": "/api/v1/chats/{chatId}/messages/{messageId}",
-            "replacementOrImpact": "SX-2 / ADR-0013: frozen planned contract only, NOT implemented or routed. SX-3–SX-6 must implement and validate before promoting this operation to KEEP; DEFER records implementation deferral, not rejection of the approved ST-exit direction."
+            "replacementOrImpact": "SX-4: implemented owner-scoped Go chat reads with authenticated current-state keysets, full-message projections and changes reconciliation. Message q searches selected-candidate text across the full encrypted chat. ST authority remains unchanged until the separately authorized SX-8 cutover."
           },
           {
             "currentH5Callers": [],
-            "decision": "DEFER",
+            "decision": "KEEP",
+            "keepBecause": [
+              "owner-instruction",
+              "core-outcome"
+            ],
             "method": "PATCH",
             "operationId": "editStoredMessage",
             "path": "/api/v1/chats/{chatId}/messages/{messageId}",
-            "replacementOrImpact": "SX-2 / ADR-0013: frozen planned contract only, NOT implemented or routed. SX-3–SX-6 must implement and validate before promoting this operation to KEEP; DEFER records implementation deferral, not rejection of the approved ST-exit direction."
+            "replacementOrImpact": "SX-5: implemented owner-scoped transactional chat commands with conditional field rebasing, stable candidate identities, idempotent encrypted receipts, source revocation and outbox barriers. Generation terminal writes use the approved persisted run fence. Account authority stays ST until the separately authorized SX-8 cutover."
           },
           {
             "currentH5Callers": [],
-            "decision": "DEFER",
+            "decision": "KEEP",
+            "keepBecause": [
+              "owner-instruction",
+              "core-outcome"
+            ],
             "method": "PATCH",
             "operationId": "editStoredChatMetadata",
             "path": "/api/v1/chats/{chatId}/metadata",
-            "replacementOrImpact": "SX-2 / ADR-0013: frozen planned contract only, NOT implemented or routed. SX-3–SX-6 must implement and validate before promoting this operation to KEEP; DEFER records implementation deferral, not rejection of the approved ST-exit direction."
+            "replacementOrImpact": "SX-5: implemented owner-scoped transactional chat commands with conditional field rebasing, stable candidate identities, idempotent encrypted receipts, source revocation and outbox barriers. Generation terminal writes use the approved persisted run fence. Account authority stays ST until the separately authorized SX-8 cutover."
           },
           {
             "currentH5Callers": [],
-            "decision": "DEFER",
+            "decision": "KEEP",
+            "keepBecause": [
+              "owner-instruction",
+              "core-outcome"
+            ],
             "method": "POST",
             "operationId": "applyStoredChatOperations",
             "path": "/api/v1/chats/{chatId}/operations",
-            "replacementOrImpact": "SX-2 / ADR-0013: frozen planned contract only, NOT implemented or routed. SX-3–SX-6 must implement and validate before promoting this operation to KEEP; DEFER records implementation deferral, not rejection of the approved ST-exit direction."
+            "replacementOrImpact": "SX-5: implemented owner-scoped transactional chat commands with conditional field rebasing, stable candidate identities, idempotent encrypted receipts, source revocation and outbox barriers. Generation terminal writes use the approved persisted run fence. Account authority stays ST until the separately authorized SX-8 cutover. SX-6 insert is a separately reviewed contract addition pending implementation; existing commands remain implemented."
           },
           {
             "currentH5Callers": [],
-            "decision": "DEFER",
+            "decision": "KEEP",
+            "keepBecause": [
+              "owner-instruction",
+              "core-outcome"
+            ],
             "method": "GET",
             "operationId": "listStoredChatChanges",
             "path": "/api/v1/chats/{chatId}/changes",
-            "replacementOrImpact": "SX-2 / ADR-0013: frozen planned contract only, NOT implemented or routed. SX-3–SX-6 must implement and validate before promoting this operation to KEEP; DEFER records implementation deferral, not rejection of the approved ST-exit direction."
+            "replacementOrImpact": "SX-4: implemented owner-scoped Go chat reads with authenticated current-state keysets, full-message projections and changes reconciliation. Message q searches selected-candidate text across the full encrypted chat. ST authority remains unchanged until the separately authorized SX-8 cutover."
           },
           {
             "currentH5Callers": [],
-            "decision": "DEFER",
+            "decision": "KEEP",
+            "keepBecause": [
+              "owner-instruction",
+              "core-outcome"
+            ],
             "method": "POST",
             "operationId": "forkStoredChat",
             "path": "/api/v1/chats/{chatId}/forks",
-            "replacementOrImpact": "SX-2 / ADR-0013: frozen planned contract only, NOT implemented or routed. SX-3–SX-6 must implement and validate before promoting this operation to KEEP; DEFER records implementation deferral, not rejection of the approved ST-exit direction."
+            "replacementOrImpact": "SX-5: implemented owner-scoped transactional chat commands with conditional field rebasing, stable candidate identities, idempotent encrypted receipts, source revocation and outbox barriers. Generation terminal writes use the approved persisted run fence. Account authority stays ST until the separately authorized SX-8 cutover."
           },
           {
             "currentH5Callers": [],
@@ -3220,6 +3276,18 @@
             "operationId": "exportStoredChat",
             "path": "/api/v1/chats/{chatId}/export",
             "replacementOrImpact": "SX-2 / ADR-0013: frozen planned contract only, NOT implemented or routed. SX-3–SX-6 must implement and validate before promoting this operation to KEEP; DEFER records implementation deferral, not rejection of the approved ST-exit direction."
+          },
+          {
+            "currentH5Callers": [],
+            "decision": "KEEP",
+            "keepBecause": [
+              "owner-instruction",
+              "core-outcome"
+            ],
+            "method": "POST",
+            "operationId": "registerStoredChatGeneration",
+            "path": "/api/v1/service/chats/{chatId}/generation-runs",
+            "replacementOrImpact": "SX-5: implemented serviceToken-only registration after Owner approval of 5f55e4c6. The verified Owner and saved input bind the causal baseline; unrelated tail appends are allowed, terminal writes bind both Owner and chatId. One active run, 15 minute nonrenewing expiry, distinct internal expired outcome and seven-day detail cleanup. Node registers before provider sends; SX-9/SX-10 internalize registration and SX-15 removes its Node route."
           }
         ],
         "runtimeAfterCutover": "Go companiond serves the KEEP/SIMPLIFY surface after the 2026-08-30 cutover; DEFER/RETIRE operations are not runtime fallbacks.",
@@ -3256,7 +3324,7 @@
           }
         ]
       },
-      "sha256": "a18363ef8f359e65813d80c28692802801589852bd5a5fe96ab0092ef38b9ad7"
+      "sha256": "89a146df4e18fe8e4d8fc67c66a7023401ad6aaa84b2079075153667a88bc1c9"
     },
     "memory-candidate-statuses.yaml": {
       "document": {
