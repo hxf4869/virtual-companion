@@ -82,6 +82,7 @@ type ChatChange struct {
 	Deleted          bool     `json:"deleted"`
 }
 type ChatCommit struct {
+	HTTPStatus       int             `json:"-"`
 	RequestID        string          `json:"requestId"`
 	OperationID      string          `json:"operationId"`
 	ChatID           string          `json:"chatId"`

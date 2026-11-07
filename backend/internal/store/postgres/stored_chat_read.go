@@ -13,10 +13,13 @@ import (
 
 	"github.com/hxf4869/virtual-companion/internal/stsource"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"golang.org/x/text/cases"
 )
 
 const storedChatPageBytes = 256 << 10
+const storedChatSearchDocuments = 200
+const storedChatSearchBytes = 8 << 20
 
 type ChatListQuery struct {
 	Cursor, CharacterRef, Q string
@@ -120,7 +123,16 @@ func normalizeChatID(id string) (string, error) {
 	}
 	return id, nil
 }
-func (s *Store) withStoredChatRead(ctx context.Context, owner int64, work func(context.Context, pgx.Tx, int64) error) error {
+func (s *Store) withStoredChatRead(ctx context.Context, owner int64, search bool, work func(context.Context, pgx.Tx, int64) error) error {
+	if search {
+		// Keep the deadline visible even if owner binding masks its database error.
+		if ctx == nil {
+			ctx = context.Background()
+		}
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, s.txTimeout)
+		defer cancel()
+	}
 	err := s.WithOwner(ctx, owner, func(ctx context.Context, tx pgx.Tx) error {
 		authority, epoch, err := lockChatAuthority(ctx, tx, owner, false)
 		if err != nil {
@@ -131,6 +143,10 @@ func (s *Store) withStoredChatRead(ctx context.Context, owner int64, work func(c
 		}
 		return work(ctx, tx, epoch)
 	})
+	var pgErr *pgconn.PgError
+	if search && err != nil && (errors.Is(ctx.Err(), context.DeadlineExceeded) || errors.Is(err, context.DeadlineExceeded) || (errors.As(err, &pgErr) && pgErr.Code == "57014")) {
+		return chatError("CHAT_SEARCH_TIMEOUT")
+	}
 	return mapChatErr(err)
 }
 func (s *Store) readStoredChat(ctx context.Context, tx pgx.Tx, owner int64, id string, epoch int64) (StoredChat, error) {
@@ -142,7 +158,7 @@ func (s *Store) GetStoredChat(ctx context.Context, owner int64, chatID string) (
 	if err != nil {
 		return out, err
 	}
-	err = s.withStoredChatRead(ctx, owner, func(ctx context.Context, tx pgx.Tx, epoch int64) error {
+	err = s.withStoredChatRead(ctx, owner, false, func(ctx context.Context, tx pgx.Tx, epoch int64) error {
 		var e error
 		out, e = s.readStoredChat(ctx, tx, owner, id, epoch)
 		return e
@@ -163,7 +179,7 @@ func (s *Store) ListStoredChats(ctx context.Context, owner int64, q ChatListQuer
 	if q.RelationshipID != nil {
 		rel = strconv.FormatInt(*q.RelationshipID, 10)
 	}
-	err = s.withStoredChatRead(ctx, owner, func(ctx context.Context, tx pgx.Tx, epoch int64) error {
+	err = s.withStoredChatRead(ctx, owner, false, func(ctx context.Context, tx pgx.Tx, epoch int64) error {
 		out.AuthorityEpoch = epoch
 		var beforeTime *time.Time
 		var beforeID *string
@@ -226,7 +242,7 @@ func (s *Store) GetStoredMessage(ctx context.Context, owner int64, chatID, messa
 	if err != nil {
 		return out, err
 	}
-	err = s.withStoredChatRead(ctx, owner, func(ctx context.Context, tx pgx.Tx, epoch int64) error {
+	err = s.withStoredChatRead(ctx, owner, false, func(ctx context.Context, tx pgx.Tx, epoch int64) error {
 		if _, err := s.readStoredChat(ctx, tx, owner, id, epoch); err != nil {
 			return err
 		}
@@ -245,11 +261,8 @@ type chatMessageKey struct {
 	Position int64
 }
 
-// A bounded server-side scan is necessary for encrypted full-chat search. It
-// decrypts only current selected-candidate documents, never JSONL or all swipes.
-// Ordinary pagination stays an indexed SQL keyset and does not scan bodies.
-func (s *Store) storedMessageKeys(ctx context.Context, tx pgx.Tx, owner int64, chatID string, bound *int64, forward, inclusive bool, q string, limit int) ([]chatMessageKey, error) {
-	out := []chatMessageKey{}
+// Ordinary pagination and search existence probes use only indexed positions.
+func (s *Store) storedMessageKeys(ctx context.Context, tx pgx.Tx, owner int64, chatID string, bound *int64, forward, inclusive bool, limit int) ([]chatMessageKey, error) {
 	direction, op := "DESC", "<"
 	if forward {
 		direction, op = "ASC", ">"
@@ -257,83 +270,140 @@ func (s *Store) storedMessageKeys(ctx context.Context, tx pgx.Tx, owner int64, c
 	if inclusive {
 		op += "="
 	}
-	fold := cases.Fold()
-	for {
-		count := limit - len(out)
-		if q != "" {
-			count = 200
+	args := []any{owner, chatID}
+	boundary := ""
+	if bound != nil {
+		args = append(args, *bound)
+		boundary = " AND position " + op + " $3"
+	}
+	args = append(args, limit)
+	rows, err := tx.Query(ctx, `SELECT message_id::text,position FROM vc.stored_message
+ WHERE owner_user_id=$1 AND chat_id=$2 AND deleted_at IS NULL`+boundary+` ORDER BY position `+direction+` LIMIT $`+strconv.Itoa(len(args)), args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []chatMessageKey{}
+	for rows.Next() {
+		var k chatMessageKey
+		if err := rows.Scan(&k.ID, &k.Position); err != nil {
+			return nil, err
 		}
-		args := []any{owner, chatID}
-		boundary := ""
-		if bound != nil {
-			args = append(args, *bound)
-			boundary = " AND m.position " + op + " $3"
+		out = append(out, k)
+	}
+	return out, rows.Err()
+}
+
+type storedSearchWindow struct {
+	keys        []chatMessageKey
+	selected    map[string]ChatData
+	first, last *int64
+}
+
+// Select at most one window before transferring ciphertext. The anchor, when
+// present, is its first document; validation never scans earlier bodies. Keep
+// matching selected documents for projection so none is decrypted twice.
+func (s *Store) searchStoredMessageWindow(ctx context.Context, tx pgx.Tx, owner int64, chatID string, bound *int64, forward, inclusive bool, q string, limit int) (storedSearchWindow, error) {
+	out := storedSearchWindow{keys: []chatMessageKey{}, selected: map[string]ChatData{}}
+	direction, op := "DESC", "<"
+	if forward {
+		direction, op = "ASC", ">"
+	}
+
+	documents, bytes := storedChatSearchDocuments, storedChatSearchBytes
+	if inclusive {
+		// Validate this selected document directly before even fetching older bodies.
+		var k chatMessageKey
+		var encrypted string
+		err := tx.QueryRow(ctx, `SELECT m.message_id::text,m.position,c.data_cipher FROM vc.stored_message m
+  JOIN vc.stored_candidate c ON(c.owner_user_id,c.chat_id,c.message_id,c.candidate_id)=(m.owner_user_id,m.chat_id,m.message_id,m.selected_candidate_id)
+  WHERE m.owner_user_id=$1 AND m.chat_id=$2 AND m.position=$3 AND m.deleted_at IS NULL AND c.deleted_at IS NULL`, owner, chatID, bound).Scan(&k.ID, &k.Position, &encrypted)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return out, ErrNotFound
 		}
-		args = append(args, count)
-		limitSQL := " LIMIT $" + strconv.Itoa(len(args))
-		pageSQL := `SELECT m.message_id,m.position,m.selected_candidate_id FROM vc.stored_message m
-   WHERE m.owner_user_id=$1 AND m.chat_id=$2 AND m.deleted_at IS NULL` + boundary + ` ORDER BY m.position ` + direction + limitSQL
-		sql := `SELECT m.message_id::text,m.position FROM (` + pageSQL + `) m ORDER BY m.position ` + direction
-		if q != "" {
-			// Bound the position range before touching encrypted candidates. A lateral
-			// point lookup avoids rescanning/sorting all candidates for each search page.
-			sql = `WITH page AS MATERIALIZED (` + pageSQL + `) SELECT m.message_id::text,m.position,c.data_cipher
-    FROM page m JOIN LATERAL (SELECT data_cipher FROM vc.stored_candidate c
-     WHERE c.owner_user_id=$1 AND c.chat_id=$2 AND c.message_id=m.message_id AND c.candidate_id=m.selected_candidate_id AND c.deleted_at IS NULL LIMIT 1) c ON true
-    ORDER BY m.position ` + direction
-		}
-		rows, err := tx.Query(ctx, sql, args...)
 		if err != nil {
-			return nil, err
+			return out, err
 		}
-		n := 0
-		var last int64
-		for rows.Next() {
-			var k chatMessageKey
-			var encrypted string
-			if q == "" {
-				err = rows.Scan(&k.ID, &k.Position)
-			} else {
-				err = rows.Scan(&k.ID, &k.Position, &encrypted)
-			}
-			if err != nil {
-				rows.Close()
-				return nil, err
-			}
-			n++
-			last = k.Position
-			match := true
-			if q != "" {
-				var data ChatData
-				if err = s.decodeChatJSON(encrypted, &data); err != nil {
-					rows.Close()
-					return nil, err
-				}
-				mes, _ := data["mes"].(string)
-				match = strings.Contains(fold.String(mes), q)
-			}
-			if match {
-				out = append(out, k)
-				if len(out) == limit {
-					break
-				}
-			}
+		var data ChatData
+		if err := s.decodeChatJSON(encrypted, &data); err != nil {
+			return out, err
 		}
-		rows.Close()
-		if err = rows.Err(); err != nil {
-			return nil, err
+		mes, _ := data["mes"].(string)
+		if !strings.Contains(cases.Fold().String(mes), q) {
+			return out, ErrNotFound
 		}
-		if len(out) == limit || q == "" || n < count {
+		out.keys = append(out.keys, k)
+		out.selected[k.ID] = data
+		first, last := k.Position, k.Position
+		out.first, out.last = &first, &last
+		documents--
+		bytes -= len(encrypted)
+		if len(out.keys) == limit || bytes <= 0 {
 			return out, nil
 		}
-		bound = &last
-		op = strings.TrimSuffix(op, "=")
 	}
+	args := []any{owner, chatID, documents, bytes, !inclusive}
+	boundary := ""
+	if bound != nil {
+		args = append(args, *bound)
+		boundary = " AND m.position " + op + " $6"
+	}
+	rows, err := tx.Query(ctx, `WITH page AS MATERIALIZED (
+ SELECT m.message_id,m.position,m.selected_candidate_id FROM vc.stored_message m
+ WHERE m.owner_user_id=$1 AND m.chat_id=$2 AND m.deleted_at IS NULL`+boundary+` ORDER BY m.position `+direction+` LIMIT $3
+ ), sizes AS MATERIALIZED (
+ SELECT m.*,c.bytes FROM page m JOIN LATERAL (
+ SELECT octet_length(data_cipher) AS bytes FROM vc.stored_candidate c
+ WHERE c.owner_user_id=$1 AND c.chat_id=$2 AND c.message_id=m.message_id AND c.candidate_id=m.selected_candidate_id AND c.deleted_at IS NULL LIMIT 1
+ ) c ON true
+ ), sized AS (
+ SELECT *,row_number() OVER(ORDER BY position `+direction+`) AS n,
+ sum(bytes) OVER(ORDER BY position `+direction+`) AS scanned_bytes FROM sizes
+ ) SELECT m.message_id::text,m.position,c.data_cipher FROM sized m JOIN LATERAL (
+ SELECT data_cipher FROM vc.stored_candidate c WHERE c.owner_user_id=$1 AND c.chat_id=$2 AND c.message_id=m.message_id AND c.candidate_id=m.selected_candidate_id AND c.deleted_at IS NULL LIMIT 1
+ ) c ON true WHERE ($5 AND m.n=1) OR m.scanned_bytes<=$4 ORDER BY m.position `+direction, args...)
+	if err != nil {
+		return out, err
+	}
+	defer rows.Close()
+	fold := cases.Fold()
+	for rows.Next() {
+		var k chatMessageKey
+		var encrypted string
+		if err := rows.Scan(&k.ID, &k.Position, &encrypted); err != nil {
+			return out, err
+		}
+		var data ChatData
+		if err := s.decodeChatJSON(encrypted, &data); err != nil {
+			return out, err
+		}
+		mes, _ := data["mes"].(string)
+		match := strings.Contains(fold.String(mes), q)
+		if out.first == nil {
+			first := k.Position
+			out.first = &first
+		}
+		last := k.Position
+		out.last = &last
+		if match {
+			out.keys = append(out.keys, k)
+			out.selected[k.ID] = data
+			if len(out.keys) == limit {
+				break
+			}
+		}
+	}
+	// A full match page can stop before Next closes rows; drain before Err.
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return out, err
+	}
+	return out, nil
 }
 
 // Ciphertext sizes are available without decrypting or transferring the bodies.
 // Stop the SQL page at a soft byte budget (but always include its first row).
-func (s *Store) loadStoredMessagePage(ctx context.Context, tx pgx.Tx, owner int64, chatID string, keys []chatMessageKey, view string, forward bool) ([]StoredMessage, error) {
+func (s *Store) loadStoredMessagePage(ctx context.Context, tx pgx.Tx, owner int64, chatID string, keys []chatMessageKey, view string, forward bool, selected map[string]ChatData) ([]StoredMessage, error) {
 	result := []StoredMessage{}
 	if len(keys) == 0 {
 		return result, nil
@@ -368,7 +438,9 @@ func (s *Store) loadStoredMessagePage(ctx context.Context, tx pgx.Tx, owner int6
 		if err = rows.Scan(&m.MessageID, &m.Revision, &m.Position, &m.SelectedCandidateID, &md, &m.CandidateCount, &c.CandidateID, &c.SourceRevision, &c.SourceGeneration, &c.settled, &cd); err != nil {
 			return nil, err
 		}
-		if err = s.decodeChatJSON(cd, &c.Data); err != nil {
+		if c.CandidateID == m.SelectedCandidateID && selected[m.MessageID] != nil {
+			c.Data = selected[m.MessageID]
+		} else if err = s.decodeChatJSON(cd, &c.Data); err != nil {
 			return nil, err
 		}
 		if len(result) == 0 || result[len(result)-1].MessageID != m.MessageID {
@@ -434,7 +506,7 @@ func (s *Store) ListStoredMessages(ctx context.Context, owner int64, chatID stri
 		}
 	}
 	q.Q = normalizeMessageQuery(q.Q)
-	err = s.withStoredChatRead(ctx, owner, func(ctx context.Context, tx pgx.Tx, epoch int64) error {
+	err = s.withStoredChatRead(ctx, owner, q.Q != "", func(ctx context.Context, tx pgx.Tx, epoch int64) error {
 		chat, err := s.readStoredChat(ctx, tx, owner, id, epoch)
 		if err != nil {
 			return err
@@ -476,23 +548,45 @@ func (s *Store) ListStoredMessages(ctx context.Context, owner int64, chatID stri
 				return err
 			}
 			bound = &position
-			if q.Q != "" {
-				anchor, err := s.storedMessageKeys(ctx, tx, owner, id, bound, false, true, q.Q, 1)
-				if err != nil {
-					return err
-				}
-				if len(anchor) == 0 || anchor[0].ID != q.AnchorMessageID {
-					return ErrNotFound
-				}
+		}
+		var keys []chatMessageKey
+		var window storedSearchWindow
+		if q.Q != "" {
+			window, err = s.searchStoredMessageWindow(ctx, tx, owner, id, bound, forward, inclusive, q.Q, limit)
+			keys = window.keys
+		} else {
+			keys, err = s.storedMessageKeys(ctx, tx, owner, id, bound, forward, inclusive, limit)
+		}
+		if err != nil {
+			return err
+		}
+		messages, err := s.loadStoredMessagePage(ctx, tx, owner, id, keys, q.View, forward, window.selected)
+		if err != nil {
+			return err
+		}
+		var first, last int64
+		if q.Q != "" {
+			if window.first == nil {
+				return nil
 			}
-		}
-		keys, err := s.storedMessageKeys(ctx, tx, owner, id, bound, forward, inclusive, q.Q, limit)
-		if err != nil {
-			return err
-		}
-		messages, err := s.loadStoredMessagePage(ctx, tx, owner, id, keys, q.View, forward)
-		if err != nil {
-			return err
+			first, last = *window.first, *window.last
+			// The response budget may omit found matches. Resume from the last
+			// actually returned match, leaving every omitted match for the next page.
+			if len(messages) < len(keys) {
+				last, _ = strconv.ParseInt(messages[len(messages)-1].Position, 10, 64)
+			}
+			if !forward {
+				first, last = last, first
+			}
+		} else {
+			if len(messages) == 0 {
+				return nil
+			}
+			first, _ = strconv.ParseInt(messages[0].Position, 10, 64)
+			last, _ = strconv.ParseInt(messages[len(messages)-1].Position, 10, 64)
+			if !forward {
+				first, last = last, first
+			}
 		}
 		if !forward {
 			for l, r := 0, len(messages)-1; l < r; l, r = l+1, r-1 {
@@ -500,22 +594,17 @@ func (s *Store) ListStoredMessages(ctx context.Context, owner int64, chatID stri
 			}
 		}
 		out.Items = messages
-		if len(messages) == 0 {
-			return nil
-		}
-		first, _ := strconv.ParseInt(messages[0].Position, 10, 64)
-		last, _ := strconv.ParseInt(messages[len(messages)-1].Position, 10, 64)
 		cursor := chatKeyset{Kind: "messages", Owner: owner, ChatID: id, Epoch: epoch, Order: chat.OrderRevision, View: q.View, Q: q.Q, Position: first}
 		before := s.encodeChatCursor(cursor)
 		out.BeforeCursor = &before
 		cursor.Position = last
 		after := s.encodeChatCursor(cursor)
 		out.AfterCursor = &after
-		older, err := s.storedMessageKeys(ctx, tx, owner, id, &first, false, false, q.Q, 1)
+		older, err := s.storedMessageKeys(ctx, tx, owner, id, &first, false, false, 1)
 		if err != nil {
 			return err
 		}
-		newer, err := s.storedMessageKeys(ctx, tx, owner, id, &last, true, false, q.Q, 1)
+		newer, err := s.storedMessageKeys(ctx, tx, owner, id, &last, true, false, 1)
 		if err != nil {
 			return err
 		}
@@ -536,7 +625,7 @@ func (s *Store) ListStoredChatChanges(ctx context.Context, owner int64, chatID s
 	if err != nil || afterRevision < 0 {
 		return out, ErrInvalid
 	}
-	err = s.withStoredChatRead(ctx, owner, func(ctx context.Context, tx pgx.Tx, epoch int64) error {
+	err = s.withStoredChatRead(ctx, owner, false, func(ctx context.Context, tx pgx.Tx, epoch int64) error {
 		c, err := s.readStoredChat(ctx, tx, owner, id, epoch)
 		if err != nil {
 			return err

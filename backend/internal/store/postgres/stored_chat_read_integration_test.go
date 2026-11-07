@@ -180,20 +180,16 @@ func TestStoredChatPagingTwentyThousand(t *testing.T) {
 	if len(matches.Items) != 1 || matches.Items[0].MessageID != syntheticMessageID(19999) || !matches.HasOlder || matches.HasNewer {
 		t.Fatal("full-chat selected-text search failed")
 	}
-	older, err := s.ListStoredMessages(ctx, 1, c.ChatID, ChatMessageQuery{Q: "needle", Before: *matches.BeforeCursor, Limit: 1})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(older.Items) != 1 || older.Items[0].MessageID != syntheticMessageID(1) || older.HasOlder || !older.HasNewer {
+
+	seenMatches, _, _, _ := walkStoredSearch(t, s, c.ChatID, "needle", &matches, false)
+	if len(seenMatches) != 2 || !seenMatches[syntheticMessageID(1)] || !seenMatches[syntheticMessageID(19999)] {
 		t.Fatal("search page missed old history")
 	}
-	empty, err := s.ListStoredMessages(ctx, 1, c.ChatID, ChatMessageQuery{Q: "archive"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(empty.Items) != 0 || empty.BeforeCursor != nil || empty.AfterCursor != nil || empty.HasOlder || empty.HasNewer {
+	empty, _, _, _ := walkStoredSearch(t, s, c.ChatID, "archive", nil, false)
+	if len(empty) != 0 {
 		t.Fatal("search included a deselected candidate")
 	}
+
 	_, err = s.ListStoredMessages(ctx, 1, c.ChatID, ChatMessageQuery{Q: "needle", AnchorMessageID: syntheticMessageID(50)})
 	if !errors.Is(err, ErrNotFound) {
 		t.Fatalf("nonmatching anchor=%v", err)
@@ -386,7 +382,7 @@ func TestStoredChatReadSerializesConcurrentEditDeleteReorder(t *testing.T) {
 		}
 	}()
 	go func() {
-		readDone <- s.withStoredChatRead(ctx, 1, func(ctx context.Context, tx pgx.Tx, epoch int64) error {
+		readDone <- s.withStoredChatRead(ctx, 1, false, func(ctx context.Context, tx pgx.Tx, epoch int64) error {
 			if _, err := s.readStoredChat(ctx, tx, 1, c.ChatID, epoch); err != nil {
 				return err
 			}

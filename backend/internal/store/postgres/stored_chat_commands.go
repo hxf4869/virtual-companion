@@ -80,6 +80,7 @@ type ChatForkCandidateMapping struct {
 	CandidateID       string `json:"candidateId"`
 }
 type ChatForkResult struct {
+	HTTPStatus  int               `json:"-"`
 	RequestID   string            `json:"requestId"`
 	OperationID string            `json:"operationId"`
 	Chat        StoredChat        `json:"chat"`

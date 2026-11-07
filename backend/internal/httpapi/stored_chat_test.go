@@ -303,6 +303,7 @@ func TestStoredChatReadStoreErrors(t *testing.T) {
 	}{
 		{chatPath + "/messages?before=wrong-filter", postgres.ErrInvalid, 400, "INVALID_REQUEST"},
 		{chatPath + "/messages?before=expired", &postgres.ChatError{Code: "CHAT_CURSOR_EXPIRED"}, 410, "CHAT_CURSOR_EXPIRED"},
+		{chatPath + "/messages?q=needle", &postgres.ChatError{Code: "CHAT_SEARCH_TIMEOUT"}, 503, "CHAT_SEARCH_TIMEOUT"},
 		{chatPath + "/changes?afterRevision=0", &postgres.ChatError{Code: "CHAT_CHANGES_EXPIRED"}, 410, "CHAT_CHANGES_EXPIRED"},
 		{messagePath, errors.New("synthetic-private-storage-detail"), 503, "SCHEMA_UNAVAILABLE"},
 		{messagePath, &postgres.ChatError{Code: "synthetic-unknown-chat-code"}, 503, "SCHEMA_UNAVAILABLE"},

@@ -23,11 +23,11 @@ func (s *Store) ApplyStoredChatOperations(ctx context.Context, owner int64, chat
 		}
 		commands = append(commands, command)
 	}
-	return s.mutateStoredChat(ctx, owner, chatID, storedChatResource("POST", chatID, "/operations"), in.RequestID, in.AuthorityEpoch, in, commands, in.Generation)
+	return s.mutateStoredChat(ctx, owner, chatID, storedChatResource("POST", chatID, "/operations"), in.RequestID, in.AuthorityEpoch, in, commands, in.Generation, 200)
 }
 func (s *Store) AppendStoredMessages(ctx context.Context, owner int64, chatID string, in ChatAppendRequest) (ChatCommit, error) {
 	commands := []chatCommand{{kind: "append", messages: in.Messages}}
-	return s.mutateStoredChat(ctx, owner, chatID, storedChatResource("POST", chatID, "/messages"), in.RequestID, in.AuthorityEpoch, in, commands, in.Generation)
+	return s.mutateStoredChat(ctx, owner, chatID, storedChatResource("POST", chatID, "/messages"), in.RequestID, in.AuthorityEpoch, in, commands, in.Generation, 201)
 }
 func (s *Store) EditStoredMessage(ctx context.Context, owner int64, chatID, messageID string, in ChatMessageEditRequest) (ChatCommit, error) {
 	command := chatCommand{kind: "edit", messageID: strings.ToLower(messageID), baseRevision: in.BaseRevision, changes: in.Changes}
@@ -37,14 +37,14 @@ func (s *Store) EditStoredMessage(ctx context.Context, owner int64, chatID, mess
 			return ChatCommit{}, ErrInvalid
 		}
 	}
-	return s.mutateStoredChat(ctx, owner, chatID, storedChatResource("PATCH", chatID, "/messages/"+command.messageID), in.RequestID, in.AuthorityEpoch, in, []chatCommand{command}, in.Generation)
+	return s.mutateStoredChat(ctx, owner, chatID, storedChatResource("PATCH", chatID, "/messages/"+command.messageID), in.RequestID, in.AuthorityEpoch, in, []chatCommand{command}, in.Generation, 200)
 }
 func (s *Store) EditStoredChatMetadata(ctx context.Context, owner int64, chatID string, in ChatMetadataEditRequest) (ChatCommit, error) {
 	command := chatCommand{kind: "metadata", baseRevision: in.BaseRevision, changes: in.Changes}
-	return s.mutateStoredChat(ctx, owner, chatID, storedChatResource("PATCH", chatID, "/metadata"), in.RequestID, in.AuthorityEpoch, in, []chatCommand{command}, nil)
+	return s.mutateStoredChat(ctx, owner, chatID, storedChatResource("PATCH", chatID, "/metadata"), in.RequestID, in.AuthorityEpoch, in, []chatCommand{command}, nil, 200)
 }
 
-func (s *Store) mutateStoredChat(ctx context.Context, owner int64, chatID, resource, requestID string, epoch int64, payload any, commands []chatCommand, generation *ChatGenerationCommit) (ChatCommit, error) {
+func (s *Store) mutateStoredChat(ctx context.Context, owner int64, chatID, resource, requestID string, epoch int64, payload any, commands []chatCommand, generation *ChatGenerationCommit, successStatus int) (ChatCommit, error) {
 	var out ChatCommit
 	id, err := normalizeChatID(chatID)
 	if err != nil {
@@ -103,12 +103,13 @@ func (s *Store) mutateStoredChat(ctx context.Context, owner int64, chatID, resou
 			return chatWriteResult{}, err
 		}
 		body, err := chatJSON(commit)
-		return chatWriteResult{ChatID: id, Revision: commit.Revision, Status: 200, Body: body}, err
+		return chatWriteResult{ChatID: id, Revision: commit.Revision, Status: successStatus, Body: body}, err
 	})
 	if err != nil {
 		return out, err
 	}
 	err = chatDecode(result.Body, &out)
+	out.HTTPStatus = result.Status
 	return out, err
 }
 

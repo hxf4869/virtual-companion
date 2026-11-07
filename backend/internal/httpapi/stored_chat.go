@@ -212,6 +212,9 @@ func (s *Server) writeStoredChatError(w http.ResponseWriter, err error) {
 	var chatErr *postgres.ChatError
 	if errors.As(err, &chatErr) {
 		switch chatErr.Code {
+		case "CHAT_SEARCH_TIMEOUT":
+			s.writeAPIError(w, http.StatusServiceUnavailable, "CHAT_SEARCH_TIMEOUT", "chat search timed out; retry this cursor")
+			return
 		case "CHAT_CURSOR_EXPIRED":
 			s.writeAPIError(w, http.StatusGone, "CHAT_CURSOR_EXPIRED", "chat cursor expired")
 			return

@@ -97,6 +97,48 @@ test('陪伴状态经本人会话读取，桥不放行写方法或服务令牌',
     assert.equal(calls, 1);
 });
 
+test('SX7 管理桥仅放行已实现的本人聊天方法和精确 UUID 路径', async () => {
+    const root = '/api/v1/chats';
+    const id = '0c7a4c00-1b11-4444-8000-0d5020a70201';
+    const chat = root + '/' + id.toUpperCase();
+    const message = chat + '/messages/' + id;
+    const allowed = [
+        ['GET', root], ['POST', root],
+        ['GET', chat], ['DELETE', chat],
+        ['GET', chat + '/messages'], ['POST', chat + '/messages'],
+        ['GET', message], ['PATCH', message],
+        ['PATCH', chat + '/metadata'], ['POST', chat + '/operations'],
+        ['GET', chat + '/changes'], ['POST', chat + '/forks'],
+    ];
+    const denied = [
+        ['PUT', root], ['POST', chat], ['DELETE', chat + '/messages'],
+        ['GET', chat + '/forks'], ['GET', chat + '/changes/extra'],
+        ['GET', chat + '/'], ['GET', root + '/not-a-uuid'],
+        ['GET', root + '/' + id.replace('0', '%30')], ['PATCH', chat + '/messages/not-a-uuid'],
+        ['POST', root + '/imports'], ['GET', root + '/imports/' + id], ['GET', chat + '/export'],
+        ['POST', '/api/v1/service/chats/' + id + '/generation-runs'],
+    ];
+    const forwarded = [];
+    const bridge = createAdminBridge({ config: baseConfig(9999), fetchImpl: async (url, { method }) => {
+        const upstream = new URL(url);
+        forwarded.push([method, upstream.pathname, upstream.search]);
+        return new Response('{}');
+    } });
+    for (const [method, path] of denied) {
+        const res = mockRes();
+        await bridge(bridgeReq({ method, url: path }), res);
+        assert.equal(res.statusCode, 404, method + ' ' + path);
+        assert.equal(JSON.parse(res.body()).error.code, 'VC_BRIDGE_ROUTE_NOT_ALLOWED');
+    }
+    assert.equal(forwarded.length, 0);
+    for (const [method, path] of allowed) {
+        const res = mockRes();
+        await bridge(bridgeReq({ method, url: path + (path.endsWith('/changes') ? '?afterRevision=0' : '') }), res);
+        assert.equal(res.statusCode, 200, method + ' ' + path);
+    }
+    assert.deepEqual(forwarded, allowed.map(([method, path]) => [method, path, path.endsWith('/changes') ? '?afterRevision=0' : '']));
+});
+
 test('ASR 桥只向固定路径转发有界 multipart，保持本人会话而不附服务令牌', async()=>{
     const payload=Buffer.from('--synthetic\r\nContent-Disposition: form-data; name="file"; filename="recording.wav"\r\n\r\nRIFF_SYNTHETIC\r\n--synthetic--\r\n');
     const req=Readable.from([payload]);Object.assign(req,{method:'POST',url:'/api/v1/voice/asr',headers:{'content-type':'multipart/form-data; boundary=synthetic','x-vc-csrf-token':'synthetic-csrf',cookie:'vc_session=synthetic; other=private'}});

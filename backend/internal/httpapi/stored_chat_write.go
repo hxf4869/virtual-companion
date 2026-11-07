@@ -38,37 +38,37 @@ var (
 type storedChatWriteHandler struct{ http.HandlerFunc }
 
 func (s *Server) registerStoredChatWrites() {
-	s.mux.Handle("POST /api/v1/chats", storedChatWriteRoute(s, http.StatusCreated, chatCreateFields,
+	s.mux.Handle("POST /api/v1/chats", storedChatWriteRoute(s, chatCreateFields,
 		func(store storedChatWriter, r *http.Request, owner int64, in postgres.ChatCreate) (postgres.StoredChat, error) {
 			return store.CreateStoredChat(r.Context(), owner, in)
 		}))
-	s.mux.Handle("DELETE /api/v1/chats/{chatId}", storedChatWriteRoute(s, http.StatusOK,
+	s.mux.Handle("DELETE /api/v1/chats/{chatId}", storedChatWriteRoute(s,
 		chatWriteObject(chatPrecondition("chatRevision", chatWireRevision)),
 		func(store storedChatWriter, r *http.Request, owner int64, in postgres.ChatDeleteRequest) (postgres.ChatCommit, error) {
 			return store.DeleteStoredChat(r.Context(), owner, r.PathValue("chatId"), in)
 		}))
-	s.mux.Handle("POST /api/v1/chats/{chatId}/messages", storedChatWriteRoute(s, http.StatusOK,
+	s.mux.Handle("POST /api/v1/chats/{chatId}/messages", storedChatWriteRoute(s,
 		chatWriteObject(chatRequired("messages", chatWireMessages), chatOptional("generation", chatWireGeneration)),
 		func(store storedChatWriter, r *http.Request, owner int64, in postgres.ChatAppendRequest) (postgres.ChatCommit, error) {
 			return store.AppendStoredMessages(r.Context(), owner, r.PathValue("chatId"), in)
 		}))
-	s.mux.Handle("PATCH /api/v1/chats/{chatId}/messages/{messageId}", storedChatWriteRoute(s, http.StatusOK,
+	s.mux.Handle("PATCH /api/v1/chats/{chatId}/messages/{messageId}", storedChatWriteRoute(s,
 		chatWriteObject(chatPrecondition("baseRevision", chatWireRevision), chatRequired("changes", chatWireChanges),
 			chatOptional("candidateId", chatWireUUID), chatOptional("generation", chatWireGeneration)),
 		func(store storedChatWriter, r *http.Request, owner int64, in postgres.ChatMessageEditRequest) (postgres.ChatCommit, error) {
 			return store.EditStoredMessage(r.Context(), owner, r.PathValue("chatId"), r.PathValue("messageId"), in)
 		}))
-	s.mux.Handle("PATCH /api/v1/chats/{chatId}/metadata", storedChatWriteRoute(s, http.StatusOK,
+	s.mux.Handle("PATCH /api/v1/chats/{chatId}/metadata", storedChatWriteRoute(s,
 		chatWriteObject(chatPrecondition("baseRevision", chatWireRevision), chatRequired("changes", chatWireChanges)),
 		func(store storedChatWriter, r *http.Request, owner int64, in postgres.ChatMetadataEditRequest) (postgres.ChatCommit, error) {
 			return store.EditStoredChatMetadata(r.Context(), owner, r.PathValue("chatId"), in)
 		}))
-	s.mux.Handle("POST /api/v1/chats/{chatId}/operations", storedChatWriteRoute(s, http.StatusOK,
+	s.mux.Handle("POST /api/v1/chats/{chatId}/operations", storedChatWriteRoute(s,
 		chatWriteObject(chatRequired("operations", chatWireArray(1, 100, chatOperationFields)), chatOptional("generation", chatWireGeneration)),
 		func(store storedChatWriter, r *http.Request, owner int64, in postgres.ChatOperationsRequest) (postgres.ChatCommit, error) {
 			return store.ApplyStoredChatOperations(r.Context(), owner, r.PathValue("chatId"), in)
 		}))
-	s.mux.Handle("POST /api/v1/chats/{chatId}/forks", storedChatWriteRoute(s, http.StatusOK,
+	s.mux.Handle("POST /api/v1/chats/{chatId}/forks", storedChatWriteRoute(s,
 		chatWriteObject(chatPrecondition("parentRevision", chatWireRevision), chatRequired("throughMessageId", chatWireUUID)),
 		func(store storedChatWriter, r *http.Request, owner int64, in postgres.ChatForkRequest) (postgres.ChatForkResult, error) {
 			return store.ForkStoredChat(r.Context(), owner, r.PathValue("chatId"), in)
@@ -76,7 +76,11 @@ func (s *Server) registerStoredChatWrites() {
 	s.mux.Handle("POST /api/v1/service/chats/{chatId}/generation-runs", storedChatWriteHandler{s.handleRegisterStoredChatGeneration})
 }
 
-func storedChatWriteRoute[In, Out any](s *Server, status int, shape chatWireObjectRule, run func(storedChatWriter, *http.Request, int64, In) (Out, error)) storedChatWriteHandler {
+type storedChatWriteResult interface {
+	postgres.StoredChat | postgres.ChatCommit | postgres.ChatForkResult
+}
+
+func storedChatWriteRoute[In any, Out storedChatWriteResult](s *Server, shape chatWireObjectRule, run func(storedChatWriter, *http.Request, int64, In) (Out, error)) storedChatWriteHandler {
 	wire := publicChatWriteFields(shape)
 	return storedChatWriteHandler{func(w http.ResponseWriter, r *http.Request) {
 		p := s.corePrincipalWithUnavailableCode(w, r, true, "SCHEMA_UNAVAILABLE")
@@ -106,6 +110,13 @@ func storedChatWriteRoute[In, Out any](s *Server, status int, shape chatWireObje
 		if err != nil {
 			s.writeStoredChatError(w, err)
 			return
+		}
+		status := http.StatusCreated // Create has always stored 201.
+		switch result := any(out).(type) {
+		case postgres.ChatCommit:
+			status = result.HTTPStatus
+		case postgres.ChatForkResult:
+			status = result.HTTPStatus
 		}
 		s.writeJSON(w, status, out)
 	}}

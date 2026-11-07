@@ -3,6 +3,7 @@
 package httpapi
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -12,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/hxf4869/virtual-companion/internal/store/postgres"
+	"github.com/jackc/pgx/v5"
 )
 
 func TestStoredChatWriteIsolationLifecycle(t *testing.T) {
@@ -58,10 +60,10 @@ func TestStoredChatWriteIsolationLifecycle(t *testing.T) {
 		{MessageID: requestID(20), Data: postgres.ChatData{"mes": "synthetic input", "is_user": true}},
 	}}
 	var input postgres.ChatCommit
-	decode(doJSON(t, s, http.MethodPost, path+"/messages", marshal(inputRequest), 1), 200, &input)
+	decode(doJSON(t, s, http.MethodPost, path+"/messages", marshal(inputRequest), 1), 201, &input)
 	var tail postgres.ChatCommit
 	decode(doJSON(t, s, http.MethodPost, path+"/messages", marshal(postgres.ChatAppendRequest{RequestID: requestID(3), AuthorityEpoch: 2,
-		Messages: []postgres.ChatAppendMessage{{MessageID: requestID(21), Data: postgres.ChatData{"mes": "synthetic background"}}}}), 1), 200, &tail)
+		Messages: []postgres.ChatAppendMessage{{MessageID: requestID(21), Data: postgres.ChatData{"mes": "synthetic background"}}}}), 1), 201, &tail)
 	register := postgres.ChatGenerationRegistrationRequest{OwnerAccountID: "1", RequestID: requestID(4), AuthorityEpoch: 2,
 		RunID: requestID(30), Revision: input.Revision, InputMessageID: input.Changed[0].MessageID, InputCandidateID: input.Changed[0].SelectedCandidateID}
 	private := func(body postgres.ChatGenerationRegistrationRequest) *httptest.ResponseRecorder {
@@ -81,8 +83,8 @@ func TestStoredChatWriteIsolationLifecycle(t *testing.T) {
 		Messages:   []postgres.ChatAppendMessage{{MessageID: requestID(22), Data: postgres.ChatData{"mes": "synthetic output"}}},
 		Generation: &postgres.ChatGenerationCommit{RunID: register.RunID, State: "settled"}}
 	var first, replay postgres.ChatCommit
-	decode(doJSON(t, s, http.MethodPost, path+"/messages", marshal(terminal), 1), 200, &first)
-	decode(doJSON(t, s, http.MethodPost, path+"/messages", marshal(terminal), 1), 200, &replay)
+	decode(doJSON(t, s, http.MethodPost, path+"/messages", marshal(terminal), 1), 201, &first)
+	decode(doJSON(t, s, http.MethodPost, path+"/messages", marshal(terminal), 1), 201, &replay)
 	if !reflect.DeepEqual(first, replay) || len(first.Changed) != 1 {
 		t.Fatal("HTTP terminal replay changed the canonical receipt")
 	}
@@ -98,6 +100,35 @@ func TestStoredChatWriteIsolationLifecycle(t *testing.T) {
 	}), 1), 200, &edit)
 	terminal.RequestID, terminal.Generation.RunID = requestID(8), register.RunID
 	assertStoredChatError(t, doJSON(t, s, http.MethodPost, path+"/messages", marshal(terminal), 1), 409, "CHAT_GENERATION_FENCED")
+	forkRequest := postgres.ChatForkRequest{RequestID: requestID(11), AuthorityEpoch: 2,
+		ParentRevision: edit.Revision, ThroughID: input.Changed[0].MessageID}
+	var fork, forkReplay postgres.ChatForkResult
+	decode(doJSON(t, s, http.MethodPost, path+"/forks", marshal(forkRequest), 1), 201, &fork)
+	decode(doJSON(t, s, http.MethodPost, path+"/forks", marshal(forkRequest), 1), 201, &forkReplay)
+	if !reflect.DeepEqual(fork, forkReplay) || fork.Chat.ChatID == chat.ChatID || len(fork.Mapping) != 1 {
+		t.Fatal("HTTP fork replay changed the canonical receipt")
+	}
+	for _, request := range []string{inputRequest.RequestID, forkRequest.RequestID} {
+		var status int
+		err := store.WithOwner(t.Context(), 1, func(ctx context.Context, tx pgx.Tx) error {
+			return tx.QueryRow(ctx, "SELECT status FROM vc.chat_receipt WHERE owner_user_id=1 AND request_id=$1", request).Scan(&status)
+		})
+		if err != nil || status != http.StatusCreated {
+			t.Fatalf("persisted receipt status=%d, want %d (err=%v)", status, http.StatusCreated, err)
+		}
+	}
+	// Receipts written before the success-status correction keep their original status.
+	if err := postgres.IsolationSuperExec(t.Context(), "UPDATE vc.chat_receipt SET status=200 WHERE owner_user_id=1 AND request_id IN ($1,$2)", inputRequest.RequestID, forkRequest.RequestID); err != nil {
+		t.Fatal(err)
+	}
+	decode(doJSON(t, s, http.MethodPost, path+"/messages", marshal(inputRequest), 1), 200, &replay)
+	if !reflect.DeepEqual(input, replay) {
+		t.Fatal("old HTTP append replay changed the canonical receipt")
+	}
+	decode(doJSON(t, s, http.MethodPost, path+"/forks", marshal(forkRequest), 1), 200, &forkReplay)
+	if !reflect.DeepEqual(fork, forkReplay) {
+		t.Fatal("old HTTP fork replay changed the canonical receipt")
+	}
 	deleted := postgres.ChatDeleteRequest{RequestID: requestID(9), AuthorityEpoch: 2, Revision: edit.Revision}
 	var tombstone postgres.ChatCommit
 	decode(doJSON(t, s, http.MethodDelete, path, marshal(deleted), 1), 200, &tombstone)

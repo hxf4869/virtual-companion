@@ -76,7 +76,7 @@ func (s *recordingStoredChatWriter) ApplyStoredChatOperations(_ context.Context,
 
 func (s *recordingStoredChatWriter) ForkStoredChat(_ context.Context, owner int64, id string, in postgres.ChatForkRequest) (postgres.ChatForkResult, error) {
 	s.calls = append(s.calls, storedChatWriteCall{method: "fork", owner: owner, chatID: id, input: in})
-	return postgres.ChatForkResult{RequestID: in.RequestID}, s.err
+	return postgres.ChatForkResult{RequestID: in.RequestID, HTTPStatus: http.StatusCreated}, s.err
 }
 
 func (s *recordingStoredChatWriter) RegisterStoredChatGeneration(_ context.Context, owner int64, id string, in postgres.ChatGenerationRegistrationRequest) (postgres.ChatGenerationRegistration, error) {
@@ -86,7 +86,11 @@ func (s *recordingStoredChatWriter) RegisterStoredChatGeneration(_ context.Conte
 
 func (s *recordingStoredChatWriter) commit(method string, owner int64, id, messageID string, in any) (postgres.ChatCommit, error) {
 	s.calls = append(s.calls, storedChatWriteCall{method: method, owner: owner, chatID: id, messageID: messageID, input: in})
-	commit := postgres.ChatCommit{ChatID: id, Changed: []postgres.StoredMessage{{Data: postgres.ChatData{"mes": "synthetic-private-body"}}}}
+	status := http.StatusOK
+	if method == "append" {
+		status = http.StatusCreated
+	}
+	commit := postgres.ChatCommit{ChatID: id, HTTPStatus: status, Changed: []postgres.StoredMessage{{Data: postgres.ChatData{"mes": "synthetic-private-body"}}}}
 	if owner != 1 {
 		return commit, fmt.Errorf("synthetic-foreign-error: %w", postgres.ErrNotFound)
 	}
@@ -181,7 +185,7 @@ func TestStoredChatWriteDispatch(t *testing.T) {
 			`","data":{"mes":" hi ","script":{"literal":9007199254740993,"nullable":null}}}]` + generation + `}`, storedChatWriteCall{method: "append", owner: 1,
 			chatID: testStoredChatID, input: postgres.ChatAppendRequest{RequestID: testStoredWriteRequestID, AuthorityEpoch: 3, Generation: commit,
 				Messages: []postgres.ChatAppendMessage{{MessageID: testStoredMessageID,
-					Data: postgres.ChatData{"mes": " hi ", "script": map[string]any{"literal": json.Number("9007199254740993"), "nullable": nil}}}}}}, 200},
+					Data: postgres.ChatData{"mes": " hi ", "script": map[string]any{"literal": json.Number("9007199254740993"), "nullable": nil}}}}}}, 201},
 		{http.MethodPatch, path + "/messages/" + strings.ToUpper(testStoredMessageID),
 			`{` + testStoredWriteEnvelope + `,"baseRevision":"7","candidateId":"` + candidate + `","changes":` + changes + generation + `}`,
 			storedChatWriteCall{method: "edit", owner: 1, chatID: testStoredChatID, messageID: testStoredMessageID, input: postgres.ChatMessageEditRequest{
@@ -198,7 +202,7 @@ func TestStoredChatWriteDispatch(t *testing.T) {
 				}}}}, 200},
 		{http.MethodPost, path + "/forks", `{` + testStoredWriteEnvelope + `,"parentRevision":"7","throughMessageId":"` + testStoredMessageID + `"}`,
 			storedChatWriteCall{method: "fork", owner: 1, chatID: testStoredChatID, input: postgres.ChatForkRequest{
-				RequestID: testStoredWriteRequestID, AuthorityEpoch: 3, ParentRevision: 7, ThroughID: testStoredMessageID}}, 200},
+				RequestID: testStoredWriteRequestID, AuthorityEpoch: 3, ParentRevision: 7, ThroughID: testStoredMessageID}}, 201},
 	}
 	for _, tc := range tests {
 		t.Run(tc.call.method, func(t *testing.T) {

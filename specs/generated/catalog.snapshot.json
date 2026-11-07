@@ -108,7 +108,8 @@
       "CHAT_INVALID_OPERATION",
       "CHAT_PRECONDITION_REQUIRED",
       "CHAT_IMPORT_INVALID",
-      "CHAT_IMPORT_EXPIRED"
+      "CHAT_IMPORT_EXPIRED",
+      "CHAT_SEARCH_TIMEOUT"
     ],
     "FollowUpStatus": [
       "NEEDS_CLARIFICATION",
@@ -1002,11 +1003,18 @@
           {
             "code": "CHAT_IMPORT_EXPIRED",
             "order": 38
+          },
+          {
+            "code": "CHAT_SEARCH_TIMEOUT",
+            "httpStatus": 503,
+            "order": 39,
+            "retrySemantics": "Retry the same q request and input cursor. No completed scan progress is claimed; never fall back to an unbounded scan or silently truncate history.",
+            "retryable": true
           }
         ],
         "schemaVersion": 1
       },
-      "sha256": "f146ffa102203629508cb60302da952263a4f4560d3662cc0e97d204bc271a55"
+      "sha256": "e3b67466ef27ab53f354fd7c08a7a57ffa9d24b1c53eb1966fc7150dd76da5de"
     },
     "follow-up-statuses.yaml": {
       "document": {

@@ -64,6 +64,7 @@ func (s *Store) DeleteStoredChat(ctx context.Context, owner int64, chatID string
 		return out, err
 	}
 	err = chatDecode(result.Body, &out)
+	out.HTTPStatus = result.Status
 	return out, err
 }
 
@@ -160,12 +161,13 @@ func (s *Store) ForkStoredChat(ctx context.Context, owner int64, chatID string, 
 			}
 			out = ChatForkResult{RequestID: in.RequestID, OperationID: operationID, Chat: child, Mapping: mapping}
 			body, err := chatJSON(out)
-			return chatWriteResult{ChatID: child.ChatID, Revision: 1, Status: 200, Body: body}, err
+			return chatWriteResult{ChatID: child.ChatID, Revision: 1, Status: 201, Body: body}, err
 		})
 	if err != nil {
 		return out, err
 	}
 	err = chatDecode(result.Body, &out)
+	out.HTTPStatus = result.Status
 	return out, err
 }
 
