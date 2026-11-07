@@ -297,6 +297,65 @@ test('failed cleanup remains pending and retries with original revision', async 
     assert.deepEqual(await engine.invoke('search', searchInput(['record1'])), []);
     assert.equal((await engine.invoke('forget', input)).status, 'cleared'); assert.equal(native.records.size, 0); assert.equal(native.listSources().length,0);
 });
+test('legacy forget cleanup resumes after restart only for the same request with revisionAdvanced', async t => {
+    const owners = new Map([['1', fakeNative()], ['2', fakeNative()]]);
+    const nativeFactory = async dir => owners.get(path.basename(dir));
+    const { engine, root } = await fixture(t, { nativeFactory });
+    const native = owners.get(scope.ownerId);
+    await engine.invoke('propose', proposalInput());
+    await engine.invoke('commit', { scope, revision: 0, operationId: 'op1' });
+    await engine.invoke('invalidate-scope', { scope, revision: 1 });
+
+    const input = { scope, revision: 1, recordIds: ['record1'], sourceIds: ['message1'] };
+    const advance = native.invalidateScope;
+    native.invalidateScope = () => { throw new Error('INJECTED_CLEANUP_INTERRUPTION'); };
+    assert.equal((await engine.invoke('forget', input)).status, 'pending');
+    const file = path.join(root, 'owners', scope.ownerId, 'cleanup.json');
+    const saved = await fs.readFile(file, 'utf8');
+    const intent = JSON.parse(saved);
+    assert.deepEqual(intent.request, { action: 'forget', ...input });
+    assert.deepEqual(intent.scopes, [{ key: '7:COMPANION:daily-7:main', revision: 2 }]);
+    assert.deepEqual(await engine.invoke('scope-status', { scope }), { revision: 1 });
+    await engine.close();
+
+    // Reopen the service with the same durable native state and intent.
+    native.invalidateScope = advance;
+    const restarted = createControlledEngine({ dataRoot: root, nativeFactory });
+    t.after(() => restarted.close());
+    const retry = { ...input, revisionAdvanced: true };
+    await assert.rejects(restarted.invoke('clear-owner', retry), { message: 'MEMORYCORE_CLEANUP_PENDING' }, 'action');
+    for (const [field, value] of Object.entries({
+        scope: { ...scope, profileScopeId: 'sibling' },
+        revision: 0,
+        recordIds: ['record2'],
+        sourceIds: ['message2'],
+        matchSourceRecords: false,
+    })) {
+        await assert.rejects(restarted.invoke('forget', { ...retry, [field]: value }),
+            { message: 'MEMORYCORE_CLEANUP_PENDING' }, field);
+    }
+    const otherScope = { ...scope, ownerId: '2' };
+    const other = await restarted.invoke('forget', { ...retry, scope: otherScope, revision: 0 });
+    assert.equal(other.status, 'cleared');
+    assert.equal(other.revision, 0);
+    assert.equal(await fs.readFile(file, 'utf8'), saved);
+    assert.equal(native.records.has('record1'), true);
+    assert.deepEqual(await restarted.invoke('scope-status', { scope }), { revision: 1 });
+
+    const result = await restarted.invoke('forget', retry);
+    assert.equal(result.status, 'cleared');
+    assert.equal(result.revision, intent.scopes[0].revision);
+    assert.deepEqual(await restarted.invoke('scope-status', { scope }), { revision: 2 });
+    assert.equal(native.records.has('record1'), false);
+    assert.equal(native.listSources().length, 0);
+    await assert.rejects(fs.access(file), { code: 'ENOENT' });
+
+    const replay = await restarted.invoke('forget', retry);
+    assert.equal(replay.status, 'cleared');
+    assert.equal(replay.revision, intent.scopes[0].revision);
+    assert.equal(native.records.size, 0);
+    assert.equal(native.listSources().length, 0);
+});
 test('replacement scrubs superseded JSONL and proposal and exports published profiles without capability', async t => {
     const { engine, native, root } = await fixture(t);
     await engine.invoke('propose', proposalInput()); await engine.invoke('commit', { scope, revision: 0, operationId: 'op1' });
