@@ -87,9 +87,10 @@ function archiveAttempts(manifest, summary) {
 
 export async function runRealEvaluation({ round, configRef, seed = 20261106, variant = 'baseline',
     mode = 'cny', ownerTokenOnly = false, quoteFile, root = QUALITY_ROOT, maxCalls = 6000,
-    baselineFile, resume = false, signal, onProgress = () => {}, caseTimeoutMs, extractionTimeoutMs } = {},
+    baselineFile, resume = false, diagnosticsOnly = false, signal, onProgress = () => {}, caseTimeoutMs, extractionTimeoutMs } = {},
 { loadConfig = loadEvaluationConfiguration, startMeter = startEvaluationMeter, loadRuntime = loadRealRuntime } = {}) {
     if (!/^round-[a-z0-9-]{1,80}$/.test(round || '') || !['baseline', 'candidate'].includes(variant)) throw new Error('CONFIG_NOT_READY');
+    if (diagnosticsOnly && (!resume || baselineFile)) throw new Error('CONFIG_NOT_READY');
     const dataset = generateChatMemoryDataset({ seed });
     const config = await loadConfig({ ref: configRef, mode, ownerTokenOnly, quoteFile });
     const roles = [
@@ -103,7 +104,7 @@ export async function runRealEvaluation({ round, configRef, seed = 20261106, var
     const provenance = { variant, dataset: { version: dataset.version, seed, hashes: dataset.hashes, sourceCounts: dataset.sourceCounts },
         configuration: config.manifest, replayMode: resume ? 'full-replay-existing-ledger' : 'fresh' };
     let artifacts, budget, meter, outboundObserver, pipelineFailureCode, failureCode;
-    let priorCalls = [], attempts = [], manifestWritten = false;
+    let priorCalls = [], attempts = [], manifestWritten = false, priorManifest, priorSummary, callAnnotations = [];
     let report = { schemaVersion: 1, ...provenance, executionStatus: 'INCOMPLETE' };
     const progress = entry => {
         // A display callback must not surface its error or interrupt the paid run.
@@ -114,7 +115,7 @@ export async function runRealEvaluation({ round, configRef, seed = 20261106, var
         catch (error) { throw new Error(evaluationFailure(error, 'CM_ARTIFACT_WRITE_FAILED')); }
     };
     const calls = () => {
-        const annotations = new Map((report.modelCalls || []).map(row => [row.id, row]));
+        const annotations = new Map([...(report.modelCalls || []), ...callAnnotations].map(row => [row.id, row]));
         return [...priorCalls, ...(meter?.snapshot().calls || []).map(row => ({ ...annotations.get(row.id), ...row }))];
     };
     const finalize = async (action, fallback) => {
@@ -131,9 +132,17 @@ export async function runRealEvaluation({ round, configRef, seed = 20261106, var
             catch { throw new Error('ARTIFACT_RESUME_INVALID'); }
             if (prior.variant !== variant || prior.dataset?.hashes?.dataset !== dataset.hashes.dataset
                 || JSON.stringify(prior.configuration) !== JSON.stringify(config.manifest)) throw new Error('CM_COMPARISON_GROUP_MISMATCH');
-            artifacts = await createRoundArtifacts(root, { round, resume: true });
-            let priorSummary;
+            priorManifest = prior;
             try { priorSummary = JSON.parse(await fs.readFile(path.join(dir, 'summary.json'), 'utf8')); } catch { /* journal is authoritative */ }
+            if (diagnosticsOnly && (!priorSummary?.quality || !priorSummary?.extraction || !priorSummary?.judgeCalibration
+                || !Array.isArray(priorSummary?.modelCalls) || priorSummary.modelCalls.length !== budget.snapshot().calls
+                || priorSummary.attempt !== prior.attempt
+                || priorSummary.attempt !== (prior.attempts ? prior.attempts.length : undefined))) {
+                throw new Error('ARTIFACT_RESUME_INVALID');
+            }
+            if (diagnosticsOnly && (priorSummary.variant !== variant || priorSummary.dataset?.hashes?.dataset !== dataset.hashes.dataset
+                || JSON.stringify(priorSummary.configuration) !== JSON.stringify(config.manifest))) throw new Error('CM_COMPARISON_GROUP_MISMATCH');
+            artifacts = await createRoundArtifacts(root, { round, resume: true });
             priorCalls = priorSummary?.modelCalls || [];
             attempts = archiveAttempts(prior, priorSummary);
         } else {
@@ -143,12 +152,24 @@ export async function runRealEvaluation({ round, configRef, seed = 20261106, var
         const git = args => execFileSync('git', args, { encoding: 'utf8', cwd: fileURLToPath(new URL('../../', import.meta.url)) }).trim();
         const attempt = { ...provenance, commit: git(['rev-parse', 'HEAD']), worktreeDirty: Boolean(git(['status', '--porcelain'])),
             instrumentation: 'cm-final-recall-before-budget-v1' };
-        attempts.push(attempt);
-        const identity = { schemaVersion: 1, ...provenance, attempt: attempts.length };
-        report = { ...identity, executionStatus: 'INCOMPLETE' };
-        await write('manifest.json', { ...identity, ...attempt, attempts, mode: 'real', protocol: 'actual-source-and-node-outbound',
-            requestOutputCap: roles[1].profile.maxOutputTokens, queryMemorySaving: false,
-            querySourcePolicy: 'eligible-unsettled-no-answer-save', foregroundRules: 'inactive', humanReview: 'NOT_RUN' });
+        const identity = { schemaVersion: 1, ...provenance, attempt: attempts.length + 1 };
+        if (diagnosticsOnly) {
+            const supplementIdentity = { schemaVersion: 1, ...attempt,
+                replayMode: 'diagnostic-controls-only-existing-ledger',
+                baselineCommit: priorManifest.commit, baselineAttempt: priorManifest.attempt ?? null,
+                history: 'empty-isolated-bindings-no-source-replay', extractionReplayed: false, coreReplayed: false,
+                planned: { 'memory-off': 7, 'gold-evidence': 7 }, priorModelCalls: priorCalls.length };
+            // Keep only the latest supplement inside the existing bounded
+            // report; the baseline identity/results and every paid call stay.
+            report = { ...priorSummary, diagnosticSupplement: { ...supplementIdentity, executionStatus: 'INCOMPLETE' } };
+            await write('manifest.json', { ...priorManifest, diagnosticSupplement: supplementIdentity });
+        } else {
+            attempts.push(attempt);
+            report = { ...identity, executionStatus: 'INCOMPLETE' };
+            await write('manifest.json', { ...identity, ...attempt, attempts, mode: 'real', protocol: 'actual-source-and-node-outbound',
+                requestOutputCap: roles[1].profile.maxOutputTokens, queryMemorySaving: false,
+                querySourcePolicy: 'eligible-unsettled-no-answer-save', foregroundRules: 'inactive', humanReview: 'NOT_RUN' });
+        }
         manifestWritten = true;
         await write('summary.json', { ...report, modelCalls: priorCalls, budget: budget.snapshot() });
         meter = await startMeter({ routes: roles.map(row => row.profile), budget,
@@ -160,9 +181,11 @@ export async function runRealEvaluation({ round, configRef, seed = 20261106, var
             ctx.setOutboundObserver = observer => { outboundObserver = observer; };
             try {
                 return await evaluateCoreOnStack(ctx, { dataset, roles, modelRoutes: meter.routes, meter, budget, variant,
-                    signal: ctx.signal, onProgress: progress, caseTimeoutMs, extractionTimeoutMs,
+                    signal: ctx.signal, onProgress: progress, caseTimeoutMs, extractionTimeoutMs, diagnosticsOnly,
                     checkpoint: async partial => {
-                        report = { ...partial, ...identity, executionStatus: 'INCOMPLETE' };
+                        if (diagnosticsOnly) report.diagnosticSupplement = { ...report.diagnosticSupplement,
+                            phase: partial.phase, diagnosticControls: partial.diagnosticControls };
+                        else report = { ...partial, ...identity, executionStatus: 'INCOMPLETE' };
                         await write('summary.json', { ...report, modelCalls: calls() });
                     } });
             } catch (error) {
@@ -171,6 +194,12 @@ export async function runRealEvaluation({ round, configRef, seed = 20261106, var
                 throw new Error(pipelineFailureCode);
             }
         });
+        if (diagnosticsOnly) {
+            callAnnotations = result.modelCalls;
+            const complete = ['memory-off', 'gold-evidence'].every(name => result.diagnosticControls?.[name]?.coverage.value === 1);
+            report.diagnosticSupplement = { ...report.diagnosticSupplement, diagnosticControls: result.diagnosticControls,
+                executionStatus: complete ? 'COMPLETE' : 'INCOMPLETE' };
+        } else {
         report = { ...result, ...identity };
         report.gates = qualityGates(report);
         const controlsComplete = ['memory-off', 'gold-evidence'].every(name => report.diagnosticControls?.[name]?.coverage.value === 1);
@@ -183,6 +212,7 @@ export async function runRealEvaluation({ round, configRef, seed = 20261106, var
         }
         await write('samples.jsonl', report.metricRows.map(row => JSON.stringify(row)).join('\n') + '\n');
         await write('comparison.md', comparisonMarkdown(summarizeSamples(report.metricRows), report.latencyComparison || []));
+        }
     } catch (error) {
         failureCode = pipelineFailureCode || evaluationFailure(error, 'CM_EVALUATION_FAILED');
     } finally {
@@ -190,10 +220,14 @@ export async function runRealEvaluation({ round, configRef, seed = 20261106, var
         await finalize(() => budget?.seal(), 'BUDGET_JOURNAL_FAILED');
         if (artifacts && (!resume || manifestWritten)) {
             await finalize(async () => {
-                if (failureCode) Object.assign(report, { executionStatus: 'INCOMPLETE', failureCode });
+                if (failureCode) Object.assign(diagnosticsOnly ? report.diagnosticSupplement : report,
+                    { executionStatus: 'INCOMPLETE', failureCode });
                 report.budget = budget?.snapshot() ?? null;
                 report.actualCostCny = report.budget?.calls ? null : 0;
                 report.modelCalls = calls();
+                if (diagnosticsOnly) {
+                    report.diagnosticSupplement.modelCallCount = report.modelCalls.length - priorCalls.length;
+                }
                 await write('summary.json', report);
             }, 'CM_ARTIFACT_WRITE_FAILED');
         }
