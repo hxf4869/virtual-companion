@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ConflictError, createAppClient } from '../../src/data/client';
 import { queryKeys } from '../../src/data/queryKeys';
 import { AppProviders, queryClient, useAppClient } from '../../src/app/providers';
+import { ST_CHAT_STORAGE_SESSION_URL, stChatStorageSession, stSessionIdentity } from '../st-session-fixture';
 
 function setIdentityMeta(accountId: string, sessionId: string) {
     document.head.innerHTML = `
@@ -24,7 +25,7 @@ describe('desktop data client & providers', () => {
     const originalFetch = globalThis.fetch;
 
     beforeEach(() => {
-        setIdentityMeta('9007199254740993', '17');
+        setIdentityMeta(stSessionIdentity.accountId, stSessionIdentity.sessionId);
     });
 
     afterEach(() => {
@@ -42,6 +43,9 @@ describe('desktop data client & providers', () => {
             });
             if (url === '/csrf-token') {
                 return jsonResponse({ token: 'csrf-token-1' }, 200);
+            }
+            if (url === ST_CHAT_STORAGE_SESSION_URL) {
+                return jsonResponse(stChatStorageSession);
             }
             if (url === '/api/plugins/virtual-companion/go/api/v1/auth/session') {
                 return jsonResponse({
@@ -70,6 +74,12 @@ describe('desktop data client & providers', () => {
         const client = createAppClient();
         await client.initialize();
         await client.go.captureSessionContext();
+
+        expect(seenCalls.slice(0, 3).map(({ url }) => url)).toEqual([
+            '/csrf-token',
+            ST_CHAT_STORAGE_SESSION_URL,
+            '/api/plugins/virtual-companion/go/api/v1/auth/session',
+        ]);
 
         await expect(
             client.readChat({ avatar: 'synthetic.png', file: 'chat-1' }),
@@ -130,6 +140,9 @@ describe('desktop data client & providers', () => {
             if (url === '/csrf-token') {
                 return jsonResponse({ token: 'csrf-token-1' }, 200);
             }
+            if (url === ST_CHAT_STORAGE_SESSION_URL) {
+                return jsonResponse(stChatStorageSession);
+            }
             if (url === '/api/presets/save') {
                 // 请求 A 先拿到 409 Response，但解析其错误体要等请求 B 的 409 已经返回之后才完成
                 return createDelayed409Response(
@@ -186,6 +199,9 @@ describe('desktop data client & providers', () => {
             const url = String(input);
             if (url === '/csrf-token') {
                 return jsonResponse({ token: 'csrf-token-1' }, 200);
+            }
+            if (url === ST_CHAT_STORAGE_SESSION_URL) {
+                return jsonResponse(stChatStorageSession);
             }
             if (url === '/api/plugins/virtual-companion/go/api/v1/auth/session') {
                 return jsonResponse({

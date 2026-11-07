@@ -569,3 +569,9 @@ Owner 选择 React，要求保留现有正常 UI、优先复用成熟开源组�
 | CM-11 | P1 | 记忆引擎收编评估：MemoryCore 存储与检索收回 Go + PostgreSQL（pgvector、中文全文检索）的方案、代价与迁移前后同评测对比；CM-3 基线后由 Owner 决定是否实施 |
 | CM-12 | P1 | 会话内滚动摘要：对话超过 N 轮或输入接近上下文预算时，把较早原文增量压缩成结构化摘要（关系状态 / 已发生事件 / 用户偏好 / 未解决话题），边界按稳定消息 ID，标注“可能不完整”；与“直接截断最早消息”和 L2 场景摘要在同一评测集对比（评测加长会话题型）；持久化如需新表交 SX 线 |
 | CM-13 | P1 | 去 AI 味与重复：CM-1 加回复重复率、`reply-pipeline.js` 规则命中率与重写额外耗时；CM-3 评审加 AI 味维度；按数据扩充规则与提示词（如“不是…而是”、过度安抚、固定括号动作、模板化收尾），权衡重写对末字耗时的代价 |
+
+## O. SX-7 审计修复（Owner 2026-11-07）
+
+| ID | 优先级 | 范围与验收 |
+|---|---|---|
+| SX-7F | P0 | 修复 server-sx@34a4a58c 审计七项：完整 Vitest session 夹具；正文搜索单请求有界扫描及连续游标；管理桥逐方法 chats 白名单与真实桥 GO 链路；conversation/relationship 删除锁序；retention 分批清理七天 changes；profile 最终写入权威/水位栅栏；append/fork 201 与回放状态。验证 quick、全 Go 单元、完整隔离 store/http、RLS、npm test、完整 test:desktop 与受影响受管场景；NOTES 逐项记录红绿证据。本条完成前不合 main，搜索契约调整独立提交复审后再实现。 |
