@@ -589,6 +589,10 @@ COMMIT;
 
 不得用 MemoryCore `scope-status` 充当只读检测：它会经过恢复门和目录/原生存储初始化，可能清理恢复内容、建表或写文件。检测不执行这些入口、不触发纠正/来源编辑来“追平”，也不修改 SQL、revision 或业务数据。历史修复须另行形成受控方案并获授权。
 
+### CM-5 失败画像日志恢复修复
+
+画像失败日志缺少revision时，同版本周期遗忘会将其当成旧操作清除，导致Go无法识别failed并旋转画像operation。Node失败日志已补revision；回归先复现failed变unknown，修复后同版本failed保留、旧operation拒绝重放、新operation可生成发布并cleared。Go自动rebind、真实capability防重放与任务DONE直接联合回归仍未验证；不改SQL、防重放或来源协议。
+
 ## O. SX-7 审计修复（Owner 2026-11-07）
 
 | ID | 优先级 | 范围与验收 |

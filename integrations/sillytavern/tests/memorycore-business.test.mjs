@@ -193,6 +193,53 @@ test('rebuild-profile HTTP returns a closed tool code and drops free-form errors
     assert.equal(mixed.json.code, 'MEMORYCORE_OPERATION_FAILED');
     assert.equal(JSON.stringify(mixed.json).includes(leaked), false);
 });
+test('failed forget profile survives same-revision cleanup and a new operation can publish', async t => {
+    const calls = [];
+    const runnerFactory = (operationToken, stagingDir) => createCallbackRunner({
+        baseURL: 'http://127.0.0.1:9', token: 'k'.repeat(32), operationToken, stagingDir, stage: 'l2-scene',
+        fetchImpl: async (_url, options) => {
+            const { operationToken, stage, callSequence } = JSON.parse(options.body);
+            calls.push({ operationToken, stage, callSequence });
+            return calls.length === 1
+                ? Response.json({ code: 'MEMORYCORE_UPSTREAM_FAILED' }, { status: 500 })
+                : Response.json({ text: JSON.stringify({ text: 'complete' }) });
+        },
+    });
+    const { engine, native, root } = await fixture(t, { runnerFactory });
+    await engine.invoke('propose', proposalInput());
+    await engine.invoke('commit', { scope, revision: 0, operationId: 'op1' });
+    await engine.invoke('invalidate-scope', { scope, revision: 1 });
+    native.rebuildProfile = async ({ runner, stagingDir }) => {
+        await runner.run({ prompt: 'synthetic scene', systemPrompt: 'synthetic instructions' });
+        await fs.writeFile(path.join(stagingDir, 'persona.md'), 'synthetic recovered profile');
+    };
+    const failed = { scope, revision: 1, operationId: 'forget-9-profile', operationToken: 'profile-first',
+        allowedRecordIds: ['record1'], verifiedDependencies: ['message1'] };
+    await assert.rejects(engine.invoke('rebuild-profile', failed), /MEMORYCORE_UPSTREAM_FAILED/);
+    await assert.rejects(fs.access(path.join(root, 'owners/1/staging', failed.operationId)), { code: 'ENOENT' });
+
+    // Periodic recovery repeats the completed forget at the already-advanced revision.
+    const cleanup = { scope, revision: 1, revisionAdvanced: true,
+        recordIds: ['forgotten-record'], sourceIds: ['forgotten-source'] };
+    assert.equal((await engine.invoke('forget', cleanup)).status, 'cleared');
+    assert.deepEqual(await engine.invoke('operation-status', failed), { status: 'failed', revision: 1 });
+    await assert.rejects(engine.invoke('rebuild-profile', failed), /MEMORYCORE_OPERATION_CONFLICT/);
+    assert.equal(calls.length, 1, 'the failed operation must not repeat its callback sequence');
+
+    // Go can now observe failed and rebind to a fresh profile operation/capability.
+    const rebound = { ...failed, operationId: 'forget-9-profile-a1', operationToken: 'profile-rebound' };
+    assert.deepEqual(await engine.invoke('rebuild-profile', rebound), { status: 'staged', dependencies: ['message1'] });
+    assert.equal((await engine.invoke('rebuild-profile', { ...rebound, publish: true })).status, 'published');
+    assert.deepEqual(await engine.invoke('read-profile', rebound), {
+        dependencies: ['message1'], files: { 'persona.md': 'synthetic recovered profile' },
+    });
+    assert.equal((await engine.invoke('forget', cleanup)).status, 'cleared');
+    assert.equal((await engine.invoke('operation-status', rebound)).status, 'profile-published');
+    assert.deepEqual(calls, [
+        { operationToken: 'profile-first', stage: 'l2-scene', callSequence: 1 },
+        { operationToken: 'profile-rebound', stage: 'l2-scene', callSequence: 1 },
+    ]);
+});
 test('HTTP business operations reject missing token and browser Origin', async t => {
     const { createMemoryCoreServer } = await import('../memorycore-service/http.mjs');
     const { engine } = await fixture(t);
