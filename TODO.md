@@ -26,6 +26,8 @@
 - [ ] CM-3、CM-4、CM-6–CM-13：见 Backlog N 节；CM-3 建立基线（含重复率与 AI 味），CM-4 优先提取窗口与查询补全，CM-11 收编评估待基线后决定，CM-12 滚动摘要与 CM-13 去 AI 味按评测采用。
 - [ ] CM-5（2026-11-07）：独立修复遗忘版本重复推进与旧清理任务精确重放；修前冲突均复现，Go 8/8、Node 42/42 PASS，零外部模型调用；完整真实出站闭环及历史版本漂移恢复未完成，检测方法见 Backlog。
 
+- [x] CM-1/2/3 工具拆分（2026-11-07）：cm-merge-1 基于 main 79b4d72c，9个cherry-pick仅含指标/预算/评测与两项CM-5修复；候选73aa409e的quick、Go全单测、受影响store、Node1348项、完整桌面203项PASS；待Claude审计合main，未含CM-4候选。
+
 ### MB2 手机端 React 重建（方案 `docs/planning/2026-11-06-mobile-react-rebuild-plan.md`）
 
 
