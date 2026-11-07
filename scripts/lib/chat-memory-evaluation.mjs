@@ -11,23 +11,47 @@ import { startEvaluationMeter } from '../../integrations/sillytavern/scripts/lib
 
 export const QUALITY_ROOT = fileURLToPath(new URL('../../integrations/sillytavern/.local/chat-memory-quality', import.meta.url));
 
+// Seed and fact hashes vary between development and hold-out runs. The shape
+// of the full round, the generator version, and the ordered role profiles do not.
+export function evaluationTokenRecipe(dataset) {
+    return { datasetVersion: dataset.version, sourceCounts: dataset.sourceCounts,
+        casesByCategory: Object.fromEntries([...new Set(dataset.cases.map(row => row.category))]
+            .sort().map(category => [category, dataset.cases.filter(row => row.category === category).length])),
+        controls: { 'memory-off': 7, 'gold-evidence': 7 },
+        roles: ['extraction', 'foreground', 'judge'], instrumentation: 'cm-final-recall-before-budget-v1' };
+}
+
+async function readTokenReference(file) {
+    // Every real round has the same frozen anomaly guard, regardless of the
+    // optional financial mode or the historical ownerTokenOnly flag.
+    if (!file) throw new Error('BUDGET_TOKEN_REFERENCE_REQUIRED');
+    try {
+        const reference = JSON.parse(await fs.readFile(file, 'utf8'));
+        if (!reference || typeof reference !== 'object' || Array.isArray(reference)) throw new Error();
+        return reference;
+    }
+    catch { throw new Error('BUDGET_TOKEN_REFERENCE_INVALID'); }
+}
+
 // Config-only preflight never opens a provider socket. This is also the
 // boundary the real runner uses before giving local route tokens to its stack.
-export async function preflightEvaluation({ round, configRef, mode = 'cny', ownerTokenOnly = false, quoteFile,
-    root = QUALITY_ROOT, maxCalls = 6000 } = {}) {
+export async function preflightEvaluation({ round, configRef, mode = 'tokens', ownerTokenOnly = false, quoteFile,
+    root = QUALITY_ROOT, maxCalls = 6000, seed = 20261106, tokenReferenceFile } = {}) {
+    const tokenReference = await readTokenReference(tokenReferenceFile);
+    ownerTokenOnly ||= mode === 'tokens' && Boolean(tokenReference);
     const artifacts = await createRoundArtifacts(root, { round });
     let budget;
     try {
         const config = await loadEvaluationConfiguration({ ref: configRef, mode, ownerTokenOnly, quoteFile });
-        budget = await createRoundBudget({ file: path.join(artifacts.dir, 'budget.json'), round, profiles: config.routes,
-            mode, ownerTokenOnly, maxCalls });
+        budget = await createRoundBudget({ file: path.join(artifacts.dir, 'budget.json'), round,
+            profiles: ['extraction', 'foreground', 'judge'].map(role => config.routes[config.assignments[role]]),
+            mode, ownerTokenOnly, maxCalls, tokenReference, recipe: evaluationTokenRecipe(generateChatMemoryDataset({ seed })) });
         const report = { schemaVersion: 1, status: 'READY', preflightOnly: true, config: config.manifest,
             modelCalls: 0, actualCostCny: 0, budget: budget.snapshot() };
         await artifacts.write('manifest.json', report);
         return report;
     } catch (error) {
-        const code = ['CONFIG_NOT_READY', 'BUDGET_STOP', 'BUDGET_LOCKED', 'BUDGET_SNAPSHOT_MISMATCH'].includes(error.message)
-            ? error.message : 'EVALUATION_PREFLIGHT_FAILED';
+        const code = evaluationFailure(error, 'EVALUATION_PREFLIGHT_FAILED');
         await artifacts.write('manifest.json', { schemaVersion: 1, status: code, preflightOnly: true, modelCalls: 0, actualCostCny: 0 });
         throw new Error(code);
     } finally { try { await budget?.close(); } finally { await artifacts.close(); } }
@@ -85,12 +109,19 @@ function archiveAttempts(manifest, summary) {
     }];
 }
 
+function journalCall(record, annotation) {
+    return annotation ? { ...annotation, state: record.state === 'HELD' ? 'RESERVED' : record.state,
+        ...(record.reason ? { reason: record.reason } : {}) } : record;
+}
+
 export async function runRealEvaluation({ round, configRef, seed = 20261106, variant = 'baseline',
-    mode = 'cny', ownerTokenOnly = false, quoteFile, root = QUALITY_ROOT, maxCalls = 6000,
+    mode = 'tokens', ownerTokenOnly = false, quoteFile, root = QUALITY_ROOT, maxCalls = 6000, tokenReferenceFile,
     baselineFile, resume = false, diagnosticsOnly = false, signal, onProgress = () => {}, caseTimeoutMs, extractionTimeoutMs } = {},
 { loadConfig = loadEvaluationConfiguration, startMeter = startEvaluationMeter, loadRuntime = loadRealRuntime } = {}) {
     if (!/^round-[a-z0-9-]{1,80}$/.test(round || '') || !['baseline', 'candidate'].includes(variant)) throw new Error('CONFIG_NOT_READY');
     if (diagnosticsOnly && (!resume || baselineFile)) throw new Error('CONFIG_NOT_READY');
+    const tokenReference = await readTokenReference(tokenReferenceFile);
+    ownerTokenOnly ||= mode === 'tokens' && Boolean(tokenReference);
     const dataset = generateChatMemoryDataset({ seed });
     const config = await loadConfig({ ref: configRef, mode, ownerTokenOnly, quoteFile });
     const roles = [
@@ -100,7 +131,8 @@ export async function runRealEvaluation({ round, configRef, seed = 20261106, var
     ];
     const dir = path.join(root, round);
     const budgetFile = path.join(dir, 'budget.json');
-    const budgetOptions = { file: budgetFile, round, profiles: roles.map(row => row.profile), mode, ownerTokenOnly, maxCalls };
+    const budgetOptions = { file: budgetFile, round, profiles: roles.map(row => row.profile), mode, ownerTokenOnly, maxCalls,
+        tokenReference, recipe: evaluationTokenRecipe(dataset) };
     const provenance = { variant, dataset: { version: dataset.version, seed, hashes: dataset.hashes, sourceCounts: dataset.sourceCounts },
         configuration: config.manifest, replayMode: resume ? 'full-replay-existing-ledger' : 'fresh' };
     let artifacts, budget, meter, outboundObserver, pipelineFailureCode, failureCode;
@@ -116,7 +148,10 @@ export async function runRealEvaluation({ round, configRef, seed = 20261106, var
     };
     const calls = () => {
         const annotations = new Map([...(report.modelCalls || []), ...callAnnotations].map(row => [row.id, row]));
-        return [...priorCalls, ...(meter?.snapshot().calls || []).map(row => ({ ...annotations.get(row.id), ...row }))];
+        const observed = new Map([...priorCalls, ...(meter?.snapshot().calls || [])
+            .map(row => ({ ...annotations.get(row.id), ...row }))].map(row => [row.id, row]));
+        // A missing/crashed summary never deletes already journaled call IDs.
+        return (budget?.callRecords() || []).map(row => journalCall(row, observed.get(row.id)));
     };
     const finalize = async (action, fallback) => {
         try { await action(); }
@@ -143,18 +178,24 @@ export async function runRealEvaluation({ round, configRef, seed = 20261106, var
             if (diagnosticsOnly && (priorSummary.variant !== variant || priorSummary.dataset?.hashes?.dataset !== dataset.hashes.dataset
                 || JSON.stringify(priorSummary.configuration) !== JSON.stringify(config.manifest))) throw new Error('CM_COMPARISON_GROUP_MISMATCH');
             artifacts = await createRoundArtifacts(root, { round, resume: true });
-            priorCalls = priorSummary?.modelCalls || [];
+            const recorded = new Map((priorSummary?.modelCalls || []).map(row => [row.id, row]));
+            priorCalls = budget.callRecords().map(row => journalCall(row, recorded.get(row.id)));
             attempts = archiveAttempts(prior, priorSummary);
         } else {
             artifacts = await createRoundArtifacts(root, { round });
             budget = await createRoundBudget(budgetOptions);
         }
+        const runSignal = AbortSignal.any([budget.signal, ...(signal ? [signal] : [])]);
+        budget.signal.addEventListener('abort', () => progress({ phase: 'budget', status: 'STOPPED',
+            code: 'BUDGET_TOKEN_ANOMALY', budget: budget.snapshot() }), { once: true });
         const git = args => execFileSync('git', args, { encoding: 'utf8', cwd: fileURLToPath(new URL('../../', import.meta.url)) }).trim();
         const attempt = { ...provenance, commit: git(['rev-parse', 'HEAD']), worktreeDirty: Boolean(git(['status', '--porcelain'])),
             instrumentation: 'cm-final-recall-before-budget-v1' };
-        const identity = { schemaVersion: 1, ...provenance, attempt: attempts.length + 1 };
+        const identity = { schemaVersion: 1, ...provenance, attempt: attempts.length + 1,
+            ...(budget.snapshot().tokenGuard ? { tokenGuard: budget.snapshot().tokenGuard } : {}) };
         if (diagnosticsOnly) {
             const supplementIdentity = { schemaVersion: 1, ...attempt,
+                ...(identity.tokenGuard ? { tokenGuard: identity.tokenGuard } : {}),
                 replayMode: 'diagnostic-controls-only-existing-ledger',
                 baselineCommit: priorManifest.commit, baselineAttempt: priorManifest.attempt ?? null,
                 history: 'empty-isolated-bindings-no-source-replay', extractionReplayed: false, coreReplayed: false,
@@ -172,16 +213,17 @@ export async function runRealEvaluation({ round, configRef, seed = 20261106, var
         }
         manifestWritten = true;
         await write('summary.json', { ...report, modelCalls: priorCalls, budget: budget.snapshot() });
+        runSignal.throwIfAborted();
         meter = await startMeter({ routes: roles.map(row => row.profile), budget,
             upstreamTimeoutMs: 330000, onOutbound: entry => outboundObserver?.(entry) });
         const { withIsolatedChatMemoryStack, evaluateCoreOnStack } = await loadRuntime();
         progress({ phase: 'isolated-stack', status: 'STARTING' });
-        const result = await withIsolatedChatMemoryStack({ round, meterPort: Number(new URL(meter.routes[0].baseUrl).port), signal }, async ctx => {
+        const result = await withIsolatedChatMemoryStack({ round, meterPort: Number(new URL(meter.routes[0].baseUrl).port), signal: runSignal }, async ctx => {
             ctx.scope = round;
             ctx.setOutboundObserver = observer => { outboundObserver = observer; };
             try {
                 return await evaluateCoreOnStack(ctx, { dataset, roles, modelRoutes: meter.routes, meter, budget, variant,
-                    signal: ctx.signal, onProgress: progress, caseTimeoutMs, extractionTimeoutMs, diagnosticsOnly,
+                    signal: AbortSignal.any([runSignal, ...(ctx.signal ? [ctx.signal] : [])]), onProgress: progress, caseTimeoutMs, extractionTimeoutMs, diagnosticsOnly,
                     checkpoint: async partial => {
                         if (diagnosticsOnly) report.diagnosticSupplement = { ...report.diagnosticSupplement,
                             phase: partial.phase, diagnosticControls: partial.diagnosticControls };
@@ -189,7 +231,7 @@ export async function runRealEvaluation({ round, configRef, seed = 20261106, var
                         await write('summary.json', { ...report, modelCalls: calls() });
                     } });
             } catch (error) {
-                pipelineFailureCode = evaluationFailure(error, 'CM_PIPELINE_FAILED');
+                pipelineFailureCode = budget.signal.aborted ? 'BUDGET_TOKEN_ANOMALY' : evaluationFailure(error, 'CM_PIPELINE_FAILED');
                 progress({ phase: 'pipeline', status: 'FAILED', code: pipelineFailureCode, budget: budget.snapshot() });
                 throw new Error(pipelineFailureCode);
             }
@@ -214,10 +256,11 @@ export async function runRealEvaluation({ round, configRef, seed = 20261106, var
         await write('comparison.md', comparisonMarkdown(summarizeSamples(report.metricRows), report.latencyComparison || []));
         }
     } catch (error) {
-        failureCode = pipelineFailureCode || evaluationFailure(error, 'CM_EVALUATION_FAILED');
+        failureCode = budget?.signal.aborted ? 'BUDGET_TOKEN_ANOMALY' : pipelineFailureCode || evaluationFailure(error, 'CM_EVALUATION_FAILED');
     } finally {
         await finalize(() => meter?.stop(), 'CM_METER_STOP_FAILED');
         await finalize(() => budget?.seal(), 'BUDGET_JOURNAL_FAILED');
+        if (budget?.signal.aborted) failureCode = 'BUDGET_TOKEN_ANOMALY';
         if (artifacts && (!resume || manifestWritten)) {
             await finalize(async () => {
                 if (failureCode) Object.assign(diagnosticsOnly ? report.diagnosticSupplement : report,

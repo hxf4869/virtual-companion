@@ -3,6 +3,8 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
+import * as evaluation from '../../../scripts/lib/chat-memory-evaluation.mjs';
+import { generateChatMemoryDataset } from '../../../scripts/lib/chat-memory-dataset.mjs';
 import { runRealEvaluation } from '../../../scripts/lib/chat-memory-evaluation.mjs';
 
 const PRIVATE_DETAIL = 'fixture-only progress and upstream detail';
@@ -67,11 +69,12 @@ async function fixture(t) {
             },
         }),
     };
+    const { tokenReferenceFile } = await referenceFile({ root });
     const run = options => runRealEvaluation({ root, round, configRef: 'fixture-config',
-        mode: 'tokens', ownerTokenOnly: true, ...options }, deps);
+        mode: 'tokens', tokenReferenceFile, ...options }, deps);
     const read = async name => JSON.parse(await fs.readFile(path.join(dir, name), 'utf8'));
     const write = (name, value) => fs.writeFile(path.join(dir, name), JSON.stringify(value));
-    return { root, dir, run, read, write, state, configuration };
+    return { root, dir, run, read, write, state, configuration, deps };
 }
 
 async function assertClosed(f) {
@@ -280,5 +283,92 @@ test('diagnostic supplements reject a stale summary after full resume advanced t
     assert.deepEqual(await f.read('manifest.json'), advanced);
     assert.equal(f.state.runs, 1); assert.equal(f.state.diagnosticRuns, 0);
     assert.equal((await f.read('budget.json')).calls.length, 1);
+    await assertClosed(f);
+});
+
+
+async function referenceFile(f, usage = { inputTokens: 600, outputTokens: 400, settledCalls: 10, unknownCalls: 0 }) {
+    const tokenReferenceFile = path.join(f.root, 'reference.json');
+    const reference = { schemaVersion: 1,
+        source: { round: 'round-completed-flow', attempt: 1, firstCallId: 1,
+            lastCallId: usage.settledCalls + usage.unknownCalls, flowComplete: true },
+        recipe: evaluation.evaluationTokenRecipe(generateChatMemoryDataset({ seed: 20261106 })),
+        profiles: [PROFILE, PROFILE, PROFILE], usage };
+    await fs.writeFile(tokenReferenceFile, JSON.stringify(reference));
+    return { tokenReferenceFile, reference };
+}
+
+test('every real evaluation requires a reference even with ownerTokenOnly or CNY mode', async () => {
+    for (const options of [{}, { mode: 'tokens', ownerTokenOnly: true }, { mode: 'cny', ownerTokenOnly: true }]) {
+        let loaded = false;
+        await assert.rejects(runRealEvaluation({ round: 'round-default', configRef: 'fixture-config', ...options }, {
+            loadConfig: async () => { loaded = true; throw new Error('fixture'); },
+        }), { message: 'BUDGET_TOKEN_REFERENCE_REQUIRED' });
+        assert.equal(loaded, false);
+    }
+});
+
+test('default real evaluation needs no price and freezes the same recipe for a hold-out seed', async t => {
+    const f = await fixture(t);
+    const { tokenReferenceFile } = await referenceFile(f);
+    const report = await runRealEvaluation({ root: f.root, round: 'round-holdout', configRef: 'fixture-config',
+        tokenReferenceFile, seed: 20261107 }, f.deps);
+    const manifest = JSON.parse(await fs.readFile(path.join(f.root, 'round-holdout', 'manifest.json'), 'utf8'));
+    assert.equal(report.budget.mode, 'tokens'); assert.equal(report.budget.capMicroCny, null);
+    assert.equal(report.actualCostCny, null); assert.equal(report.budget.settledMicroCny, null);
+    assert.equal(manifest.tokenGuard.thresholdTokens, 2000);
+    assert.deepEqual(manifest.tokenGuard, report.budget.tokenGuard);
+    assert.equal(manifest.tokenGuard.reference.source.qualityBaseline, false);
+});
+
+test('token anomaly interrupts an extraction wait, cleans the stack and preserves the anomaly code', { timeout: 2000 }, async t => {
+    const f = await fixture(t);
+    const { tokenReferenceFile } = await referenceFile(f, { inputTokens: 10, outputTokens: 10, settledCalls: 1, unknownCalls: 0 });
+    let cleaned = false;
+    f.deps.startMeter = async ({ budget }) => ({
+        routes: [{ baseUrl: 'http://127.0.0.1:1234' }], snapshot: () => ({ calls: [] }), stop: async () => {},
+        makeCall: async () => {
+            const { id } = await budget.reserve({ route: 0, outputCap: 100 });
+            await budget.settle(id, { inputTokens: 42, outputTokens: 28 });
+        },
+    });
+    f.deps.loadRuntime = async () => ({
+        withIsolatedChatMemoryStack: async ({ signal }, evaluate) => {
+            try { return await evaluate({ signal }); }
+            finally { cleaned = true; }
+        },
+        evaluateCoreOnStack: async (_ctx, { meter, signal }) => {
+            await meter.makeCall();
+            signal.throwIfAborted();
+            await new Promise((resolve, reject) => signal.addEventListener('abort', () => reject(new Error('ISOLATION_INTERRUPTED')), { once: true }));
+        },
+    });
+    await assert.rejects(f.run({ tokenReferenceFile }), { message: 'BUDGET_TOKEN_ANOMALY' });
+    const report = await f.read('summary.json');
+    assert.equal(cleaned, true); assert.equal(report.failureCode, 'BUDGET_TOKEN_ANOMALY');
+    assert.equal(report.budget.tokenUsage.knownTokens, 70); assert.equal(report.executionStatus, 'INCOMPLETE');
+    assert.deepEqual(report.modelCalls.map(row => [row.id, row.state]), [[1, 'SETTLED']]);
+    await assertClosed(f);
+});
+
+test('full resume recovers all call identities from the ledger when the previous summary is missing', async t => {
+    const f = await fixture(t);
+    await f.run();
+    await fs.unlink(path.join(f.dir, 'summary.json'));
+    const report = await f.run({ resume: true });
+    assert.deepEqual(report.modelCalls.map(row => row.id), [1, 2]);
+    assert.equal(report.budget.tokenUsage.knownTokens, 140);
+    await assertClosed(f);
+});
+
+
+test('resume uses journal states when an interrupted summary still says RESERVED', async t => {
+    const f = await fixture(t);
+    await f.run();
+    const stale = await f.read('summary.json');
+    stale.modelCalls[0].state = 'RESERVED';
+    await f.write('summary.json', stale);
+    const report = await f.run({ resume: true });
+    assert.deepEqual(report.modelCalls.map(row => [row.id, row.state]), [[1, 'SETTLED'], [2, 'SETTLED']]);
     await assertClosed(f);
 });

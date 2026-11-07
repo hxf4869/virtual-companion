@@ -119,3 +119,83 @@ test('sealing preserves the round lock through final artifact writes; missing re
     assert.equal(resumed.snapshot().committedMicroCny, 20);
     await resumed.close();
 }));
+
+
+function tokenOptions(config, extra = {}) {
+    const profiles = [{ ...profile, contextWindowTokens: 1_000_000, maxOutputTokens: 1000, pricing: undefined }];
+    const recipe = { datasetVersion: 'fixture-v1', sourceCount: 400, cases: 140 };
+    const tokenReference = { schemaVersion: 1,
+        source: { round: 'round-historical', attempt: 2, firstCallId: 1001, lastCallId: 1011, flowComplete: true },
+        profiles, recipe, usage: { inputTokens: 600, outputTokens: 400, settledCalls: 10, unknownCalls: 1 } };
+    return { ...config, mode: 'tokens', ownerTokenOnly: true, maxCalls: 100, profiles, recipe, tokenReference, ...extra };
+}
+
+test('token anomaly persists every concurrent settlement, freezes 2x reference, then denies all admissions', async () => fixture(async config => {
+    const options = tokenOptions(config);
+    const budget = await createRoundBudget(options);
+    try {
+        assert.equal(budget.snapshot().tokenGuard.thresholdTokens, 2200);
+        const holds = await Promise.all(Array.from({ length: 23 }, () => budget.reserve({ route: 0, outputCap: 1000 })));
+        await Promise.all(holds.map(({ id }) => budget.settle(id, { inputTokens: 60, outputTokens: 40 })));
+        assert.equal(budget.signal.aborted, true);
+        assert.equal(budget.signal.reason.message, 'BUDGET_TOKEN_ANOMALY');
+        const saved = JSON.parse(await fs.readFile(config.file, 'utf8'));
+        assert.equal(saved.calls.filter(row => row.state === 'SETTLED').length, 23);
+        assert.equal(saved.tripped, true);
+        assert.equal(budget.snapshot().tokenUsage.knownTokens, 2300);
+        assert.equal(budget.snapshot().tokenGuard.referenceEstimatedTokens, 1100);
+        await assert.rejects(budget.reserve({ route: 0, outputCap: 1000 }), /BUDGET_TOKEN_ANOMALY/);
+    } finally { await budget.close(); }
+    const resumed = await createRoundBudget({ ...options, requireExisting: true });
+    try {
+        assert.equal(resumed.signal.aborted, true);
+        assert.equal(resumed.snapshot().calls, 23);
+        await assert.rejects(resumed.reserve({ route: 0, outputCap: 1000 }), /BUDGET_TOKEN_ANOMALY/);
+    } finally { await resumed.close(); }
+}));
+
+test('UNKNOWN has separate estimate and bounds; context ceiling is never actual token usage', async () => fixture(async config => {
+    const budget = await createRoundBudget(tokenOptions(config));
+    try {
+        for (let i = 0; i < 20; i++) {
+            const { id } = await budget.reserve({ route: 0, outputCap: 1000 });
+            await budget.unknown(id, 'HTTP_ERROR');
+        }
+        const usage = budget.snapshot().tokenUsage;
+        assert.equal(usage.knownTokens, 0); assert.equal(usage.actualTokens, null);
+        assert.equal(usage.lowerBoundTokens, 0); assert.equal(usage.upperBoundTokens, 20_020_000);
+        assert.equal(usage.unknownEstimatedTokens, 2000); assert.equal(usage.estimatedTokens, 2000);
+        assert.equal(budget.signal.aborted, false);
+        const { id } = await budget.reserve({ route: 0, outputCap: 1000 });
+        await budget.settle(id, { inputTokens: 300, outputTokens: 1 });
+        assert.equal(budget.signal.aborted, true);
+        assert.equal(budget.snapshot().tokenGuard.tripBasis, 'estimated-with-unknown');
+    } finally { await budget.close(); }
+}));
+
+test('reference rejects different model or recipe and cannot be raised on resume', async () => fixture(async config => {
+    const options = tokenOptions(config);
+    await assert.rejects(createRoundBudget({ ...options, profiles: [{ ...options.profiles[0], modelId: 'different' }] }), /TOKEN_REFERENCE_MISMATCH/);
+    await assert.rejects(createRoundBudget({ ...options, recipe: { ...options.recipe, cases: 7 } }), /TOKEN_REFERENCE_MISMATCH/);
+    const budget = await createRoundBudget(options); await budget.close();
+    await assert.rejects(createRoundBudget({ ...options, tokenReference: { ...options.tokenReference,
+        usage: { ...options.tokenReference.usage, inputTokens: 6000 } } }), /SNAPSHOT_MISMATCH/);
+}));
+
+test('adding a token guard to a legacy token ledger preserves all usage and keeps it frozen', async () => fixture(async config => {
+    const options = tokenOptions(config);
+    const { tokenReference, recipe, ...legacyOptions } = options;
+    const legacy = await createRoundBudget(legacyOptions);
+    const { id } = await legacy.reserve({ route: 0, outputCap: 1000 });
+    await legacy.settle(id, { inputTokens: 600, outputTokens: 400 });
+    await legacy.close();
+    const before = JSON.parse(await fs.readFile(config.file, 'utf8')).calls;
+    const resumed = await createRoundBudget({ ...options, requireExisting: true });
+    try {
+        assert.deepEqual(JSON.parse(await fs.readFile(config.file, 'utf8')).calls, before);
+        assert.equal(resumed.snapshot().tokenUsage.knownTokens, 1000);
+        assert.equal(resumed.snapshot().tokenGuard.thresholdTokens, 2200);
+        assert.equal((await resumed.reserve({ route: 0, outputCap: 1000 })).id, 2);
+    } finally { await resumed.close(); }
+    await assert.rejects(createRoundBudget(legacyOptions), /SNAPSHOT_MISMATCH/);
+}));

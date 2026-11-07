@@ -566,12 +566,20 @@ attempt 账本。该场景使用明确的保守验收估算费率（输入 0.01�
 CM-3 的 core 真实评测使用同一入口的显式模式，沿用本机用途配置引用，不读取 `config.txt` 或旧凭据文件：
 
 ```bash
-node scripts/eval-memory.mjs --mode dataset --seed 20261106
-node scripts/eval-memory.mjs --mode real --config-ref local-catalog --round round-cm3-baseline-20261107 --budget-mode tokens --owner-token-only
+node scripts/eval-memory.mjs --mode generate --seed 20261106
+node scripts/eval-memory.mjs --mode real --config-ref local-catalog --round round-cm3-baseline-v2 --token-reference /path/to/private/reference.json
 ```
 
-最后一条仅用于 Owner 已明确授权的本次 token 模式；费用未知，不代表 ¥100 上限通过。常规 CNY 模式先用
-`--mode preflight --quote-file <报价文件>` 核验价格，默认缺价拒绝发包。真实评测固定 7 类各 20 题、800 条消息，
+Owner 2026-11-07 已取消本次真实评测金额上限；默认持久 token 计量，缺少实际价格时费用仍为未知。
+所有真实运行（含旧 token-only / CNY API）都必须提供冻结的 `--token-reference`，不能用旧授权 flag 绕过异常停止。
+参考包含 `schemaVersion:1`、`source`（来源 round、attempt、连续调用区间、`flowComplete:true`、`qualityBaseline`）、
+`usage`（输入/输出、SETTLED/UNKNOWN 调用数）、按 extraction/foreground/judge 顺序的公开 `profiles`，及
+`evaluationTokenRecipe(dataset)` 返回的 `recipe`。仅取历史单次完整流程，不能合并此前重试或使用正在测量的轮次；
+质量覆盖不足的来源须保持 `qualityBaseline:false`。参考与模型、生成参数和样本结构绑定，seed 可独立变化。
+UNKNOWN 按参考中 SETTLED 调用的冻结平均 token 估算供熔断，真实上下界单列；实际已知加估算超过参考两倍时，
+取消在途请求并停栈、拒绝后续调用，账本不释放未知用量，参考不能在 resume 时替换或移除。
+常规 CNY 兼容工具另可用 `--mode preflight --quote-file <报价文件>` 核验价格，缺价拒绝发包。
+真实评测固定 7 类各 20 题、800 条消息，
 含 300 条陪伴模式用户来源及 100 条剧情隔离来源；所有合格来源均经原提取队列。查询按正常发送中的
 `settled:false` 状态保存，保持可召回读取而不触发提取，答案不保存；
 评审使用第三个合成账号，不把答案或评审文本存为新记忆。

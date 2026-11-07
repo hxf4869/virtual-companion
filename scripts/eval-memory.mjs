@@ -105,7 +105,7 @@ async function main(){
         process.once('SIGINT', interrupt); process.once('SIGTERM', interrupt);
         try {
             const report = await runRealEvaluation({ round: arg('--round', ''), configRef: arg('--config-ref', ''),
-                mode: arg('--budget-mode', 'cny'), ownerTokenOnly: process.argv.includes('--owner-token-only'),
+                mode: arg('--budget-mode', 'tokens'), tokenReferenceFile: arg('--token-reference', undefined),
                 seed: Number(arg('--seed', '20261106')), variant: arg('--variant', 'baseline'),
                 quoteFile: arg('--quote-file', undefined), root: arg('--output', undefined), maxCalls: Number(arg('--max-calls', '6000')),
                 baselineFile: arg('--baseline', undefined), resume: process.argv.includes('--resume'),
@@ -122,8 +122,9 @@ async function main(){
     if (mode === 'preflight') {
         const { preflightEvaluation } = await import('./lib/chat-memory-evaluation.mjs');
         const report = await preflightEvaluation({ round: arg('--round', ''), configRef: arg('--config-ref', ''),
-            mode: arg('--budget-mode', 'cny'), ownerTokenOnly: process.argv.includes('--owner-token-only'),
-            quoteFile: arg('--quote-file', undefined), root: arg('--output', undefined), maxCalls: Number(arg('--max-calls', '6000')) });
+            mode: arg('--budget-mode', 'tokens'), tokenReferenceFile: arg('--token-reference', undefined),
+            seed: Number(arg('--seed', '20261106')), quoteFile: arg('--quote-file', undefined),
+            root: arg('--output', undefined), maxCalls: Number(arg('--max-calls', '6000')) });
         console.log(JSON.stringify(report)); return;
     }
     if (mode !== 'offline') throw new Error('EVALUATION_MODE_INVALID');

@@ -7,7 +7,7 @@ import { randomBytes } from 'node:crypto';
 const OWNER = 'vc-cm-budget-v1';
 const MAX_MICRO_CNY = 100_000_000;
 const REASONS = new Set(['TRANSPORT', 'MISSING_USAGE', 'ABORTED', 'TIMEOUT', 'HTTP_ERROR',
-    'USAGE_INVALID', 'RESTART', 'SETTLEMENT_FAILED', 'CLOSED', 'OTHER']);
+    'USAGE_INVALID', 'TOKEN_ANOMALY', 'RESTART', 'SETTLEMENT_FAILED', 'CLOSED', 'OTHER']);
 const integer = (value, min = 0) => Number.isSafeInteger(value) && value >= min;
 const ceilDiv = (n, d) => (n + d - 1n) / d;
 
@@ -46,6 +46,64 @@ function freezeProfile(profile, mode) {
         revision: integer(profile.revision) ? profile.revision : 0,
         bindingRevision: integer(profile.bindingRevision) ? profile.bindingRevision : 0,
         pricing: mode === 'cny' ? priceSnapshot(profile) : null };
+}
+
+// References contain counts and public model metadata only. Never derive a
+// higher baseline from the round being measured, including after a restart.
+function referenceProfile(profile) {
+    const { pricing, ...model } = freezeProfile(profile, 'tokens');
+    return { ...model, generationParams: Object.fromEntries(['temperature', 'topP', 'reasoningEffort']
+        .map(key => [key, profile.generationParams?.[key] ?? null])) };
+}
+
+function freezeTokenGuard(reference, profiles, recipe, round) {
+    const source = reference?.source, usage = reference?.usage;
+    if (reference?.schemaVersion !== 1 || !/^round-[a-z0-9-]{1,80}$/.test(source?.round || '')
+        || source.round === round || source.flowComplete !== true || !integer(source.attempt, 1)
+        || !integer(source.firstCallId, 1) || !integer(source.lastCallId, source.firstCallId)
+        || !integer(usage?.inputTokens) || !integer(usage?.outputTokens) || !integer(usage?.settledCalls, 1)
+        || !integer(usage?.unknownCalls) || source.lastCallId - source.firstCallId + 1 !== usage.settledCalls + usage.unknownCalls
+        || !recipe || !reference.recipe || !Array.isArray(reference.profiles)) throw new Error('BUDGET_TOKEN_REFERENCE_INVALID');
+    const frozenProfiles = profiles.map(referenceProfile);
+    if (JSON.stringify(reference.profiles.map(referenceProfile)) !== JSON.stringify(frozenProfiles)
+        || JSON.stringify(reference.recipe) !== JSON.stringify(recipe)) throw new Error('BUDGET_TOKEN_REFERENCE_MISMATCH');
+    const known = usage.inputTokens + usage.outputTokens;
+    const unknownTokensPerCall = Math.ceil(known / usage.settledCalls);
+    const referenceEstimatedTokens = known + usage.unknownCalls * unknownTokensPerCall;
+    const thresholdTokens = 2 * referenceEstimatedTokens;
+    if (!integer(known, 1) || !integer(thresholdTokens, 1)) throw new Error('BUDGET_TOKEN_REFERENCE_INVALID');
+    return { reference: { schemaVersion: 1,
+        source: { round: source.round, attempt: source.attempt, firstCallId: source.firstCallId,
+            lastCallId: source.lastCallId, flowComplete: true, qualityBaseline: source.qualityBaseline === true },
+        profiles: frozenProfiles, recipe: JSON.parse(JSON.stringify(recipe)),
+        usage: { inputTokens: usage.inputTokens, outputTokens: usage.outputTokens,
+            settledCalls: usage.settledCalls, unknownCalls: usage.unknownCalls } },
+        unknownTokensPerCall, referenceEstimatedTokens, thresholdTokens, multiplier: 2,
+        accounting: 'known-plus-frozen-mean-for-unknown-v1' };
+}
+
+function tokenUsage(ledger) {
+    let knownTokens = 0, uncertainUpper = 0, unknown = 0, held = 0;
+    for (const call of ledger.calls) {
+        if (call.state === 'SETTLED') knownTokens += call.usage.inputTokens + call.usage.outputTokens;
+        if (call.state === 'UNKNOWN' || call.state === 'HELD') uncertainUpper += call.inputUpper + call.outputCap;
+        if (call.state === 'UNKNOWN') unknown++;
+        if (call.state === 'HELD') held++;
+    }
+    const unknownEstimatedTokens = ledger.config.tokenGuard ? unknown * ledger.config.tokenGuard.unknownTokensPerCall : null;
+    return { knownTokens, actualTokens: unknown || held ? null : knownTokens,
+        lowerBoundTokens: knownTokens, upperBoundTokens: knownTokens + uncertainUpper,
+        unknownEstimatedTokens, estimatedTokens: unknownEstimatedTokens === null ? (unknown ? null : knownTokens)
+            : knownTokens + unknownEstimatedTokens,
+        heldCalls: held, estimateExcludesHeld: true };
+}
+
+function checkTokenGuard(ledger) {
+    const guard = ledger.config.tokenGuard;
+    if (guard && tokenUsage(ledger).estimatedTokens > guard.thresholdTokens) {
+        ledger.tripped = true;
+        ledger.tripReason = 'BUDGET_TOKEN_ANOMALY';
+    }
 }
 
 function fee(price, input, output, cached = 0) {
@@ -125,13 +183,14 @@ function validateJournal(ledger, config) {
 }
 
 export async function createRoundBudget({ file, round, profiles, mode = 'cny', capMicroCny = MAX_MICRO_CNY,
-    maxCalls = 6000, ownerTokenOnly = false, requireExisting = false } = {}) {
+    maxCalls = 6000, ownerTokenOnly = false, requireExisting = false, tokenReference, recipe } = {}) {
     if (!['cny', 'tokens'].includes(mode) || (mode === 'tokens' && ownerTokenOnly !== true)
         || !/^round-[a-z0-9-]{1,80}$/.test(round || '') || !integer(maxCalls, 1) || maxCalls > 10000
         || !integer(capMicroCny, 1) || capMicroCny > MAX_MICRO_CNY
         || !Array.isArray(profiles) || !profiles.length || profiles.length > 8) throw new Error('CONFIG_NOT_READY');
     const config = { round, mode, capMicroCny: mode === 'cny' ? capMicroCny : null, maxCalls,
         profiles: profiles.map(profile => freezeProfile(profile, mode)) };
+    if (tokenReference) config.tokenGuard = freezeTokenGuard(tokenReference, profiles, recipe, round);
     await fs.mkdir(path.dirname(file), { recursive: true, mode: 0o700 });
     for (const target of [path.dirname(file), file, file + '.lock']) {
         try { if ((await fs.lstat(target)).isSymbolicLink()) throw new Error('BUDGET_PATH_INVALID'); }
@@ -149,11 +208,26 @@ export async function createRoundBudget({ file, round, profiles, mode = 'cny', c
             if (requireExisting) throw new Error('BUDGET_RESUME_MISSING');
             ledger = { owner: OWNER, schemaVersion: 1, config, denied: 0, tripped: false, calls: [] };
         }
+        // Existing token-only rounds are real resume consumers. Attach the
+        // first frozen guard without replacing a call or changing its usage.
+        if (requireExisting && mode === 'tokens' && config.tokenGuard && !ledger.config?.tokenGuard) {
+            const { tokenGuard, ...legacyConfig } = config;
+            validateJournal(ledger, legacyConfig);
+            ledger.config = config;
+        }
         validateJournal(ledger, config);
         for (const call of ledger.calls) if (call.state === 'HELD') { call.state = 'UNKNOWN'; call.reason = 'RESTART'; }
+        checkTokenGuard(ledger);
         await persist(file, ledger);
     } catch (error) { await release(); throw error; }
 
+    const controller = new AbortController();
+    const notifyStop = () => {
+        if (ledger.tripReason === 'BUDGET_TOKEN_ANOMALY' && !controller.signal.aborted) {
+            controller.abort(new Error('BUDGET_TOKEN_ANOMALY'));
+        }
+    };
+    notifyStop();
     let closed = false, journalFailed = false, queue = Promise.resolve();
     let sealPromise, released = false;
     const transaction = action => {
@@ -165,7 +239,7 @@ export async function createRoundBudget({ file, round, profiles, mode = 'cny', c
         return next;
     };
     const save = async () => {
-        try { await persist(file, ledger); }
+        try { checkTokenGuard(ledger); await persist(file, ledger); notifyStop(); }
         catch (error) { journalFailed = true; throw error; }
     };
     const committed = () => ledger.calls.reduce((sum, call) => sum + (call.state === 'SETTLED' ? call.feeMicroCny
@@ -184,13 +258,16 @@ export async function createRoundBudget({ file, round, profiles, mode = 'cny', c
         return sealPromise;
     };
     return {
+        signal: controller.signal,
+        callRecords: () => ledger.calls.map(({ id, route, state, reason, usage }) => ({ id, route, state,
+            ...(reason ? { reason } : {}), ...(usage ? { usage: { ...usage } } : {}) })),
         reserve: ({ route, outputCap }) => transaction(async () => {
             const profile = config.profiles[route];
             if (!integer(route) || !profile || !integer(outputCap, 1) || outputCap > profile.maxOutputTokens) throw new Error('CONFIG_NOT_READY');
             const inputUpper = profile.contextWindowTokens;
             const upperMicroCny = mode === 'cny' ? fee(profile.pricing, inputUpper, outputCap) : 0;
             if (ledger.tripped || ledger.calls.length >= maxCalls || (mode === 'cny' && committed() + upperMicroCny > capMicroCny)) {
-                ledger.denied++; await save(); throw new Error('BUDGET_STOP');
+                ledger.denied++; await save(); throw new Error(ledger.tripReason || 'BUDGET_STOP');
             }
             const call = { id: ledger.calls.length + 1, route, state: 'HELD', inputUpper, outputCap, upperMicroCny };
             ledger.calls.push(call); await save();
@@ -232,6 +309,11 @@ export async function createRoundBudget({ file, round, profiles, mode = 'cny', c
                 unknownOutputUpper: uncertain.reduce((n, call) => n + call.outputCap, 0),
                 committedMicroCny: mode === 'cny' ? committed() : null,
                 settledMicroCny: mode === 'cny' ? settled.reduce((n, call) => n + call.feeMicroCny, 0) : null,
+                tokenUsage: tokenUsage(ledger),
+                tokenGuard: config.tokenGuard ? { ...structuredClone(config.tokenGuard),
+                    tripped: ledger.tripReason === 'BUDGET_TOKEN_ANOMALY',
+                    tripBasis: ledger.tripReason === 'BUDGET_TOKEN_ANOMALY'
+                        ? tokenUsage(ledger).knownTokens > config.tokenGuard.thresholdTokens ? 'known-usage' : 'estimated-with-unknown' : null } : null,
                 feeStatus: mode === 'cny' ? 'priced-upper-bound' : 'unpriced-owner-authorized',
                 warning80: mode === 'cny' && committed() >= 80_000_000 };
         },

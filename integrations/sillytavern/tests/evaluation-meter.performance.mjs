@@ -408,6 +408,43 @@ test('protocols outside the audited chat endpoint fail closed', async () => {
     }
 });
 
+test('token anomaly at final stream usage aborts in-flight requests without waiting for upstream EOF', { timeout: 3000 }, async t => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'vc-meter-token-'));
+    const recipe = { fixture: 'concurrent-token-stop' };
+    const budget = await createRoundBudget({ file: path.join(dir, 'budget.json'), round: 'round-token-stop',
+        profiles: [PRICED_PROFILE], mode: 'tokens', ownerTokenOnly: true, recipe,
+        tokenReference: { schemaVersion: 1,
+            source: { round: 'round-reference', attempt: 1, firstCallId: 1, lastCallId: 1, flowComplete: true },
+            recipe, profiles: [PRICED_PROFILE], usage: { inputTokens: 4, outputTokens: 4, settledCalls: 1, unknownCalls: 0 } } });
+    t.after(async () => { await budget.close(); await fs.rm(dir, { recursive: true, force: true }); });
+    const { meter, seen } = await setup(t, { budget, profile: PRICED_PROFILE,
+        handler: (_req, res, body) => {
+            if (body.seed === 99) res.writeHead(200, { 'content-type': 'text/event-stream' }).write(event({ choices: [] }));
+            else res.writeHead(200, { 'content-type': 'text/event-stream' }).write(event({ usage: USAGE }) + done);
+        } });
+    const waiting = await send(meter.routes[0], { stream: true, seed: 99 });
+    const cancelled = assert.rejects(waiting.text());
+    const response = await send(meter.routes[0]);
+    await response.text();
+    await cancelled;
+    assert.equal(budget.signal.aborted, true);
+    const denied = await send(meter.routes[0]);
+    assert.equal(denied.status, 429);
+    assert.deepEqual(await denied.json(), { error: 'BUDGET_TOKEN_ANOMALY' });
+    await meter.stop();
+    assert.equal(seen.length, 2);
+    assert.equal(budget.snapshot().settled, 1);
+    assert.equal(budget.snapshot().unknown, 1);
+    assert.equal(meter.snapshot().calls[0].reason, 'TOKEN_ANOMALY');
+    assert.equal(meter.snapshot().calls[1].state, 'SETTLED');
+    assert.deepEqual(budget.callRecords().map(({ id, state }) => [id, state]), [[1, 'UNKNOWN'], [2, 'SETTLED']]);
+    assert.equal(await budget.notSent(1), false);
+    assert.equal(await budget.unknown(2, 'TOKEN_ANOMALY'), false);
+    assert.equal(await budget.notSent(2), false);
+    assert.equal(budget.snapshot().tokenUsage.knownTokens, 18);
+    assert.equal(budget.snapshot().notSent, 0);
+});
+
 test('local streaming first-chunk overhead p95 is at most 20 ms', { timeout: 8000 }, async (t) => {
     let firstWrite = 0;
     const first = event({ choices: [{ delta: { content: 'fixture' } }] });

@@ -18,7 +18,7 @@ const MESSAGE_FIELDS = new Set([
     'role', 'content', 'name', 'tool_call_id', 'tool_calls', 'function_call', 'reasoning_content', 'reasoning', 'refusal',
 ]);
 const BUDGET_ERRORS = new Map([
-    ['BUDGET_STOP', 429], ['CONFIG_NOT_READY', 503], ['BUDGET_CLOSED', 503], ['BUDGET_JOURNAL_FAILED', 503],
+    ['BUDGET_STOP', 429], ['BUDGET_TOKEN_ANOMALY', 429], ['CONFIG_NOT_READY', 503], ['BUDGET_CLOSED', 503], ['BUDGET_JOURNAL_FAILED', 503],
 ]);
 
 const positiveInteger = (value) => Number.isSafeInteger(value) && value > 0;
@@ -238,6 +238,7 @@ export async function startEvaluationMeter({
         if (req.headers.authorization !== `Bearer ${route.localCredential}`) {
             return rejectRequest(res, 401, 'METER_UNAUTHORIZED');
         }
+        if (budget.signal?.aborted) return rejectRequest(res, 429, 'BUDGET_TOKEN_ANOMALY');
         if (journalFailed || stopping) return rejectRequest(res, 503, 'METER_UNAVAILABLE');
         const body = await readRequest(req);
         const outputCap = outputCapFor(body, route);
@@ -292,6 +293,7 @@ export async function startEvaluationMeter({
             const isStream = contentType?.split(';', 1)[0].trim().toLowerCase() === 'text/event-stream';
             const observer = isStream ? streamObserver(record) : jsonObserver(record);
             res.writeHead(response.status, contentType ? { 'content-type': contentType } : {});
+            let completedUsage = null;
             if (response.body) {
                 for await (const chunk of response.body) {
                     const elapsed = performance.now() - started;
@@ -299,12 +301,21 @@ export async function startEvaluationMeter({
                     const writable = res.write(chunk);
                     if (response.ok) observer.push(chunk, elapsed);
                     if (!writable) await once(res, 'drain', { signal });
+                    // [DONE] is the protocol boundary. A provider can leave its
+                    // socket open afterwards; do not defer the durable usage
+                    // settlement (and round abort) until a transport timeout.
+                    if (isStream && response.ok && (completedUsage = observer.usage())) {
+                        // Let the just-forwarded headers/body flush before a
+                        // failed settlement can destroy the downstream socket.
+                        await new Promise(setImmediate);
+                        break;
+                    }
                 }
             }
             record.endMs = performance.now() - started;
             signal.throwIfAborted();
             clearTimeout(timer);
-            const usage = response.ok ? observer.usage() : null;
+            const usage = response.ok ? completedUsage ?? observer.usage() : null;
             if (!usage) {
                 failure = response.ok ? 'MISSING_USAGE' : 'HTTP_ERROR';
                 unknownAttempted = true;
@@ -358,6 +369,10 @@ export async function startEvaluationMeter({
             .finally(() => active.delete(controller));
         active.set(controller, task);
     });
+    const abortForBudget = () => {
+        for (const controller of active.keys()) controller.abort('TOKEN_ANOMALY');
+    };
+    budget.signal?.addEventListener('abort', abortForBudget, { once: true });
     server.listen(0, '127.0.0.1');
     await once(server, 'listening');
     const origin = `http://127.0.0.1:${server.address().port}`;
@@ -366,6 +381,7 @@ export async function startEvaluationMeter({
         snapshot: () => ({ calls: calls.map((call) => ({ ...call })), budget: budget.snapshot() }),
         stop() {
             if (!stopping) {
+                budget.signal?.removeEventListener('abort', abortForBudget);
                 stopping = new Promise((resolve) => server.close(resolve));
                 for (const controller of active.keys()) controller.abort('CLOSED');
                 server.closeAllConnections();
