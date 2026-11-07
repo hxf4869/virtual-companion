@@ -52,6 +52,23 @@ V2 方向（ADR-0009）的锁定 ST 宿主开发入口：真实上游栈 + 本�
 运行产物，gitignored）、`upstream/`（gitignored）、`extension/`（S3 扩展，另见其目录）。
 `.local/` 是 W00 调试遗留，gitignored，不是交付物。
 
+## 聊天大小只读预检（SX-8）
+
+切换聊天读取实现前，必须先完成真实数据大小盘点；真实数据运行需 Owner 另行授权，本次仅验证合成临时目录。
+脚本没有默认扫描目录，必须显式传入一个或多个聊天根目录；角色 `chats/` 子目录与群聊目录可分别传入（根目录避免重叠）：
+
+```bash
+node integrations/sillytavern/scripts/chat-size-preflight.mjs --root <聊天根目录> --root <群聊根目录>
+```
+
+递归只读普通 `.jsonl` 文件，跳过符号链接、不跟随根路径中的符号链接；不会解析 JSON 或持有完整行，固定 64KiB
+读缓冲也覆盖超过 256MiB 的文件。输出逐行 JSON：匿名 `rootIndex` / `fileIndex`、每文件与总计的原始字节数、
+header / 消息字节数的 count / min / max 和固定 histogram，以及严格超过 8MiB header、1MiB 消息的条数与涉及文件数。
+行大小去除 LF / CRLF；末行不必有 LF，单独的末尾 CR 仍计入字节；空行大小计 0 并计入 `invalidBlankLines`。
+`histogramMaxBytes` 对应各桶的含上界区间，首桶为 0，末桶 `null` 表示无上界；空样本 min / max 为 `null`。
+错误仅返回固定 code 与匿名序号，退出码 1；文件读取失败不合入完整文件统计，见 `failedFiles`。
+正常完成为 0；大小超限与跳过子目录符号链接只报告计数。输出不包含正文、文件名、路径或聊天 ID。
+
 ## 本机运行说明（W16-2）
 
 V2 只在本机受管栈运行：本目录的 SillyTavern 与 MemoryCore，加上 Go `companiond`、PostgreSQL、MinIO。
