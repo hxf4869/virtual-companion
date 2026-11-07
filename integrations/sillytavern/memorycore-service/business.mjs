@@ -547,7 +547,7 @@ export function createControlledEngine({ dataRoot, nativeFactory, embeddingFacto
                             await fs.rm(stagingDir, { recursive: true, force: true });
                             const current = await readJSON(file);
                             if (current?.status === 'building-profile' && native.getScope(key).revision === input.revision)
-                                await writeJSON(file, { scope: input.scope, status: 'failed' });
+                                await writeJSON(file, { scope: input.scope, status: 'failed', revision: input.revision });
                         });
                         throw error;
                     } finally { pending.delete(file); }

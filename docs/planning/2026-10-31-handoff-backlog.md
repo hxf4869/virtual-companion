@@ -599,7 +599,7 @@ COMMIT;
 
 2026-11-07，`07ecf9bf` 的 core 140 题运行中，20 道遗忘题有 14 道到达清理检查但为 `PARTIAL`，另 6 道目标缺失；已执行的遗忘后阶段未观测到泄漏，不等于清理完成。只读检查其中两道的隔离合成 PG：各有一次 L2 `HTTP_5XX`，未进入 L3；最后一次领取在租约内约 0.2 秒结束且没有新模型调用，首次失败后约 76 秒进入死信，符合 15/60 秒退避。原任务 `last_error_code` 为空，无法从 PG 逐次确认后续关闭码。
 
-待回归验证的链路：`memorycore-service/business.mjs` 的画像失败日志未写 revision，普通遗忘恢复把缺失 revision 视作旧操作并删除；Go 再用原 operation 从 sequence 1 重建，会遇到已登记序号的防重放门禁。最小回归为首次 L2 返回 500、下次成功，两次领取之间执行实际遗忘恢复；验证是否能重新调用、发布画像并到达 `DONE`。现阶段只是代码和时序证据，不宣称已复现或修复；不修改 SQL/防重放规则，不检测开发或生产数据。
+待回归验证的链路：`memorycore-service/business.mjs` 的画像失败日志未写 revision，普通遗忘恢复把缺失 revision 视作旧操作并删除；Go 再用原 operation 从 sequence 1 重建，会遇到已登记序号的防重放门禁。最小回归为首次 L2 返回 500、下次成功，两次领取之间执行实际遗忘恢复；验证是否能重新调用、发布画像并到达 `DONE`。Node 回归已复现：同版本遗忘清理后失败画像由 failed 变成 unknown；失败日志补 revision 后保留 failed，旧 operation 被拒且不重复调用，新 operation/capability 可重新生成、发布并返回 cleared。Go 自动 rebind、真实 capability 防重放与任务 DONE 尚未运行直接联合回归，不宣称完整闭环通过；不修改 SQL/防重放规则，不检测开发或生产数据。
 
 ## O. SX-7 审计修复（Owner 2026-11-07）
 
