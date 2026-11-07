@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -165,6 +166,103 @@ func TestManagedMemoryFiltersIsolationCorrectionAndForget(t *testing.T) {
 		t.Fatal("invalidated proposal reached engine commit")
 	}
 
+}
+
+func TestManagedForgetResumesAtPostgresRevision(t *testing.T) {
+	b, snapshots := stMemoryFixture(t)
+	s := testEnv.store
+	ctx := context.Background()
+	const fact = "合成的待遗忘事实"
+	snapshots[sourceChat] = stMemorySnapshot(sourceChat, fact, time.Date(2026, 10, 20, 12, 0, 0, 0, time.UTC))
+	if _, err := s.ReconcileSTSources(ctx, 1, []string{sourceChat}); err != nil {
+		t.Fatal(err)
+	}
+	ref := refForChat(t, sourceChat)
+	memory := addSTMemory(t, b, fact, ref)
+	// Suppressing this source also revokes its operation, so worker recovery
+	// syncs the native scope before it processes the managed cleanup.
+	prepareEngineProfileJob(t, b, ref)
+	if err := s.ForgetManagedMemory(ctx, 1, memory.ID); err != nil {
+		t.Fatal(err)
+	}
+	assertCleanupState := func(want string) {
+		t.Helper()
+		detail, err := s.GetManagedMemory(ctx, 1, memory.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var row struct {
+			Cleanup struct {
+				State string `json:"state"`
+			} `json:"cleanup"`
+		}
+		if err := json.Unmarshal(detail, &row); err != nil || row.Cleanup.State != want {
+			t.Fatalf("managed cleanup state=%s want=%s err=%v", row.Cleanup.State, want, err)
+		}
+	}
+	// Stop after the PostgreSQL commit, before the worker contacts MemoryCore.
+	assertCleanupState("PENDING")
+	var nativeRevision atomic.Int64
+	engine := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var in struct {
+			Revision         int64 `json:"revision"`
+			RevisionAdvanced bool  `json:"revisionAdvanced"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		current := nativeRevision.Load()
+		conflict := func() {
+			w.WriteHeader(http.StatusConflict)
+			w.Write([]byte(`{"code":"MEMORYCORE_REVISION_CONFLICT"}`))
+		}
+		switch r.URL.Path {
+		case "/internal/operation-status", "/internal/export-owner":
+			w.Write([]byte(`{}`))
+		case "/internal/invalidate-scope":
+			if in.Revision < current {
+				conflict()
+				return
+			}
+			nativeRevision.Store(in.Revision)
+			w.Write([]byte(`{}`))
+		case "/internal/forget":
+			// Mirror the revision rule in MemoryCore's business.mjs.
+			if in.Revision > current {
+				conflict()
+				return
+			}
+			target := in.Revision
+			if !in.RevisionAdvanced {
+				target++
+			}
+			nativeRevision.Store(max(current, target))
+			w.Write([]byte(`{"status":"cleared"}`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer engine.Close()
+	client, err := memoryengine.New(engine.URL, "synthetic-cleanup-revision-token")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.UseMemoryEngine(client)
+	if err := s.RecoverEngineOperations(ctx); err != nil {
+		t.Fatalf("recover revoked operation: %v", err)
+	}
+	if nativeRevision.Load() == 0 {
+		t.Fatal("revoked operation recovery did not sync the scope")
+	}
+	if err := s.RecoverMemoryCleanup(ctx); err != nil {
+		t.Fatalf("resume managed cleanup: %v", err)
+	}
+	assertCleanupState("DONE")
+	if _, revision, err := s.SyncMemoryEngineScope(ctx, 1, b.RelationshipID); err != nil || nativeRevision.Load() != revision {
+		t.Fatalf("scope sync after resumed cleanup: postgres=%d native=%d err=%v", revision, nativeRevision.Load(), err)
+	}
 }
 
 func assertForgottenBodyGone(t *testing.T, ctx context.Context, owner, id int64, sentence string) {

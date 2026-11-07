@@ -573,7 +573,12 @@ export function createControlledEngine({ dataRoot, nativeFactory, embeddingFacto
             }
             const request = { action, scope: input.scope, revision: accountDeletion ? (cleanup?.request.revision ?? native.getScope(key).revision) : input.revision, recordIds: [...new Set(input.recordIds || [])].sort(), ...(input.sourceIds ? { sourceIds: [...new Set(input.sourceIds)].sort() } : {}), ...(input.revisionAdvanced === true ? { revisionAdvanced: true } : {}), ...(input.matchSourceRecords === false ? { matchSourceRecords: false } : {}) };
             if (cleanup) {
-                if (JSON.stringify(cleanup.request) !== JSON.stringify(request)) fail('CLEANUP_PENDING');
+                const savedRequest = JSON.stringify(cleanup.request);
+                if (savedRequest !== JSON.stringify(request)) {
+                    // An upgraded caller can resume the same legacy forget using its saved plan.
+                    const { revisionAdvanced, ...legacyRequest } = request;
+                    if (action !== 'forget' || revisionAdvanced !== true || savedRequest !== JSON.stringify(legacyRequest)) fail('CLEANUP_PENDING');
+                }
             } else {
                 if (action === 'forget') {
                     if (!Number.isSafeInteger(input.revision) || input.revision < 0 || input.revision > native.getScope(key).revision) fail('REVISION_CONFLICT');

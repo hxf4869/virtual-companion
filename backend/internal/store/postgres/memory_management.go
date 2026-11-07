@@ -388,7 +388,7 @@ func (s *Store) continueMemoryCleanup(ctx context.Context, owner, id int64) erro
 		var result struct {
 			Status string `json:"status"`
 		}
-		err = s.memoryEngine.Call(ctx, "forget", map[string]any{"scope": EngineScope(owner, in.RelationshipID), "revision": in.Revision, "recordIds": []string{*in.RecordID}, "sourceIds": in.SourceIDs}, &result)
+		err = s.memoryEngine.Call(ctx, "forget", map[string]any{"scope": EngineScope(owner, in.RelationshipID), "revision": in.Revision, "revisionAdvanced": true, "recordIds": []string{*in.RecordID}, "sourceIds": in.SourceIDs}, &result)
 		if err != nil {
 			return err
 		}

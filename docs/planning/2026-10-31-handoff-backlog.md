@@ -560,3 +560,21 @@ Owner 选择 React，要求保留现有正常 UI、优先复用成熟开源组�
 - CM-4 Owner 决定（2026-11-07）：逐事实来源发布的函数迁移由 Owner 转交 SX，需求见 [迁移交接](2026-11-07-cm4-source-publication-handoff.md)。CM 获准补 prepare 逐记录目标映射及 Go 校验/发布参数；迁移合 main 前只交查询补全与检索计算复用，依赖新入口的窗口候选不能合 main。联合验收覆盖独立 A/B 不连带遗忘、真实 A+B 任一失效即撤回、助手逐事实生效及遗忘后真实出站零召回。
 - CM-4 Owner 补充授权（2026-11-07）：`memorycore_profile.go::RecoverEngineOperations` 纳入最小修正与直接回归；逐事实任一来源失效即清理，仅全部来源有效且 PG 已发布者保留，宁可多删不可漏删。判断与清理同一事务，barrier 先于来源行锁；覆盖独立/联合来源、未发布清理、幂等和并发遗忘出站零泄漏。依赖新签名仍等迁移合 main；详见迁移交接。
 - CM-4 Owner 时间兼容授权（2026-11-07）：真实 SQLite 复现旧 L0 回退时间导致 SOURCE_CONFLICT 后，允许 Go 根据核验来源缺少原始时间设置内部回退标记，并在现有 commit 补丁的事务中仅对同 ID/scope/正文且有可信回退证据的旧 L0 复用时间；涉及真实时间且值不同、正文或 scope 不同仍拒绝，标记不接受浏览器/请求参数。新回退时间须确定性，覆盖回退复用、真实时间冲突及正文冲突；不改 ST 来源读取协议、source_ref、generation 或旧数据，候选继续等待迁移。
+- CM-5 Owner 提前独立修复授权（2026-11-07）：`memory_management.go::continueMemoryCleanup` 补 `revisionAdvanced: true`，避免 V155 已推进的 PG cleanup revision 被 native 再加一。先以中断后恢复清理的回归保留修前 FAIL、修后 PASS，核对其他 forget 调用的版本语义；不改 SQL、来源协议或数据结构。该 main 既有缺陷独立一个 `fix(CM-5)` / `fix(memory)` 提交，不混 CM-4 改动，推送后交 Owner/Claude 审核，可先行合 main；CM 分支不自行合 main。完整 CM-5 真实出站闭环仍按原验收，不因这处修复直接勾完。
+- CM-5 Owner 旧任务兼容授权（2026-11-07）：同一独立提交可在 Node 接受旧落盘 forget 意图的精确重放，仅允许唯一差异为新增 `revisionAdvanced: true`；action、scope、revision、recordIds、sourceIds、matchSourceRecords 等其他字段均须一致。按原持久删除集合和目标版本续跑，不重建意图或再推进一次；覆盖重启、精确匹配成功、各字段差异仍拒绝及另一 owner 隔离。已多推进的历史版本只登记缺口与只读检测方法，本轮不自动修复、不连接开发库或生产库检测。
+
+### CM-5 已知缺口：历史 native scope 版本领先 PG
+
+旧版普通遗忘清理可能在 PG 已推进来源屏障后，再把 native scope 从 `r` 推至 `r+1`。即使旧清理意图已经执行完，当前同步只接受向前推进 native，PG 仍为 `r` 时会出现 `MEMORYCORE_REVISION_CONFLICT`；可能阻塞后续提取、记忆召回/画像更新或 revoked-operation 恢复。仍有可领取的遗忘画像重建任务时，现有 V157 claim 校验后的 rebind 有条件让 PG 追平；最后一条有效记忆被遗忘、没有合法重建锚点或任务已终结时，不保证有这条恢复路径。旧任务精确重放仅避免新增请求形状阻塞，不代表已修复历史版本领先，也不倒退任何 fence。
+
+只读检测方法（本轮 **NOT_RUN**，不得为此连接开发或生产）：在已有的同点一致快照或稳定采集窗口内，用 PG 的只读事务读取 `vc.memorycore_scope` 的 owner、relationship、revision；用 SQLite `file:.../vectors.db?mode=ro` 打开现有一致副本，只读 `vc_scopes(scope_key,revision)`。前者查询为：
+
+```sql
+BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY;
+SELECT owner_user_id, relationship_id, revision FROM vc.memorycore_scope;
+COMMIT;
+```
+
+后者查询为 `SELECT scope_key, revision FROM vc_scopes;`。依据 owner 目录和 Go 的标准键 `关系ID:COMPANION:instance-关系ID:default` 在受控进程内匹配，只输出双方均存在且 `native_revision > pg_revision` 的 scope 总数及差值分布；缺表、缺行和跨时不一致样本单列为未判定，不把所有差异归因为本缺陷，不输出 owner/scope ID、正文或凭据。仅 `mode=ro` 不保证跨库时点一致，无法取得可比快照时不报告确定受影响数量。
+
+不得用 MemoryCore `scope-status` 充当只读检测：它会经过恢复门和目录/原生存储初始化，可能清理恢复内容、建表或写文件。检测不执行这些入口、不触发纠正/来源编辑来“追平”，也不修改 SQL、revision 或业务数据。历史修复须另行形成受控方案并获授权。
