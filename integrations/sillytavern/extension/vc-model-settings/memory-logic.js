@@ -490,7 +490,7 @@ export async function openMessageSource(detail, deps = {}) {
     const alreadyHere = sameRelationship && (identity ? before.chatMetadata?.vc_f2?.id === identity : currentFile(before) === file);
     const target = alreadyHere ? { relationshipId, file: currentFile(before), avatar: before.characters?.[before.characterId]?.avatar }
         : (await loadChats()).find(row => String(row.relationshipId) === relationshipId
-            && (identity ? row.chatIdentity === identity : fileName(row.file) === file));
+            && (identity ? row.chatIdentity === identity : (fileName(row.file) === file || row.fileAliases?.some(alias => fileName(alias) === file))));
     if (!target?.file) throw new Error('source-unavailable');
     if (!await openConversation(target)) throw new Error('source-open-failed');
     if (afterOpen) await afterOpen();

@@ -194,3 +194,43 @@ test('原生metadata后台冲突由F2留稿处理，其余异常仍传播', asyn
     ctx.saveMetadata = async () => { throw other; };
     enqueue(); await assert.rejects(() => scheduled(), error => error === other);
 });
+
+test('GO canonical ACK writes protected identities only, keeps in-flight text/MVU edits and rejects old queued payloads', async () => {
+    const drafts = [], epoch = '9007199254740993';
+    const client = createF2Client({ getAuthorityEpoch: () => epoch, onConflict: raw => drafts.push(JSON.parse(raw)) });
+    const metadata = { vc_f2: token(0), vc_f2_parent: token(8, 'parent'), variables: { value: 1 } };
+    client.loaded('branch', metadata);
+    const message = { mes: 'submitted', vc_message_id: 'parent-message', swipes: ['submitted', 'alternate'], swipe_id: 0,
+        variables: [{ value: 1 }], extra: { vc_source: { id: 'parent-first' }, keep: true },
+        swipe_info: [{ extra: { vc_source: { id: 'parent-first' } } }, { extra: { vc_source: { id: 'parent-alt' } } }] };
+    const payload = { chat: [{ chat_metadata: metadata }, message] };
+    const gate = deferred(), sent = [];
+    const send = async raw => {
+        sent.push(JSON.parse(raw)); await gate.promise;
+        return Response.json({ vc_f2: token(1), chat: [{ chat_metadata: { vc_f2: token(1), vc_binding: { relationshipId: 'new-relationship' }, vc_branch_root: 'root' } },
+            { ...structuredClone(sent[0].chat[1]), vc_message_id: 'child-message',
+                extra: { vc_source: { id: 'child-first', revision: 1, generation: 1 } },
+                swipe_info: [{ extra: { vc_source: { id: 'child-first', revision: 1, generation: 1 } } }, { extra: { vc_source: { id: 'child-alt', revision: 1, generation: 1 } } }] }] });
+    };
+    const first = client.save('branch', payload, { live: true, send });
+    const second = client.save('branch', payload, { live: true, send });
+    await Promise.resolve();
+    message.mes = 'new edit'; message.swipe_id = 1; message.variables[0].value = 2; metadata.variables.value = 2;
+    gate.resolve(); await first;
+    await assert.rejects(second, { code: 'VC_STALE_SOURCE' });
+    assert.equal(sent.length, 1); assert.equal(sent[0].vc_authority_epoch, epoch);
+    assert.ok(sent[0].vc_request_id); assert.equal(drafts[0].vc_authority_epoch, epoch);
+    assert.equal(message.mes, 'new edit'); assert.equal(message.variables[0].value, 2); assert.equal(metadata.variables.value, 2);
+    assert.equal(message.extra.keep, true); assert.equal(message.vc_message_id, 'child-message');
+    assert.equal(message.extra.vc_source.id, 'child-alt'); assert.equal(message.swipe_info[0].extra.vc_source.id, 'child-first'); assert.equal(message.swipe_info[1].extra.vc_source.id, 'child-alt');
+    assert.equal(metadata.vc_binding.relationshipId, 'new-relationship'); assert.equal(metadata.vc_f2_parent, undefined);
+});
+
+test('GO canonical response never weakens existing F2 same-ID/+1 ACK validation', async () => {
+    for (const bad of [token(2), token(1, 'foreign')]) {
+        const client = createF2Client();
+        const payload = document(token(0), 'keep'); client.loaded('branch', payload.chat[0].chat_metadata);
+        await assert.rejects(client.save('branch', payload, { live: true, send: async () => Response.json({ vc_f2: bad, chat: payload.chat }) }), { code: 'VC_SAVE_UNCONFIRMED' });
+        assert.deepEqual(payload.chat[0].chat_metadata.vc_f2, token(0));
+    }
+});

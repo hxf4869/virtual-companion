@@ -15,6 +15,38 @@ async function fixture(t) {
 }
 const freeze = () => ({ runId: randomUUID(), epoch: '9007199254740993123456789' });
 
+test('onClose runs synchronously after admission closes and before persistence; a failed flush stays fail-closed', async (t) => {
+    const { config } = await fixture(t);
+    let gate, calls = 0;
+    gate = createChatStorageGate({ ...config, onClose(owner) {
+        calls += 1;
+        assert.equal(owner, '101');
+        assert.equal(gate.status(owner).closed, true);
+        assert.equal(gate.status(owner).durable, false);
+        assert.equal(gate.enter(owner), null);
+    } });
+    const closing = gate.closeAdmission('101', freeze());
+    assert.equal(calls, 1);
+    await closing;
+    const { config: other } = await fixture(t);
+    const broken = createChatStorageGate({ ...other, onClose() { throw new Error('synthetic backup flush failure'); } });
+    await assert.rejects(broken.closeAdmission('101', freeze()), { code: 'ST_CHAT_GATE_STATE_UNAVAILABLE' });
+    assert.equal(broken.enter('101'), null);
+    assert.equal(broken.status('101').durable, false);
+    await assert.rejects(broken.waitForIdle('101'), { code: 'ST_CHAT_GATE_STATE_UNAVAILABLE' });
+    const { config: retryConfig } = await fixture(t);
+    let failRetry = false;
+    const retryGate = createChatStorageGate({ ...retryConfig, onClose() {
+        if (failRetry) throw new Error('synthetic repeated flush failure');
+    } });
+    const identity = freeze();
+    await retryGate.closeAdmission('101', identity);
+    failRetry = true;
+    await assert.rejects(retryGate.closeAdmission('101', identity), { code: 'ST_CHAT_GATE_STATE_UNAVAILABLE' });
+    assert.equal(retryGate.status('101').durable, false);
+    await assert.rejects(retryGate.waitForIdle('101'), { code: 'ST_CHAT_GATE_STATE_UNAVAILABLE' });
+});
+
 test('close synchronously stops admission; only handler release drains; cancelled wait never opens the gate', async (t) => {
     const { gate } = await fixture(t);
     const release = gate.enter('101');

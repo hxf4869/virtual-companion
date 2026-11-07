@@ -1,7 +1,7 @@
 {
   "id": "st-f2-chats",
   "kind": "deterministic-string-replacement",
-  "reason": "W05 原生聊天读写、改名、删除与导入统一F2；原生格式转换/备份保留，force不能跳过版本检查。",
+  "reason": "W05 原生聊天读写、改名、删除与导入统一F2；原生格式转换/备份保留，force不能跳过版本检查。 SX-8 文本导出等待文件读取完成，并提供冻结时flush本Owner待处理备份的同步入口。",
   "upstream": {
     "component": "sillytavern",
     "commit": "7e8663cd9c184a550b37238218bdd32c6efc68e9",
@@ -10,7 +10,7 @@
   "target": "src/endpoints/chats.js",
   "removal_condition": "上游原生等价F2覆盖所有相关路由并通过版本/删除/导入回归时移除。",
   "expected_input_sha256": "40012ebc71a75357e62f7532e5b20def0d8b6c132bb6ab48f662993cc97b9063",
-  "expected_output_sha256": "bb7a135d68f5c28d0e1fcad0cadfcf55fa6894bc32fb6e123690197c573491f0",
+  "expected_output_sha256": "15e9acc2028c8771e06e14f94ce866df989e8ccba1bd0ce49bce66067d3950ce",
   "replacements": [
     {
       "from": "} from '../util.js';\n\nconst isBackupEnabled =",
@@ -150,6 +150,26 @@
     {
       "from": "        }\n    } catch (error) {\n        if (error instanceof IntegrityMismatchError) {\n",
       "to": "        }\n    } catch (error) {\n        if (vcF2Error(error, response)) return;\n        if (error instanceof IntegrityMismatchError) {\n",
+      "count": 1
+    },
+    {
+      "from": "import express from 'express';\nimport sanitize from 'sanitize-filename';",
+      "to": "import express from 'express';\nimport { finished } from 'node:stream/promises';\nimport sanitize from 'sanitize-filename';",
+      "count": 1
+    },
+    {
+      "from": "const backupFunctions = new Map();\n\n/**",
+      "to": "const backupFunctions = new Map();\n\n// SX-8: normal ST saves retain throttling; freeze flushes only this Owner.\nexport function flushChatBackups(handle) {\n    for (const [key, backup] of backupFunctions) {\n        if (key.startsWith(`${handle} `)) backup.flush();\n    }\n}\n\n/**",
+      "count": 1
+    },
+    {
+      "from": "        const readStream = fs.createReadStream(filename);\n        const rl = readline.createInterface({\n            input: readStream,\n        });\n        let buffer = '';\n        rl.on('line', (line) => {\n            const data = JSON.parse(line);\n            // Skip non-printable/prompt-hidden messages\n            if (data.is_system) {\n                return;\n            }\n            if (data.mes) {\n                const name = data.name;\n                const message = (data?.extra?.display_text || data?.mes || '').replace(/\\r?\\n/g, '\\n');\n                buffer += (`${name}: ${message}\\n\\n`);\n            }\n        });\n        rl.on('close', () => {\n            const successMessage = {\n                message: `Chat saved to ${exportfilename}`,\n                result: buffer,\n            };\n            console.info(`Chat exported as ${exportfilename}`);\n            return response.status(200).json(successMessage);\n        });",
+      "to": "        const readStream = fs.createReadStream(filename);\n        const completed = finished(readStream);\n        completed.catch(() => {});\n        const rl = readline.createInterface({ input: readStream });\n        let buffer = '';\n        try {\n            for await (const line of rl) {\n                const data = JSON.parse(line);\n                // Skip non-printable/prompt-hidden messages\n                if (data.is_system) continue;\n                if (data.mes) {\n                    const name = data.name;\n                    const message = (data?.extra?.display_text || data?.mes || '').replace(/\\r?\\n/g, '\\n');\n                    buffer += (`${name}: ${message}\\n\\n`);\n                }\n            }\n        } finally {\n            rl.close();\n            readStream.destroy();\n            await completed;\n        }\n        const successMessage = {\n            message: `Chat saved to ${exportfilename}`,\n            result: buffer,\n        };\n        console.info('Chat exported.');\n        return response.status(200).json(successMessage);",
+      "count": 1
+    },
+    {
+      "from": "        console.error('chat export failed.', err);",
+      "to": "        console.error('chat export failed.');",
       "count": 1
     }
   ],

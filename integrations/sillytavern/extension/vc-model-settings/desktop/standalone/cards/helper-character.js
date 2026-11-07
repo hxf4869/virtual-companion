@@ -66,7 +66,8 @@ async function listCharacterChats(scope, avatar, characterRef) {
     if (!characterRef) return [];
     const rows = await client.listStoredChats({ characterRef, signal });
     return rows.map(chat => ({
-        file_name: chat.chatId + '.jsonl',
+        file_name: chat.fileName || chat.chatId + '.jsonl',
+        chatId: chat.chatId, fileAliases: chat.fileAliases || [], characterRef: chat.characterRef,
         title: chat.title,
         chat_items: chat.messageCount,
         last_mes: chat.updatedAt,
@@ -87,13 +88,40 @@ async function readDetail(scope, data, isGroupChat) {
     const { context, client, storage, signal, assertCurrent } = scope;
     if (storage.mode === 'GO') {
         const list = Object.values(data ?? {}).filter(hasChatFileName);
-        const ids = list.map(({ file_name }) => {
-            const id = file_name.replace(/\.jsonl$/, '').toLowerCase();
-            if (!/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(id)) {
-                throw new Error('聊天记录缺少有效标识。');
+        const listings = new Map();
+        const scoped = await Promise.all(list.map(async item => {
+            if (isGroupChat && !item.groupRef) {
+                // Legacy explicit UUID remains an owner-scoped identifier. An
+                // arbitrary group filename requires its stable group scope.
+                const id = item.file_name.replace(/\.jsonl$/, '').toLowerCase();
+                if (!/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(id)) throw new Error('聊天记录缺少有效标识。');
+                return { id };
             }
-            return id;
-        });
+            let characterRef;
+            if (!isGroupChat) {
+                let card = item.avatar_url
+                    ? context.characters.find(card => card.avatar === item.avatar_url)
+                    : context.characters[findRawCharacterIndex(context, item.ch_name || item.character_name || 'current')];
+                if (!card && item.avatar_url) {
+                    card = await client.request('/api/characters/get', { avatar_url: item.avatar_url, vc_resource_only: true }, { signal });
+                    assertCurrent();
+                }
+                characterRef = card?.data?.extensions?.vc_character_ref;
+                if (!characterRef) throw new Error('聊天记录缺少有效标识。');
+            }
+            const key = JSON.stringify([isGroupChat ? 'GROUP' : 'SINGLE', isGroupChat ? item.groupRef : characterRef]);
+            if (!listings.has(key)) listings.set(key, client.listStoredChats({ ...(isGroupChat ? { kind: 'GROUP', groupRef: item.groupRef } : { characterRef }), signal }));
+            const rows = await listings.get(key);
+            assertCurrent();
+            const name = item.file_name.endsWith('.jsonl') ? item.file_name : item.file_name + '.jsonl';
+            const matches = rows.filter(row => (isGroupChat ? row.kind === 'GROUP' && row.groupRef === item.groupRef
+                : row.kind === 'SINGLE' && row.characterRef === characterRef)
+                && (row.fileName === name || row.fileAliases?.includes(name) || (!row.fileName && row.chatId + '.jsonl' === name))
+                && (!item.chatId || row.chatId === item.chatId));
+            if (matches.length !== 1) throw new Error('聊天记录缺少有效标识。');
+            return { id: matches[0].chatId, characterRef, groupRef: item.groupRef };
+        }));
+        const ids = scoped.map(row => row.id);
         const snapshots = await readChatHistories(ids, {
             authorityEpoch: storage.authorityEpoch, signal,
             request: (...args) => {
@@ -103,6 +131,8 @@ async function readDetail(scope, data, isGroupChat) {
         });
         const kind = isGroupChat ? 'GROUP' : 'SINGLE';
         return Object.fromEntries(snapshots.flatMap((snapshot, index) => snapshot.chat.kind === kind
+            && (!scoped[index].characterRef || snapshot.chat.characterRef === scoped[index].characterRef)
+            && (!scoped[index].groupRef || snapshot.chat.groupRef === scoped[index].groupRef)
             ? [[list[index].file_name, storedChatRecords(snapshot).slice(1)]]
             : []));
     }

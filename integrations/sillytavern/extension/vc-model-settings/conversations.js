@@ -85,6 +85,8 @@ export function chatSnapshotsFromRecent(list) {
         const snap = { relationshipId: String(binding.relationshipId) };
         const chatIdentity = textField(item.chat_metadata?.vc_f2?.id);
         if (chatIdentity) snap.chatIdentity = chatIdentity;
+        if (item.chatId) snap.chatId = item.chatId;
+        if (Array.isArray(item.fileAliases)) snap.fileAliases = [...item.fileAliases];
         const file = textField(item.file_id) || textField(item.file_name).replace(/\.jsonl$/i, '');
         if (file) snap.file = file;
         const characterRef = textField(binding.characterRef);
@@ -313,6 +315,8 @@ export function conversationRows(relationships, { chats = [], chatsComplete = fa
         if (file) row.file = file;
         const chatIdentity = textField(chat?.chatIdentity);
         if (chatIdentity) row.chatIdentity = chatIdentity;
+        if (chat?.chatId) row.chatId = chat.chatId;
+        if (Array.isArray(chat?.fileAliases)) row.fileAliases = [...chat.fileAliases];
         if (Number.isInteger(chat?.characterIndex) && chat.characterIndex >= 0) row.characterIndex = chat.characterIndex;
         const characterRef = textField(chat?.characterRef);
         if (characterRef) row.characterRef = characterRef;

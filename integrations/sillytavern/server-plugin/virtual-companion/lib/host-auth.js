@@ -244,6 +244,7 @@ export function createHostAuth({ config, getUser, accountVersion, indexHtml, fet
             }
             if (mismatch) req.session = { handle, version: accountVersion(user), vcAccountId: identity.accountId, vcSessionId: identity.sessionId };
             req.vcIdentity = { accountId: identity.accountId, sessionId: identity.sessionId, handle };
+            req.vcChatStorage = chatStorage;
             if (accountData && !await accountData.enter(identity.accountId, handle, res)) return fail(res, 409, 'ACCOUNT_DELETION_PENDING', '账号删除处理中，聊天已暂停。');
             res.setHeader('Cache-Control', 'no-store'); res.setHeader('Vary', 'Cookie');
             if (req.method === 'GET' && req.path === '/auth/access') return res.json({ allowed: true });

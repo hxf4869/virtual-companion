@@ -42,6 +42,7 @@ test('所有原生资源由Go会话准入；伪造身份头和旧ST cookie均无
 test('根入口与桌面别名绑定同一身份并返回同一自有HTML；明确原生入口保留', async () => {
     const h = harness();
     const desktop = await h.call('/desktop/');
+    assert.deepEqual(desktop.req.vcChatStorage, { mode: 'ST', authorityEpoch: '1' });
     assert.equal(desktop.res.statusCode, 200);
     assert.equal(desktop.next, false);
     assert.equal(desktop.req.session.vcAccountId, '42');
@@ -78,7 +79,10 @@ test('页面绑定捕获身份；换账号/会话后的旧页面写入被拒绝'
     assert.doesNotMatch(page.res.payload, /id="preloader"/);
     assert.equal(page.req.session.handle, 'owner');
     const headers = { 'x-vc-expected-account-id': '42', 'x-vc-expected-session-id': '7' };
-    assert.equal((await h.call('/api/chats/save', { method: 'POST', session: page.req.session, headers })).next, true);
+    const native = await h.call('/api/chats/save', { method: 'POST', session: page.req.session, headers });
+    assert.equal(native.next, true);
+    assert.deepEqual(native.req.vcChatStorage, { mode: 'ST', authorityEpoch: '1' });
+    assert.equal((await h.call('/api/stats/get', { method: 'POST', session: page.req.session, headers })).req.vcChatStorage, undefined);
     const changed = harness({ identity: { ...active, accountId: '43', sessionId: '8' } });
     assert.equal((await changed.call('/api/chats/get', { method: 'POST', session: page.req.session, headers })).res.statusCode, 409);
     const fresh = await changed.call('/');

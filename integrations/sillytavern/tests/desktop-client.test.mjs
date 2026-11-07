@@ -32,3 +32,18 @@ test('身份验证失败或缺失时不发聊天请求；F2/身份冲突响应�
     const absent = createDesktopClient({ document: { querySelector() { return null; } }, fetchImpl() { assert.fail('无身份不得发请求'); } });
     await assert.rejects(absent.initialize());
 });
+
+test('GO recent keeps canonical filenames/aliases while ChatStore uses stable chat identity', async () => {
+    const chatId = '1593eac1-7c91-4f03-83ca-be28dca58d01';
+    const client = createDesktopClient({ document: { querySelector: () => ({ content: '1' }) }, fetchImpl: async url => {
+        if (url === '/csrf-token') return Response.json({ token: 'synthetic' });
+        if (url === '/auth/api/session?include=chatStorage') return Response.json({ accountId: '1', sessionId: '1', chatStorage: { mode: 'GO', authorityEpoch: '2' } });
+        if (url === '/api/characters/all') return Response.json([{ avatar: 'synthetic.png', data: { extensions: { vc_character_ref: 'card' } } }]);
+        return Response.json({ authorityEpoch: '2', nextCursor: null, items: [{ chatId, fileName: 'renamed.jsonl', fileAliases: ['old.jsonl'], characterRef: 'card', chatRevision: '4' }] });
+    } });
+    await client.initialize();
+    const [row] = await client.recent();
+    assert.equal(row.file_name, 'renamed.jsonl'); assert.equal(row.file_id, 'renamed'); assert.deepEqual(row.fileAliases, ['old.jsonl']);
+    const store = client.createChatStore({ file: 'renamed', chatIdentity: chatId });
+    assert.equal(store.chatId, chatId); store.close();
+});

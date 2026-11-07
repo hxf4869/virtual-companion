@@ -24,6 +24,8 @@ export function chatSnapshotsFromRecent(list) {
         const snap = { relationshipId: String(binding.relationshipId) };
         const chatIdentity = typeof item.chat_metadata?.vc_f2?.id === 'string' ? item.chat_metadata.vc_f2.id.trim() : '';
         if (chatIdentity) snap.chatIdentity = chatIdentity;
+        if (item.chatId) snap.chatId = item.chatId;
+        if (Array.isArray(item.fileAliases)) snap.fileAliases = [...item.fileAliases];
         const fileId = typeof item.file_id === 'string' ? item.file_id.trim() : '';
         const fileName = typeof item.file_name === 'string' ? item.file_name.trim().replace(/\.jsonl$/i, '') : '';
         const file = fileId || fileName;

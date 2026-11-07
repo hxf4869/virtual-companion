@@ -62,7 +62,7 @@ export function createDesktopClient({ fetchImpl = globalThis.fetch, document: do
             throw error;
         }
     }
-    async function listStoredChats({ characterRef, signal } = {}) {
+    async function listStoredChats({ characterRef, groupRef, kind, signal } = {}) {
         const storage = getChatStorage();
         if (storage.mode !== 'GO') throw Object.assign(new Error(storage.mode === 'FROZEN' ? '正在迁移' : '登录状态或聊天已变化，请重新打开页面。'), { status: 409, code: 'CHAT_AUTHORITY_CHANGED' });
         const rows = new Map(), cursors = new Set();
@@ -78,21 +78,21 @@ export function createDesktopClient({ fetchImpl = globalThis.fetch, document: do
             if (cursor && cursors.has(cursor)) throw new Error('聊天列表没有加载出来，请重试。');
             cursors.add(cursor);
         } while (cursor);
-        return [...rows.values()];
+        return [...rows.values()].filter(row => (!groupRef || row.groupRef === groupRef) && (!kind || row.kind === kind));
     }
     async function recent(options) {
         if (getChatStorage().mode === 'ST') return request('/api/chats/recent', { metadata: true }, options);
         if (getChatStorage().mode === 'FROZEN') throw new Error('正在迁移');
         const [chats, cards] = await Promise.all([listStoredChats(options), request('/api/characters/all', {}, options)]);
         const avatars = new Map(cards.map(card => [card.data?.extensions?.vc_character_ref, card.avatar]));
-        return chats.map(chat => ({ ...chat, file_id: chat.chatId, file_name: chat.chatId + '.jsonl',
+        return chats.map(chat => ({ ...chat, file_id: (chat.fileName || chat.chatId + '.jsonl').replace(/\.jsonl$/, ''), file_name: chat.fileName || chat.chatId + '.jsonl',
             avatar: avatars.get(chat.characterRef) || '', chat_items: chat.messageCount, last_mes: chat.updatedAt,
             chat_metadata: { vc_f2: { id: chat.chatId, revision: chat.chatRevision }, vc_branch_root: chat.branchRoot,
                 vc_binding: { chatIdentity: chat.chatId, characterRef: chat.characterRef,
                     relationshipId: chat.relationshipId, conversationId: chat.conversationId } },
         }));
     }
-    const createChatStore = row => createStoredChatStore({ chatId: row.chatId || row.file,
+    const createChatStore = row => createStoredChatStore({ chatId: row.chatId || row.chatIdentity || row.file,
         authorityEpoch: getChatStorage().authorityEpoch, request: chatRequest, getStorage: getChatStorage });
     return { identity, headers, request, raw, post, documents, getChatStorage, refreshChatStorage, chatRequest, createChatStore, listStoredChats,
         saveSettings: documents.saveSettings, settingsChanged: documents.settingsChanged,

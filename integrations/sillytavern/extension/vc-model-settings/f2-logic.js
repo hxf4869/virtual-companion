@@ -28,7 +28,44 @@ function consumeSilent(options) {
     return options?.conflict === 'silent' || armed;
 }
 
-export function createF2Client({ uuid = () => crypto.randomUUID(), onConflict = () => {} } = {}) {
+// Canonical receipts change protected identity only. Text, MVU variables and
+// wrapper edits made while the request was in flight stay on the live objects.
+function applyCanonicalIdentities(live, sent, canonical) {
+    if (!Array.isArray(canonical) || canonical.length !== sent.length) throw new F2ConflictError('VC_SAVE_UNCONFIRMED');
+    const copy = (target, remote, keys) => {
+        for (const key of keys) {
+            if (Object.hasOwn(remote, key)) target[key] = structuredClone(remote[key]);
+            else delete target[key];
+        }
+    };
+    const metadata = live[0]?.chat_metadata;
+    if (!metadata || !canonical[0]?.chat_metadata) throw new F2ConflictError('VC_SAVE_UNCONFIRMED');
+    for (let i = 1; i < sent.length; i++) {
+        if (live[i]?.vc_message_id !== sent[i].vc_message_id) throw new F2ConflictError('VC_STALE_SOURCE');
+        if ((live[i].swipes?.length || 0) !== (sent[i].swipes?.length || 0)) throw new F2ConflictError('VC_STALE_SOURCE');
+    }
+    copy(metadata, canonical[0].chat_metadata, ['vc_f2', 'vc_binding', 'vc_branch_root', 'vc_f2_parent']);
+    for (let i = 1; i < sent.length; i++) {
+        const target = live[i], remote = canonical[i];
+        copy(target, remote, ['vc_message_id']);
+        const sources = Array.isArray(remote.swipes) && remote.swipes.length
+            ? remote.swipes.map((_, index) => index === (remote.swipe_id ?? 0) ? remote.extra?.vc_source : remote.swipe_info?.[index]?.extra?.vc_source)
+            : [remote.extra?.vc_source];
+        if (!target.extra) target.extra = {};
+        if (sources[target.swipe_id ?? 0] !== undefined) target.extra.vc_source = structuredClone(sources[target.swipe_id ?? 0]);
+        else delete target.extra.vc_source;
+        if (Array.isArray(target.swipes)) for (let j = 0; j < target.swipes.length; j++) {
+            target.swipe_info ||= [];
+            target.swipe_info[j] ||= {};
+            target.swipe_info[j].extra ||= {};
+            if (sources[j] !== undefined) target.swipe_info[j].extra.vc_source = structuredClone(sources[j]);
+            else delete target.swipe_info[j].extra.vc_source;
+        }
+    }
+}
+
+export function createF2Client({ uuid = () => crypto.randomUUID(), onConflict = () => {},
+    getAuthorityEpoch = () => globalThis.document?.querySelector?.('meta[name="vc-chat-authority-epoch"]')?.content } = {}) {
     const sources = new Map();
     const observed = new Map();
     let active = null;
@@ -74,6 +111,9 @@ export function createF2Client({ uuid = () => crypto.randomUUID(), onConflict = 
         // queue waits or network IO can observe a different chat/swipe.
         if (prepareSource) prepareSource(payload.chat);
         const frozen = structuredClone(payload);
+        frozen.vc_request_id ||= uuid();
+        const authorityEpoch = getAuthorityEpoch();
+        if (authorityEpoch !== undefined && authorityEpoch !== '') frozen.vc_authority_epoch ??= authorityEpoch;
         const original = frozen.chat?.[0]?.chat_metadata?.vc_f2;
         const serialized = JSON.stringify(frozen);
         if (!validToken(original)) {
@@ -88,11 +128,12 @@ export function createF2Client({ uuid = () => crypto.randomUUID(), onConflict = 
                 tail: Promise.resolve(), blocked: false };
             sources.set(path, source);
         }
+        const canonicalVersion = source.canonicalVersion || 0;
         const sequence = ++source.sequence;
         const generation = source.epoch;
         const causal = live && active === source && source.token.id === original.id;
         const pending = source.tail.then(async () => {
-            if (source.blocked || sources.get(path) !== source || source.epoch !== generation
+            if (source.blocked || (source.canonicalVersion || 0) !== canonicalVersion || sources.get(path) !== source || source.epoch !== generation
                 || (live && active !== source)) throw new F2ConflictError('VC_STALE_SOURCE');
             let token = original;
             if (source.token.revision !== original.revision || source.token.id !== original.id) {
@@ -108,10 +149,14 @@ export function createF2Client({ uuid = () => crypto.randomUUID(), onConflict = 
             body.chat[0].chat_metadata.vc_f2 = structuredClone(token);
             const response = await send(JSON.stringify(body));
             const result = await response.json();
-            if (!response.ok) throw new F2ConflictError(result?.code || 'VC_SAVE_FAILED');
+            if (!response.ok) throw new F2ConflictError(result?.code || result?.error?.code || 'VC_SAVE_FAILED');
             if (!validToken(result?.vc_f2) || result.vc_f2.id !== token.id
                 || result.vc_f2.revision !== token.revision + 1) {
                 throw new F2ConflictError('VC_SAVE_UNCONFIRMED');
+            }
+            if (result.chat) {
+                if (!live || (active === source && sources.get(path) === source)) applyCanonicalIdentities(payload.chat, frozen.chat, result.chat);
+                source.canonicalVersion = canonicalVersion + 1;
             }
             source.token = structuredClone(result.vc_f2);
             source.committedSequence = sequence;

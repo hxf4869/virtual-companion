@@ -1,16 +1,21 @@
 // Go-only read channel: the shared service secret never reaches a browser.
 import { timingSafeEqual } from 'node:crypto';
 import { getF2Store } from './f2-store.js';
+import { CHAT_CUTOVER_PATHS } from './chat-cutover-bridge.js';
 import { INBOX_BRIDGE_PATH } from './inbox-bridge.js';
 const idPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 export const SOURCE_BRIDGE_PATH = '/internal/v1/st/sources';
 export const DATA_EXPORT_PATH = '/internal/v1/st/data/export';
 export const DATA_DELETE_PATH = '/internal/v1/st/data/delete';
-export const PRIVATE_ST_PATHS = [SOURCE_BRIDGE_PATH, DATA_EXPORT_PATH, DATA_DELETE_PATH, INBOX_BRIDGE_PATH];
+export const PRIVATE_ST_PATHS = [SOURCE_BRIDGE_PATH, DATA_EXPORT_PATH, DATA_DELETE_PATH, INBOX_BRIDGE_PATH, ...CHAT_CUTOVER_PATHS];
 function reject(res, status, code) { return res.status(status).json({ code }); }
-export function createSourceBridge({ config, getUser, getUserDirectories, accountData, inbox, chatStorageGate }) {
+export function createSourceBridge({ config, getUser, getUserDirectories, accountData, inbox, chatStorageGate, chatCutover }) {
     return async (req, res) => {
         res.setHeader('Cache-Control', 'no-store');
+        if (CHAT_CUTOVER_PATHS.includes(req.path)) {
+            if (!chatCutover) return reject(res, 503, 'SCHEMA_UNAVAILABLE');
+            return await chatCutover(req, res);
+        }
         if (req.headers.origin) return reject(res, 403, 'ACCESS_DENIED');
         const actual = Buffer.from(String(req.headers.authorization || ''));
         const expected = Buffer.from(`Bearer ${config.serviceToken || ''}`);

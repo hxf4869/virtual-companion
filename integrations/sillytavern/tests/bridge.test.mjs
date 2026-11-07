@@ -453,6 +453,8 @@ test('插件 init/exit：按真实部署布局加载ST用户模块，注册认�
     fs.writeFileSync(path.join(persistence, 'index.js'), 'export default { setItem: async () => {}, removeItem: async () => {} };');
     fs.mkdirSync(path.join(root, 'src'));
     fs.writeFileSync(path.join(root, 'src/users.js'), 'export const getAllEnabledUsers = async () => []; export const getAccountVersion = () => "version"; export const getUserDirectories = () => ({});');
+    fs.mkdirSync(path.join(root, 'src/endpoints'));
+    fs.writeFileSync(path.join(root, 'src/endpoints/chats.js'), 'export const flushChatBackups = (handle) => handle;');
     const { init, exit, info } = await import(pathToFileURL(path.join(plugin, 'index.js')).href);
     const prev = process.env.VC_ST_GO_BASE_URL;
     const prevTok = process.env.VC_ST_PLUGIN_SERVICE_TOKEN;
@@ -471,6 +473,7 @@ test('插件 init/exit：按真实部署布局加载ST用户模块，注册认�
         assert.equal(typeof bridge.hostAuth, 'function', '全入口认证钩子必须注册');
         assert.equal(typeof bridge.f2.save, 'function', '原生保存必须接入F2');
         assert.equal(typeof bridge.attemptInboxDelivery, 'function', 'inbox 保存必须留在桥对象上');
+        assert.equal(bridge.flushChatBackups('synthetic-owner'), 'synthetic-owner', '冻结必须使用宿主的备份 flush 钩子');
         assert.equal(typeof bridge.interceptGenerate, 'function');
         assert.equal(typeof bridge.finalOutboundGuard, 'function');
         exit();

@@ -69,3 +69,17 @@ test('收藏来源删除或快照有歧义时明确失败，不能高亮另一�
     context.chat = context.chat.slice(0, 1);
     await assert.rejects(openMessageSource({ ...detail, messageAt: null }, deps), /source-message-unavailable/);
 });
+
+test('GO renamed filename alias resolves only inside the favorite original relationship', async () => {
+    const { openMessageSource } = await import('../extension/vc-model-settings/message-source.js');
+    const deps = setup();
+    deps.loadChats = async () => [
+        { relationshipId: 'other', file: 'foreign', fileAliases: ['old.jsonl'] },
+        { relationshipId: '11', file: 'renamed', chatId: 'old-id', fileAliases: ['old.jsonl'] },
+    ];
+    assert.equal(await openMessageSource({ relationshipId: '11', chatFile: 'old.jsonl', messageId: 'stable-id' }, deps), 1);
+    assert.deepEqual(deps.actions, ['open', 'renamed', ['history', 4]]);
+    const absent = setup(); absent.loadChats = async () => [{ relationshipId: 'other', file: 'foreign', fileAliases: ['old.jsonl'] }];
+    await assert.rejects(openMessageSource({ relationshipId: '11', chatFile: 'old.jsonl', messageId: 'stable-id' }, absent), /source-unavailable/);
+    assert.deepEqual(absent.actions, []);
+});

@@ -37,7 +37,7 @@ async function persist(file, record) {
     } finally { await directory.close(); }
 }
 
-export function createChatStorageGate({ accountHandles, getUserDirectories }) {
+export function createChatStorageGate({ accountHandles, getUserDirectories, onClose }) {
     const states = new Map();
     // Startup only: requests never read the marker or call the directory resolver.
     for (const [ownerAccountId, handle] of Object.entries(accountHandles)) {
@@ -101,6 +101,8 @@ export function createChatStorageGate({ accountHandles, getUserDirectories }) {
             state.closed = true;
             if (state.broken) throw failure('ST_CHAT_GATE_STATE_UNAVAILABLE');
             if (state.runId && (state.runId !== runId || state.epoch !== epoch)) throw failure('CHAT_CUTOVER_CONFLICT');
+            try { onClose?.(ownerAccountId); }
+            catch { state.broken = true; state.durable = false; throw failure('ST_CHAT_GATE_STATE_UNAVAILABLE'); }
             if (!state.pending && !state.durable) {
                 Object.assign(state, { runId, epoch });
                 state.pending = persist(state.file, { version: 1, ownerAccountId, closed: true, runId, epoch });

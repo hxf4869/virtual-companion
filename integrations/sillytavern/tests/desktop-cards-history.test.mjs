@@ -258,3 +258,37 @@ test('an old iframe or released template retains its own RawCharacter class and 
     await assert.rejects(first.helper.getChatHistoryBrief(), /失效|VC_STALE_CARD_RUNTIME/);
     assert.equal(requests.length, 3);
 });
+
+test('GO Helper resolves retained file aliases only in the selected stable character scope', async t => {
+    let ambiguous = false, detailReads = 0;
+    const client = createDesktopClient({ document: { querySelector: () => ({ content: '1' }) }, fetchImpl: async input => {
+        const { pathname, searchParams: query } = new URL(input, 'http://localhost');
+        if (pathname === '/csrf-token') return Response.json({ token: 'synthetic' });
+        if (pathname === '/auth/api/session') return Response.json({ accountId: '1', sessionId: '1', chatStorage: { mode: 'GO', authorityEpoch: epoch } });
+        assert.ok(pathname.startsWith(api));
+        if (pathname === api) {
+            assert.equal(query.get('characterRef'), ref);
+            const own = { ...goRecord(ids[0]), fileName: 'renamed.jsonl', fileAliases: ['kept.jsonl'] };
+            const other = { ...goRecord(ids[1]), characterRef: ambiguous ? ref : 'another-character', fileName: 'foreign.jsonl', fileAliases: ['kept.jsonl'] };
+            return Response.json({ authorityEpoch: epoch, nextCursor: null, items: [own, other] });
+        }
+        detailReads++;
+        const [id, route] = pathname.slice(api.length + 1).split('/');
+        assert.equal(id, ids[0]);
+        const chat = { ...goRecord(id), messageCount: 1 };
+        if (!route) return Response.json(chat);
+        if (route === 'changes') return Response.json({ chatId: id, authorityEpoch: epoch, items: [], hasMore: false, currentRevision: '4', throughRevision: '4' });
+        return Response.json({ chatId: id, authorityEpoch: epoch, chatRevision: '4', metadataRevision: '1', orderRevision: '1',
+            beforeCursor: null, afterCursor: 'synthetic-tail', hasOlder: false, hasNewer: false, ...(query.get('include') ? { chat } : {}),
+            items: [{ messageId: 'synthetic-stable-message', messageRevision: '1', view: 'full', candidates: [], data: { mes: 'owned complete message', swipes: ['other candidate'] } }] });
+    } });
+    await client.initialize();
+    const { helper } = await startCards(t, client);
+    const detail = await helper.getChatHistoryDetail([{ file_name: 'kept.jsonl', avatar_url: avatar }]);
+    assert.equal(detail['kept.jsonl'][0].mes, 'owned complete message');
+    const before = detailReads;
+    await assert.rejects(helper.getChatHistoryDetail([{ file_name: 'missing.jsonl', avatar_url: avatar }]), /有效标识/);
+    ambiguous = true;
+    await assert.rejects(helper.getChatHistoryDetail([{ file_name: 'kept.jsonl', avatar_url: avatar }]), /有效标识/);
+    assert.equal(detailReads, before, 'missing and ambiguous aliases never open a different chat');
+});

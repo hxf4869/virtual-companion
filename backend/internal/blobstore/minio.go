@@ -5,6 +5,8 @@ import (
 	"context"
 	"errors"
 	"io"
+	"iter"
+	"math"
 	"net/url"
 	"strings"
 
@@ -21,9 +23,8 @@ type Config struct {
 	Bucket    string
 }
 
-// Store encrypts export bodies with the runtime FieldCipher before handing
-// them to MinIO. It intentionally implements only the three operations used by
-// the jobs and HTTP export paths.
+// Store encrypts private objects with the runtime FieldCipher before handing
+// them to MinIO.
 type Store struct {
 	client objectClient
 	bucket string
@@ -35,6 +36,11 @@ type objectClient interface {
 	Put(context.Context, string, string, io.Reader, int64) (int64, error)
 	Get(context.Context, string, string) (io.ReadCloser, error)
 	Delete(context.Context, string, string) error
+}
+
+// Listing is optional for existing read/write-only consumers and test clients.
+type objectLister interface {
+	ListObjects(context.Context, string, minio.ListObjectsOptions) iter.Seq[minio.ObjectInfo]
 }
 
 type minioClient struct{ client *minio.Client }
@@ -113,6 +119,80 @@ func (s *Store) Get(ctx context.Context, key string) ([]byte, error) {
 	return []byte(plain), nil
 }
 
+// GetLimited reads only enc2 objects and bounds both the encrypted envelope and
+// its plaintext. Unlike Get, it does not accept migration-window plaintext.
+func (s *Store) GetLimited(ctx context.Context, key string, maxPlainBytes int64) ([]byte, error) {
+	failed := errors.New("export object get failed")
+	// enc2:<key ID up to 32 bytes>:<positive int version>: plus padded
+	// base64(12-byte IV || plaintext || 16-byte GCM tag). Reserve one extra
+	// byte for detecting an oversized object without reading the rest.
+	const maxHeaderBytes int64 = 5 + 32 + 1 + 19 + 1
+	if s == nil || s.client == nil || s.cipher == nil || ctx == nil ||
+		maxPlainBytes < 0 || maxPlainBytes > (math.MaxInt64-maxHeaderBytes-1)/4*3-30 || ctx.Err() != nil {
+		return nil, failed
+	}
+	envelopeLimit := maxHeaderBytes + (maxPlainBytes+28+2)/3*4
+	object, err := s.client.Get(ctx, s.bucket, key)
+	if err != nil {
+		return nil, failed
+	}
+	defer object.Close()
+	envelope, err := io.ReadAll(io.LimitReader(contextReader{ctx: ctx, reader: object}, envelopeLimit+1))
+	if err != nil || int64(len(envelope)) > envelopeLimit || ctx.Err() != nil || !bytes.HasPrefix(envelope, []byte("enc2:")) {
+		return nil, failed
+	}
+	plain, err := s.cipher.Decrypt(string(envelope))
+	if err != nil || int64(len(plain)) > maxPlainBytes || ctx.Err() != nil {
+		return nil, failed
+	}
+	return []byte(plain), nil
+}
+
+type contextReader struct {
+	ctx    context.Context
+	reader io.Reader
+}
+
+func (r contextReader) Read(p []byte) (int, error) {
+	if err := r.ctx.Err(); err != nil {
+		return 0, err
+	}
+	return r.reader.Read(p)
+}
+
+// ListKeys returns at most 256 keys in lexical order after the exclusive cursor.
+// The supplied prefix confines cleanup to its owned object namespace.
+func (s *Store) ListKeys(ctx context.Context, prefix, after string, limit int) ([]string, error) {
+	failed := errors.New("export object list failed")
+	if s == nil || s.client == nil || ctx == nil || ctx.Err() != nil || prefix == "" || limit <= 0 || limit > 256 {
+		return nil, failed
+	}
+	lister, ok := s.client.(objectLister)
+	if !ok {
+		return nil, failed
+	}
+	listCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	keys := make([]string, 0, limit)
+	for object := range lister.ListObjects(listCtx, s.bucket, minio.ListObjectsOptions{
+		Prefix: prefix, StartAfter: after, Recursive: true, MaxKeys: limit,
+	}) {
+		if object.Err != nil || ctx.Err() != nil || !strings.HasPrefix(object.Key, prefix) || object.Key <= after ||
+			(len(keys) > 0 && object.Key <= keys[len(keys)-1]) {
+			return nil, failed
+		}
+		keys = append(keys, object.Key)
+		if len(keys) == limit {
+			cancel()
+			break
+		}
+	}
+	if ctx.Err() != nil {
+		return nil, failed
+	}
+	return keys, nil
+}
+
 // Delete is idempotent under MinIO/S3 semantics.
 func (s *Store) Delete(ctx context.Context, key string) error {
 	if s == nil || s.client == nil {
@@ -150,4 +230,8 @@ func (c minioClient) Get(ctx context.Context, bucket, key string) (io.ReadCloser
 
 func (c minioClient) Delete(ctx context.Context, bucket, key string) error {
 	return c.client.RemoveObject(ctx, bucket, key, minio.RemoveObjectOptions{})
+}
+
+func (c minioClient) ListObjects(ctx context.Context, bucket string, opts minio.ListObjectsOptions) iter.Seq[minio.ObjectInfo] {
+	return c.client.ListObjectsIter(ctx, bucket, opts)
 }
