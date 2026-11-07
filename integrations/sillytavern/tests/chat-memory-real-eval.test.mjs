@@ -6,7 +6,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { factsInText, outboundMemoryText, readEvaluationResponse, evaluationQueryRows, diagnosticEvidence, assertDiagnosticControl, evaluateCoreOnStack, waitExtraction, createEvaluationReauthentication, recallWorkCounts, reviewSavedAnswersOnStack, selectEvaluationActionTarget, verifyEvaluationModels } from '../scripts/chat-memory-real-eval.mjs';
-import { AI_FLAVOR_FIELDS, summarizeDiagnosticControls } from '../../../scripts/lib/chat-memory-scoring.mjs';
+import { AI_FLAVOR_FIELDS, summarizeDiagnosticControls, mapRecordToFacts, scoreRules } from '../../../scripts/lib/chat-memory-scoring.mjs';
 import { prepareSourceIdentities, sourceMessages } from '../server-plugin/virtual-companion/lib/source-identity.js';
 import { getF2Store } from '../server-plugin/virtual-companion/lib/f2-store.js';
 import { startEngineObservationProxy } from '../scripts/lib/chat-memory-engine-proxy.mjs';
@@ -111,6 +111,28 @@ test('outbound evidence checks only actual memory slots and matches subject plus
         { ...fact, subject: '目标甲', value: '2026-11-02', valueAliases: [] },
         { ...fact, factId: 'other', subject: '目标乙', value: '2026-11-02', valueAliases: [] },
     ]), []);
+});
+
+test('the actual Go event-date suffix remains evidence for its single memory entry', () => {
+    const dataset = generateChatMemoryDataset(), testCase = dataset.cases.find(row => row.id === 'time-01');
+    const fact = dataset.facts.find(row => row.factId === testCase.goldFactIds[0]);
+    const content = `${fact.subject}完成盖章。`;
+    assert.deepEqual(mapRecordToFacts({ sourceTurnIds: fact.sourceTurnIds, content, eventDate: fact.value }, dataset.facts).factIds, [fact.factId]);
+    const block = `记忆：${content} [事件日期=${fact.value}；时区=Asia/Shanghai]`;
+    const injectedFactIds = factsInText(block, dataset.facts);
+    assert.deepEqual(injectedFactIds, [fact.factId]);
+    assert.equal(scoreRules(testCase, { answer: testCase.expectedAnswer, injectedFactIds }).passed, true);
+});
+
+test('one memory can state two facts of one subject without repeating it in every clause', () => {
+    const dataset = generateChatMemoryDataset(), testCase = dataset.cases.find(row => row.id === 'cross_session-05');
+    const [tool, gate] = testCase.goldFactIds.map(id => dataset.facts.find(row => row.factId === id));
+    const content = `${tool.subject}维修只用${tool.value}，入口是${gate.value}。`;
+    const sourceTurnIds = [...tool.sourceTurnIds, ...gate.sourceTurnIds];
+    assert.deepEqual(mapRecordToFacts({ sourceTurnIds, content }, dataset.facts).factIds, testCase.goldFactIds);
+    const injectedFactIds = factsInText('记忆：' + content, dataset.facts);
+    assert.deepEqual(injectedFactIds, testCase.goldFactIds);
+    assert.equal(scoreRules(testCase, { answer: testCase.expectedAnswer, injectedFactIds }).passed, true);
 });
 
 test('gold diagnostic exposes only allowed evidence and controls keep their own planned denominator', () => {

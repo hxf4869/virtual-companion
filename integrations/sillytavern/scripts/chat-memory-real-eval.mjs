@@ -12,13 +12,13 @@ import { importSyntheticCard } from './w05-accept.mjs';
 import { cleanupSettled } from './w08-real-eval.mjs';
 import { RERANK } from '../memorycore-service/rerank.mjs';
 import { factMatchTerms, forgetStageCase, FORGET_STAGES } from '../../../scripts/lib/chat-memory-dataset.mjs';
-import { mapRecordToFacts, scoreRules, parseJudgeResult, summarizeChatMemoryEvaluation, summarizeDiagnosticControls } from '../../../scripts/lib/chat-memory-scoring.mjs';
+import { mapRecordToFacts, scoreRules, parseJudgeResult, summarizeChatMemoryEvaluation, summarizeDiagnosticControls, normalizeFactText } from '../../../scripts/lib/chat-memory-scoring.mjs';
 import { buildReviewTasks, reviewEvaluationAnswers } from '../../../scripts/lib/chat-memory-judging.mjs';
 import { createJudgeCalibrationDataset, summarizeJudgeCalibration } from '../../../scripts/lib/chat-memory-judge-calibration.mjs';
 import { summarizeSamples, summarizeReplyQuality } from '../../../scripts/lib/chat-memory-metrics.mjs';
 
 const TERMINAL = new Set(['DONE', 'FAILED', 'DEAD_LETTERED', 'CANCELLED']);
-const normalize = value => String(value ?? '').normalize('NFKC').replace(/\s/gu, '');
+const normalize = normalizeFactText;
 const expect = (response, status = 200) => {
     if (response?.status !== status) throw new Error(`CM_HTTP_${response?.status || 0}`);
     return response.json;
@@ -40,11 +40,17 @@ export function createEvaluationReauthentication({ now = () => performance.now()
 }
 
 export function factsInText(text, facts) {
-    // Never assemble one fact from the subject of one memory and the value of
-    // another. Ambiguous compound clauses remain unmapped, rather than hits.
-    const clauses = String(text ?? '').split(/[\n。！？；;，,]/u).map(normalize);
+    // Go emits each memory/summary as a line. Preserve a single-subject
+    // entry's later clauses and trailing event-date label, never joining lines
+    // or different memory slots. Multi-subject entries still require a clear clause.
+    const lines = String(text ?? '').replace(/<\/?vc-(?:long-term|core)-memory>/gu, '\n').split(/\r?\n/u);
     const subjectKey = fact => normalize(fact.subject.split(/阅读计划|装订计划/)[0] || fact.subject);
     const subjectKeys = [...new Set(facts.map(subjectKey))];
+    const clauses = lines.flatMap(line => {
+        const entry = normalize(line);
+        return subjectKeys.filter(subject => entry.includes(subject)).length === 1
+            ? [entry] : line.split(/[。！？；;，,]/u).map(normalize);
+    });
     const unambiguous = clauses.map(clause => ({ clause, subjects: subjectKeys.filter(subject => clause.includes(subject)) }))
         .filter(row => row.subjects.length === 1);
     return facts.filter(fact => {

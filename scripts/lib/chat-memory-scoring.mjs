@@ -7,7 +7,7 @@ export const JUDGE_REASON_CODES = Object.freeze([
 ]);
 // Bump whenever instructions, reason precedence, input semantics or compatibility change.
 // Persist this beside judgments, never as an extra model-output field.
-export const JUDGE_RUBRIC_VERSION = 'cm3-judge-v2';
+export const JUDGE_RUBRIC_VERSION = 'cm3-judge-v3';
 export const JUDGE_REASON_RUBRIC = Object.freeze([
     { reasonCode: 'LEAK', definition: '回答披露了 forbiddenEvidence 中的禁止事实，包括以否认、猜测、引用或举例形式复述；优先于新旧值、时间及其他错误。',
         correct: [false], grounded: [false], abstains: [false] },
@@ -43,6 +43,7 @@ function normalize(value) {
         .replace(/(\d{4})年0?(\d{1,2})月0?(\d{1,2})[日号]|(\d{4})[-/.]0?(\d{1,2})[-/.]0?(\d{1,2})/gu,
             (_match, year, month, day, otherYear, otherMonth, otherDay) => `${year ?? otherYear}-${Number(month ?? otherMonth)}-${Number(day ?? otherDay)}`);
 }
+export { normalize as normalizeFactText };
 
 function includesTerm(text, rawTerm) {
     const term = normalize(rawTerm);
