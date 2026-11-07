@@ -1218,8 +1218,8 @@
         "adr": "docs/decisions/0007-go-companion-runtime.md",
         "catalogId": "go-v1-api-scope",
         "counts": {
-          "DEFER": 22,
-          "KEEP": 138,
+          "DEFER": 12,
+          "KEEP": 148,
           "RETIRE": 42,
           "SIMPLIFY": 5
         },
@@ -3263,27 +3263,39 @@
           },
           {
             "currentH5Callers": [],
-            "decision": "DEFER",
+            "decision": "KEEP",
+            "keepBecause": [
+              "owner-instruction",
+              "core-outcome"
+            ],
             "method": "POST",
             "operationId": "importStoredChat",
             "path": "/api/v1/chats/imports",
-            "replacementOrImpact": "SX-2 / ADR-0013: frozen planned contract only, NOT implemented or routed. SX-8 must implement and validate before promoting this operation to KEEP; DEFER records implementation deferral, not rejection of the approved ST-exit direction."
+            "replacementOrImpact": "SX-8: owner-scoped asynchronous JSONL import/status and consistent encrypted-staged export implemented with bounded streaming, exact-number preservation, durable 24h import lifecycle and original acceptance replay. Synthetic rehearsal only; real-account cutover requires separate authorization."
           },
           {
             "currentH5Callers": [],
-            "decision": "DEFER",
+            "decision": "KEEP",
+            "keepBecause": [
+              "owner-instruction",
+              "core-outcome"
+            ],
             "method": "GET",
             "operationId": "getStoredChatImport",
             "path": "/api/v1/chats/imports/{importId}",
-            "replacementOrImpact": "SX-2 / ADR-0013: frozen planned contract only, NOT implemented or routed. SX-8 must implement and validate before promoting this operation to KEEP; DEFER records implementation deferral, not rejection of the approved ST-exit direction."
+            "replacementOrImpact": "SX-8: owner-scoped asynchronous JSONL import/status and consistent encrypted-staged export implemented with bounded streaming, exact-number preservation, durable 24h import lifecycle and original acceptance replay. Synthetic rehearsal only; real-account cutover requires separate authorization."
           },
           {
             "currentH5Callers": [],
-            "decision": "DEFER",
+            "decision": "KEEP",
+            "keepBecause": [
+              "owner-instruction",
+              "core-outcome"
+            ],
             "method": "GET",
             "operationId": "exportStoredChat",
             "path": "/api/v1/chats/{chatId}/export",
-            "replacementOrImpact": "SX-2 / ADR-0013: frozen planned contract only, NOT implemented or routed. SX-8 must implement and validate before promoting this operation to KEEP; DEFER records implementation deferral, not rejection of the approved ST-exit direction."
+            "replacementOrImpact": "SX-8: owner-scoped asynchronous JSONL import/status and consistent encrypted-staged export implemented with bounded streaming, exact-number preservation, durable 24h import lifecycle and original acceptance replay. Synthetic rehearsal only; real-account cutover requires separate authorization."
           },
           {
             "currentH5Callers": [],
@@ -3299,59 +3311,87 @@
           },
           {
             "currentH5Callers": [],
-            "decision": "DEFER",
+            "decision": "KEEP",
+            "keepBecause": [
+              "owner-instruction",
+              "core-outcome"
+            ],
             "method": "POST",
             "operationId": "listNativeStoredChats",
             "path": "/api/v1/service/chats/native/list",
-            "replacementOrImpact": "SX-8 concrete typed private HTTP proposal only: Owner review pending; NOT implemented or routed. Existing serviceToken only, Node verifies current session/account mapping, any Origin refused and excluded from browser/admin proxy whitelist. Implement only after this HTTP proposal is separately approved; no real-account cutover or ST disk fallback is authorized."
+            "replacementOrImpact": "SX-8: implemented typed native chat adapter with scoped retained filenames, preallocated fresh identities, exact whole-chat CAS, same-ID/+1 receipts and fork identity remapping. Existing serviceToken only; Node verifies current session/account mapping, any Origin is refused, and browser/admin proxy access is excluded. Long reads/writes use dedicated 120s transfer transactions with 5s lock timeout and typed retryable errors. Synthetic rehearsal only; no real-account cutover or ST disk fallback is authorized."
           },
           {
             "currentH5Callers": [],
-            "decision": "DEFER",
+            "decision": "KEEP",
+            "keepBecause": [
+              "owner-instruction",
+              "core-outcome"
+            ],
             "method": "POST",
             "operationId": "readNativeStoredChat",
             "path": "/api/v1/service/chats/native/read",
-            "replacementOrImpact": "SX-8 concrete typed private HTTP proposal only: Owner review pending; NOT implemented or routed. Existing serviceToken only, Node verifies current session/account mapping, any Origin refused and excluded from browser/admin proxy whitelist. Dedicated 120s transfer/snapshot transaction with 5s lock timeout, bounded encrypted staging and Node 150s budget; timeout is CHAT_TRANSFER_TIMEOUT, preserve drafts and retry identical requestId/payload to resolve an unknown commit receipt. Implement only after this HTTP proposal is separately approved; no real-account cutover or ST disk fallback is authorized."
+            "replacementOrImpact": "SX-8: implemented typed native chat adapter with scoped retained filenames, preallocated fresh identities, exact whole-chat CAS, same-ID/+1 receipts and fork identity remapping. Existing serviceToken only; Node verifies current session/account mapping, any Origin is refused, and browser/admin proxy access is excluded. Long reads/writes use dedicated 120s transfer transactions with 5s lock timeout and typed retryable errors. Synthetic rehearsal only; no real-account cutover or ST disk fallback is authorized."
           },
           {
             "currentH5Callers": [],
-            "decision": "DEFER",
+            "decision": "KEEP",
+            "keepBecause": [
+              "owner-instruction",
+              "core-outcome"
+            ],
             "method": "POST",
             "operationId": "createNativeStoredChat",
             "path": "/api/v1/service/chats/native/create",
-            "replacementOrImpact": "SX-8 concrete typed private HTTP proposal only: Owner review pending; NOT implemented or routed. Existing serviceToken only, Node verifies current session/account mapping, any Origin refused and excluded from browser/admin proxy whitelist. Dedicated 120s transfer/snapshot transaction with 5s lock timeout, bounded encrypted staging and Node 150s budget; timeout is CHAT_TRANSFER_TIMEOUT, preserve drafts and retry identical requestId/payload to resolve an unknown commit receipt. Implement only after this HTTP proposal is separately approved; no real-account cutover or ST disk fallback is authorized."
+            "replacementOrImpact": "SX-8: implemented typed native chat adapter with scoped retained filenames, preallocated fresh identities, exact whole-chat CAS, same-ID/+1 receipts and fork identity remapping. Existing serviceToken only; Node verifies current session/account mapping, any Origin is refused, and browser/admin proxy access is excluded. Long reads/writes use dedicated 120s transfer transactions with 5s lock timeout and typed retryable errors. Synthetic rehearsal only; no real-account cutover or ST disk fallback is authorized."
           },
           {
             "currentH5Callers": [],
-            "decision": "DEFER",
+            "decision": "KEEP",
+            "keepBecause": [
+              "owner-instruction",
+              "core-outcome"
+            ],
             "method": "POST",
             "operationId": "saveNativeStoredChat",
             "path": "/api/v1/service/chats/native/save",
-            "replacementOrImpact": "SX-8 concrete typed private HTTP proposal only: Owner review pending; NOT implemented or routed. Existing serviceToken only, Node verifies current session/account mapping, any Origin refused and excluded from browser/admin proxy whitelist. Dedicated 120s transfer/snapshot transaction with 5s lock timeout, bounded encrypted staging and Node 150s budget; timeout is CHAT_TRANSFER_TIMEOUT, preserve drafts and retry identical requestId/payload to resolve an unknown commit receipt. Implement only after this HTTP proposal is separately approved; no real-account cutover or ST disk fallback is authorized."
+            "replacementOrImpact": "SX-8: implemented typed native chat adapter with scoped retained filenames, preallocated fresh identities, exact whole-chat CAS, same-ID/+1 receipts and fork identity remapping. Existing serviceToken only; Node verifies current session/account mapping, any Origin is refused, and browser/admin proxy access is excluded. Long reads/writes use dedicated 120s transfer transactions with 5s lock timeout and typed retryable errors. Synthetic rehearsal only; no real-account cutover or ST disk fallback is authorized."
           },
           {
             "currentH5Callers": [],
-            "decision": "DEFER",
+            "decision": "KEEP",
+            "keepBecause": [
+              "owner-instruction",
+              "core-outcome"
+            ],
             "method": "POST",
             "operationId": "forkNativeStoredChat",
             "path": "/api/v1/service/chats/native/fork",
-            "replacementOrImpact": "SX-8 concrete typed private HTTP proposal only: Owner review pending; NOT implemented or routed. Existing serviceToken only, Node verifies current session/account mapping, any Origin refused and excluded from browser/admin proxy whitelist. Dedicated 120s transfer/snapshot transaction with 5s lock timeout, bounded encrypted staging and Node 150s budget; timeout is CHAT_TRANSFER_TIMEOUT, preserve drafts and retry identical requestId/payload to resolve an unknown commit receipt. Implement only after this HTTP proposal is separately approved; no real-account cutover or ST disk fallback is authorized."
+            "replacementOrImpact": "SX-8: implemented typed native chat adapter with scoped retained filenames, preallocated fresh identities, exact whole-chat CAS, same-ID/+1 receipts and fork identity remapping. Existing serviceToken only; Node verifies current session/account mapping, any Origin is refused, and browser/admin proxy access is excluded. Long reads/writes use dedicated 120s transfer transactions with 5s lock timeout and typed retryable errors. Synthetic rehearsal only; no real-account cutover or ST disk fallback is authorized."
           },
           {
             "currentH5Callers": [],
-            "decision": "DEFER",
+            "decision": "KEEP",
+            "keepBecause": [
+              "owner-instruction",
+              "core-outcome"
+            ],
             "method": "POST",
             "operationId": "renameNativeStoredChat",
             "path": "/api/v1/service/chats/native/rename",
-            "replacementOrImpact": "SX-8 concrete typed private HTTP proposal only: Owner review pending; NOT implemented or routed. Existing serviceToken only, Node verifies current session/account mapping, any Origin refused and excluded from browser/admin proxy whitelist. Implement only after this HTTP proposal is separately approved; no real-account cutover or ST disk fallback is authorized."
+            "replacementOrImpact": "SX-8: implemented typed native chat adapter with scoped retained filenames, preallocated fresh identities, exact whole-chat CAS, same-ID/+1 receipts and fork identity remapping. Existing serviceToken only; Node verifies current session/account mapping, any Origin is refused, and browser/admin proxy access is excluded. Long reads/writes use dedicated 120s transfer transactions with 5s lock timeout and typed retryable errors. Synthetic rehearsal only; no real-account cutover or ST disk fallback is authorized."
           },
           {
             "currentH5Callers": [],
-            "decision": "DEFER",
+            "decision": "KEEP",
+            "keepBecause": [
+              "owner-instruction",
+              "core-outcome"
+            ],
             "method": "POST",
             "operationId": "deleteNativeStoredChat",
             "path": "/api/v1/service/chats/native/delete",
-            "replacementOrImpact": "SX-8 concrete typed private HTTP proposal only: Owner review pending; NOT implemented or routed. Existing serviceToken only, Node verifies current session/account mapping, any Origin refused and excluded from browser/admin proxy whitelist. Implement only after this HTTP proposal is separately approved; no real-account cutover or ST disk fallback is authorized."
+            "replacementOrImpact": "SX-8: implemented typed native chat adapter with scoped retained filenames, preallocated fresh identities, exact whole-chat CAS, same-ID/+1 receipts and fork identity remapping. Existing serviceToken only; Node verifies current session/account mapping, any Origin is refused, and browser/admin proxy access is excluded. Long reads/writes use dedicated 120s transfer transactions with 5s lock timeout and typed retryable errors. Synthetic rehearsal only; no real-account cutover or ST disk fallback is authorized."
           }
         ],
         "runtimeAfterCutover": "Go companiond serves the KEEP/SIMPLIFY surface after the 2026-08-30 cutover; DEFER/RETIRE operations are not runtime fallbacks.",
@@ -3388,7 +3428,7 @@
           }
         ]
       },
-      "sha256": "525b50522eef976bdaf41791b3c572c9de58a10117926bc311cd1a28c7f8538b"
+      "sha256": "e21771f9dd44498040ff1b8e7bf0b3f5206f587ebb175d056a5a84ed99a0e3be"
     },
     "memory-candidate-statuses.yaml": {
       "document": {

@@ -141,6 +141,7 @@ func (s *Scheduler) RunOnce(ctx context.Context) error {
 		}
 	}
 	_ = store.RunRetentionCategory(ctx, "EXPORT_RESIDUE", true)
+	s.loop.cleanupChatTransfers(ctx)
 	if chats, ok := store.(interface{ PruneStoredChatRuns(context.Context) error }); ok {
 		if err := chats.PruneStoredChatRuns(ctx); err != nil {
 			s.loop.log.Info("stored chat retention", slog.String("operation", "stored_chat_retention"),

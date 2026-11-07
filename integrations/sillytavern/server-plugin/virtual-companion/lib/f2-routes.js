@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { F2Error, getF2Store } from './f2-store.js';
+import { RESTORED_ALIAS_EXPECTATION } from './restored-chat-aliases.js';
 
 function parseField(value, field) {
     if (typeof value !== 'string') return value;
@@ -62,7 +63,15 @@ export function createF2Hooks({ getUserDirectories }) {
         return targets.map((file, index) => ({ path: relative(request.user, file.path), ...(file.hash ? { hash: file.hash } : {}), vc_f2: tokens[index] }));
     }
     return {
-        read(user, file) { return forUser(user).read(file); },
+        read(user, file) {
+            const store = forUser(user);
+            const expectation = user[RESTORED_ALIAS_EXPECTATION];
+            if (!expectation) return store.read(file);
+            return (async () => {
+                if (await store.file(file) !== await store.file(expectation.path)) throw new F2Error(409, 'VC_REVISION_CONFLICT', '恢复聊天路径已变化');
+                return store.read(file, { expectedIdentity: expectation.expectedIdentity });
+            })();
+        },
         async save(handle, file, chat, beforeCommit) {
             if (!handle) throw new F2Error(401, 'VC_AUTH_REQUIRED', '缺少可信宿主用户');
             const directories = getUserDirectories(handle);

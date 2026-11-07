@@ -418,21 +418,21 @@ JSONL 新 API 在一个一致的当前读取中导出**完整**头部与全部�
 
 用户导入是新会话：流式解析、有界总量（建议暂存上限 256 MiB、24 小时到期、每账号同时 1 个导入）、逐行校验、全文件成功才发布；新 Owner/绑定/身份由服务端确定，输入的 vc_f2、binding、branchRoot 不能接管已有会话。候选/消息 ID 需要重映射并重建内部引用，无法识别的扩展引用保留并报告。异步返回 importId/statusUrl，状态 PENDING/FAILED/DONE；发布前再次校验 authorityEpoch。导入失败最多提供 100 个行号/固定错误原因及 issuesTruncated 标记，无原文日志；超限显式报错，不截断。暂存/状态结果 24h 到期清理，requestId 的紧凑去重保留长于状态结果，结果过期不能再次发布。内部可信迁移使用独立 manifest+checkpoint 通道，允许保留旧 ID/版本，不能拿公开上传接口做身份恢复。
 
-原始 JSONL、PNG 卡、世界书、预设和 blob 的备份/回退步骤按 ADR-0013 §4；完整账号导出不能继续受旧 ST 域 64 MiB 上限阻挡大历史，应采用有界分片/流式任务，保留一次性鉴权下载和删除屏障。本轮没有改变任何已实现容量限制。
+原始 JSONL、PNG 卡、世界书、预设和 blob 的备份/回退步骤按 ADR-0013 §4；完整账号导出不能继续受旧 ST 域 64 MiB 上限阻挡大历史，应采用有界分片/流式任务，保留一次性鉴权下载和删除屏障。聊天导入/native整聊保存按本节256MiB契约实施；完整账号数据权利导出不由该聊天通道替代。
 
-### 4.7.1 SX-8 补充契约（语义已批准，具体私有 HTTP 待复审）
+### 4.7.1 SX-8 补充契约（语义及私有 HTTP 已批准）
 
 Owner 已批准 `2308e039`，具体语义见 [chat-transfer-contract.yaml](../../specs/contracts/chat-transfer-contract.yaml)。公开接口形状不变，补明24h导入回执例外、同请求返回原202并查询状态、短暂存储错误保持PENDING，以及保护字段和未知引用的处理。大文件按1MiB复用现有加密blob分块，不能把256MiB整包读入内存；全部校验后一次发布。
 
-native 服务门面保留 F2 的预分配新UUID、精确整聊CAS与同ID/+1 ACK；公开创建与fork继续服务端分配ID。文件名按Owner+角色/群聊作用域建立别名，旧收藏通过原关系作用域解析；旧名不重绑定其他聊天。native整聊输入上限256MiB，先暂存和计算差异、最终事务精确CAS，不用多次公共operations伪装一次保存。具体私有HTTP已补入OpenAPI，仍须独立提交供Owner复审，不能先开放路由。纯聊天提供list/read/create/save/fork/rename/delete；fileName/fileAliases为同stable scope只读字段。资源目录改名、角色/群组删除与mixed Data Maid含旧盘资源，继续拒绝GO/FROZEN，不承诺PG+PNG原子性，作为SX-11及真实切换前置。
+native 服务门面保留 F2 的预分配新UUID、精确整聊CAS与同ID/+1 ACK；公开创建与fork继续服务端分配ID。文件名按Owner+角色/群聊作用域建立别名，旧收藏通过原关系作用域解析；旧名不重绑定其他聊天。native整聊输入上限256MiB，先暂存和计算差异、最终事务精确CAS，不用多次公共operations伪装一次保存。具体私有HTTP已补入OpenAPI并经Owner批准（69f68030），实现与演练限定合成数据和隔离库。纯聊天提供list/read/create/save/fork/rename/delete；fileName/fileAliases为同stable scope只读字段。资源目录改名、角色/群组删除与mixed Data Maid含旧盘资源，继续拒绝GO/FROZEN，不承诺PG+PNG原子性，作为SX-11及真实切换前置。
 
-可信迁移以独立操作工具及manifest/checkpoint完成；冻结持久权威后关闭ST本地准入，等待包括断开客户端在内的处理函数finally结束，再导出。重启从本地关闭标记恢复；来源/遗忘/删除记录与原始聊天一并对账，反向导出必须取冻结后的最新Go状态。演练只用合成数据和隔离库，真实切换仍需Owner另行授权。CM-4迁移需求到达后从origin/main独立分支先占实际下一个版本；SX-8迁移后顺延，不抢占或预先制造空迁移。
+可信迁移以独立操作工具及manifest/checkpoint完成；冻结持久权威后关闭ST本地准入，等待包括断开客户端在内的处理函数finally结束，再导出。重启从本地关闭标记恢复；来源/遗忘/删除记录与原始聊天一并对账，反向导出必须取冻结后的最新Go状态。演练只用合成数据和隔离库，真实切换仍需Owner另行授权。CM-4 V292（7bd10436）已先合入main；SX-8使用V293，保持迁移顺序。
 
 ### 4.7.2 长操作与大小预检（Owner 2026-11-07 附条件）
 
-普通5s事务不改。公开导出/native读取用独立REPEATABLE READ、既有owner/export/memory/聊天读锁，在120s快照内流式封存加密分块，封存及权限重核后才发完整Content-Length；中途传输断开只能丢弃不完整下载。native全部差异一次提交、可信迁移每聊天暂存分别用120s专用事务，`statement_timeout=120s`、`lock_timeout=5s`；前置校验在事务外，不能把大保存拆成多个公共operations。超时从begin/bind/work/commit各阶段统一为503 `CHAT_TRANSFER_TIMEOUT` / Retry-After 1；commit ACK不明时用原requestId或checkpoint判定，不假定已回滚，不丢草稿。具体规则在主OpenAPI及ST私有freeze/drain/status描述和补充契约，尚待具体HTTP复审。
+普通5s事务不改。公开导出/native读取用独立REPEATABLE READ、既有owner/export/memory/聊天读锁，在120s快照内流式封存加密分块，封存及权限重核后才发完整Content-Length；中途传输断开只能丢弃不完整下载。native全部差异一次提交、可信迁移每聊天暂存分别用120s专用事务，`statement_timeout=120s`、`lock_timeout=5s`；前置校验在事务外，不能把大保存拆成多个公共operations。超时从begin/bind/work/commit各阶段统一为503 `CHAT_TRANSFER_TIMEOUT` / Retry-After 1；commit ACK不明时用原requestId或checkpoint判定，不假定已回滚，不丢草稿。具体规则在主OpenAPI及ST私有freeze/drain/status描述和补充契约，69f68030已经Owner复审通过。
 
-新增只读 `chat-size-preflight.mjs --root <显式聊天根>`：只报聚合字节分布、匿名文件序号、超8MiB header/1MiB消息的数量及涉及文件数，不输出内容、文件名或ID；不跟随符号链接、不缓存整行。先用合成数据验证，真实盘点必须Owner另行授权，是切换前置。最终实现验收须独立在GOMAXPROCS=2下测20,000条、约50MiB聊天的完整导出与全量改写耗时、峰值heap和RSS；当前未运行这些性能实测，不能用codec吞吐替代。GO native整聊保存遇无关尾追加409，与ST一致，回归必须证明序列化草稿保留。
+新增只读 `chat-size-preflight.mjs --root <显式聊天根>`：只报聚合字节分布、匿名文件序号、超8MiB header/1MiB消息的数量及涉及文件数，不输出内容、文件名或ID；不跟随符号链接、不缓存整行。先用合成数据验证，真实盘点必须Owner另行授权，是切换前置。最终实现验收须独立在GOMAXPROCS=2下测20,000条、约50MiB聊天的完整导出与全量改写耗时、峰值heap和RSS；实测结果随SX-8验收记录交付，不能用codec吞吐替代。GO native整聊保存遇无关尾追加409，与ST一致，回归必须证明序列化草稿保留。
 
 ## 5. 阶段 0 离线测量
 

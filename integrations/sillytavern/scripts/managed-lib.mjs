@@ -427,6 +427,7 @@ export const SCENES = [
     { id: 'auth-browser', title: 'W05 B01 唯一登录、TOTP、全入口保护与账号切换', needs: ['go', 'stack', 'browser'], default: false },
     { id: 'source-native', title: 'W06 ST→Go持久来源、漏报、迟到结果、读取故障和删除', needs: ['go', 'stack'], default: false },
     { id: 'sx7f-chat-bridge', title: 'SX7 受管管理桥本人聊天列表、打开、追加与来源增量', needs: ['go', 'stack'], default: false },
+    { id: 'sx8-chat-transfer', title: 'SX8 Go native别名/fork/尾追加409留稿及异步JSONL导入导出', needs: ['go', 'stack'], default: false },
     { id: 'f2-native', title: 'W05 B05/B07 原生写入口CAS、删除身份与分支父版本', needs: ['go', 'stack'], default: false },
     { id: 'f2-browser', title: 'W05 B07 两个真实页面冲突保留草稿与迟到脚本拒绝', needs: ['go', 'stack', 'browser'], default: false },
     { id: 'rights-browser', title: 'W06 D02/D05 原生数据权利页面、一次性下载与手机布局', needs: ['go', 'stack'], default: false },

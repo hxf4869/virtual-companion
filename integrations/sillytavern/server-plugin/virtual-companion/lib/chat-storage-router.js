@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { isLegacyChatRoute, normalizeNativeApiPath } from './legacy-chat-routes.js';
+import { resolveRestoredChatAlias } from './restored-chat-aliases.js';
 
 const BRIDGE = Symbol.for('virtual-companion.bridge');
 
@@ -54,6 +55,11 @@ async function runHandler(handler, receiver, req, res, next, pathname) {
         };
     }
     try {
+        try { if (await resolveRestoredChatAlias(req, res, pathname)) return; }
+        catch (error) {
+            if (String(error?.code || '').startsWith('VC_')) return reject(req, res, error.status || 503, error.code);
+            throw error;
+        }
         return await handler.call(receiver, req, res, next);
     } finally {
         try { if (transfer) await transfer; }

@@ -78,7 +78,8 @@ function previousSources(chat) {
         if (!object(message) || !validId(message.vc_message_id)) continue;
         for (const candidate of candidates(message)) {
             const source = candidate.extra.vc_source;
-            if (source !== undefined && (!object(source) || !validId(source.id) || !Number.isSafeInteger(source.revision) || source.revision < 1)) throw new Error('Saved source identity is invalid');
+            if (source !== undefined && (!object(source) || !validId(source.id) || !Number.isSafeInteger(source.revision) || source.revision < 1
+                || (source.generation !== undefined && (!Number.isSafeInteger(source.generation) || source.generation < 1)))) throw new Error('Saved source identity is invalid');
             if (validId(source?.id) && Number.isSafeInteger(source.revision) && source.revision >= 1) {
                 result.set(`${message.vc_message_id}/${source.id}`, { source, signature: signature(message, candidate), time: sourceTime(source) });
             }
@@ -106,7 +107,15 @@ export function reconcileSourceIdentities(chat, previous = []) {
             // source settled so its record stays in the profile fingerprint.
             const settled = source.settled === true || Boolean(existing && existing.source.settled === true && !changed);
             candidate.extra.vc_source = { id: source.id, revision, settled, ...time };
+            // A trusted GO_TO_ST restore carries a generation fence. Only the
+            // actual previous disk snapshot can supply it; browser input cannot.
+            if (existing?.source.generation !== undefined) candidate.extra.vc_source.generation = existing.source.generation;
             if (eventId) candidate.extra.vc_source.inbox_event_id = eventId;
+            // A trusted Go encoder orders keys differently. Preserve the input
+            // key order of recognized fields so an unchanged disk read does not
+            // become a content change and increment the F2 revision.
+            const canonical = candidate.extra.vc_source;
+            candidate.extra.vc_source = { ...Object.fromEntries(Object.keys(source).filter((key) => Object.hasOwn(canonical, key)).map((key) => [key, canonical[key]])), ...canonical };
             if (Array.isArray(message.swipes) && candidate.index === selectedIndex(message)) message.swipe_info[candidate.index].extra.vc_source = structuredClone(candidate.extra.vc_source);
         }
     }

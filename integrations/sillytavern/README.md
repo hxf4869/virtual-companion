@@ -69,6 +69,26 @@ header / 消息字节数的 count / min / max 和固定 histogram，以及严格
 错误仅返回固定 code 与匿名序号，退出码 1；文件读取失败不合入完整文件统计，见 `failedFiles`。
 正常完成为 0；大小超限与跳过子目录符号链接只报告计数。输出不包含正文、文件名、路径或聊天 ID。
 
+## 聊天迁移与导入导出演练（SX-8）
+
+`companiond chat-migration forward|reverse|finalize` 提供合成账号的冻结、ST 在途处理排空、逐聊天
+checkpoint、完整核验与反向恢复；参数和步骤见 [迁移工具说明](../../backend/internal/chatmigration/README.md)。
+必须显式传 `--synthetic-isolated`、受控 Owner、run、epoch 与私有目录。默认停在 VERIFIED/FROZEN，
+同 run 和原 epoch 可续跑；`--activate` 才激活已核验的合成结果。反向恢复取冻结后的最新 Go 数据，
+写入新的隔离 ST 根，不使用切换前旧快照。工具仅保留一份 `current` 快照；临时根和分块由入口及既有 worker
+定向回收。旧 ST 根保留 7 天，到期须 Owner 确认后清理；整栈备份/恢复仍属 SX-13。
+
+公开 JSONL 导入经插件 Go 代理的 `/api/v1/chats/imports` 上传，返回原始 202 回执和状态地址；发布前必须
+全文件校验成功。状态/暂存保留 24 小时，过期请求不会重新发布。导出 `/api/v1/chats/{chatId}/export`
+包含全部 swipe、变量和未知字段，保持 JSON 数字原值。GO 下纯聊天 native 门面支持旧文件名别名、新建、
+fork、改名、删除和导出，不触碰旧 JSONL；整聊保存遇到无关尾追加也返回 409，客户端保留序列化草稿。
+长操作超时返回可重试的 `CHAT_TRANSFER_TIMEOUT`；提交结果不明时使用原 requestId 和原请求体重试。
+
+真实盘点与切换仍需另行授权。首次 ST 历史缺少候选、来源代次或墓碑证据时，核验保持不可用并阻止激活；
+不会猜测缺失历史。原始 JSONL/可信归档保留大整数，但旧 ST 普通对象编辑仍受 JavaScript 数字精度限制。
+资源目录改名、角色/群组删除与混合 Data Maid 继续拒绝 GO/FROZEN，作为 SX-11 及真实切换前置。
+合成受管回归入口为 `node integrations/sillytavern/scripts/accept-managed.mjs --filter sx8-chat-transfer`。
+
 ## 本机运行说明（W16-2）
 
 V2 只在本机受管栈运行：本目录的 SillyTavern 与 MemoryCore，加上 Go `companiond`、PostgreSQL、MinIO。

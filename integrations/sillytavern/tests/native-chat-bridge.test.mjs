@@ -56,11 +56,26 @@ test('authentication/FROZEN/stale epoch/missing stable request id fail before sc
 
 test('only pure supported chat routes are adapted; ST passes through', async () => {
     const bridge = setup(() => assert.fail('must not call Go'));
-    for (const path of ['/api/characters/rename', '/api/groups/delete', '/api/data-maid/delete', '/api/chats/import', '/api/chats/export']) {
+    for (const path of ['/api/characters/rename', '/api/groups/delete', '/api/data-maid/delete', '/api/chats/import']) {
         assert.equal((await invoke(bridge, request(path))).next, true);
     }
     const req = request('/api/chats/get'); req.vcChatStorage.mode = 'ST';
     assert.equal((await invoke(bridge, req)).next, true);
+});
+
+test('legacy export uses the prepared current JSONL and preserves raw large integers', async () => {
+    const chat = canonical();
+    const raw = chat.map(row => JSON.stringify(row)).join('\n') + '\n';
+    const body = raw.replace('"chat_metadata":', '"huge":900719925474099312345,"chat_metadata":');
+    const bridge = setup(async () => new Response(body, { headers: {
+        'content-length': String(Buffer.byteLength(body)), 'x-chat-id': id, 'x-chat-revision': '5', 'x-chat-authority-epoch': epoch,
+    } }));
+    const { res, next } = await invoke(bridge, request('/api/chats/export', { file: 'old.jsonl', format: 'jsonl', exportfilename: 'synthetic.jsonl' }));
+    assert.equal(next, false); assert.equal(res.statusCode, 200);
+    assert.equal(res.value.result, body);
+    assert.equal(res.value.message, 'Chat saved to synthetic.jsonl');
+    const text = await invoke(setup(async () => ndjson()), request('/api/chats/export', { file: 'old.jsonl', format: 'txt', exportfilename: 'synthetic.txt' }));
+    assert.equal(text.res.value.result, 'undefined: synthetic\n\n');
 });
 
 test('read uses trusted owner/scope, full UTF8 JSONL and exact ID/revision/epoch/content length', async () => {

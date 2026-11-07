@@ -8,11 +8,12 @@ function sessionResponse(url, identity, status) {
         ? { ...identity, chatStorage: { mode: 'ST', authorityEpoch: '1' } } : identity;
     return Response.json(body, { status });
 }
-function harness({ identity = active, status = 200, fetchImpl } = {}) {
+function harness({ identity = active, status = 200, fetchImpl, nativeChat } = {}) {
     const requests = [];
     const gate = createHostAuth({
         config: { serviceToken: 'synthetic-service-token-0123456789', goBaseUrl: 'http://go.local', timeoutMs: 1000, accountHandles: { '42': 'owner', '43': 'other' } },
         getUser: async (handle) => ({ handle, enabled: true }), accountVersion: () => 'v1', indexHtml: () => '<html><head></head><body><div id="preloader"></div><a href="#bg_global_tab">global</a><a href="#bg_chat_tab">chat</a></body></html>',
+        nativeChat,
         fetchImpl: fetchImpl || (async (url, options) => { requests.push({ url, options }); if(url.endsWith('/service/st/profile')) return new Response(options.body, { status:200 }); return sessionResponse(url, identity, status); }),
     });
     async function call(path = '/', { method = 'GET', session = {}, headers = {}, body, requestUrl = path } = {}) {
@@ -37,6 +38,24 @@ test('所有原生资源由Go会话准入；伪造身份头和旧ST cookie均无
     }
     assert.equal((await h.call('/')).res.headers.Location, '/auth/');
     for (const { options } of h.requests) assert.equal(options.headers.Cookie, 'vc_session=synthetic');
+});
+
+test('GO host admits only wired pure native adapters; FROZEN and mixed resource routes still reject', async () => {
+    for (const mode of ['GO', 'FROZEN']) {
+        const h = harness({ nativeChat: () => {}, fetchImpl: async () => Response.json({ ...active, chatStorage: { mode, authorityEpoch: '3' } }) });
+        const options = { method: 'POST', session: { handle: 'owner', vcAccountId: '42', vcSessionId: '7' },
+            headers: { 'x-vc-expected-account-id': '42', 'x-vc-expected-session-id': '7' } };
+        for (const path of ['/api/chats/get', '/api/chats/save', '/api/chats/rename', '/api/chats/delete', '/api/chats/export', '/api/chats/group/get', '/api/chats/group/save', '/api/characters/chats']) {
+            const result = await h.call(path, options);
+            assert.equal(result.next, mode === 'GO', path);
+            if (mode === 'GO') assert.deepEqual(result.req.vcChatStorage, { mode, authorityEpoch: '3' });
+            else assert.equal(result.res.statusCode, 409);
+        }
+        for (const path of ['/api/characters/rename', '/api/groups/delete', '/api/data-maid/delete', '/api/chats/import']) {
+            const result = await h.call(path, options);
+            assert.equal(result.next, false, path); assert.equal(result.res.statusCode, 409);
+        }
+    }
 });
 
 test('根入口与桌面别名绑定同一身份并返回同一自有HTML；明确原生入口保留', async () => {

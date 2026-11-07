@@ -140,6 +140,7 @@ func (s *Store) ForkStoredChat(ctx context.Context, owner int64, chatID string, 
 				return chatWriteResult{}, err
 			}
 			child.UpdatedAt = inserted.UpdatedAt
+			child.FileName, child.FileAliases = inserted.FileName, inserted.FileAliases
 			encodedMapping, err := chatJSON(mapping)
 			if err != nil {
 				return chatWriteResult{}, err

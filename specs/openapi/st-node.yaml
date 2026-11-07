@@ -98,7 +98,7 @@ paths:
       operationId: stFreezeChatAdmission
       summary: Persistently close old-chat admission for one frozen Owner
       description: >-
-        SX-8 private HTTP proposal, not implemented; requires Owner review. Existing private service token only;
+        SX-8 private HTTP approved by Owner in 69f68030 and implemented for synthetic rehearsal. Existing private service token only;
         reject every Origin header, including an empty one, and verify the configured owner-to-handle mapping.
         The trusted operator first commits ST-to-FROZEN authority CAS in Go with a new epoch. ST never queries Go
         for authority. Synchronously close this Owner's local admission before any await, then fsync and atomically
@@ -133,7 +133,7 @@ paths:
       operationId: stDrainChatHandlers
       summary: Wait for admitted server handlers to finish before trusted export
       description: >-
-        SX-8 private HTTP proposal, not implemented; requires Owner review. Same authentication and owner/run/epoch
+        SX-8 private HTTP approved by Owner in 69f68030 and implemented for synthetic rehearsal. Same authentication and owner/run/epoch
         checks as freeze. The gate must already be durably closed for this exact run and epoch. Wait for active
         sources, inbox saves/readbacks and supported native chat-file handlers to finish their finally blocks.
         Socket finish/close, Go caller timeout, elapsed time and a disconnected client never decrement this count.
@@ -176,7 +176,7 @@ paths:
       operationId: stReadChatDrainStatus
       summary: Read exact run admission and active-handler status without changing it
       description: >-
-        SX-8 private HTTP proposal, not implemented; requires Owner review. Same service authentication, Origin
+        SX-8 private HTTP approved by Owner in 69f68030 and implemented for synthetic rehearsal. Same service authentication, Origin
         rejection and owner/run/epoch validation as freeze. Pure in-memory status, with the marker loaded before
         accepting traffic on startup. No Go authority callback and no old-chat disk read. DRAINED means closed,
         durable and activeHandlers=0. A different run/epoch or an open gate is 409; unavailable marker state is 503.

@@ -15,6 +15,7 @@ import { writeErrorResponse } from './errors.js';
 import { log } from './log.js';
 import { INBOX_UI_ROUTES } from './inbox-ui-routes.js';
 import { STORY_UI_ROUTES } from './story-ui-routes.js';
+import { proxyChatTransfer } from './chat-transfer-proxy.js';
 
 // 路径段字符集：字母数字与有限符号；显式排除 %、/、..，防编码穿越。
 const SEG = '[A-Za-z0-9](?:[A-Za-z0-9._:-]{0,200})';
@@ -37,6 +38,9 @@ const ADMIN_BRIDGE_BASE = [
     { method: 'GET', path: /^\/api\/v1\/voice-clips\/[1-9][0-9]*\/audio$/, where: 'VO-2 鉴权 WAV 与单范围下载' },
     { method: 'GET', path: /^\/api\/v1\/chats$/, where: 'SX-6 聊天列表' },
     { method: 'POST', path: /^\/api\/v1\/chats$/, where: 'SX-6 新建聊天' },
+    { method: 'POST', path: /^\/api\/v1\/chats\/imports$/, where: 'SX-8 流式JSONL导入' },
+    { method: 'GET', path: new RegExp(`^/api/v1/chats/imports/${UUID}$`), where: 'SX-8 本人导入状态' },
+    { method: 'GET', path: new RegExp(`^${CHAT}/export$`), where: 'SX-8 完整JSONL导出' },
     { method: 'GET', path: new RegExp(`^${CHAT}$`), where: 'SX-6 聊天详情' },
     { method: 'DELETE', path: new RegExp(`^${CHAT}$`), where: 'SX-6 删除聊天' },
     { method: 'GET', path: new RegExp(`^${CHAT}/messages$`), where: 'SX-6 聊天历史与搜索' },
@@ -166,6 +170,8 @@ export function createAdminBridge({ config, fetchImpl = fetch }) {
             const headers = { Accept: 'application/json' };
             const voiceAudio = /^\/api\/v1\/voice-clips\/[1-9][0-9]*\/audio$/.test(path);
             const voiceASR = method === 'POST' && path === '/api/v1/voice/asr';
+            const chatImport = method === 'POST' && path === '/api/v1/chats/imports';
+            const chatExport = method === 'GET' && new RegExp(`^${CHAT}/export$`).test(path);
             const voiceRoute = voiceAudio || path.startsWith('/api/v1/voice/') || path.startsWith('/api/v1/voice-clips/') || path.endsWith('/voice-clips');
             if (voiceAudio) {
                 headers.Accept = 'audio/wav';
@@ -177,11 +183,11 @@ export function createAdminBridge({ config, fetchImpl = fetch }) {
                 if (voiceASR && !/^multipart\/form-data;\s*boundary=/i.test(contentType || '')) {
                     writeErrorResponse(res,415,'VC_BRIDGE_BODY_UNSUPPORTED','需要录音文件');return;
                 }
-                if (!voiceASR && contentType && !String(contentType).toLowerCase().includes('application/json')) {
+                if (!voiceASR && !chatImport && contentType && !String(contentType).toLowerCase().includes('application/json')) {
                     writeErrorResponse(res, 415, 'VC_BRIDGE_BODY_UNSUPPORTED', '管理桥只转发 application/json 请求体');
                     return;
                 }
-                headers['Content-Type'] = voiceASR ? contentType : 'application/json';
+                headers['Content-Type'] = voiceASR || chatImport ? contentType : 'application/json';
             }
             const vcCsrf = req.headers['x-vc-csrf-token'];
             if (typeof vcCsrf === 'string' && vcCsrf) headers['X-CSRF-Token'] = vcCsrf;
@@ -193,6 +199,10 @@ export function createAdminBridge({ config, fetchImpl = fetch }) {
             if (typeof origin === 'string' && origin) headers.Origin = origin;
             const cookie = pickCookies(req.headers.cookie);
             if (cookie) headers.Cookie = cookie;
+
+            if (chatImport || chatExport) return await proxyChatTransfer(req, res, {
+                url: config.goBaseUrl + path + search, headers, upload: chatImport, fetchImpl,
+            });
 
             let body;
             if (voiceASR) {

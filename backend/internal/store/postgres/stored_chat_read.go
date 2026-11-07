@@ -150,7 +150,11 @@ func (s *Store) withStoredChatRead(ctx context.Context, owner int64, search bool
 	return mapChatErr(err)
 }
 func (s *Store) readStoredChat(ctx context.Context, tx pgx.Tx, owner int64, id string, epoch int64) (StoredChat, error) {
-	return s.scanStoredChat(tx.QueryRow(ctx, `SELECT `+storedChatColumns+` FROM vc.lock_stored_chat($1,$2,false)`, owner, id), epoch)
+	c, e := s.scanStoredChat(tx.QueryRow(ctx, `SELECT `+storedChatColumns+` FROM vc.lock_stored_chat($1,$2,false)`, owner, id), epoch)
+	if e == nil {
+		e = s.chatAliases(ctx, tx, owner, &c.StoredChatSummary)
+	}
+	return c, e
 }
 func (s *Store) GetStoredChat(ctx context.Context, owner int64, chatID string) (StoredChat, error) {
 	var out StoredChat
@@ -221,11 +225,17 @@ func (s *Store) ListStoredChats(ctx context.Context, owner int64, q ChatListQuer
 		if err = rows.Err(); err != nil {
 			return err
 		}
+		rows.Close()
 		if len(out.Items) > limit {
 			out.Items = out.Items[:limit]
 			last := out.Items[len(out.Items)-1]
 			cursor := s.encodeChatCursor(chatKeyset{Kind: "list", Owner: owner, ChatID: last.ChatID, Epoch: epoch, UpdatedAt: last.UpdatedAt, Q: q.Q, Character: q.CharacterRef, Relationship: rel})
 			out.NextCursor = &cursor
+		}
+		for i := range out.Items {
+			if err = s.chatAliases(ctx, tx, owner, &out.Items[i]); err != nil {
+				return err
+			}
 		}
 		return nil
 	})

@@ -45,6 +45,8 @@ type StoredChatSummary struct {
 	Title            string    `json:"title"`
 	MessageCount     int64     `json:"messageCount"`
 	UpdatedAt        time.Time `json:"updatedAt"`
+	FileName         string    `json:"fileName"`
+	FileAliases      []string  `json:"fileAliases"`
 }
 type StoredChat struct {
 	StoredChatSummary
@@ -151,6 +153,8 @@ func (s *Store) scanStoredChat(row pgx.Row, epoch int64) (StoredChat, error) {
 		return c, err
 	}
 	err = s.decodeChatJSON(m, &c.Metadata)
+	c.FileName = c.ChatID + ".jsonl"
+	c.FileAliases = []string{c.FileName}
 	return c, err
 }
 func lockChatAuthority(ctx context.Context, tx pgx.Tx, owner int64, write bool) (string, int64, error) {
@@ -171,6 +175,10 @@ type chatWriteWork func(context.Context, pgx.Tx, string, int64) (chatWriteResult
 // All writers share this boundary: authority and deletion locks, replay, data,
 // source barriers (inside work), change/outbox and receipt commit together.
 func (s *Store) storedChatWrite(ctx context.Context, owner int64, resource, requestID string, epoch int64, payload any, work chatWriteWork) (chatWriteResult, error) {
+	return s.storedChatWriteBoundary(ctx, owner, resource, requestID, epoch, payload, false, work)
+}
+
+func (s *Store) storedChatWriteBoundary(ctx context.Context, owner int64, resource, requestID string, epoch int64, payload any, transfer bool, work chatWriteWork) (chatWriteResult, error) {
 	var result chatWriteResult
 	if s == nil || s.cipher == nil {
 		return result, errStore
@@ -188,7 +196,13 @@ func (s *Store) storedChatWrite(ctx context.Context, owner int64, resource, requ
 	if err != nil {
 		return result, err
 	}
-	err = s.WithOwner(ctx, owner, func(ctx context.Context, tx pgx.Tx) error {
+	boundary := s.WithOwner
+	if transfer {
+		boundary = func(ctx context.Context, owner int64, work TxWork) error {
+			return s.withChatTransfer(ctx, owner, pgx.TxOptions{}, work)
+		}
+	}
+	err = boundary(ctx, owner, func(ctx context.Context, tx pgx.Tx) error {
 		authority, current, err := lockChatAuthority(ctx, tx, owner, true)
 		if err != nil {
 			return err
@@ -216,7 +230,7 @@ func (s *Store) storedChatWrite(ctx context.Context, owner int64, resource, requ
 			if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 				return err
 			}
-			if !live && resource != "DELETE /api/v1/chats/"+result.ChatID {
+			if !live && resource != "DELETE /api/v1/chats/"+result.ChatID && resource != "POST /api/v1/service/chats/native/delete" {
 				return ErrNotFound
 			}
 			if body == nil || !expires.After(time.Now()) {

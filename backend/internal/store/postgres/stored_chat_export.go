@@ -22,16 +22,34 @@ type ChatExportSnapshot struct {
 // caller-owned private encrypted staging writer, never directly to HTTP output.
 // It retains only the current message and its candidates in Go memory.
 func (s *Store) CaptureStoredChatJSONL(ctx context.Context, owner int64, chatID string, revision *int64, dst io.Writer) (ChatExportSnapshot, error) {
+	return s.captureStoredChatJSONL(ctx, owner, chatID, revision, dst, nil)
+}
+
+func (s *Store) captureStoredChatJSONL(ctx context.Context, owner int64, chatID string, revision *int64, dst io.Writer, migration *ChatMigrationRun) (ChatExportSnapshot, error) {
 	var snapshot ChatExportSnapshot
 	id, err := normalizeChatID(chatID)
-	if err != nil || dst == nil || (revision != nil && *revision <= 0) {
+	if err != nil || dst == nil || (revision != nil && *revision < 0) {
 		return snapshot, ErrInvalid
 	}
 	if s == nil || s.cipher == nil {
 		return snapshot, errStore
 	}
 	err = s.withChatTransfer(ctx, owner, pgx.TxOptions{IsoLevel: pgx.RepeatableRead}, func(ctx context.Context, tx pgx.Tx) error {
-		chat, err := s.lockChatExport(ctx, tx, owner, id, 0)
+		var chat StoredChat
+		var err error
+		if migration == nil {
+			chat, err = s.lockChatExport(ctx, tx, owner, id, 0)
+		} else {
+			var mode string
+			var epoch int64
+			mode, epoch, err = lockChatAuthority(ctx, tx, owner, true)
+			if err == nil && (mode != "FROZEN" || epoch != migration.FrozenEpoch) {
+				err = chatError("CHAT_AUTHORITY_CHANGED")
+			}
+			if err == nil {
+				chat, err = s.readStoredChat(ctx, tx, owner, id, epoch)
+			}
+		}
 		if err != nil {
 			return err
 		}

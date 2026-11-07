@@ -1,15 +1,15 @@
 schemaVersion: 1
 contractId: SX8_CHAT_TRANSFER_AND_NATIVE_COMPATIBILITY
-status: SEMANTICS_APPROVED_HTTP_REVIEW_PENDING
+status: APPROVED_IMPLEMENTED_SYNTHETIC
 scope:
   publicApi: specs/openapi/virtual-companion.yaml
-  implementationStatus: NOT_IMPLEMENTED
+  implementationStatus: IMPLEMENTED_SYNTHETIC_REHEARSAL
   execution: synthetic_data_and_isolated_database_only
   realAccountCutover: separate_owner_authorization_required
-  databaseMigration: one_SX8_migration_after_CM4_version_is_known
+  databaseMigration: V293_after_CM4_V292
 
-# This proposal supplements the frozen public API. It is not permission to
-# expose a new route or to switch a real account. Concrete HTTP schemas remain
+# Owner approved semantics in 2308e039 and private HTTP in 69f68030.
+# Real-account cutover still requires separate authorization. Concrete HTTP schemas remain
 # in OpenAPI; the private migration artifact/CLI contract belongs here.
 publicJsonl:
   maxFileBytes: 268435456
@@ -123,6 +123,9 @@ longOperations:
     environment: GOMAXPROCS_2_no_other_heavy_work
     fixture: 20000_messages_approximately_50_MiB_full_JSONL
     report: [export_elapsed_ms, whole_rewrite_save_elapsed_ms, peak_Go_heap_bytes, peak_process_RSS_bytes]
+    publicationLocks: report_owner_row_and_memory_write_barrier_hold_intervals
+    contention: report_same_owner_ordinary_chat_and_memory_task_wait_or_retryable_failure_and_no_data_loss
+    holdOverFiveSeconds: disclose_impact_in_NOTES_and_verify_original_request_and_claim_retry
     cover: export_and_all_messages_changed_in_one_native_save_not_small_delta_only
     errors: explicit_timeout_injection_and_unknown_commit_receipt_replay
   realDataSizePreflight:
@@ -174,7 +177,7 @@ nativeCompatibilityProposal:
     expected: exact_owned_chat_id_and_revision
     batchDirectoryOperations: all_target_baselines_and_target_set_checked_atomically
     oldDiskFallbackInGoOrFrozen: forbidden
-  httpContractNextStep: typed_private_native_routes_and_alias_read_fields_require_separate_Owner_review
+  httpContractApproval: Owner_approved_69f68030_implemented_for_synthetic_rehearsal
 
 trustedMigration:
   channel: operator_CLI_and_private_ST_control_never_public_upload

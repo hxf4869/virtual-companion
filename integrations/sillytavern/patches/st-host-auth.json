@@ -1,6 +1,6 @@
 {
   "id": "st-host-auth",
-  "reason": "在cookie-session之后、ST用户解析与所有资源/API之前统一核验Go会话、TOTP完成态及明确的账号handle映射；身份头不参与准入。 临时上传移入已认证用户私有目录，使删号能够清理该用户的在线临时文件。 VO-7 的精确 ASR 桥路径跳过全局磁盘 multer，使其原始 multipart 只在有界 Go 管道内处理。 SX-8 在六个聊天相关router的末端业务handler准入并跟踪真实处理生命周期，冻结时排空后才允许导出。",
+  "reason": "在cookie-session之后、ST用户解析与所有资源/API之前统一核验Go会话、TOTP完成态及明确的账号handle映射；身份头不参与准入。 临时上传移入已认证用户私有目录，使删号能够清理该用户的在线临时文件。 VO-7 的精确 ASR 桥路径跳过全局磁盘 multer，使其原始 multipart 只在有界 Go 管道内处理。 SX-8 在六个聊天相关router的末端业务handler准入并跟踪真实处理生命周期，冻结时排空后才允许导出。 SX-8 公开JSONL导入精确路径跳过磁盘multer，在Go有界加密暂存中处理。",
   "upstream": {
     "component": "sillytavern",
     "commit": "7e8663cd9c184a550b37238218bdd32c6efc68e9"
@@ -16,7 +16,7 @@
     },
     {
       "from": "const uploadsPath = path.join(cliArgs.dataRoot, UPLOADS_DIRECTORY);\napp.use(multer({ dest: uploadsPath, limits: { fieldSize: 500 * 1024 * 1024 } }).single('avatar'));",
-      "to": "// W06: temporary uploads belong to the authenticated user's deletion scope.\nconst vcNativeUpload = multer({ storage: multer.diskStorage({\n    destination(req, _file, done) {\n        const root = req.user?.directories?.root;\n        if (!root) return done(new Error('Authenticated upload directory required'), '');\n        const target = path.join(root, '.uploads');\n        try { fs.mkdirSync(target, { recursive: true, mode: 0o700 }); done(null, target); }\n        catch (error) { done(error, ''); }\n    },\n}), limits: { fieldSize: 500 * 1024 * 1024 } }).single('avatar');\napp.use((req, res, next) => {\n    // VO-7: this exact route streams bounded WAV in memory; native multer writes uploads to disk.\n    if (req.method === 'POST' && req.path === '/api/plugins/virtual-companion/go/api/v1/voice/asr') return next();\n    return vcNativeUpload(req, res, next);\n});",
+      "to": "// W06: temporary uploads belong to the authenticated user's deletion scope.\nconst vcNativeUpload = multer({ storage: multer.diskStorage({\n    destination(req, _file, done) {\n        const root = req.user?.directories?.root;\n        if (!root) return done(new Error('Authenticated upload directory required'), '');\n        const target = path.join(root, '.uploads');\n        try { fs.mkdirSync(target, { recursive: true, mode: 0o700 }); done(null, target); }\n        catch (error) { done(error, ''); }\n    },\n}), limits: { fieldSize: 500 * 1024 * 1024 } }).single('avatar');\napp.use((req, res, next) => {\n    // VO-7/SX-8: these exact routes stream through bounded Go uploads; native multer writes to disk.\n    if (req.method === 'POST' && ['/api/plugins/virtual-companion/go/api/v1/voice/asr', '/api/plugins/virtual-companion/go/api/v1/chats/imports'].includes(req.path)) return next();\n    return vcNativeUpload(req, res, next);\n});",
       "count": 1
     },
     {
@@ -31,5 +31,5 @@
     }
   ],
   "applies_to": "assemble-managed 的派生 ST 运行副本；upstream 原始检出不修改",
-  "expected_output_sha256": "0a839de12f0599b2e5a0b7fadafaac16fcdc93adae5910f014110ff54acca2e1"
+  "expected_output_sha256": "d670bc5fa221a8970323368d97b060ed360533feacc26df0386c4bb0f179d2b6"
 }

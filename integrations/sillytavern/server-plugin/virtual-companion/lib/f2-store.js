@@ -4,6 +4,7 @@ import { realpathSync } from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { reconcileSourceIdentities, sourceMessages } from './source-identity.js';
+import { assertRestoredIdentities, liveIdentitySets } from './restored-chat-state.js';
 
 const stores = new Map();
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -133,11 +134,23 @@ class F2Store {
             }
             if (['renaming', 'deleted'].includes(record.state)
                 && (!Number.isSafeInteger(record.revision) || record.revision < 1)) throw corrupt('待完成操作版本无效');
+            if (record.aliases !== undefined) {
+                if (!Array.isArray(record.aliases)) throw corrupt('恢复别名格式无效');
+                for (const alias of record.aliases) await this.file(alias);
+                for (const key of ['deletedMessageIds', 'deletedCandidateIds']) if (record[key] !== undefined
+                    && (!Array.isArray(record[key]) || record[key].some((id) => typeof id !== 'string' || !uuid.test(id)))) throw corrupt('恢复墓碑格式无效');
+            }
             records.set(record.id, record);
         }
         return records;
     }
     async record(records, value) {
+        const previous = records.get(value.id);
+        // Restored identities reserve their historical aliases permanently.
+        // Ordinary ST records retain their existing minimal representation.
+        if (previous?.aliases) value = { ...value, aliases: [...new Set([...previous.aliases, previous.path, previous.from, previous.to, value.path, value.from, value.to].filter(Boolean))],
+            ...(previous.deletedMessageIds || value.deletedMessageIds ? { deletedMessageIds: [...new Set([...(previous.deletedMessageIds || []), ...(value.deletedMessageIds || [])])] } : {}),
+            ...(previous.deletedCandidateIds || value.deletedCandidateIds ? { deletedCandidateIds: [...new Set([...(previous.deletedCandidateIds || []), ...(value.deletedCandidateIds || [])])] } : {}) };
         await atomicWrite(path.join(this.stateDir, `${value.id}.json`), JSON.stringify(value) + '\n');
         records.set(value.id, value);
     }
@@ -212,6 +225,10 @@ class F2Store {
         }
         const r = records.get(token.id);
         if (r?.state === 'deleted') throw deleted();
+        if (r?.deletedMessageIds || r?.deletedCandidateIds) {
+            const live = liveIdentitySets(chat);
+            if ((r.deletedMessageIds || []).some((id) => live.messages.has(id)) || (r.deletedCandidateIds || []).some((id) => live.candidates.has(id))) throw corrupt('恢复墓碑与文件内容不符');
+        }
         if (r && r.path !== this.relative(file)) throw conflict('聊天身份已移动到其他路径');
         this.assertPathFree(records, file, token.id);
         if (legacy || sourceChanged) {
@@ -221,8 +238,20 @@ class F2Store {
         if (!r || r.state !== 'live') await this.record(records, { id: token.id, state: 'live', path: this.relative(file) });
         return { chat, token };
     }
-    async read(input) {
-        return this.run(async (records) => (await this.current(records, await this.file(input)))?.chat ?? []);
+    async read(input, { expectedIdentity, withRaw = false } = {}) {
+        return this.run(async (records) => {
+            const file = await this.file(input);
+            if (expectedIdentity !== undefined) {
+                if (!uuid.test(expectedIdentity)) throw conflict();
+                const record = records.get(expectedIdentity);
+                if (record?.state === 'deleted') throw deleted();
+                if (record?.state !== 'live' || record.path !== this.relative(file)) throw conflict();
+            }
+            const current = await this.current(records, file);
+            if (expectedIdentity !== undefined && current?.token.id !== expectedIdentity) throw conflict();
+            const chat = current?.chat ?? [];
+            return withRaw ? { chat, raw: current ? await fs.readFile(file, 'utf8') : '' } : chat;
+        });
     }
     async sourceSnapshot(id, revision) {
         if (typeof id !== 'string' || !uuid.test(id)) throw new F2Error(400, 'VC_CHAT_INVALID', '来源身份无效');
@@ -252,6 +281,7 @@ class F2Store {
             const file = await this.file(input);
             const r = records.get(base.id);
             if (r?.state === 'deleted') throw deleted();
+            if (r?.aliases) await assertRestoredIdentities(this.root, base.id, snapshot, r);
             if (r && r.path !== this.relative(file)) throw conflict('聊天身份与目标路径不符');
             const current = await this.current(records, file);
             let branchRoot = current?.chat[0].chat_metadata?.vc_branch_root || base.id;
@@ -273,6 +303,16 @@ class F2Store {
             const token = nextToken(base);
             snapshot[0].chat_metadata = { ...snapshot[0].chat_metadata, vc_branch_root: branchRoot };
             reconcileSourceIdentities(snapshot, current?.chat ?? []);
+            if (r?.aliases && current) {
+                const previous = liveIdentitySets(current.chat), next = liveIdentitySets(snapshot);
+                const deletedMessageIds = [...new Set([...(r.deletedMessageIds || []), ...[...previous.messages].filter((id) => !next.messages.has(id))])];
+                const deletedCandidateIds = [...new Set([...(r.deletedCandidateIds || []), ...[...previous.candidates].filter((id) => !next.candidates.has(id))])];
+                if (deletedMessageIds.length !== (r.deletedMessageIds?.length || 0) || deletedCandidateIds.length !== (r.deletedCandidateIds?.length || 0)) {
+                    // Persist the rights floor before replacing JSONL. An I/O failure
+                    // stays fail-closed rather than making deleted identities reusable.
+                    await this.record(records, { ...r, deletedMessageIds, deletedCandidateIds });
+                }
+            }
             await atomicWrite(file, withToken(snapshot, token));
             if (!current) await this.record(records, { id: base.id, state: 'live', path: this.relative(file) });
             return token;

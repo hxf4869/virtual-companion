@@ -23,6 +23,8 @@ import { createF2Hooks } from './lib/f2-routes.js';
 import { commitDocument } from './lib/document-commit.js';
 import { createChatCutoverBridge } from './lib/chat-cutover-bridge.js';
 import { createChatStorageGate } from './lib/chat-storage-gate.js';
+import { createNativeChatBridge } from './lib/native-chat-bridge.js';
+import { createNativeChatScopeResolver } from './lib/native-chat-scope.js';
 import { createSourceBridge } from './lib/source-bridge.js';
 import { attemptInboxDelivery, createInboxBridge } from './lib/inbox-bridge.js';
 import { createAccountData } from './lib/account-data.js';
@@ -53,8 +55,14 @@ export async function init(router) {
     const inbox = createInboxBridge({ config, getUser, getUserDirectories: users.getUserDirectories, accountData, chatStorageGate });
     const chatCutover = createChatCutoverBridge({ config, getUser, chatStorageGate });
     const sourceBridge = createSourceBridge({ config, getUser, getUserDirectories: users.getUserDirectories, accountData, inbox, chatStorageGate, chatCutover });
+    const nativeChat = createNativeChatBridge({ config, resolveScope: createNativeChatScopeResolver({
+        decodeCharacter: async (buffer) => {
+            const { read } = await import(new URL('../../src/character-card-parser.js', import.meta.url).href);
+            return JSON.parse(read(buffer));
+        },
+    }) });
     const hostAuth = createHostAuth({ config,
-        getUser, sourceBridge, accountData,
+        getUser, sourceBridge, accountData, nativeChat,
         accountVersion: users.getAccountVersion,
         indexHtml: () => fs.readFileSync(new URL('../../public/index.html', import.meta.url), 'utf8'),
     });
@@ -79,7 +87,7 @@ export async function init(router) {
     installUsageFetch();
     // ④ guardUnmanagedGeneration（text-completions / kobold / horde generate-text / novel；不改 generate-bridge）。
     const f2 = createF2Hooks({ getUserDirectories: users.getUserDirectories });
-    globalThis[BRIDGE_SYMBOL] = { ...bridge, interceptStatus, hostAuth, f2, commitDocument, guardUnmanagedGeneration, attemptInboxDelivery, chatStorageGate, flushChatBackups };
+    globalThis[BRIDGE_SYMBOL] = { ...bridge, interceptStatus, hostAuth, f2, commitDocument, guardUnmanagedGeneration, attemptInboxDelivery, chatStorageGate, flushChatBackups, nativeChat };
     log.info(`插件就绪：goBaseUrl=${config.goBaseUrl || '(未配置)'} 服务令牌=${config.serviceToken ? '已配置' : '缺失（受控生成不可用）'} estimator=${counter.estimator}`);
 }
 

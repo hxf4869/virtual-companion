@@ -3,6 +3,7 @@
 import { randomUUID } from 'node:crypto';
 import { Readable } from 'node:stream';
 import { normalizeNativeApiPath } from './legacy-chat-routes.js';
+import { nativeChatTextExport } from './restored-chat-aliases.js';
 
 export const NATIVE_CHAT_TIMEOUT_MS = 150_000;
 const API = '/api/v1/service/chats/native/';
@@ -15,7 +16,11 @@ const routes = new Map([
     ['/api/chats/rename', 'rename'], ['/api/chats/delete', 'delete'], ['/api/chats/group/delete', 'delete'],
     ['/api/characters/chats', 'list'], ['/api/chats/recent', 'list'], ['/api/chats/search', 'search'],
     ['/api/chats/group/info', 'list'],
+    ['/api/chats/export', 'export'],
 ]);
+export function isNativeChatRoute(req, pathname = req.path || '') {
+    return req.method === 'POST' && routes.has(normalizeNativeApiPath(pathname));
+}
 function failure(status, code) { return Object.assign(new Error(code), { status, code }); }
 function filename(value) {
     if (typeof value !== 'string' || !value || /[\\/\x00]/.test(value) || value === '.' || value === '..'
@@ -116,7 +121,7 @@ export function createNativeChatBridge({ config, fetchImpl = globalThis.fetch, r
         if (!response.ok) throw { nativeResponse: response };
         try { return await response.json(); } catch { signal.throwIfAborted(); throw failure(502, 'CHAT_NATIVE_RESPONSE_INVALID'); }
     }
-    async function read(fields, signal, expected) {
+    async function read(fields, signal, expected, keepRaw = false) {
         const response = await go('read', fields, signal);
         if (!response.ok) throw { nativeResponse: response };
         const length = response.headers.get('content-length');
@@ -127,33 +132,39 @@ export function createNativeChatBridge({ config, fetchImpl = globalThis.fetch, r
             || epoch !== fields.authorityEpoch || (expected && (id !== expected.id || rev !== expected.revision))) throw failure(502, 'CHAT_NATIVE_RESPONSE_INVALID');
         const safeRevision = Number(revision(rev));
         const decoder = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true });
-        let bytes = 0, pending = '', records = [];
+        let bytes = 0, pending = '', records = [], lines = 0;
+        const rawChunks = keepRaw ? [] : null;
         const line = raw => {
             if (raw.endsWith('\r')) raw = raw.slice(0, -1);
-            if (!raw || Buffer.byteLength(raw) > (records.length ? 1_048_576 : 8_388_608)) throw failure(502, 'CHAT_NATIVE_RESPONSE_INVALID');
+            if (!raw || Buffer.byteLength(raw) > (lines ? 1_048_576 : 8_388_608)) throw failure(502, 'CHAT_NATIVE_RESPONSE_INVALID');
             let record;
             try { record = JSON.parse(raw); } catch { throw failure(502, 'CHAT_NATIVE_RESPONSE_INVALID'); }
             if (!object(record)) throw failure(502, 'CHAT_NATIVE_RESPONSE_INVALID');
-            records.push(record);
+            if (!keepRaw || lines === 0) records.push(record);
+            lines++;
         };
         try {
             for await (const chunk of response.body) {
                 signal.throwIfAborted();
                 bytes += chunk.byteLength;
                 if (bytes > Number(length)) throw failure(502, 'CHAT_NATIVE_RESPONSE_INVALID');
-                pending += decoder.decode(chunk, { stream: true });
+                const text = decoder.decode(chunk, { stream: true });
+                rawChunks?.push(text);
+                pending += text;
                 let end;
                 while ((end = pending.indexOf('\n')) >= 0) { line(pending.slice(0, end)); pending = pending.slice(end + 1); }
-                if (Buffer.byteLength(pending) > (records.length ? 1_048_576 : 8_388_608)) throw failure(502, 'CHAT_NATIVE_RESPONSE_INVALID');
+                if (Buffer.byteLength(pending) > (lines ? 1_048_576 : 8_388_608)) throw failure(502, 'CHAT_NATIVE_RESPONSE_INVALID');
             }
-            pending += decoder.decode();
+            const tail = decoder.decode();
+            rawChunks?.push(tail);
+            pending += tail;
         } catch (error) { signal.throwIfAborted(); if (error.status) throw error; throw failure(502, 'CHAT_NATIVE_RESPONSE_INVALID'); }
         if (bytes !== Number(length)) throw failure(502, 'CHAT_NATIVE_RESPONSE_INVALID');
         if (pending) line(pending);
         const metadata = records[0]?.chat_metadata;
         if (!object(metadata) || metadata.vc_f2?.id !== id || revision(metadata.vc_f2?.revision) !== rev) throw failure(502, 'CHAT_NATIVE_RESPONSE_INVALID');
         metadata.vc_f2.revision = safeRevision;
-        return records;
+        return keepRaw ? rawChunks.join('') : records;
     }
     return async function nativeChatBridge(req, res, next = () => {}) {
         const path = normalizeNativeApiPath((req.originalUrl || req.path || '').split('?')[0]);
@@ -183,8 +194,14 @@ export function createNativeChatBridge({ config, fetchImpl = globalThis.fetch, r
             if ((!['list', 'search'].includes(operation) && scopes.length !== 1)) throw failure(403, 'ACCESS_DENIED');
             const ownerAccountId = identity.accountId, authorityEpoch = storage.authorityEpoch, scope = scopes[0];
             const common = { ownerAccountId, scope, authorityEpoch };
-            const fileName = () => filename(body.file_name ?? body.original_file ?? body.chatfile ?? body.id);
+            const fileName = () => filename(body.file_name ?? body.original_file ?? body.chatfile ?? body.id ?? body.file);
             if (operation === 'read') return res.json(await read({ ...common, fileName: fileName() }, signal));
+            if (operation === 'export') {
+                const fields = { ...common, fileName: fileName() };
+                const result = body.format === 'jsonl' ? await read(fields, signal, undefined, true)
+                    : nativeChatTextExport(await read(fields, signal));
+                return res.json({ message: `Chat saved to ${body.exportfilename}`, result });
+            }
             if (operation === 'list' || operation === 'search') {
                 const rows = new Map();
                 for (const scope of scopes) {

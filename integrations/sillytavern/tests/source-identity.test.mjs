@@ -25,6 +25,27 @@ const swipeMessage = (texts, selected = 0, over = {}) => message({
 const candidateIds = (m) => m.swipe_info.map((entry) => entry.extra.vc_source.id);
 const candidateRevisions = (m) => m.swipe_info.map((entry) => entry.extra.vc_source.revision);
 
+test('trusted restored generation survives reads and edits; browser cannot mint or replace it', () => {
+    const persisted = [header(), swipeMessage(['first', 'selected'], 1)];
+    reconcileSourceIdentities(persisted);
+    // Go's encoding/json sorts map keys, unlike ST's insertion-order encoder.
+    for (const info of persisted[1].swipe_info) info.extra.vc_source = Object.fromEntries(Object.entries({ ...info.extra.vc_source, generation: 7 }).sort());
+    persisted[1].extra.vc_source = structuredClone(persisted[1].swipe_info[1].extra.vc_source);
+    const read = structuredClone(persisted);
+    assert.equal(reconcileSourceIdentities(read, persisted), false);
+    assert.equal(read[1].extra.vc_source.generation, 7);
+    const submitted = structuredClone(read);
+    submitted[1].extra.vc_source.generation = 999;
+    submitted[1].swipe_info[0].extra.vc_source.generation = 999;
+    submitted[1].mes = 'edited';
+    reconcileSourceIdentities(submitted, persisted);
+    assert.equal(submitted[1].extra.vc_source.generation, 7);
+    assert.equal(submitted[1].swipe_info[0].extra.vc_source.generation, 7);
+    const created = [header(), message({ extra: { vc_source: { generation: 999 } } })];
+    reconcileSourceIdentities(created);
+    assert.equal(created[1].extra.vc_source.generation, undefined);
+});
+
 test('inbox_event_id 随来源身份保留，并进入来源投影', () => {
     const chat = [header(), message({ extra: { vc_source: { inbox_event_id: 'fu-keep' } } })];
     reconcileSourceIdentities(chat, []);

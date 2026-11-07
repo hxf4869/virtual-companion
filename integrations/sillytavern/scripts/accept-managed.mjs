@@ -739,7 +739,7 @@ async function runFull() {
     };
     const sx7Interrupt = new AbortController();
     const interruptSX7 = () => sx7Interrupt.abort(new LifecycleError('SX7 受管验收已中断'));
-    if (selected.includes('sx7f-chat-bridge')) {
+    if (selected.includes('sx7f-chat-bridge') || selected.includes('sx8-chat-transfer')) {
         const ownerId = String(BigInt(RIGHTS_ACCOUNT_ID) + 1n);
         secrets.sx7Chat = { ownerId, handle: `vc-sx7-chat-${ownerId}` };
     }

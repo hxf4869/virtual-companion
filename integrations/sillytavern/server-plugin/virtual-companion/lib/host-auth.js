@@ -5,6 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PRIVATE_ST_PATHS } from './source-bridge.js';
 import { isLegacyChatRoute, normalizeNativeApiPath } from './legacy-chat-routes.js';
+import { isNativeChatRoute } from './native-chat-bridge.js';
 
 const ASSETS = new Map([['/auth/', 'index.html'], ['/auth/index.js', 'index.js'], ['/auth/style.css', 'style.css']]);
 // 首屏反馈随 HTML 返回，不等待宿主脚本或扩展初始化；由原生 preloader 一并移除。
@@ -147,7 +148,7 @@ export function serveDesktopAsset(desktopAppDir, req, res) {
 }
 
 export function createHostAuth({ config, getUser, accountVersion, indexHtml, fetchImpl = fetch,
-    sourceBridge, accountData,
+    sourceBridge, accountData, nativeChat,
     desktopAppDir = fileURLToPath(new URL('../desktop/app/', import.meta.url)),
     desktopHtml = () => fs.readFileSync(path.join(desktopAppDir, 'index.html'), 'utf8'),
     authDir = fileURLToPath(new URL('../auth/', import.meta.url)),
@@ -231,7 +232,8 @@ export function createHostAuth({ config, getUser, accountVersion, indexHtml, fet
             }
             const chatStorage = includeChatStorage ? identity.chatStorage : undefined;
             if (includeChatStorage && !validChatStorageHint(chatStorage)) return chatStorageUnavailable(res);
-            if (legacyChatRoute && chatStorage.mode !== 'ST') {
+            if (legacyChatRoute && chatStorage.mode !== 'ST'
+                && !(chatStorage.mode === 'GO' && nativeChat && isNativeChatRoute(req, normalizeNativeApiPath(req.path)))) {
                 return fail(res, 409, 'CHAT_AUTHORITY_CHANGED', chatStorage.mode === 'FROZEN' ? '正在迁移' : '聊天存储已切换');
             }
             if (canBind) {

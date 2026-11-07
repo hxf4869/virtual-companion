@@ -97,7 +97,7 @@ test('陪伴状态经本人会话读取，桥不放行写方法或服务令牌',
     assert.equal(calls, 1);
 });
 
-test('SX7 管理桥仅放行已实现的本人聊天方法和精确 UUID 路径', async () => {
+test('聊天管理桥仅放行已实现的本人聊天方法和精确 UUID 路径', async () => {
     const root = '/api/v1/chats';
     const id = '0c7a4c00-1b11-4444-8000-0d5020a70201';
     const chat = root + '/' + id.toUpperCase();
@@ -109,14 +109,16 @@ test('SX7 管理桥仅放行已实现的本人聊天方法和精确 UUID 路径'
         ['GET', message], ['PATCH', message],
         ['PATCH', chat + '/metadata'], ['POST', chat + '/operations'],
         ['GET', chat + '/changes'], ['POST', chat + '/forks'],
+        ['GET', root + '/imports/' + id],
     ];
     const denied = [
         ['PUT', root], ['POST', chat], ['DELETE', chat + '/messages'],
         ['GET', chat + '/forks'], ['GET', chat + '/changes/extra'],
         ['GET', chat + '/'], ['GET', root + '/not-a-uuid'],
         ['GET', root + '/' + id.replace('0', '%30')], ['PATCH', chat + '/messages/not-a-uuid'],
-        ['POST', root + '/imports'], ['GET', root + '/imports/' + id], ['GET', chat + '/export'],
+        ['PUT', root + '/imports'], ['POST', root + '/imports/' + id], ['POST', chat + '/export'],
         ['POST', '/api/v1/service/chats/' + id + '/generation-runs'],
+        ['POST', '/api/v1/service/chats/native/create'], ['POST', '/api/v1/service/chats/native/read'],
     ];
     const forwarded = [];
     const bridge = createAdminBridge({ config: baseConfig(9999), fetchImpl: async (url, { method }) => {

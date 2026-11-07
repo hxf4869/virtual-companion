@@ -212,6 +212,17 @@ func (s *Server) writeStoredChatError(w http.ResponseWriter, err error) {
 	var chatErr *postgres.ChatError
 	if errors.As(err, &chatErr) {
 		switch chatErr.Code {
+		case "RATE_LIMITED":
+			w.Header().Set("Retry-After", "2")
+			s.writeAPIError(w, http.StatusTooManyRequests, chatErr.Code, "rate limited")
+			return
+		case "CHAT_TRANSFER_TIMEOUT":
+			w.Header().Set("Retry-After", "1")
+			s.writeAPIError(w, http.StatusServiceUnavailable, chatErr.Code, "chat transfer timed out")
+			return
+		case "CHAT_IMPORT_EXPIRED":
+			s.writeAPIError(w, http.StatusGone, chatErr.Code, "chat import expired")
+			return
 		case "CHAT_SEARCH_TIMEOUT":
 			s.writeAPIError(w, http.StatusServiceUnavailable, "CHAT_SEARCH_TIMEOUT", "chat search timed out; retry this cursor")
 			return
@@ -233,7 +244,7 @@ func (s *Server) writeStoredChatError(w http.ResponseWriter, err error) {
 		case "CHAT_PAYLOAD_TOO_LARGE":
 			s.writeAPIError(w, http.StatusRequestEntityTooLarge, chatErr.Code, "chat payload too large")
 			return
-		case "CHAT_INVALID_OPERATION":
+		case "CHAT_INVALID_OPERATION", "CHAT_IMPORT_INVALID":
 			s.writeAPIError(w, http.StatusUnprocessableEntity, chatErr.Code, "invalid chat operation")
 			return
 		case "CHAT_PRECONDITION_REQUIRED":

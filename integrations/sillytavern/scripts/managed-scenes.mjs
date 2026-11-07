@@ -1,5 +1,6 @@
 // 受管验收场景注册表。入口只消费这份列表，不再 push，也不再维护实现对照表。
 import { sx7ChatBridgeScene } from './sx7-chat-bridge-accept.mjs';
+import { sx8ChatTransferScene } from './sx8-chat-transfer-accept.mjs';
 import { memoryRealModelScene } from './w08-real-accept.mjs';
 import { memoryRealEvalScene } from './w08-real-eval.mjs';
 import { memorycoreNativeScene } from './w08-native-accept.mjs';
@@ -77,6 +78,7 @@ export const ACCEPT_SCENES = [
     authBrowserScene,
     sourceNativeScene,
     sx7ChatBridgeScene,
+    sx8ChatTransferScene,
     f2NativeScene,
     f2BrowserScene,
     rightsBrowserScene,

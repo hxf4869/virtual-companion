@@ -6446,7 +6446,7 @@ paths:
     post:
       operationId: listNativeStoredChats
       summary: List native chat storage
-      description: 'SX-8 concrete private HTTP proposal: OWNER_REVIEW_PENDING / NOT_IMPLEMENTED / catalog DEFER. Only
+      description: 'SX-8 private HTTP approved by Owner in 69f68030 and implemented for synthetic rehearsal. Only
         existing serviceToken authenticates; Node supplies the Owner after current Go-session and host-account mapping
         verification. Reject ANY Origin header; cookie-only/browser/admin proxy access is forbidden and this route
         must not enter their whitelist. Enforce current owner rights and GO authority; no ST fallback.'
@@ -6501,7 +6501,7 @@ paths:
     post:
       operationId: readNativeStoredChat
       summary: Read native chat storage
-      description: 'SX-8 concrete private HTTP proposal: OWNER_REVIEW_PENDING / NOT_IMPLEMENTED / catalog DEFER. Only
+      description: 'SX-8 private HTTP approved by Owner in 69f68030 and implemented for synthetic rehearsal. Only
         existing serviceToken authenticates; Node supplies the Owner after current Go-session and host-account mapping
         verification. Reject ANY Origin header; cookie-only/browser/admin proxy access is forbidden and this route
         must not enter their whitelist. Enforce current owner rights and GO authority; no ST fallback. Build the complete
@@ -6589,7 +6589,7 @@ paths:
     post:
       operationId: createNativeStoredChat
       summary: Create native chat storage
-      description: 'SX-8 concrete private HTTP proposal: OWNER_REVIEW_PENDING / NOT_IMPLEMENTED / catalog DEFER. Only
+      description: 'SX-8 private HTTP approved by Owner in 69f68030 and implemented for synthetic rehearsal. Only
         existing serviceToken authenticates; Node supplies the Owner after current Go-session and host-account mapping
         verification. Reject ANY Origin header; cookie-only/browser/admin proxy access is forbidden and this route
         must not enter their whitelist. Enforce current owner rights and GO authority; no ST fallback. The dedicated
@@ -6651,7 +6651,7 @@ paths:
     post:
       operationId: saveNativeStoredChat
       summary: Save native chat storage
-      description: 'SX-8 concrete private HTTP proposal: OWNER_REVIEW_PENDING / NOT_IMPLEMENTED / catalog DEFER. Only
+      description: 'SX-8 private HTTP approved by Owner in 69f68030 and implemented for synthetic rehearsal. Only
         existing serviceToken authenticates; Node supplies the Owner after current Go-session and host-account mapping
         verification. Reject ANY Origin header; cookie-only/browser/admin proxy access is forbidden and this route
         must not enter their whitelist. Enforce current owner rights and GO authority; no ST fallback. The dedicated
@@ -6716,7 +6716,7 @@ paths:
     post:
       operationId: forkNativeStoredChat
       summary: Fork native chat storage
-      description: 'SX-8 concrete private HTTP proposal: OWNER_REVIEW_PENDING / NOT_IMPLEMENTED / catalog DEFER. Only
+      description: 'SX-8 private HTTP approved by Owner in 69f68030 and implemented for synthetic rehearsal. Only
         existing serviceToken authenticates; Node supplies the Owner after current Go-session and host-account mapping
         verification. Reject ANY Origin header; cookie-only/browser/admin proxy access is forbidden and this route
         must not enter their whitelist. Enforce current owner rights and GO authority; no ST fallback. The dedicated
@@ -6778,7 +6778,7 @@ paths:
     post:
       operationId: renameNativeStoredChat
       summary: Rename native chat storage
-      description: 'SX-8 concrete private HTTP proposal: OWNER_REVIEW_PENDING / NOT_IMPLEMENTED / catalog DEFER. Only
+      description: 'SX-8 private HTTP approved by Owner in 69f68030 and implemented for synthetic rehearsal. Only
         existing serviceToken authenticates; Node supplies the Owner after current Go-session and host-account mapping
         verification. Reject ANY Origin header; cookie-only/browser/admin proxy access is forbidden and this route
         must not enter their whitelist. Enforce current owner rights and GO authority; no ST fallback.'
@@ -6833,7 +6833,7 @@ paths:
     post:
       operationId: deleteNativeStoredChat
       summary: Delete native chat storage
-      description: 'SX-8 concrete private HTTP proposal: OWNER_REVIEW_PENDING / NOT_IMPLEMENTED / catalog DEFER. Only
+      description: 'SX-8 private HTTP approved by Owner in 69f68030 and implemented for synthetic rehearsal. Only
         existing serviceToken authenticates; Node supplies the Owner after current Go-session and host-account mapping
         verification. Reject ANY Origin header; cookie-only/browser/admin proxy access is forbidden and this route
         must not enter their whitelist. Enforce current owner rights and GO authority; no ST fallback.'
@@ -9120,8 +9120,8 @@ paths:
     post:
       operationId: importStoredChat
       summary: Stage an asynchronous JSONL import as a new chat
-      description: SX-2 public shape; SX-8 semantic clarification approved by Owner in 2308e039. Dedicated transfer HTTP details remain pending review.
-        Not implemented; DEFER in specs/catalog/go-v1-api-scope.yaml until SX-8 validates it. Owner/RLS scoped cookieAuth; expected account/session headers are preconditions,
+      description: SX-2 public shape; SX-8 semantics (2308e039) and private transfer HTTP (69f68030) approved by Owner; implemented for synthetic rehearsal.
+        Owner/RLS scoped cookieAuth; expected account/session headers are preconditions,
         never authorization. State-changing requests use existing CSRF and exact Origin checks. requestId and authorityEpoch
         are multipart BODY fields. Return 202 and owner-scoped statusUrl. Validate the complete UTF-8 JSONL file before
         publication, remap protected identities, preserve unknown fields/references and report counts. Recheck epoch
@@ -9175,8 +9175,8 @@ paths:
     get:
       operationId: getStoredChatImport
       summary: Read asynchronous import status and bounded diagnostics
-      description: SX-2 public shape; SX-8 semantic clarification approved by Owner in 2308e039. Dedicated transfer HTTP details remain pending review.
-        Not implemented; DEFER in specs/catalog/go-v1-api-scope.yaml until SX-8 validates it. Owner/RLS scoped cookieAuth; expected account/session headers are preconditions,
+      description: SX-2 public shape; SX-8 semantics (2308e039) and private transfer HTTP (69f68030) approved by Owner; implemented for synthetic rehearsal.
+        Owner/RLS scoped cookieAuth; expected account/session headers are preconditions,
         never authorization. State-changing requests use existing CSRF and exact Origin checks. PENDING, FAILED or
         DONE. Failure reports line numbers and fixed reasons, never input text. Result retention is 24h, independent
         of longer compact requestId deduplication.
@@ -9215,8 +9215,8 @@ paths:
       operationId: exportStoredChat
       summary: Export complete current chat as UTF-8 JSONL
       description: >-
-        SX-2 public shape; SX-8 semantic clarification approved by Owner in 2308e039. Dedicated transfer HTTP details remain pending review.
-        Not implemented; DEFER in specs/catalog/go-v1-api-scope.yaml until SX-8 validates it. Owner/RLS scoped cookieAuth; expected account/session headers are preconditions,
+        SX-2 public shape; SX-8 semantics (2308e039) and private transfer HTTP (69f68030) approved by Owner; implemented for synthetic rehearsal.
+        Owner/RLS scoped cookieAuth; expected account/session headers are preconditions,
         never authorization. State-changing requests use existing CSRF and exact Origin checks. One internally consistent
         current read includes original header, all messages/candidates, hidden data, variables and unknown fields.
         Optional revision is a precondition for the CURRENT chatRevision, never a request for old data; mismatch is
@@ -9408,7 +9408,7 @@ components:
             $ref: '#/components/schemas/ChatRequestId'
           authorityEpoch:
             $ref: '#/components/schemas/ChatAuthorityEpoch'
-      description: SX-8 concrete HTTP proposal, OWNER_REVIEW_PENDING and NOT_IMPLEMENTED. Service token only; reject
+      description: SX-8 private HTTP approved by Owner in 69f68030 and implemented for synthetic rehearsal. Service token only; reject
         every Origin header (including null/empty), cookie alone never authorizes access, and these routes must not
         enter the browser/admin proxy whitelist. Require current GO authority and exact epoch, no ST disk fallback.
         requestId is scoped to verified owner + method + canonical native route; digest includes every normalized typed
@@ -9874,7 +9874,7 @@ components:
         fileName:
           $ref: '#/components/schemas/NativeChatFileName'
           readOnly: true
-          description: SX-8 read-field addition pending HTTP review, not yet returned by current KEEP readers. Current canonical logical filename within kind and characterRef/groupRef.
+          description: Current canonical logical filename within kind and characterRef/groupRef; SX-8 approved read-only field.
         fileAliases:
           type: array
           readOnly: true
@@ -9894,8 +9894,8 @@ components:
       description: Stable chatId equals vc_f2.id on trusted migration; rename never changes identity. List rows use
         indexed metadata, not a body scan. SINGLE binds characterRef and COMPANION/STORY through server validation;
         GROUP keeps its existing speaker semantics and may have null conversationId/relationshipId without memory-sharing
-        permission. A new root has branchRoot=chatId. fileName/fileAliases are SX-8 proposed read-only fields,
-        pending concrete HTTP review and implementation; no public alias mutation or alias endpoint is added.
+        permission. A new root has branchRoot=chatId. fileName/fileAliases are SX-8 approved read-only fields;
+        no public alias mutation or alias endpoint is added.
         Existing favorites resolve their saved chatFile in its original relationship scope without rewriting saved text/mesId.
     StoredChat:
       type: object

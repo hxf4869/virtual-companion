@@ -268,6 +268,7 @@ type Loop struct {
 	notifyMaxAttempts int
 	extractSlots      chan struct{}
 	followSlots       chan struct{}
+	importSlots       chan struct{}
 	handlers          sync.WaitGroup
 	wake              chan struct{}
 	started           atomic.Bool
@@ -316,6 +317,7 @@ func NewLoop(log *slog.Logger, policy Policy, budget companion.TurnBudget) *Loop
 		cancels:      NewCancels(),
 		extractSlots: make(chan struct{}, policy.MaxConcurrentExtracts),
 		followSlots:  make(chan struct{}, 1),
+		importSlots:  make(chan struct{}, 1),
 		wake:         make(chan struct{}, 1),
 		done:         make(chan struct{}),
 	}
@@ -489,6 +491,7 @@ func (l *Loop) run(ctx context.Context) {
 	defer ticker.Stop()
 	for {
 		n := l.ClaimOnce(ctx)
+		n += l.ClaimChatImportOnce(ctx)
 		l.RunInboxAndNotifications(ctx)
 		select {
 		case <-ctx.Done():

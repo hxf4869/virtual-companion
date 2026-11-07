@@ -64,6 +64,7 @@ func New(cfg config.Config, log *slog.Logger, probes Probes, metrics *observabil
 		}
 		s.registerCore()
 		s.registerStoredChatWrites()
+		s.registerStoredChatTransfers()
 	}
 	return s
 }
@@ -72,9 +73,14 @@ func (s *Server) Handler() http.Handler {
 	serve := http.HandlerFunc(s.serve)
 	defaultLimit := http.MaxBytesHandler(serve, maxBodyBytes)
 	chatLimit := http.MaxBytesHandler(serve, postgres.StoredChatMutationBytes)
+	transferLimit := http.MaxBytesHandler(serve, chatTransferBodyBytes)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		handler, _ := s.mux.Handler(r)
+		if _, transfer := handler.(chatTransferHandler); transfer {
+			transferLimit.ServeHTTP(w, r)
+			return
+		}
 		if r.Method == http.MethodPost || r.Method == http.MethodPatch || r.Method == http.MethodDelete {
-			handler, _ := s.mux.Handler(r)
 			if _, chatWrite := handler.(storedChatWriteHandler); chatWrite {
 				chatLimit.ServeHTTP(w, r)
 				return
@@ -257,6 +263,8 @@ func operation(path string) string {
 		return "relationships"
 	case "/api/v1/chats":
 		return "stored_chats"
+	case "/api/v1/chats/imports":
+		return "stored_chat_import"
 	case "/api/v1/conversations":
 		return "conversations"
 	case "/api/v1/conversations/wipe-preview":
@@ -337,6 +345,8 @@ func operation(path string) string {
 		if chatPath, ok := strings.CutPrefix(path, "/api/v1/chats/"); ok {
 			parts := strings.Split(chatPath, "/")
 			switch {
+			case len(parts) == 2 && parts[0] == "imports":
+				return "stored_chat_import_status"
 			case len(parts) == 1:
 				return "stored_chat"
 			case len(parts) == 2 && parts[1] == "messages":
@@ -351,9 +361,19 @@ func operation(path string) string {
 				return "stored_chat_operations"
 			case len(parts) == 2 && parts[1] == "forks":
 				return "stored_chat_forks"
+			case len(parts) == 2 && parts[1] == "export":
+				return "stored_chat_export"
+			case len(parts) == 2:
+				return "stored_chat_subresource"
 			}
 		}
 		if chatPath, ok := strings.CutPrefix(path, "/api/v1/service/chats/"); ok {
+			if native, ok := strings.CutPrefix(chatPath, "native/"); ok {
+				switch native {
+				case "list", "read", "create", "save", "fork", "rename", "delete":
+					return "service_native_chat_" + native
+				}
+			}
 			_, route, _ := strings.Cut(chatPath, "/")
 			if route == "generation-runs" {
 				return "service_stored_chat_generation"

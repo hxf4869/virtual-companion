@@ -686,6 +686,9 @@ func (m *storedChatMutation) persist(ctx context.Context, tx pgx.Tx, requestID, 
 		return commit, err
 	}
 	if metadataChanged {
+		if err := m.store.chatAliases(ctx, tx, m.owner, &chat.StoredChatSummary); err != nil {
+			return commit, err
+		}
 		commit.Chat = &chat
 	}
 	return commit, nil
