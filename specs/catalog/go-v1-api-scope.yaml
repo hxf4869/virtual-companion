@@ -13,7 +13,7 @@ note: 'The API consumer matrix remains the deletion/scope source. KEEP requires 
 counts:
   KEEP: 138
   SIMPLIFY: 5
-  DEFER: 15
+  DEFER: 22
   RETIRE: 42
 operations:
 - operationId: callMemoryCoreModel
@@ -1746,6 +1746,77 @@ operations:
   - owner-instruction
   - core-outcome
   replacementOrImpact: 'SX-5: implemented serviceToken-only registration after Owner approval of 5f55e4c6. The verified Owner and saved input bind the causal baseline; unrelated tail appends are allowed, terminal writes bind both Owner and chatId. One active run, 15 minute nonrenewing expiry, distinct internal expired outcome and seven-day detail cleanup. Node registers before provider sends; SX-9/SX-10 internalize registration and SX-15 removes its Node route.'
+- operationId: listNativeStoredChats
+  method: POST
+  path: /api/v1/service/chats/native/list
+  currentH5Callers: []
+  decision: DEFER
+  replacementOrImpact: 'SX-8 concrete typed private HTTP proposal only: Owner review pending; NOT implemented or
+    routed. Existing serviceToken only, Node verifies current session/account mapping, any Origin refused and excluded
+    from browser/admin proxy whitelist. Implement only after this HTTP proposal is separately approved; no real-account
+    cutover or ST disk fallback is authorized.'
+- operationId: readNativeStoredChat
+  method: POST
+  path: /api/v1/service/chats/native/read
+  currentH5Callers: []
+  decision: DEFER
+  replacementOrImpact: 'SX-8 concrete typed private HTTP proposal only: Owner review pending; NOT implemented or
+    routed. Existing serviceToken only, Node verifies current session/account mapping, any Origin refused and excluded
+    from browser/admin proxy whitelist. Dedicated 120s transfer/snapshot transaction with 5s lock timeout, bounded
+    encrypted staging and Node 150s budget; timeout is CHAT_TRANSFER_TIMEOUT, preserve drafts and retry identical
+    requestId/payload to resolve an unknown commit receipt. Implement only after this HTTP proposal is separately
+    approved; no real-account cutover or ST disk fallback is authorized.'
+- operationId: createNativeStoredChat
+  method: POST
+  path: /api/v1/service/chats/native/create
+  currentH5Callers: []
+  decision: DEFER
+  replacementOrImpact: 'SX-8 concrete typed private HTTP proposal only: Owner review pending; NOT implemented or
+    routed. Existing serviceToken only, Node verifies current session/account mapping, any Origin refused and excluded
+    from browser/admin proxy whitelist. Dedicated 120s transfer/snapshot transaction with 5s lock timeout, bounded
+    encrypted staging and Node 150s budget; timeout is CHAT_TRANSFER_TIMEOUT, preserve drafts and retry identical
+    requestId/payload to resolve an unknown commit receipt. Implement only after this HTTP proposal is separately
+    approved; no real-account cutover or ST disk fallback is authorized.'
+- operationId: saveNativeStoredChat
+  method: POST
+  path: /api/v1/service/chats/native/save
+  currentH5Callers: []
+  decision: DEFER
+  replacementOrImpact: 'SX-8 concrete typed private HTTP proposal only: Owner review pending; NOT implemented or
+    routed. Existing serviceToken only, Node verifies current session/account mapping, any Origin refused and excluded
+    from browser/admin proxy whitelist. Dedicated 120s transfer/snapshot transaction with 5s lock timeout, bounded
+    encrypted staging and Node 150s budget; timeout is CHAT_TRANSFER_TIMEOUT, preserve drafts and retry identical
+    requestId/payload to resolve an unknown commit receipt. Implement only after this HTTP proposal is separately
+    approved; no real-account cutover or ST disk fallback is authorized.'
+- operationId: forkNativeStoredChat
+  method: POST
+  path: /api/v1/service/chats/native/fork
+  currentH5Callers: []
+  decision: DEFER
+  replacementOrImpact: 'SX-8 concrete typed private HTTP proposal only: Owner review pending; NOT implemented or
+    routed. Existing serviceToken only, Node verifies current session/account mapping, any Origin refused and excluded
+    from browser/admin proxy whitelist. Dedicated 120s transfer/snapshot transaction with 5s lock timeout, bounded
+    encrypted staging and Node 150s budget; timeout is CHAT_TRANSFER_TIMEOUT, preserve drafts and retry identical
+    requestId/payload to resolve an unknown commit receipt. Implement only after this HTTP proposal is separately
+    approved; no real-account cutover or ST disk fallback is authorized.'
+- operationId: renameNativeStoredChat
+  method: POST
+  path: /api/v1/service/chats/native/rename
+  currentH5Callers: []
+  decision: DEFER
+  replacementOrImpact: 'SX-8 concrete typed private HTTP proposal only: Owner review pending; NOT implemented or
+    routed. Existing serviceToken only, Node verifies current session/account mapping, any Origin refused and excluded
+    from browser/admin proxy whitelist. Implement only after this HTTP proposal is separately approved; no real-account
+    cutover or ST disk fallback is authorized.'
+- operationId: deleteNativeStoredChat
+  method: POST
+  path: /api/v1/service/chats/native/delete
+  currentH5Callers: []
+  decision: DEFER
+  replacementOrImpact: 'SX-8 concrete typed private HTTP proposal only: Owner review pending; NOT implemented or
+    routed. Existing serviceToken only, Node verifies current session/account mapping, any Origin refused and excluded
+    from browser/admin proxy whitelist. Implement only after this HTTP proposal is separately approved; no real-account
+    cutover or ST disk fallback is authorized.'
 undeclaredLegacyOperations:
 - path: /api/v1/auth/admin/invites
   method: POST

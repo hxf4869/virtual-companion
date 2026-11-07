@@ -84,3 +84,8 @@ entries:
   httpStatus: 503
   retryable: true
   retrySemantics: Retry the same q request and input cursor. No completed scan progress is claimed; never fall back to an unbounded scan or silently truncate history.
+- code: CHAT_TRANSFER_TIMEOUT
+  order: 40
+  httpStatus: 503
+  retryable: true
+  retrySemantics: Dedicated chat export/native-save/trusted-stage transaction or drain exceeded its bounded budget (including database statement/lock timeout). Keep drafts and frozen gates. Retry the original write requestId and complete payload or the same migration checkpoint; a commit ACK timeout has an unknown outcome until its durable receipt is read. Never retry generation/provider calls or fall back to ST.

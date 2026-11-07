@@ -6442,6 +6442,448 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/service/chats/native/list:
+    post:
+      operationId: listNativeStoredChats
+      summary: List native chat storage
+      description: 'SX-8 concrete private HTTP proposal: OWNER_REVIEW_PENDING / NOT_IMPLEMENTED / catalog DEFER. Only
+        existing serviceToken authenticates; Node supplies the Owner after current Go-session and host-account mapping
+        verification. Reject ANY Origin header; cookie-only/browser/admin proxy access is forbidden and this route
+        must not enter their whitelist. Enforce current owner rights and GO authority; no ST fallback.'
+      security:
+      - serviceToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NativeChatListRequest'
+      responses:
+        '200':
+          description: Current indexed native chat page
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StoredChatPage'
+        '400':
+          description: 'INVALID_REQUEST: malformed/unknown typed fields, cursor, scope or logical filename'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: 'AUTHENTICATION_REQUIRED: missing or invalid service token; a cookie does not suffice'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: 'ACCESS_DENIED: any Origin header, inactive/deleting Owner or rejected owner rights'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          $ref: '#/components/responses/ChatNotFound'
+        '409':
+          $ref: '#/components/responses/ChatConflict'
+        '410':
+          $ref: '#/components/responses/ChatCursorExpired'
+        '413':
+          $ref: '#/components/responses/ChatTooLarge'
+        '422':
+          $ref: '#/components/responses/ChatInvalidOperation'
+        '428':
+          $ref: '#/components/responses/ChatPreconditionRequired'
+        '503':
+          $ref: '#/components/responses/ChatTransferUnavailable'
+  /api/v1/service/chats/native/read:
+    post:
+      operationId: readNativeStoredChat
+      summary: Read native chat storage
+      description: 'SX-8 concrete private HTTP proposal: OWNER_REVIEW_PENDING / NOT_IMPLEMENTED / catalog DEFER. Only
+        existing serviceToken authenticates; Node supplies the Owner after current Go-session and host-account mapping
+        verification. Reject ANY Origin header; cookie-only/browser/admin proxy access is forbidden and this route
+        must not enter their whitelist. Enforce current owner rights and GO authority; no ST fallback. Build the complete
+        current JSONL from ONE dedicated REPEATABLE READ snapshot with owner/rights/deletion locks; encrypt bounded
+        staging before sending ANY success headers. Transaction deadline 120s, lock_timeout=5s, statement_timeout=120s,
+        with begin/bind/work/commit covered, outside ordinary 5s WithOwner. Recheck rights/deletion barriers before
+        delivery, including exact prepared chatRevision under the delivery barrier; an intervening change is 409
+        REVISION_CONFLICT. Hold the same rights/deletion barrier until delivery finishes or is aborted. Node HTTP
+        budget is 150s for preparation, capture and delivery combined; delivery takes min(120s, remaining request budget). Timeout before headers is 503 CHAT_TRANSFER_TIMEOUT with Retry-After=1;
+        never stream a partial snapshot as success. Staging is bounded/encrypted, retained at most 24h and cleaned
+        on success/failure/interruption/expiry/deletion. After successful preparation send a known Content-Length,
+        all messages/candidates/unknown fields as strict UTF-8 JSONL with LF, with header at most 8 MiB and each full
+        message at most 1 MiB; the 256 MiB upload bound does not truncate a current-chat export. A delivery interruption is a failed download; consumer
+        accepts only the complete advertised body and keeps its draft, never a partial success.'
+      security:
+      - serviceToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NativeChatReadRequest'
+      responses:
+        '200':
+          description: Complete prepared consistent current JSONL; accept only the whole Content-Length body
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                const: no-store
+            Content-Length:
+              required: true
+              schema:
+                type: integer
+                minimum: 1
+            X-Chat-Id:
+              required: true
+              schema:
+                type: string
+                format: uuid
+            X-Chat-Revision:
+              required: true
+              schema:
+                $ref: '#/components/schemas/ChatRevision'
+            X-Chat-Authority-Epoch:
+              required: true
+              schema:
+                $ref: '#/components/schemas/ChatAuthorityEpoch'
+          content:
+            application/x-ndjson:
+              schema:
+                type: string
+                format: binary
+        '400':
+          description: 'INVALID_REQUEST: malformed/unknown typed fields, cursor, scope or logical filename'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: 'AUTHENTICATION_REQUIRED: missing or invalid service token; a cookie does not suffice'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: 'ACCESS_DENIED: any Origin header, inactive/deleting Owner or rejected owner rights'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          $ref: '#/components/responses/ChatNotFound'
+        '409':
+          $ref: '#/components/responses/ChatConflict'
+        '413':
+          $ref: '#/components/responses/ChatTooLarge'
+        '422':
+          $ref: '#/components/responses/ChatInvalidOperation'
+        '428':
+          $ref: '#/components/responses/ChatPreconditionRequired'
+        '503':
+          $ref: '#/components/responses/ChatTransferUnavailable'
+  /api/v1/service/chats/native/create:
+    post:
+      operationId: createNativeStoredChat
+      summary: Create native chat storage
+      description: 'SX-8 concrete private HTTP proposal: OWNER_REVIEW_PENDING / NOT_IMPLEMENTED / catalog DEFER. Only
+        existing serviceToken authenticates; Node supplies the Owner after current Go-session and host-account mapping
+        verification. Reject ANY Origin header; cookie-only/browser/admin proxy access is forbidden and this route
+        must not enter their whitelist. Enforce current owner rights and GO authority; no ST fallback. The dedicated
+        transaction deadline, bounded multipart upload/staging, identity mapping and exact requestId receipt rules
+        are normative in NativeChatCreateRequest.'
+      security:
+      - serviceToken: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/NativeChatCreateRequest'
+            encoding:
+              scope:
+                contentType: application/json
+              file:
+                contentType: application/x-ndjson
+      responses:
+        '201':
+          description: Original durable receipt on authorized idempotent replay
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NativeChatWriteResult'
+        '400':
+          description: 'INVALID_REQUEST: malformed/unknown typed fields, cursor, scope or logical filename'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: 'AUTHENTICATION_REQUIRED: missing or invalid service token; a cookie does not suffice'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: 'ACCESS_DENIED: any Origin header, inactive/deleting Owner or rejected owner rights'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          $ref: '#/components/responses/ChatNotFound'
+        '409':
+          $ref: '#/components/responses/ChatConflict'
+        '410':
+          $ref: '#/components/responses/ChatResultExpired'
+        '413':
+          $ref: '#/components/responses/ChatTooLarge'
+        '422':
+          $ref: '#/components/responses/ChatInvalidOperation'
+        '428':
+          $ref: '#/components/responses/ChatPreconditionRequired'
+        '503':
+          $ref: '#/components/responses/ChatTransferUnavailable'
+  /api/v1/service/chats/native/save:
+    post:
+      operationId: saveNativeStoredChat
+      summary: Save native chat storage
+      description: 'SX-8 concrete private HTTP proposal: OWNER_REVIEW_PENDING / NOT_IMPLEMENTED / catalog DEFER. Only
+        existing serviceToken authenticates; Node supplies the Owner after current Go-session and host-account mapping
+        verification. Reject ANY Origin header; cookie-only/browser/admin proxy access is forbidden and this route
+        must not enter their whitelist. Enforce current owner rights and GO authority; no ST fallback. The dedicated
+        transaction deadline, bounded multipart upload/staging, identity mapping and exact requestId receipt rules
+        are normative in NativeChatSaveRequest. Unrelated tail append conflicts with whole-save; retain local draft.
+        Synthetic acceptance must cover that conflict and draft retention.'
+      security:
+      - serviceToken: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/NativeChatSaveRequest'
+            encoding:
+              scope:
+                contentType: application/json
+              file:
+                contentType: application/x-ndjson
+              generation:
+                contentType: application/json
+      responses:
+        '200':
+          description: Original durable receipt on authorized idempotent replay
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NativeChatWriteResult'
+        '400':
+          description: 'INVALID_REQUEST: malformed/unknown typed fields, cursor, scope or logical filename'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: 'AUTHENTICATION_REQUIRED: missing or invalid service token; a cookie does not suffice'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: 'ACCESS_DENIED: any Origin header, inactive/deleting Owner or rejected owner rights'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          $ref: '#/components/responses/ChatNotFound'
+        '409':
+          $ref: '#/components/responses/ChatConflict'
+        '410':
+          $ref: '#/components/responses/ChatResultExpired'
+        '413':
+          $ref: '#/components/responses/ChatTooLarge'
+        '422':
+          $ref: '#/components/responses/ChatInvalidOperation'
+        '428':
+          $ref: '#/components/responses/ChatPreconditionRequired'
+        '503':
+          $ref: '#/components/responses/ChatTransferUnavailable'
+  /api/v1/service/chats/native/fork:
+    post:
+      operationId: forkNativeStoredChat
+      summary: Fork native chat storage
+      description: 'SX-8 concrete private HTTP proposal: OWNER_REVIEW_PENDING / NOT_IMPLEMENTED / catalog DEFER. Only
+        existing serviceToken authenticates; Node supplies the Owner after current Go-session and host-account mapping
+        verification. Reject ANY Origin header; cookie-only/browser/admin proxy access is forbidden and this route
+        must not enter their whitelist. Enforce current owner rights and GO authority; no ST fallback. The dedicated
+        transaction deadline, bounded multipart upload/staging, identity mapping and exact requestId receipt rules
+        are normative in NativeChatForkRequest.'
+      security:
+      - serviceToken: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/NativeChatForkRequest'
+            encoding:
+              scope:
+                contentType: application/json
+              file:
+                contentType: application/x-ndjson
+      responses:
+        '201':
+          description: Original durable receipt on authorized idempotent replay
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NativeChatWriteResult'
+        '400':
+          description: 'INVALID_REQUEST: malformed/unknown typed fields, cursor, scope or logical filename'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: 'AUTHENTICATION_REQUIRED: missing or invalid service token; a cookie does not suffice'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: 'ACCESS_DENIED: any Origin header, inactive/deleting Owner or rejected owner rights'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          $ref: '#/components/responses/ChatNotFound'
+        '409':
+          $ref: '#/components/responses/ChatConflict'
+        '410':
+          $ref: '#/components/responses/ChatResultExpired'
+        '413':
+          $ref: '#/components/responses/ChatTooLarge'
+        '422':
+          $ref: '#/components/responses/ChatInvalidOperation'
+        '428':
+          $ref: '#/components/responses/ChatPreconditionRequired'
+        '503':
+          $ref: '#/components/responses/ChatTransferUnavailable'
+  /api/v1/service/chats/native/rename:
+    post:
+      operationId: renameNativeStoredChat
+      summary: Rename native chat storage
+      description: 'SX-8 concrete private HTTP proposal: OWNER_REVIEW_PENDING / NOT_IMPLEMENTED / catalog DEFER. Only
+        existing serviceToken authenticates; Node supplies the Owner after current Go-session and host-account mapping
+        verification. Reject ANY Origin header; cookie-only/browser/admin proxy access is forbidden and this route
+        must not enter their whitelist. Enforce current owner rights and GO authority; no ST fallback.'
+      security:
+      - serviceToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NativeChatRenameRequest'
+      responses:
+        '200':
+          description: Original durable receipt on authorized idempotent replay
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NativeChatMutationResult'
+        '400':
+          description: 'INVALID_REQUEST: malformed/unknown typed fields, cursor, scope or logical filename'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: 'AUTHENTICATION_REQUIRED: missing or invalid service token; a cookie does not suffice'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: 'ACCESS_DENIED: any Origin header, inactive/deleting Owner or rejected owner rights'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          $ref: '#/components/responses/ChatNotFound'
+        '409':
+          $ref: '#/components/responses/ChatConflict'
+        '410':
+          $ref: '#/components/responses/ChatResultExpired'
+        '413':
+          $ref: '#/components/responses/ChatTooLarge'
+        '422':
+          $ref: '#/components/responses/ChatInvalidOperation'
+        '428':
+          $ref: '#/components/responses/ChatPreconditionRequired'
+        '503':
+          $ref: '#/components/responses/ChatTransferUnavailable'
+  /api/v1/service/chats/native/delete:
+    post:
+      operationId: deleteNativeStoredChat
+      summary: Delete native chat storage
+      description: 'SX-8 concrete private HTTP proposal: OWNER_REVIEW_PENDING / NOT_IMPLEMENTED / catalog DEFER. Only
+        existing serviceToken authenticates; Node supplies the Owner after current Go-session and host-account mapping
+        verification. Reject ANY Origin header; cookie-only/browser/admin proxy access is forbidden and this route
+        must not enter their whitelist. Enforce current owner rights and GO authority; no ST fallback.'
+      security:
+      - serviceToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NativeChatDeleteRequest'
+      responses:
+        '200':
+          description: Original durable receipt on authorized idempotent replay
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NativeChatMutationResult'
+        '400':
+          description: 'INVALID_REQUEST: malformed/unknown typed fields, cursor, scope or logical filename'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: 'AUTHENTICATION_REQUIRED: missing or invalid service token; a cookie does not suffice'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: 'ACCESS_DENIED: any Origin header, inactive/deleting Owner or rejected owner rights'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          $ref: '#/components/responses/ChatNotFound'
+        '409':
+          $ref: '#/components/responses/ChatConflict'
+        '410':
+          $ref: '#/components/responses/ChatResultExpired'
+        '413':
+          $ref: '#/components/responses/ChatTooLarge'
+        '422':
+          $ref: '#/components/responses/ChatInvalidOperation'
+        '428':
+          $ref: '#/components/responses/ChatPreconditionRequired'
+        '503':
+          $ref: '#/components/responses/ChatTransferUnavailable'
   /api/v1/service/chats/{chatId}/generation-runs:
     parameters:
     - $ref: '#/components/parameters/ChatId'
@@ -8678,7 +9120,7 @@ paths:
     post:
       operationId: importStoredChat
       summary: Stage an asynchronous JSONL import as a new chat
-      description: SX-2 frozen public shape; SX-8 semantic clarification pending Owner review in specs/contracts/chat-transfer-contract.yaml.
+      description: SX-2 public shape; SX-8 semantic clarification approved by Owner in 2308e039. Dedicated transfer HTTP details remain pending review.
         Not implemented; DEFER in specs/catalog/go-v1-api-scope.yaml until SX-8 validates it. Owner/RLS scoped cookieAuth; expected account/session headers are preconditions,
         never authorization. State-changing requests use existing CSRF and exact Origin checks. requestId and authorityEpoch
         are multipart BODY fields. Return 202 and owner-scoped statusUrl. Validate the complete UTF-8 JSONL file before
@@ -8733,7 +9175,7 @@ paths:
     get:
       operationId: getStoredChatImport
       summary: Read asynchronous import status and bounded diagnostics
-      description: SX-2 frozen public shape; SX-8 semantic clarification pending Owner review in specs/contracts/chat-transfer-contract.yaml.
+      description: SX-2 public shape; SX-8 semantic clarification approved by Owner in 2308e039. Dedicated transfer HTTP details remain pending review.
         Not implemented; DEFER in specs/catalog/go-v1-api-scope.yaml until SX-8 validates it. Owner/RLS scoped cookieAuth; expected account/session headers are preconditions,
         never authorization. State-changing requests use existing CSRF and exact Origin checks. PENDING, FAILED or
         DONE. Failure reports line numbers and fixed reasons, never input text. Result retention is 24h, independent
@@ -8772,7 +9214,8 @@ paths:
     get:
       operationId: exportStoredChat
       summary: Export complete current chat as UTF-8 JSONL
-      description: SX-2 frozen public shape; SX-8 semantic clarification pending Owner review in specs/contracts/chat-transfer-contract.yaml.
+      description: >-
+        SX-2 public shape; SX-8 semantic clarification approved by Owner in 2308e039. Dedicated transfer HTTP details remain pending review.
         Not implemented; DEFER in specs/catalog/go-v1-api-scope.yaml until SX-8 validates it. Owner/RLS scoped cookieAuth; expected account/session headers are preconditions,
         never authorization. State-changing requests use existing CSRF and exact Origin checks. One internally consistent
         current read includes original header, all messages/candidates, hidden data, variables and unknown fields.
@@ -8780,6 +9223,22 @@ paths:
         409 REVISION_CONFLICT. Do not mix revisions during streaming (use a bounded database read transaction/staging
         and apply rights barriers). Full chat regardless of loaded pages, UTF-8 with LF; semantic JSONL round trip,
         not byte-identical serialization. Recheck current authorization/deletion barriers.
+        Dedicated transfer HTTP mechanism (pending Owner review): prepare one complete current export in a
+        REPEATABLE READ transaction with existing owner/export/memory and chat-share barriers, streaming bounded
+        encrypted chunks to private staging before any success headers. This uses a dedicated 120-second transfer
+        deadline, statement_timeout=120000ms and lock_timeout=5000ms, including begin/bind/work/commit; ordinary
+        five-second transactions remain unchanged. No mixed-revision public pagination or whole-chat memory buffer.
+        At preparation completion recheck current authorization/deletion barriers. Deliver the sealed body with its
+        exact Content-Length under a delivery lease bounded by min(120s, remaining 150s end-to-end request budget).
+        Recheck the prepared chatRevision under owner/export/memory and chat-share delivery barriers; an intervening
+        change is 409 REVISION_CONFLICT. Hold those barriers until delivery completes or aborts. Cleanup staging on
+        completion, failure or cancellation, with interrupted remnants expired no later than 24h. The 256 MiB import
+        bound is not an export truncation limit. A snapshot conflict returns 409 REVISION_CONFLICT. Any capture or
+        pre-header deadline/statement/lock timeout returns 503 CHAT_TRANSFER_TIMEOUT and Retry-After 1. Never send
+        a partial successful JSONL snapshot. If delivery is interrupted after headers, abort the stream and discard
+        the partial download. The caller may retry the same optional revision, or request a fresh current snapshot
+        after a revision conflict. Node's export proxy uses its dedicated transfer budget rather than its ordinary
+        short bridge timeout. See specs/contracts/chat-transfer-contract.yaml for transaction and measurement rules.
       security:
       - cookieAuth: []
       parameters:
@@ -8801,6 +9260,9 @@ paths:
               schema:
                 type: string
               description: attachment; filename="chat.jsonl"
+            Content-Length:
+              required: true
+              schema: { type: integer, minimum: 1 }
             X-Chat-Revision:
               required: true
               schema:
@@ -8822,7 +9284,7 @@ paths:
         '429':
           $ref: '#/components/responses/ChatRateLimited'
         '503':
-          $ref: '#/components/responses/ChatUnavailable'
+          $ref: '#/components/responses/ChatTransferUnavailable'
 components:
   securitySchemes:
     bearerAuth:
@@ -8888,6 +9350,469 @@ components:
       description: ST-compatible JSON. Preserve unknown fields in full reads and round trips. Protected vc_f2/vc_binding/vc_branch_root/vc_source/vc_message_id
         identities are server-owned; public writes cannot mint authority. The service validates mes/swipes/swipe_id/swipe_info/extra/variables
         consistency. One message including all candidates is limited to 1 MiB of UTF-8 JSON; never truncate a field.
+    NativeChatOwner:
+      type: object
+      required:
+      - ownerAccountId
+      properties:
+        ownerAccountId:
+          type: string
+          pattern: ^[1-9][0-9]*$
+          description: Owner verified by Node using the current Go session and trusted host-account mapping on every
+            native request; uploaded metadata never supplies authority.
+    NativeChatScope:
+      oneOf:
+      - type: object
+        additionalProperties: false
+        required:
+        - kind
+        - characterRef
+        properties:
+          kind:
+            type: string
+            const: SINGLE
+          characterRef:
+            type: string
+            minLength: 1
+      - type: object
+        additionalProperties: false
+        required:
+        - kind
+        - groupRef
+        properties:
+          kind:
+            type: string
+            const: GROUP
+          groupRef:
+            type: string
+            minLength: 1
+      description: Stable logical owner-scoped ST relationship, exactly one characterRef or groupRef according to kind.
+        Node maps authenticated physical avatar/character/group directory names to this stable reference; physical paths/names
+        are not Go identity. Never accept a filesystem path as scope. Validate owner bindings server-side.
+    NativeChatFileName:
+      type: string
+      minLength: 1
+      pattern: ^[^/\\\x00]+\.jsonl$
+      description: Logical UTF-8 basename ending .jsonl; reject absolute paths, separators, traversal, NUL, reserved
+        names and symlink-derived input. Alias key is owner + kind + characterRef/groupRef + fileName. Retain old names
+        on rename; ambiguous resolution fails, and deleted names remain bound to tombstones and never bind another identity.
+    NativeChatWriteContext:
+      allOf:
+      - $ref: '#/components/schemas/NativeChatOwner'
+      - type: object
+        required:
+        - requestId
+        - authorityEpoch
+        properties:
+          requestId:
+            $ref: '#/components/schemas/ChatRequestId'
+          authorityEpoch:
+            $ref: '#/components/schemas/ChatAuthorityEpoch'
+      description: SX-8 concrete HTTP proposal, OWNER_REVIEW_PENDING and NOT_IMPLEMENTED. Service token only; reject
+        every Origin header (including null/empty), cookie alone never authorizes access, and these routes must not
+        enter the browser/admin proxy whitelist. Require current GO authority and exact epoch, no ST disk fallback.
+        requestId is scoped to verified owner + method + canonical native route; digest includes every normalized typed
+        field and the SHA-256 of the exact complete uploaded file, excluding transport filename/boundary. Same payload
+        replays the original receipt without a second revision increment; different payload is IDEMPOTENCY_KEY_REUSED.
+        Recheck rights/epoch before replay. Receipt body 7 days then compact deduplication through deletion/barrier,
+        as ChatRequestId. Before any native mutation commits, require its resulting F2 revision to be at most
+        9007199254740991; otherwise reject with 422 CHAT_INVALID_OPERATION without a write, matching the existing
+        native safe-integer ACK boundary. On 409/503 retain the frozen local draft, never relabel epoch, fall back to ST or automatically
+        resend a provider call. An unknown commit outcome is resolved by retrying the SAME requestId and exact payload
+        to find its receipt, never by assuming rollback or issuing a new operation. In GO/FROZEN, legacy character/avatar directory
+        rename, character/group deletion and mixed-asset Data Maid entries remain rejected before old-disk access.
+        Current character rename writes PNG in before() outside the chat transaction; its client consumes avatar/reloads,
+        not per-chat +1 ACKs. Stable characterRef/groupRef survives physical directory rename. Cross-resource rename/delete
+        requires a separately reviewed SX-11 contract and orchestration before real-account cutover; no PostgreSQL/PNG
+        atomicity or empty revision-bump CAS is promised here.
+    NativeChatListRequest:
+      allOf:
+      - $ref: '#/components/schemas/NativeChatOwner'
+      - type: object
+        required:
+        - scope
+        properties:
+          scope:
+            $ref: '#/components/schemas/NativeChatScope'
+          cursor:
+            $ref: '#/components/schemas/ChatKeysetCursor'
+          limit:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+      unevaluatedProperties: false
+      description: Current owner-scoped indexed list, with the same keyset/cursor/authority semantics as StoredChatPage.
+        Cursor binds this exact scope; aliases do not create duplicate rows.
+    NativeChatReadRequest:
+      allOf:
+      - $ref: '#/components/schemas/NativeChatOwner'
+      - type: object
+        required:
+        - scope
+        - fileName
+        - authorityEpoch
+        properties:
+          scope:
+            $ref: '#/components/schemas/NativeChatScope'
+          fileName:
+            $ref: '#/components/schemas/NativeChatFileName'
+          authorityEpoch:
+            $ref: '#/components/schemas/ChatAuthorityEpoch'
+      unevaluatedProperties: false
+      description: Resolve canonical name or retained alias within this exact owned scope. Never select the first ambiguous
+        match. A deleted alias returns NOT_FOUND_OR_FORBIDDEN and cannot resurrect a chat. Require current GO authority
+        and exact epoch; return the full current consistent JSONL, not a historical revision or a selected-candidate
+        projection.
+    NativeChatCreateRequest:
+      allOf:
+      - $ref: '#/components/schemas/NativeChatWriteContext'
+      - type: object
+        required:
+        - scope
+        - chatId
+        - chatRevision
+        - file
+        properties:
+          scope:
+            $ref: '#/components/schemas/NativeChatScope'
+          mode:
+            type: string
+            enum: [COMPANION, STORY]
+            description: Required for SINGLE; forbidden for GROUP. The server validates the owned relationship from
+              stable characterRef and this controlled mode, never from uploaded vc_binding.
+          fileName:
+            $ref: '#/components/schemas/NativeChatFileName'
+          chatId:
+            type: string
+            format: uuid
+          chatRevision:
+            type: string
+            const: '0'
+          file:
+            type: string
+            format: binary
+            description: One strict UTF-8 JSONL snapshot, LF or CRLF, optional final newline, no blank lines/trailing
+              JSON values. Maximum file 268435456 bytes, header 8388608 bytes and each full message with all candidates
+              1048576 bytes; preserve exact JSON numbers, all swipes and unknown fields. Header chat_metadata must be
+              absent or an object. Enforce these bounds while streaming; never hold the whole file in memory or truncate.
+      if:
+        properties:
+          scope:
+            properties:
+              kind:
+                const: SINGLE
+      then:
+        required: [mode]
+      else:
+        not:
+          required: [mode]
+      unevaluatedProperties: false
+      description: Native-only fresh preallocated chatId with expected revision exactly zero. Reject any live, pending
+        or tombstoned identity with this owner/id as CHAT_ID_REUSED; replay of the exact successful requestId is the
+        sole receipt replay exception. fileName defaults to chatId.jsonl; a reserved name/alias cannot be overwritten.
+        SINGLE requires controlled mode COMPANION/STORY and derives its validated owner relationship from stable
+        characterRef plus mode. GROUP forbids mode and gains no memory-sharing binding from uploaded metadata.
+        Server assigns new message/candidate identities, binding and branchRoot=chatId; never import protected authority
+        or pending-parent metadata from the upload. An existing owner/chatId onboarding binding is not a raw-chat
+        identity collision; validate its characterRef/mode and reuse it, rejecting mismatch. Only an unbound ID gets
+        a new binding; characterRef/mode alone never identifies an existing conversation. Success returns SAME proposed chatId at revision 1. Public create
+        remains server-allocated. Prepare/validate the complete upload and diff outside the transaction in bounded encrypted
+        staging (existing FieldCipher/blob chunks, at most 1 MiB per chunk). Retain staging at most 24 hours; existing
+        cleanup covers success, failure, expiry, interruption and owner deletion. Only the final dedicated transfer
+        transaction publishes ALL changes, identity/source-rights barriers and the deduplication receipt atomically.
+        It has a 120-second overall deadline, lock_timeout=5s and statement_timeout=120s, including begin/bind/work/commit;
+        do not run it through the ordinary 5-second WithOwner helper or split it into public operations commits. Any
+        begin/bind/work/commit/deadline/lock timeout returns 503 CHAT_TRANSFER_TIMEOUT with Retry-After=1; unknown commit
+        outcome may already have committed. Node uses a dedicated 150-second HTTP budget, not its ordinary bridge timeout.
+        Streaming multipart request bound is 256 MiB file plus at most 8 MiB for all non-file fields, multipart headers
+        and boundary overhead combined (264 MiB total); ordinary 8 MiB JSON body middleware must not wrap this route.
+        Preparation, transaction and response delivery together must fit the dedicated 150-second request budget. Server
+        owns binding/branch/protected identity metadata. Existing source identity, generation fencing, deletion, suppression
+        and rights rules remain enforced; a whole upload grants no source/inbox authority. Apply returned identityMapping
+        and read back canonical protected metadata before the next save.
+    NativeChatSaveRequest:
+      allOf:
+      - $ref: '#/components/schemas/NativeChatWriteContext'
+      - type: object
+        required:
+        - scope
+        - fileName
+        - chatId
+        - chatRevision
+        - file
+        properties:
+          scope:
+            $ref: '#/components/schemas/NativeChatScope'
+          fileName:
+            $ref: '#/components/schemas/NativeChatFileName'
+          chatId:
+            type: string
+            format: uuid
+          chatRevision:
+            $ref: '#/components/schemas/ChatRevision'
+          file:
+            type: string
+            format: binary
+            description: One strict UTF-8 JSONL snapshot, LF or CRLF, optional final newline, no blank lines/trailing
+              JSON values. Maximum file 268435456 bytes, header 8388608 bytes and each full message with all candidates
+              1048576 bytes; preserve exact JSON numbers, all swipes and unknown fields. Header chat_metadata must be
+              absent or an object. Enforce these bounds while streaming; never hold the whole file in memory or truncate.
+          generation:
+            $ref: '#/components/schemas/ChatGenerationCommit'
+      unevaluatedProperties: false
+      description: Require filename/alias resolution to the exact owned chatId and exact current chatRevision and authorityEpoch.
+        Stale revision INCLUDING an unrelated tail append is 409 REVISION_CONFLICT, matching native ST whole-save; retain
+        the draft. Compare-and-swap once, publish all differences, and increment chatRevision exactly once even for
+        a no-op save, preserving the same-ID/+1 F2 ACK. Existing message/candidate identities must belong to this exact
+        chat; fresh identities are server-issued and mapped, and deleted identities cannot return. Generated final/partial
+        assistant differences require generation and the existing persisted-input run fence, committed with this same
+        transaction; an ordinary save never authorizes provider output or clears suppression. Prepare/validate the complete
+        upload and diff outside the transaction in bounded encrypted staging (existing FieldCipher/blob chunks, at most
+        1 MiB per chunk). Retain staging at most 24 hours; existing cleanup covers success, failure, expiry, interruption
+        and owner deletion. Only the final dedicated transfer transaction publishes ALL changes, identity/source-rights
+        barriers and the deduplication receipt atomically. It has a 120-second overall deadline, lock_timeout=5s and
+        statement_timeout=120s, including begin/bind/work/commit; do not run it through the ordinary 5-second WithOwner
+        helper or split it into public operations commits. Any begin/bind/work/commit/deadline/lock timeout returns
+        503 CHAT_TRANSFER_TIMEOUT with Retry-After=1; unknown commit outcome may already have committed. Node uses a
+        dedicated 150-second HTTP budget, not its ordinary bridge timeout. Streaming multipart request bound is 256
+        MiB file plus at most 8 MiB for all non-file fields, multipart headers and boundary overhead combined (264 MiB
+        total); ordinary 8 MiB JSON body middleware must not wrap this route. Preparation, transaction and response
+        delivery together must fit the dedicated 150-second request budget. Server owns binding/branch/protected identity
+        metadata. Existing source identity, generation fencing, deletion, suppression and rights rules remain enforced;
+        a whole upload grants no source/inbox authority. Apply returned identityMapping and read back canonical protected
+        metadata before the next save.
+    NativeChatForkRequest:
+      allOf:
+      - $ref: '#/components/schemas/NativeChatWriteContext'
+      - type: object
+        required:
+        - scope
+        - chatId
+        - chatRevision
+        - parentChatId
+        - parentRevision
+        - file
+        properties:
+          scope:
+            $ref: '#/components/schemas/NativeChatScope'
+          fileName:
+            $ref: '#/components/schemas/NativeChatFileName'
+          chatId:
+            type: string
+            format: uuid
+          chatRevision:
+            type: string
+            const: '0'
+          parentChatId:
+            type: string
+            format: uuid
+          parentRevision:
+            $ref: '#/components/schemas/ChatRevision'
+          file:
+            type: string
+            format: binary
+            description: One strict UTF-8 JSONL snapshot, LF or CRLF, optional final newline, no blank lines/trailing
+              JSON values. Maximum file 268435456 bytes, header 8388608 bytes and each full message with all candidates
+              1048576 bytes; preserve exact JSON numbers, all swipes and unknown fields. Header chat_metadata must be
+              absent or an object. Enforce these bounds while streaming; never hold the whole file in memory or truncate.
+      unevaluatedProperties: false
+      description: Native-only fresh child chatId at revision zero; parentChatId must be a different currently live
+        owned chat at EXACT parentRevision. A SINGLE child requires a verified SINGLE parent with the SAME stable
+        characterRef and inherits that parent's validated mode and relationship; GROUP-to-SINGLE cannot fabricate a
+        binding and is rejected. A GROUP child may copy a verified owned SINGLE or GROUP parent into the supplied
+        owned GROUP scope (preserving the supported SINGLE-to-GROUP conversion), but never automatically inherits
+        a COMPANION/STORY or memory-sharing binding. Uploaded vc_binding/mode never grants either child authority.
+        Check parent and child eligibility again in the final transaction.
+        Stale parent is 409 REVISION_CONFLICT; reused/pending/tombstoned child is CHAT_ID_REUSED. Accept the complete
+        native child JSONL snapshot, including bookmark metadata, variables and unknown fields; do not synthesize a
+        public throughMessageId-only fork. Inherit branchRoot and existing fork suppression rules from the verified
+        parent; allocate NEW child message/candidate/source identities and return explicit mappings. The consumer MUST
+        apply the mapping/read back before saving again and cannot continue using parent source identities. Strip pending
+        vc_f2_parent and ignore uploaded binding/branch authority. fileName defaults to child chatId.jsonl; success
+        returns SAME proposed child chatId at revision 1. Public fork semantics remain unchanged. Prepare/validate the
+        complete upload and diff outside the transaction in bounded encrypted staging (existing FieldCipher/blob chunks,
+        at most 1 MiB per chunk). Retain staging at most 24 hours; existing cleanup covers success, failure, expiry,
+        interruption and owner deletion. Only the final dedicated transfer transaction publishes ALL changes, identity/source-rights
+        barriers and the deduplication receipt atomically. It has a 120-second overall deadline, lock_timeout=5s and
+        statement_timeout=120s, including begin/bind/work/commit; do not run it through the ordinary 5-second WithOwner
+        helper or split it into public operations commits. Any begin/bind/work/commit/deadline/lock timeout returns
+        503 CHAT_TRANSFER_TIMEOUT with Retry-After=1; unknown commit outcome may already have committed. Node uses a
+        dedicated 150-second HTTP budget, not its ordinary bridge timeout. Streaming multipart request bound is 256
+        MiB file plus at most 8 MiB for all non-file fields, multipart headers and boundary overhead combined (264 MiB
+        total); ordinary 8 MiB JSON body middleware must not wrap this route. Preparation, transaction and response
+        delivery together must fit the dedicated 150-second request budget. Server owns binding/branch/protected identity
+        metadata. Existing source identity, generation fencing, deletion, suppression and rights rules remain enforced;
+        a whole upload grants no source/inbox authority. Apply returned identityMapping and read back canonical protected
+        metadata before the next save.
+    NativeChatTarget:
+      type: object
+      additionalProperties: false
+      required:
+      - fileName
+      - chatId
+      - chatRevision
+      properties:
+        fileName:
+          $ref: '#/components/schemas/NativeChatFileName'
+        chatId:
+          type: string
+          format: uuid
+        chatRevision:
+          $ref: '#/components/schemas/ChatRevision'
+      description: Exact observed owned target baseline. Alias/fileName must resolve to this chatId, and chatRevision
+        must equal current revision. Missing, duplicate, foreign or mismatched target never authorizes another row.
+    NativeChatRenameRequest:
+      allOf:
+      - $ref: '#/components/schemas/NativeChatWriteContext'
+      - type: object
+        required:
+        - scope
+        - target
+        - toFileName
+        properties:
+          scope:
+            $ref: '#/components/schemas/NativeChatScope'
+          target:
+            $ref: '#/components/schemas/NativeChatTarget'
+          toFileName:
+            $ref: '#/components/schemas/NativeChatFileName'
+      unevaluatedProperties: false
+      description: Rename within this scope to an unoccupied, unreserved logical filename; do not change chatId or infer
+        title edits from the filename. Preserve source names as aliases. All checks, exact revision CAS, alias/tombstone
+        updates, rights barriers and receipt commit in ONE owner-bound transaction. Success preserves chatId and advances
+        its chatRevision exactly once; timeout never permits fallback or partial success. Any stale target is REVISION_CONFLICT.
+        Old names remain lookup aliases and cannot rebind, including after deletion.
+    NativeChatDeleteRequest:
+      allOf:
+      - $ref: '#/components/schemas/NativeChatWriteContext'
+      - type: object
+        required:
+        - scope
+        - target
+        properties:
+          scope:
+            $ref: '#/components/schemas/NativeChatScope'
+          target:
+            $ref: '#/components/schemas/NativeChatTarget'
+      unevaluatedProperties: false
+      description: Delete exactly this observed chat, retaining the chat/alias identity tombstones and enforcing source
+        revocation. All checks, exact revision CAS, alias/tombstone updates, rights barriers and receipt commit in ONE
+        owner-bound transaction. Success preserves chatId and advances its chatRevision exactly once; timeout never
+        permits fallback or partial success. Any stale target is REVISION_CONFLICT. Old names remain lookup aliases
+        and cannot rebind, including after deletion.
+    NativeChatIdentityMapping:
+      type: object
+      additionalProperties: false
+      required:
+      - messageIndex
+      - inputMessageId
+      - messageId
+      - candidates
+      properties:
+        messageIndex:
+          type: integer
+          minimum: 0
+        inputMessageId:
+          type:
+          - string
+          - 'null'
+          format: uuid
+        messageId:
+          type: string
+          format: uuid
+        candidates:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            additionalProperties: false
+            required:
+            - candidateIndex
+            - inputCandidateId
+            - candidateId
+            - sourceRevision
+            - sourceGeneration
+            properties:
+              candidateIndex:
+                type: integer
+                minimum: 0
+              inputCandidateId:
+                type:
+                - string
+                - 'null'
+                format: uuid
+              candidateId:
+                type: string
+                format: uuid
+              sourceRevision:
+                $ref: '#/components/schemas/ChatRevision'
+              sourceGeneration:
+                $ref: '#/components/schemas/ChatRevision'
+      description: One row for every uploaded message in JSONL message order (zero-based, excluding header); candidateIndex
+        is zero-based swipe order or zero for a sole candidate. input IDs are nullable for fresh native data. The selected
+        top-level candidate and matching swipe entry map to the SAME candidateId. Result IDs/source versions are authoritative;
+        existing save identities are validated/preserved, fresh/create/fork identities are server-issued. Never rewrite
+        arbitrary UUID-looking extension strings.
+    NativeChatWriteResult:
+      type: object
+      additionalProperties: false
+      required:
+      - requestId
+      - chat
+      - identityMapping
+      properties:
+        requestId:
+          $ref: '#/components/schemas/ChatRequestId'
+        chat:
+          $ref: '#/components/schemas/StoredChatSummary'
+        identityMapping:
+          type: array
+          items:
+            $ref: '#/components/schemas/NativeChatIdentityMapping'
+      description: Durable same-ID/+1 receipt with complete positional identity mapping. Apply mappings to top-level
+        messages, all swipe entries and source revisions/generations, then read back the full canonical header/binding/branch
+        before subsequent native saves. Node translates decimal revisions to F2 safe integers only if exactly representable;
+        otherwise return 422 CHAT_INVALID_OPERATION rather than round. A retry replays this exact receipt and never
+        remaps again.
+    NativeChatMutationAck:
+      type: object
+      additionalProperties: false
+      required:
+      - scope
+      - fileName
+      - chatId
+      - chatRevision
+      - authorityEpoch
+      - deleted
+      properties:
+        scope:
+          $ref: '#/components/schemas/NativeChatScope'
+        fileName:
+          $ref: '#/components/schemas/NativeChatFileName'
+        chatId:
+          type: string
+          format: uuid
+        chatRevision:
+          $ref: '#/components/schemas/ChatRevision'
+        authorityEpoch:
+          $ref: '#/components/schemas/ChatAuthorityEpoch'
+        deleted:
+          type: boolean
+      description: Committed identity and exact prior chatRevision + 1. Rename returns the new canonical scope/name
+        and deleted=false; delete returns the former canonical scope/name and deleted=true. Retained aliases are never
+        rebound.
+    NativeChatMutationResult:
+      type: object
+      additionalProperties: false
+      required:
+      - requestId
+      - result
+      properties:
+        requestId:
+          $ref: '#/components/schemas/ChatRequestId'
+        result:
+          $ref: '#/components/schemas/NativeChatMutationAck'
     StoredChatSummary:
       type: object
       additionalProperties: false
@@ -8903,6 +9828,8 @@ components:
       - metadataRevision
       - orderRevision
       - authorityEpoch
+      - fileName
+      - fileAliases
       - title
       - messageCount
       - updatedAt
@@ -8944,6 +9871,18 @@ components:
           $ref: '#/components/schemas/ChatRevision'
         authorityEpoch:
           $ref: '#/components/schemas/ChatRevision'
+        fileName:
+          $ref: '#/components/schemas/NativeChatFileName'
+          readOnly: true
+          description: SX-8 read-field addition pending HTTP review, not yet returned by current KEEP readers. Current canonical logical filename within kind and characterRef/groupRef.
+        fileAliases:
+          type: array
+          readOnly: true
+          uniqueItems: true
+          items:
+            $ref: '#/components/schemas/NativeChatFileName'
+          description: Retained prior filenames in this same stable kind/ref scope, excluding the current canonical name;
+            existing favorites/Helper resolve the saved filename with their relationship scope.
         title:
           type: string
         messageCount:
@@ -8955,7 +9894,9 @@ components:
       description: Stable chatId equals vc_f2.id on trusted migration; rename never changes identity. List rows use
         indexed metadata, not a body scan. SINGLE binds characterRef and COMPANION/STORY through server validation;
         GROUP keeps its existing speaker semantics and may have null conversationId/relationshipId without memory-sharing
-        permission. A new root has branchRoot=chatId.
+        permission. A new root has branchRoot=chatId. fileName/fileAliases are SX-8 proposed read-only fields,
+        pending concrete HTTP review and implementation; no public alias mutation or alias endpoint is added.
+        Existing favorites resolve their saved chatFile in its original relationship scope without rewriting saved text/mesId.
     StoredChat:
       type: object
       additionalProperties: false
@@ -10149,7 +11090,7 @@ components:
         all message/candidate IDs and recognized internal references; preserve and report unknown extension references.
         Never trust input owner, binding, revision or branchRoot; trusted migration is a separate private channel. The
         canonical replay digest includes the file content hash, not its upload filename. See ChatRequestId for body-only
-        idempotency. SX-8 clarification pending review — this import's acceptance/result expires after 24h (overriding
+        idempotency. SX-8 clarification approved by Owner — this import's acceptance/result expires after 24h (overriding
         the generic seven-day receipt period); compact owner/requestId/content-digest deduplication lasts until owner
         deletion. A same-content retry returns the original 202 acceptance, even when the status resource has become
         DONE or FAILED; its PENDING field describes original acceptance, not current status. After 24h return 410
@@ -10157,7 +11098,7 @@ components:
         429 RATE_LIMITED with Retry-After. Transient database/object failures remain PENDING under the existing retry lease until
         expiry; they do not become malformed-input errors. The header's chat_metadata object becomes metadata;
         absent chat_metadata means an empty metadata object; explicit null/non-object is INVALID_HEADER.
-        Other header fields are preserved. The proposed NEW header record is limited to 8 MiB and each raw message record to
+        Other header fields are preserved. The approved header record is limited to 8 MiB and each raw message record to
         1 MiB, excluding CRLF; the existing 1 MiB canonical stored-message bound still applies after remapping.
         Blank lines and trailing JSON values are invalid. Known identity fields
         and extension-reference counting are enumerated in specs/contracts/chat-transfer-contract.yaml; no arbitrary
@@ -10435,6 +11376,7 @@ components:
         - CHAT_IMPORT_INVALID
         - CHAT_IMPORT_EXPIRED
         - CHAT_SEARCH_TIMEOUT
+        - CHAT_TRANSFER_TIMEOUT
     ServiceModeStatus:
       type: object
       description: Current generation-service mode (FR-RES-005).
@@ -16985,6 +17927,29 @@ components:
         status response never carries a token — poll it to learn the request
         state, and recover to re-issue if the token was lost.
   responses:
+    ChatTransferUnavailable:
+      description: >-
+        CHAT_TRANSFER_TIMEOUT (503) is a bounded long-transfer timeout, including context deadlines, PostgreSQL
+        statement_timeout/lock_timeout, and failures while beginning, binding, working or acknowledging commit.
+        Retry-After is 1 for timeouts. Keep the local draft. A commit acknowledgement timeout has an UNKNOWN outcome;
+        replay the same requestId and exact complete payload to resolve the durable receipt, never allocate another
+        requestId, relabel an authority epoch, fall back to ST or retry a provider send. Export timeouts before headers
+        return this JSON error and no partial JSONL. After success headers, abort an interrupted download and discard
+        its partial body; do not append an error object to the JSONL. SCHEMA_UNAVAILABLE remains the fixed code for
+        other unavailable storage/restore state. No raw SQL, paths, content or credentials are returned. Serializable
+        snapshot conflicts (SQLSTATE 40001) are 409 REVISION_CONFLICT, not opaque storage failures.
+      headers:
+        Retry-After:
+          description: Seconds before retrying the same transfer request.
+          schema: { type: integer, const: 1 }
+      content:
+        application/json:
+          schema:
+            allOf:
+            - $ref: '#/components/schemas/ErrorEnvelope'
+            - type: object
+              properties:
+                code: { type: string, enum: [CHAT_TRANSFER_TIMEOUT, SCHEMA_UNAVAILABLE] }
     ChatBadRequest:
       description: 'INVALID_REQUEST: malformed query/body, unknown command fields, mutually exclusive cursors/anchor,
         cursor tampering or cursor bound to another chat/view/filter. Never interpret cursor bytes as an ID.'
@@ -17036,7 +18001,7 @@ components:
             $ref: '#/components/schemas/ErrorEnvelope'
     ChatTooLarge:
       description: 'CHAT_PAYLOAD_TOO_LARGE: message exceeds 1 MiB including candidates, operation exceeds 8 MiB UTF-8
-        JSON, staged import file exceeds 256 MiB, or import header exceeds the proposed SX-8 8 MiB bound. Reject explicitly; never truncate unknown fields or a message.'
+        JSON, staged import file exceeds 256 MiB, or import header exceeds the approved SX-8 8 MiB bound. Reject explicitly; never truncate unknown fields or a message.'
       content:
         application/json:
           schema:

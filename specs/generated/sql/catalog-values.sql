@@ -195,6 +195,7 @@ INSERT INTO ref_catalog_value(catalog_type, code, ordinal) VALUES ('ErrorCode','
 INSERT INTO ref_catalog_value(catalog_type, code, ordinal) VALUES ('ErrorCode','CHAT_IMPORT_INVALID',37) ON CONFLICT (catalog_type, code) DO UPDATE SET ordinal=EXCLUDED.ordinal;
 INSERT INTO ref_catalog_value(catalog_type, code, ordinal) VALUES ('ErrorCode','CHAT_IMPORT_EXPIRED',38) ON CONFLICT (catalog_type, code) DO UPDATE SET ordinal=EXCLUDED.ordinal;
 INSERT INTO ref_catalog_value(catalog_type, code, ordinal) VALUES ('ErrorCode','CHAT_SEARCH_TIMEOUT',39) ON CONFLICT (catalog_type, code) DO UPDATE SET ordinal=EXCLUDED.ordinal;
+INSERT INTO ref_catalog_value(catalog_type, code, ordinal) VALUES ('ErrorCode','CHAT_TRANSFER_TIMEOUT',40) ON CONFLICT (catalog_type, code) DO UPDATE SET ordinal=EXCLUDED.ordinal;
 INSERT INTO ref_catalog_value(catalog_type, code, ordinal) VALUES ('MessageFeedbackKind','TOO_MECHANICAL',0) ON CONFLICT (catalog_type, code) DO UPDATE SET ordinal=EXCLUDED.ordinal;
 INSERT INTO ref_catalog_value(catalog_type, code, ordinal) VALUES ('MessageFeedbackKind','FORGOT_CONTEXT',1) ON CONFLICT (catalog_type, code) DO UPDATE SET ordinal=EXCLUDED.ordinal;
 INSERT INTO ref_catalog_value(catalog_type, code, ordinal) VALUES ('MessageFeedbackKind','CROSSED_BOUNDARY',2) ON CONFLICT (catalog_type, code) DO UPDATE SET ordinal=EXCLUDED.ordinal;

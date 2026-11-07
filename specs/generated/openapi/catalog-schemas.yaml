@@ -266,6 +266,7 @@ components:
       - CHAT_IMPORT_INVALID
       - CHAT_IMPORT_EXPIRED
       - CHAT_SEARCH_TIMEOUT
+      - CHAT_TRANSFER_TIMEOUT
     MessageFeedbackKind:
       type: string
       enum:

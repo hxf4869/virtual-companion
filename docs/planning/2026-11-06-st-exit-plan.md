@@ -420,13 +420,19 @@ JSONL 新 API 在一个一致的当前读取中导出**完整**头部与全部�
 
 原始 JSONL、PNG 卡、世界书、预设和 blob 的备份/回退步骤按 ADR-0013 §4；完整账号导出不能继续受旧 ST 域 64 MiB 上限阻挡大历史，应采用有界分片/流式任务，保留一次性鉴权下载和删除屏障。本轮没有改变任何已实现容量限制。
 
-### 4.7.1 SX-8 补充契约提案（2026-11-07，待 Owner 复审）
+### 4.7.1 SX-8 补充契约（语义已批准，具体私有 HTTP 待复审）
 
-具体语义见 [chat-transfer-contract.yaml](../../specs/contracts/chat-transfer-contract.yaml)。公开接口形状不变，补明24h导入回执例外、同请求返回原202并查询状态、短暂存储错误保持PENDING，以及保护字段和未知引用的处理。大文件按1MiB复用现有加密blob分块，不能把256MiB整包读入内存；全部校验后一次发布。
+Owner 已批准 `2308e039`，具体语义见 [chat-transfer-contract.yaml](../../specs/contracts/chat-transfer-contract.yaml)。公开接口形状不变，补明24h导入回执例外、同请求返回原202并查询状态、短暂存储错误保持PENDING，以及保护字段和未知引用的处理。大文件按1MiB复用现有加密blob分块，不能把256MiB整包读入内存；全部校验后一次发布。
 
-native 服务门面保留 F2 的预分配新UUID、精确整聊CAS与同ID/+1 ACK；公开创建与fork继续服务端分配ID。文件名按Owner+角色/群聊作用域建立别名，旧收藏通过原关系作用域解析；旧名不重绑定其他聊天。native整聊输入上限256MiB，先暂存和计算差异、最终事务精确CAS，不用多次公共operations伪装一次保存。具体私有HTTP形状在这份语义提案获准后补入OpenAPI，不能先开放路由。
+native 服务门面保留 F2 的预分配新UUID、精确整聊CAS与同ID/+1 ACK；公开创建与fork继续服务端分配ID。文件名按Owner+角色/群聊作用域建立别名，旧收藏通过原关系作用域解析；旧名不重绑定其他聊天。native整聊输入上限256MiB，先暂存和计算差异、最终事务精确CAS，不用多次公共operations伪装一次保存。具体私有HTTP已补入OpenAPI，仍须独立提交供Owner复审，不能先开放路由。纯聊天提供list/read/create/save/fork/rename/delete；fileName/fileAliases为同stable scope只读字段。资源目录改名、角色/群组删除与mixed Data Maid含旧盘资源，继续拒绝GO/FROZEN，不承诺PG+PNG原子性，作为SX-11及真实切换前置。
 
 可信迁移以独立操作工具及manifest/checkpoint完成；冻结持久权威后关闭ST本地准入，等待包括断开客户端在内的处理函数finally结束，再导出。重启从本地关闭标记恢复；来源/遗忘/删除记录与原始聊天一并对账，反向导出必须取冻结后的最新Go状态。演练只用合成数据和隔离库，真实切换仍需Owner另行授权。CM-4迁移需求到达后从origin/main独立分支先占实际下一个版本；SX-8迁移后顺延，不抢占或预先制造空迁移。
+
+### 4.7.2 长操作与大小预检（Owner 2026-11-07 附条件）
+
+普通5s事务不改。公开导出/native读取用独立REPEATABLE READ、既有owner/export/memory/聊天读锁，在120s快照内流式封存加密分块，封存及权限重核后才发完整Content-Length；中途传输断开只能丢弃不完整下载。native全部差异一次提交、可信迁移每聊天暂存分别用120s专用事务，`statement_timeout=120s`、`lock_timeout=5s`；前置校验在事务外，不能把大保存拆成多个公共operations。超时从begin/bind/work/commit各阶段统一为503 `CHAT_TRANSFER_TIMEOUT` / Retry-After 1；commit ACK不明时用原requestId或checkpoint判定，不假定已回滚，不丢草稿。具体规则在主OpenAPI及ST私有freeze/drain/status描述和补充契约，尚待具体HTTP复审。
+
+新增只读 `chat-size-preflight.mjs --root <显式聊天根>`：只报聚合字节分布、匿名文件序号、超8MiB header/1MiB消息的数量及涉及文件数，不输出内容、文件名或ID；不跟随符号链接、不缓存整行。先用合成数据验证，真实盘点必须Owner另行授权，是切换前置。最终实现验收须独立在GOMAXPROCS=2下测20,000条、约50MiB聊天的完整导出与全量改写耗时、峰值heap和RSS；当前未运行这些性能实测，不能用codec吞吐替代。GO native整聊保存遇无关尾追加409，与ST一致，回归必须证明序列化草稿保留。
 
 ## 5. 阶段 0 离线测量
 

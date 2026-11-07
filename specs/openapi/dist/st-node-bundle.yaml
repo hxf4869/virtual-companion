@@ -107,8 +107,134 @@ paths:
           $ref: '#/components/responses/Conflict'
         '503':
           $ref: '#/components/responses/Unavailable'
+  /internal/v1/st/chat-cutover/freeze:
+    post:
+      operationId: stFreezeChatAdmission
+      summary: Persistently close old-chat admission for one frozen Owner
+      description: SX-8 private HTTP proposal, not implemented; requires Owner review. Existing private service token only;
+        reject every Origin header, including an empty one, and verify the configured owner-to-handle mapping. The trusted
+        operator first commits ST-to-FROZEN authority CAS in Go with a new epoch. ST never queries Go for authority. Synchronously
+        close this Owner's local admission before any await, then fsync and atomically rename .vc-f2/chat-cutover.json (0700
+        directory, 0600 file). Reject symlinks/corrupt markers. No handler may enter while persistence is pending. Return
+        200 only after the marker is durable; activeHandlers may still be nonzero. Same run/epoch is idempotent; a different
+        run/epoch is 409 REVISION_CONFLICT and stays closed. This is not proof of drain and does not authorize export. A failed
+        close remains closed in the current process; a restart loads the durable marker or fails closed on an interrupted/corrupt
+        marker. The single Node process serves this ST root; a second process using the same root is unsupported and must
+        block cutover. For this and drain/status, the Node route deadline is 150 seconds; control work is bounded to 120 seconds.
+        A timeout returns 503 CHAT_TRANSFER_TIMEOUT with Retry-After 1, never a generic storage failure or success.
+      security:
+      - serviceToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChatCutoverRequest'
+      responses:
+        '200':
+          description: Admission closed durably; not necessarily drained
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatCutoverStatus'
+        '400':
+          $ref: '#/components/responses/Invalid'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/ChatCutoverForbidden'
+        '409':
+          $ref: '#/components/responses/ChatCutoverConflict'
+        '503':
+          $ref: '#/components/responses/ChatTransferUnavailable'
+  /internal/v1/st/chat-cutover/drain:
+    post:
+      operationId: stDrainChatHandlers
+      summary: Wait for admitted server handlers to finish before trusted export
+      description: SX-8 private HTTP proposal, not implemented; requires Owner review. Same authentication and owner/run/epoch
+        checks as freeze. The gate must already be durably closed for this exact run and epoch. Wait for active sources, inbox
+        saves/readbacks and supported native chat-file handlers to finish their finally blocks. Socket finish/close, Go caller
+        timeout, elapsed time and a disconnected client never decrement this count. Late requests are rejected without touching
+        the old chat disk. Return DRAINED only when activeHandlers is zero; cancellation or the 120-second wait deadline keeps
+        the gate closed, returns a typed timeout when the response can still be sent, and forbids export. Retrying this same
+        request waits for the same drain. The trusted local operator may export only after DRAINED and must recheck the same
+        run/epoch before opening frozen files. Existing F2 pending journal recovery and verification must finish before the
+        manifest is sealed; an unreadable or unknown source blocks export rather than being treated as deleted. Export and
+        import are separate trusted local CLI operations, not public uploads. The CLI verifies each manifest/hash and stages
+        each chat outside the database; then uses a dedicated owner-bound 120-second transaction per chat, with PostgreSQL
+        statement_timeout=120000ms and lock_timeout=5000ms, preserving FORCE RLS and owner/export/memory barriers. It does
+        not call the normal five-second WithOwner boundary. All raw identities, tombstones and that chat's STAGED checkpoint
+        commit together. Authority stays FROZEN until the entire run and current rights union are verified. Begin/bind/lock/work/statement/commit
+        timeouts map to the same CHAT_TRANSFER_TIMEOUT outcome; retry the same (run,owner,oldIdentity,sourceHash) checkpoint.
+        An unknown commit acknowledgement is resolved from that checkpoint, never by allocating another identity. No failed
+        or partial chat is marked STAGED. Full activation and any real-account execution require separate Owner authorization.
+        See specs/contracts/chat-transfer-contract.yaml for the complete trusted artifact contract.
+      security:
+      - serviceToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChatCutoverRequest'
+      responses:
+        '200':
+          description: Server processing completed; exact run remains durably closed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatCutoverDrained'
+        '400':
+          $ref: '#/components/responses/Invalid'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/ChatCutoverForbidden'
+        '409':
+          $ref: '#/components/responses/ChatCutoverConflict'
+        '503':
+          $ref: '#/components/responses/ChatTransferUnavailable'
+  /internal/v1/st/chat-cutover/status:
+    post:
+      operationId: stReadChatDrainStatus
+      summary: Read exact run admission and active-handler status without changing it
+      description: SX-8 private HTTP proposal, not implemented; requires Owner review. Same service authentication, Origin
+        rejection and owner/run/epoch validation as freeze. Pure in-memory status, with the marker loaded before accepting
+        traffic on startup. No Go authority callback and no old-chat disk read. DRAINED means closed, durable and activeHandlers=0.
+        A different run/epoch or an open gate is 409; unavailable marker state is 503. This does not silently close or reopen
+        a gate. Neither this route nor a browser/native request changes database authority. Logs contain fixed operation/outcome
+        and aggregate counts only, no owner/run identity.
+      security:
+      - serviceToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChatCutoverRequest'
+      responses:
+        '200':
+          description: Current admission/handler state for the exact run
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatCutoverStatus'
+        '400':
+          $ref: '#/components/responses/Invalid'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/ChatCutoverForbidden'
+        '409':
+          $ref: '#/components/responses/ChatCutoverConflict'
+        '503':
+          $ref: '#/components/responses/ChatTransferUnavailable'
 components:
   securitySchemes:
+    serviceToken:
+      type: http
+      scheme: bearer
+      description: Existing private ST service token; never sent to browsers.
     vcSession:
       type: apiKey
       in: cookie
@@ -136,6 +262,78 @@ components:
         type: string
         pattern: ^[1-9][0-9]*$
   schemas:
+    ChatCutoverRequest:
+      type: object
+      additionalProperties: false
+      required:
+      - ownerAccountId
+      - runId
+      - authorityEpoch
+      properties:
+        ownerAccountId:
+          type: string
+          pattern: ^[1-9][0-9]{0,18}$
+        runId:
+          type: string
+          format: uuid
+        authorityEpoch:
+          type: string
+          pattern: ^[1-9][0-9]*$
+      description: The authenticated operator supplies the already committed FROZEN epoch; ST does not infer it.
+    ChatCutoverStatus:
+      type: object
+      additionalProperties: false
+      required:
+      - ownerAccountId
+      - runId
+      - authorityEpoch
+      - state
+      - closed
+      - durable
+      - activeHandlers
+      properties:
+        ownerAccountId:
+          type: string
+          pattern: ^[1-9][0-9]{0,18}$
+        runId:
+          type: string
+          format: uuid
+        authorityEpoch:
+          type: string
+          pattern: ^[1-9][0-9]*$
+        state:
+          type: string
+          enum:
+          - CLOSED
+          - DRAINED
+        closed:
+          const: true
+        durable:
+          const: true
+        activeHandlers:
+          type: integer
+          minimum: 0
+      oneOf:
+      - properties:
+          state:
+            const: CLOSED
+          activeHandlers:
+            type: integer
+            minimum: 1
+      - properties:
+          state:
+            const: DRAINED
+          activeHandlers:
+            const: 0
+    ChatCutoverDrained:
+      allOf:
+      - $ref: '#/components/schemas/ChatCutoverStatus'
+      - type: object
+        properties:
+          state:
+            const: DRAINED
+          activeHandlers:
+            const: 0
     ValueState:
       type: object
       required:
@@ -242,6 +440,48 @@ components:
         message:
           type: string
   responses:
+    ChatCutoverForbidden:
+      description: ACCESS_DENIED; browser Origin or unmapped/inactive owner is rejected.
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+            - code
+            properties:
+              code:
+                const: ACCESS_DENIED
+    ChatCutoverConflict:
+      description: REVISION_CONFLICT; run/epoch mismatch or gate not durably closed. Keep it closed; never infer drain.
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+            - code
+            properties:
+              code:
+                const: REVISION_CONFLICT
+    ChatTransferUnavailable:
+      description: CHAT_TRANSFER_TIMEOUT for a bounded operation/drain timeout, SCHEMA_UNAVAILABLE for unavailable/corrupt
+        local state. Gate stays closed. Retry-After is 1 for timeout. Retry the same exact run/epoch; never export on failure.
+      headers:
+        Retry-After:
+          schema:
+            type: integer
+            const: 1
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+            - code
+            properties:
+              code:
+                type: string
+                enum:
+                - CHAT_TRANSFER_TIMEOUT
+                - SCHEMA_UNAVAILABLE
     Invalid:
       description: 非法路径、文档、基线或变更；无写入
       content:

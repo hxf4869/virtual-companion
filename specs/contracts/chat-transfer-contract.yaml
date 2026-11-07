@@ -1,6 +1,6 @@
 schemaVersion: 1
 contractId: SX8_CHAT_TRANSFER_AND_NATIVE_COMPATIBILITY
-status: OWNER_REVIEW_PENDING
+status: SEMANTICS_APPROVED_HTTP_REVIEW_PENDING
 scope:
   publicApi: specs/openapi/virtual-companion.yaml
   implementationStatus: NOT_IMPLEMENTED
@@ -14,7 +14,7 @@ scope:
 publicJsonl:
   maxFileBytes: 268435456
   maxMessageBytes: 1048576
-  maxHeaderBytes: 8388608 # NEW capacity limit, explicitly pending Owner review
+  maxHeaderBytes: 8388608 # Owner approved 2026-11-07
   maxIssues: 100
   activeImportsPerOwner: 1
   resultAndStagingRetentionHours: 24
@@ -81,6 +81,57 @@ publicJsonl:
     format: UTF8_JSONL_with_LF_all_messages_all_swipes_and_unknown_fields
     partialResultAsSuccess: forbidden
 
+longOperations:
+  shortTransactionDefault: unchanged_5_seconds
+  dedicatedTransferTransaction:
+    totalTimeoutSeconds: 120
+    statementTimeoutMilliseconds: 120000
+    lockTimeoutMilliseconds: 5000
+    ownerBinding: same_verified_owner_context_and_FORCE_RLS_as_short_transactions
+    ordinaryWriterBudget: unchanged
+    timeoutScope: begin_bind_lock_statement_work_and_commit
+    timeoutResponse: HTTP_503_CHAT_TRANSFER_TIMEOUT_with_Retry_After_1
+    ambiguousCommit: retry_original_requestId_and_payload_to_resolve_durable_receipt_never_new_id
+    clientCancellation: cancel_DB_work_and_discard_unsealed_staging_keep_draft
+    nodeHttpBudgetSeconds: 150
+    transportDeadlines: long_route_overrides_must_cover_transfer_budget_without_changing_other_routes
+  publicExport:
+    isolation: REPEATABLE_READ
+    locks: existing_owner_export_memory_rights_and_chat_share_barriers
+    capture: stream_complete_single_revision_to_private_encrypted_chunk_staging_inside_120s_snapshot
+    response: no_success_headers_or_body_until_capture_complete_and_current_rights_rechecked
+    deliveryRecheck: exact_prepared_chatRevision_under_same_owner_export_memory_chat_barriers_or_409_REVISION_CONFLICT
+    lockOrder: owner_then_export_then_memory_then_chat
+    serializationConflict: SQLSTATE_40001_maps_to_409_REVISION_CONFLICT
+    delivery: min_120s_and_remaining_150s_total_request_budget_hold_rights_delivery_barrier
+    failureBeforeHeaders: typed_503_no_partial_JSONL_success
+    failureAfterHeaders: abort_stream_and_client_discards_partial_file_never_JSONL_error_record
+    retry: same_optional_revision_or_fresh_export_if_revision_now_conflicts
+  nativeSave:
+    preparation: bounded_upload_validate_and_diff_outside_transaction
+    commit: one_120s_transfer_transaction_exact_revision_CAS_all_changes_sources_and_receipt
+    limits: never_split_into_multiple_public_operation_commits
+    tailAppendConflict: HTTP_409_REVISION_CONFLICT_same_as_ST_preserve_serialized_draft
+  trustedPerChatStage:
+    channel: operator_CLI_calls_owner_bound_store_directly_no_public_or_browser_route
+    preparation: verify_manifest_file_hash_and_codec_outside_transaction
+    commit: one_120s_transfer_transaction_per_chat_with_checkpoint_and_all_identity_records
+    visibility: authority_remains_FROZEN_until_entire_run_verifies
+    retry: same_migrationRun_owner_oldIdentity_sourceHash_resumes_checkpoint
+    failure: keep_authority_and_ST_admission_frozen_no_partial_chat_marked_STAGED
+  performanceAcceptance:
+    environment: GOMAXPROCS_2_no_other_heavy_work
+    fixture: 20000_messages_approximately_50_MiB_full_JSONL
+    report: [export_elapsed_ms, whole_rewrite_save_elapsed_ms, peak_Go_heap_bytes, peak_process_RSS_bytes]
+    cover: export_and_all_messages_changed_in_one_native_save_not_small_delta_only
+    errors: explicit_timeout_injection_and_unknown_commit_receipt_replay
+  realDataSizePreflight:
+    tool: integrations/sillytavern/scripts/chat-size-preflight.mjs
+    executionNow: synthetic_only
+    realExecution: requires_separate_owner_authorization_before_cutover
+    output: aggregate_numbers_and_anonymous_ordinals_only
+    checks: [header_bytes, message_byte_histogram, headers_over_8_MiB, messages_over_1_MiB, affected_file_counts]
+
 nativeCompatibilityProposal:
   channel: existing_serviceToken_only_not_browser_admin_bridge
   verifiedOwner: supplied_by_Node_after_current_session_and_account_mapping_checks
@@ -100,11 +151,12 @@ nativeCompatibilityProposal:
     condition: no_live_pending_or_deleted_identity_with_same_owner_and_id
     collision: CHAT_ID_REUSED
     ownerBindingAndBranch: derived_by_server_never_restored_from_uploaded_metadata
+    onboardingBinding: validate_and_reuse_existing_owned_chatId_binding_or_reject_mismatched_scope_mode
   wholeSave:
     expected: exact_chat_id_and_revision_and_authorityEpoch
     documentLimitBytes: 268435456
     messageLimitBytes: 1048576
-    staging: validate_and_prepare_diff_outside_final_short_transaction
+    staging: validate_and_prepare_diff_outside_final_dedicated_transfer_transaction
     commit: exact_revision_CAS_and_all_differences_and_source_barriers_and_receipt_atomically
     publicOperationBatchLimit: not_reused_to_split_a_native_save_into_multiple_commits
     ack: same_chat_id_and_exactly_one_revision_increment
@@ -122,7 +174,7 @@ nativeCompatibilityProposal:
     expected: exact_owned_chat_id_and_revision
     batchDirectoryOperations: all_target_baselines_and_target_set_checked_atomically
     oldDiskFallbackInGoOrFrozen: forbidden
-  httpContractNextStep: add_typed_private_native_routes_and_alias_read_fields_to_OpenAPI_after_review
+  httpContractNextStep: typed_private_native_routes_and_alias_read_fields_require_separate_Owner_review
 
 trustedMigration:
   channel: operator_CLI_and_private_ST_control_never_public_upload
@@ -135,6 +187,7 @@ trustedMigration:
     rollback: freeze_GO_export_latest_and_restore_isolated_ST_then_CAS_to_ST_with_incremented_epoch
     error: remain_FROZEN_no_automatic_reopen_or_epoch_relabel
   order:
+    - authorize_and_run_real_data_size_preflight_before_any_real_cutover
     - freeze_database_authority_and_commit
     - close_ST_local_admission_synchronously_before_await
     - durably_record_closed_gate

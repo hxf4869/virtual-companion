@@ -152,6 +152,13 @@
     "saveModelPurpose",
     "callMemoryCoreModel",
     "resolveModelPurpose",
+    "listNativeStoredChats",
+    "readNativeStoredChat",
+    "createNativeStoredChat",
+    "saveNativeStoredChat",
+    "forkNativeStoredChat",
+    "renameNativeStoredChat",
+    "deleteNativeStoredChat",
     "registerStoredChatGeneration",
     "reserveModelUsage",
     "settleModelUsage",
@@ -204,6 +211,6 @@
   ],
   "source": {
     "path": "specs/openapi/virtual-companion.yaml",
-    "sha256": "697b32fbc5e63f5853b3ba413763004142e01bf2afbcaafd159febbcb6659f57"
+    "sha256": "de8de7ea04b8e92e67246a1575f0124f9773ced601a349188a333621262423ac"
   }
 }

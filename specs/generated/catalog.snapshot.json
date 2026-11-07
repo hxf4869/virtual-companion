@@ -109,7 +109,8 @@
       "CHAT_PRECONDITION_REQUIRED",
       "CHAT_IMPORT_INVALID",
       "CHAT_IMPORT_EXPIRED",
-      "CHAT_SEARCH_TIMEOUT"
+      "CHAT_SEARCH_TIMEOUT",
+      "CHAT_TRANSFER_TIMEOUT"
     ],
     "FollowUpStatus": [
       "NEEDS_CLARIFICATION",
@@ -1010,11 +1011,18 @@
             "order": 39,
             "retrySemantics": "Retry the same q request and input cursor. No completed scan progress is claimed; never fall back to an unbounded scan or silently truncate history.",
             "retryable": true
+          },
+          {
+            "code": "CHAT_TRANSFER_TIMEOUT",
+            "httpStatus": 503,
+            "order": 40,
+            "retrySemantics": "Dedicated chat export/native-save/trusted-stage transaction or drain exceeded its bounded budget (including database statement/lock timeout). Keep drafts and frozen gates. Retry the original write requestId and complete payload or the same migration checkpoint; a commit ACK timeout has an unknown outcome until its durable receipt is read. Never retry generation/provider calls or fall back to ST.",
+            "retryable": true
           }
         ],
         "schemaVersion": 1
       },
-      "sha256": "e3b67466ef27ab53f354fd7c08a7a57ffa9d24b1c53eb1966fc7150dd76da5de"
+      "sha256": "13f66f8f99d58f72fc020a024fe414fa792bab7438c1f3d0970f202a93d14f2d"
     },
     "follow-up-statuses.yaml": {
       "document": {
@@ -1210,7 +1218,7 @@
         "adr": "docs/decisions/0007-go-companion-runtime.md",
         "catalogId": "go-v1-api-scope",
         "counts": {
-          "DEFER": 15,
+          "DEFER": 22,
           "KEEP": 138,
           "RETIRE": 42,
           "SIMPLIFY": 5
@@ -3288,6 +3296,62 @@
             "operationId": "registerStoredChatGeneration",
             "path": "/api/v1/service/chats/{chatId}/generation-runs",
             "replacementOrImpact": "SX-5: implemented serviceToken-only registration after Owner approval of 5f55e4c6. The verified Owner and saved input bind the causal baseline; unrelated tail appends are allowed, terminal writes bind both Owner and chatId. One active run, 15 minute nonrenewing expiry, distinct internal expired outcome and seven-day detail cleanup. Node registers before provider sends; SX-9/SX-10 internalize registration and SX-15 removes its Node route."
+          },
+          {
+            "currentH5Callers": [],
+            "decision": "DEFER",
+            "method": "POST",
+            "operationId": "listNativeStoredChats",
+            "path": "/api/v1/service/chats/native/list",
+            "replacementOrImpact": "SX-8 concrete typed private HTTP proposal only: Owner review pending; NOT implemented or routed. Existing serviceToken only, Node verifies current session/account mapping, any Origin refused and excluded from browser/admin proxy whitelist. Implement only after this HTTP proposal is separately approved; no real-account cutover or ST disk fallback is authorized."
+          },
+          {
+            "currentH5Callers": [],
+            "decision": "DEFER",
+            "method": "POST",
+            "operationId": "readNativeStoredChat",
+            "path": "/api/v1/service/chats/native/read",
+            "replacementOrImpact": "SX-8 concrete typed private HTTP proposal only: Owner review pending; NOT implemented or routed. Existing serviceToken only, Node verifies current session/account mapping, any Origin refused and excluded from browser/admin proxy whitelist. Dedicated 120s transfer/snapshot transaction with 5s lock timeout, bounded encrypted staging and Node 150s budget; timeout is CHAT_TRANSFER_TIMEOUT, preserve drafts and retry identical requestId/payload to resolve an unknown commit receipt. Implement only after this HTTP proposal is separately approved; no real-account cutover or ST disk fallback is authorized."
+          },
+          {
+            "currentH5Callers": [],
+            "decision": "DEFER",
+            "method": "POST",
+            "operationId": "createNativeStoredChat",
+            "path": "/api/v1/service/chats/native/create",
+            "replacementOrImpact": "SX-8 concrete typed private HTTP proposal only: Owner review pending; NOT implemented or routed. Existing serviceToken only, Node verifies current session/account mapping, any Origin refused and excluded from browser/admin proxy whitelist. Dedicated 120s transfer/snapshot transaction with 5s lock timeout, bounded encrypted staging and Node 150s budget; timeout is CHAT_TRANSFER_TIMEOUT, preserve drafts and retry identical requestId/payload to resolve an unknown commit receipt. Implement only after this HTTP proposal is separately approved; no real-account cutover or ST disk fallback is authorized."
+          },
+          {
+            "currentH5Callers": [],
+            "decision": "DEFER",
+            "method": "POST",
+            "operationId": "saveNativeStoredChat",
+            "path": "/api/v1/service/chats/native/save",
+            "replacementOrImpact": "SX-8 concrete typed private HTTP proposal only: Owner review pending; NOT implemented or routed. Existing serviceToken only, Node verifies current session/account mapping, any Origin refused and excluded from browser/admin proxy whitelist. Dedicated 120s transfer/snapshot transaction with 5s lock timeout, bounded encrypted staging and Node 150s budget; timeout is CHAT_TRANSFER_TIMEOUT, preserve drafts and retry identical requestId/payload to resolve an unknown commit receipt. Implement only after this HTTP proposal is separately approved; no real-account cutover or ST disk fallback is authorized."
+          },
+          {
+            "currentH5Callers": [],
+            "decision": "DEFER",
+            "method": "POST",
+            "operationId": "forkNativeStoredChat",
+            "path": "/api/v1/service/chats/native/fork",
+            "replacementOrImpact": "SX-8 concrete typed private HTTP proposal only: Owner review pending; NOT implemented or routed. Existing serviceToken only, Node verifies current session/account mapping, any Origin refused and excluded from browser/admin proxy whitelist. Dedicated 120s transfer/snapshot transaction with 5s lock timeout, bounded encrypted staging and Node 150s budget; timeout is CHAT_TRANSFER_TIMEOUT, preserve drafts and retry identical requestId/payload to resolve an unknown commit receipt. Implement only after this HTTP proposal is separately approved; no real-account cutover or ST disk fallback is authorized."
+          },
+          {
+            "currentH5Callers": [],
+            "decision": "DEFER",
+            "method": "POST",
+            "operationId": "renameNativeStoredChat",
+            "path": "/api/v1/service/chats/native/rename",
+            "replacementOrImpact": "SX-8 concrete typed private HTTP proposal only: Owner review pending; NOT implemented or routed. Existing serviceToken only, Node verifies current session/account mapping, any Origin refused and excluded from browser/admin proxy whitelist. Implement only after this HTTP proposal is separately approved; no real-account cutover or ST disk fallback is authorized."
+          },
+          {
+            "currentH5Callers": [],
+            "decision": "DEFER",
+            "method": "POST",
+            "operationId": "deleteNativeStoredChat",
+            "path": "/api/v1/service/chats/native/delete",
+            "replacementOrImpact": "SX-8 concrete typed private HTTP proposal only: Owner review pending; NOT implemented or routed. Existing serviceToken only, Node verifies current session/account mapping, any Origin refused and excluded from browser/admin proxy whitelist. Implement only after this HTTP proposal is separately approved; no real-account cutover or ST disk fallback is authorized."
           }
         ],
         "runtimeAfterCutover": "Go companiond serves the KEEP/SIMPLIFY surface after the 2026-08-30 cutover; DEFER/RETIRE operations are not runtime fallbacks.",
@@ -3324,7 +3388,7 @@
           }
         ]
       },
-      "sha256": "fa273d9f3eb5539573d1303d392c83ed14b80bdfa08e0442a7a868fdf98d7727"
+      "sha256": "525b50522eef976bdaf41791b3c572c9de58a10117926bc311cd1a28c7f8538b"
     },
     "memory-candidate-statuses.yaml": {
       "document": {
