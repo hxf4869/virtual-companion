@@ -27,6 +27,7 @@ export const DESKTOP_THEME_KEY = THEME_PREF_KEY;
 export const REPLY_STYLE_KEY = 'vc-reply-style';
 export const REDUCED_MOTION_KEY = 'vc-reduced-motion';
 export const SIDEBAR_COLLAPSED_KEY = 'vc-sidebar-collapsed';
+export const PINNED_CONVERSATIONS_KEY = 'vc-pinned-conversations';
 
 export {
   DEFAULT_THEME_ID,
@@ -88,6 +89,45 @@ function readSidebarCollapsedFromStorage(storage = getStorage()): boolean {
   }
 }
 
+let lastPinnedWriteFailed = false;
+
+function normalizePinnedConversationKeys(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const item of raw) {
+    if (typeof item !== 'string') continue;
+    const trimmed = item.trim();
+    if (!trimmed || seen.has(trimmed)) continue;
+    seen.add(trimmed);
+    result.push(trimmed);
+  }
+  return result;
+}
+
+function readPinnedConversationKeysFromStorage(
+  storage = getStorage(),
+  fallback: string[] = [],
+): string[] {
+  if (!storage) return fallback;
+  let raw: string | null;
+  try {
+    raw = storage.getItem(PINNED_CONVERSATIONS_KEY);
+  } catch {
+    return fallback;
+  }
+  if (!raw) {
+    return lastPinnedWriteFailed ? fallback : [];
+  }
+  try {
+    const parsed = normalizePinnedConversationKeys(JSON.parse(raw));
+    lastPinnedWriteFailed = false;
+    return parsed;
+  } catch {
+    return [];
+  }
+}
+
 function resolveActiveThemeObject(
   characterId: string | null | undefined,
   prefs: DesktopThemeStoreData,
@@ -135,6 +175,7 @@ export interface PreferencesState {
   replyStyle: ReplyStyle;
   reducedMotion: boolean;
   sidebarCollapsed: boolean;
+  pinnedConversationKeys: string[];
   activeCharacterId: string | null;
   characterTint: string;
   setThemeMode: (mode: ThemeMode) => void;
@@ -144,12 +185,16 @@ export interface PreferencesState {
   setReducedMotion: (reduced: boolean) => void;
   setSidebarCollapsed: (collapsed: boolean) => void;
   toggleSidebarCollapsed: () => void;
+  togglePinnedConversation: (key: string) => void;
   setCharacterTint: (tint: string) => void;
   syncFromStorage: (characterId?: string | null) => void;
   resetForTest?: () => void;
 }
 
-function readSnapshot(characterId: string | null = null) {
+function readSnapshot(
+  characterId: string | null = null,
+  fallbackPinnedKeys: string[] = [],
+) {
   const storage = getStorage();
   const themeMode = readThemeMode(storage) as ThemeMode;
   const desktopThemePrefs = readThemePreferences(storage) as DesktopThemeStoreData;
@@ -157,6 +202,10 @@ function readSnapshot(characterId: string | null = null) {
   const replyStyle = readReplyStyleFromStorage(storage);
   const reducedMotion = readReducedMotionFromStorage(storage);
   const sidebarCollapsed = readSidebarCollapsedFromStorage(storage);
+  const pinnedConversationKeys = readPinnedConversationKeysFromStorage(
+    storage,
+    fallbackPinnedKeys,
+  );
   return {
     themeMode,
     desktopThemePrefs,
@@ -165,6 +214,7 @@ function readSnapshot(characterId: string | null = null) {
     replyStyle,
     reducedMotion,
     sidebarCollapsed,
+    pinnedConversationKeys,
   };
 }
 
@@ -179,6 +229,7 @@ export const usePreferences = create<PreferencesState>((set, get) => {
     replyStyle: initial.replyStyle,
     reducedMotion: initial.reducedMotion,
     sidebarCollapsed: initial.sidebarCollapsed,
+    pinnedConversationKeys: initial.pinnedConversationKeys,
     activeCharacterId: null,
     characterTint: '',
 
@@ -255,13 +306,35 @@ export const usePreferences = create<PreferencesState>((set, get) => {
       get().setSidebarCollapsed(next);
     },
 
+    togglePinnedConversation(key) {
+      const normalized = String(key ?? '').trim();
+      if (!normalized) return;
+      const current = normalizePinnedConversationKeys(get().pinnedConversationKeys);
+      const next = current.includes(normalized)
+        ? current.filter((item) => item !== normalized)
+        : [...current, normalized];
+      try {
+        const storage = getStorage();
+        if (storage) {
+          storage.setItem(PINNED_CONVERSATIONS_KEY, JSON.stringify(next));
+          lastPinnedWriteFailed = false;
+        } else {
+          lastPinnedWriteFailed = true;
+        }
+      } catch {
+        // ignore storage errors and fall back to in-memory state
+        lastPinnedWriteFailed = true;
+      }
+      set({ pinnedConversationKeys: next });
+    },
+
     setCharacterTint(tint) {
       set({ characterTint: String(tint ?? '').trim() });
     },
 
     syncFromStorage(characterId) {
       const nextCharId = characterId === undefined ? get().activeCharacterId : characterId;
-      const snap = readSnapshot(nextCharId);
+      const snap = readSnapshot(nextCharId, get().pinnedConversationKeys);
       syncThemeDomAttributes(snap.themeMode, snap.themeObj);
       set({
         themeMode: snap.themeMode,
@@ -270,12 +343,14 @@ export const usePreferences = create<PreferencesState>((set, get) => {
         replyStyle: snap.replyStyle,
         reducedMotion: snap.reducedMotion,
         sidebarCollapsed: snap.sidebarCollapsed,
+        pinnedConversationKeys: snap.pinnedConversationKeys,
         activeCharacterId: nextCharId,
       });
     },
 
     resetForTest() {
-      const snap = readSnapshot(null);
+      lastPinnedWriteFailed = false;
+      const snap = readSnapshot(null, []);
       syncThemeDomAttributes(snap.themeMode, snap.themeObj);
       set({
         themeMode: snap.themeMode,
@@ -284,6 +359,7 @@ export const usePreferences = create<PreferencesState>((set, get) => {
         replyStyle: snap.replyStyle,
         reducedMotion: snap.reducedMotion,
         sidebarCollapsed: snap.sidebarCollapsed,
+        pinnedConversationKeys: snap.pinnedConversationKeys,
         activeCharacterId: null,
         characterTint: '',
       });

@@ -165,8 +165,8 @@ test('图标输出指向扩展 sprite，并带上无障碍属性', async () => {
     const sprite = await readFile(spriteUrl, 'utf8');
     const license = await readFile(licenseUrl, 'utf8');
     const source = (await readFile(sourceUrl, 'utf8')).trim();
-    const names = 'message-circle users-round brain heart book-open chevron-left chevron-right chevrons-up-down ellipsis plus arrow-up arrow-down square refresh-cw pencil copy search x history key-round watch image settings sliders-horizontal sparkles quote book-marked puzzle user-round monitor link bell shield layers check trash-2 text-cursor play wand-sparkles zap square-pen git-branch globe upload download circle-alert wifi-off lock'.split(' ');
-    assert.equal(names.length, 48);
+    const names = 'message-circle users-round brain heart book-open chevron-left chevron-right chevrons-up-down ellipsis plus arrow-up arrow-down square refresh-cw pencil copy search x history key-round watch image settings sliders-horizontal sparkles quote book-marked puzzle user-round monitor link bell shield layers check trash-2 text-cursor play wand-sparkles zap square-pen git-branch globe upload download circle-alert wifi-off lock pin pin-off'.split(' ');
+    assert.equal(names.length, 50);
     for (const name of names) assert.match(sprite, new RegExp(`id="${name}"`));
     assert.match(license, /ISC License/);
     assert.match(license, /Lucide Contributors 2022/);

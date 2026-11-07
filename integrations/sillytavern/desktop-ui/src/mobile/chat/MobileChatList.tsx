@@ -1,4 +1,11 @@
-import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
+import {
+  useEffect,
+  useMemo,
+  useState,
+  type CSSProperties,
+  type MouseEvent as ReactMouseEvent,
+  type ReactNode,
+} from 'react';
 import {
   IonItem,
   IonItemOption,
@@ -21,6 +28,7 @@ import {
   useConversationsQuery,
   type ConversationRow,
 } from '../../data/queries/chat';
+import { usePreferences } from '../../design/theme/usePreferences';
 import {
   DEFAULT_AUTHORITY_EPOCH,
   type ChatAuthorityEpoch,
@@ -53,6 +61,7 @@ function fallbackTintForSeed(seed: string): string {
 }
 
 export interface MobileConversationRow extends ConversationRow {
+  pinned?: boolean;
   unreadCount?: number;
   voiceDurationSec?: number;
   voiceDurationMs?: number;
@@ -130,6 +139,9 @@ export function MobileChatList({
 }: MobileChatListProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [sampledTints, setSampledTints] = useState<Record<string, string>>({});
+  const pinnedConversationKeys = usePreferences((s) => s.pinnedConversationKeys);
+  const togglePinnedConversation = usePreferences((s) => s.togglePinnedConversation);
+  const pinnedSet = useMemo(() => new Set(pinnedConversationKeys), [pinnedConversationKeys]);
 
   const conversationsQuery = useConversationsQuery(readDraftProp);
 
@@ -207,10 +219,28 @@ export function MobileChatList({
     };
   }, [baseRows, sampledTints]);
 
+  const orderedRows = useMemo<readonly MobileConversationRow[]>(() => {
+    const indexed = baseRows.map((row, idx) => ({ row, idx }));
+    const isRowPinned = (row: MobileConversationRow) =>
+      row.pinned ?? pinnedSet.has(row.key);
+    const sortByTimeDesc = (
+      a: { row: MobileConversationRow; idx: number },
+      b: { row: MobileConversationRow; idx: number },
+    ) => {
+      const timeA = Number.isFinite(a.row.updatedAt) ? a.row.updatedAt : 0;
+      const timeB = Number.isFinite(b.row.updatedAt) ? b.row.updatedAt : 0;
+      const diff = timeB - timeA;
+      return diff !== 0 ? diff : a.idx - b.idx;
+    };
+    const pinned = indexed.filter((item) => isRowPinned(item.row)).sort(sortByTimeDesc);
+    const unpinned = indexed.filter((item) => !isRowPinned(item.row)).sort(sortByTimeDesc);
+    return [...pinned, ...unpinned].map((item) => item.row);
+  }, [baseRows, pinnedSet]);
+
   const filteredRows = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    if (!q) return baseRows;
-    return baseRows.filter((row) => {
+    if (!q) return orderedRows;
+    return orderedRows.filter((row) => {
       const inst = row.instanceName ? instanceTail(row.title, row.instanceName) : '';
       const haystack = [row.title, row.instanceName, inst, row.preview, row.draft]
         .filter(Boolean)
@@ -218,7 +248,7 @@ export function MobileChatList({
         .toLowerCase();
       return haystack.includes(q);
     });
-  }, [baseRows, searchQuery]);
+  }, [orderedRows, searchQuery]);
 
   const resolvedStatus: 'loading' | 'error' | 'ready' = useMemo(() => {
     if (propStatus) return propStatus;
@@ -241,10 +271,23 @@ export function MobileChatList({
     conversationsQuery.isError,
   ]);
 
-  const pinHandler = onPinConversation ?? onTogglePin;
-  const canPin = typeof pinHandler === 'function';
+  const externalPinHandler = onPinConversation ?? onTogglePin;
   const canDelete = typeof onDeleteConversation === 'function';
-  const hasSwipeCapabilities = canPin || canDelete;
+
+  const handlePinAction = (
+    row: MobileConversationRow,
+    event: ReactMouseEvent<HTMLIonItemOptionElement>,
+  ) => {
+    const slidingEl = event.currentTarget.closest('ion-item-sliding') as
+      | (HTMLElement & { close?: () => Promise<void> })
+      | null;
+    if (typeof externalPinHandler === 'function') {
+      externalPinHandler(row);
+    } else {
+      togglePinnedConversation(row.key);
+    }
+    void slidingEl?.close?.();
+  };
 
   const handleRowSelect = (row: MobileConversationRow) => {
     if (onSelectConversation) {
@@ -271,6 +314,7 @@ export function MobileChatList({
 
   const renderConversationRow = (row: MobileConversationRow) => {
     const isActive = Boolean(activeKey && row.key === activeKey);
+    const isPinned = row.pinned ?? pinnedSet.has(row.key);
     const instChip = row.instanceName
       ? instanceTail(row.title, row.instanceName)
       : '';
@@ -308,6 +352,7 @@ export function MobileChatList({
             data-vc-mobile-convo-row={row.key}
             data-conversation-key={row.key}
             data-relationship-id={row.relationshipId || undefined}
+            data-vc-pinned={isPinned ? 'true' : undefined}
             data-active={isActive ? 'true' : 'false'}
             aria-current={isActive ? 'true' : undefined}
             onClick={() => handleRowSelect(row)}
@@ -339,8 +384,22 @@ export function MobileChatList({
                     </span>
                   ) : null}
                 </span>
-                {displayTime ? (
-                  <span className="vc-mobile-convo-time">{displayTime}</span>
+                {isPinned || displayTime ? (
+                  <span className="vc-mobile-convo-meta">
+                    {isPinned ? (
+                      <span
+                        className="vc-mobile-convo-pin-mark"
+                        data-vc-convo-pin-mark=""
+                        role="img"
+                        aria-label="已置顶"
+                      >
+                        <MobileIcon name="pin" size={12} />
+                      </span>
+                    ) : null}
+                    {displayTime ? (
+                      <span className="vc-mobile-convo-time">{displayTime}</span>
+                    ) : null}
+                  </span>
                 ) : null}
               </span>
 
@@ -389,34 +448,30 @@ export function MobileChatList({
           </button>
         </IonItem>
 
-        {hasSwipeCapabilities ? (
-          <IonItemOptions side="end" className="vc-mobile-convo-options">
-            {canPin ? (
-              <IonItemOption
-                className="vc-mobile-swipe-option vc-mobile-swipe-option--pin"
-                data-vc-swipe-action="pin"
-                onClick={() => pinHandler?.(row)}
-              >
-                <span className="vc-mobile-swipe-option-content">
-                  <MobileIcon name="arrow-up" size={18} />
-                  <span>置顶</span>
-                </span>
-              </IonItemOption>
-            ) : null}
-            {canDelete ? (
-              <IonItemOption
-                className="vc-mobile-swipe-option vc-mobile-swipe-option--delete"
-                data-vc-swipe-action="delete"
-                onClick={() => onDeleteConversation?.(row)}
-              >
-                <span className="vc-mobile-swipe-option-content">
-                  <MobileIcon name="trash-2" size={18} />
-                  <span>删除</span>
-                </span>
-              </IonItemOption>
-            ) : null}
-          </IonItemOptions>
-        ) : null}
+        <IonItemOptions side="end" className="vc-mobile-convo-options">
+          <IonItemOption
+            className="vc-mobile-swipe-option vc-mobile-swipe-option--pin"
+            data-vc-swipe-action="pin"
+            onClick={(event) => handlePinAction(row, event)}
+          >
+            <span className="vc-mobile-swipe-option-content">
+              <MobileIcon name={isPinned ? 'pin-off' : 'pin'} size={18} />
+              <span>{isPinned ? '取消置顶' : '置顶'}</span>
+            </span>
+          </IonItemOption>
+          {canDelete ? (
+            <IonItemOption
+              className="vc-mobile-swipe-option vc-mobile-swipe-option--delete"
+              data-vc-swipe-action="delete"
+              onClick={() => onDeleteConversation?.(row)}
+            >
+              <span className="vc-mobile-swipe-option-content">
+                <MobileIcon name="trash-2" size={18} />
+                <span>删除</span>
+              </span>
+            </IonItemOption>
+          ) : null}
+        </IonItemOptions>
       </IonItemSliding>
     );
   };

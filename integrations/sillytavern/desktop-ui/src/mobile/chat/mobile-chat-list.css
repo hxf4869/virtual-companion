@@ -243,6 +243,21 @@
   flex-shrink: 0;
 }
 
+.vc-mobile-convo-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.vc-mobile-convo-pin-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--vc-ink-2);
+  flex-shrink: 0;
+}
+
 .vc-mobile-convo-time {
   font-size: var(--vc-fs-footnote);
   font-weight: 400;

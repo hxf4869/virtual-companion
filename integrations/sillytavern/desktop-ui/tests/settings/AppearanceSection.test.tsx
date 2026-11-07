@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, cleanup, act } from '@testing-library/react';
 import { AppProviders } from '../../src/app/providers';
-import { usePreferences } from '../../src/shell/usePreferences';
+import { PINNED_CONVERSATIONS_KEY, usePreferences } from '../../src/shell/usePreferences';
 import { createTestChatEnv } from '../chat/fixtures';
 import {
   AppearanceSection,
@@ -128,5 +128,109 @@ describe('AppearanceSection', () => {
     const prefs = usePreferences.getState().desktopThemePrefs;
     expect(prefs.characters['char-ref-bob']).toBe('midnight-ink');
     expect(prefs.characters['char-ref-alice']).toBe('warm-paper');
+  });
+
+  it('manages pinnedConversationKeys in usePreferences with localStorage persistence, syncFromStorage, resetForTest, and in-memory fallback when storage throws', () => {
+    expect(PINNED_CONVERSATIONS_KEY).toBe('vc-pinned-conversations');
+    expect(usePreferences.getState().pinnedConversationKeys).toEqual([]);
+
+    const keyAlice = '["alice.png","chat-alice"]';
+    const keyBob = '["bob.png","chat-bob"]';
+    const initialThemeAttr = document.documentElement.dataset.vcTheme;
+    const initialThemeIdAttr = document.documentElement.dataset.vcThemeId;
+
+    // 1. Toggle pins on and persists to independent localStorage key
+    act(() => {
+      usePreferences.getState().togglePinnedConversation(keyAlice);
+    });
+    expect(usePreferences.getState().pinnedConversationKeys).toEqual([keyAlice]);
+    expect(JSON.parse(window.localStorage.getItem(PINNED_CONVERSATIONS_KEY) || '[]')).toEqual([
+      keyAlice,
+    ]);
+
+    act(() => {
+      usePreferences.getState().togglePinnedConversation(keyBob);
+    });
+    expect(usePreferences.getState().pinnedConversationKeys).toEqual([keyAlice, keyBob]);
+    expect(JSON.parse(window.localStorage.getItem(PINNED_CONVERSATIONS_KEY) || '[]')).toEqual([
+      keyAlice,
+      keyBob,
+    ]);
+
+    // Toggling existing key unpins it
+    act(() => {
+      usePreferences.getState().togglePinnedConversation(keyAlice);
+    });
+    expect(usePreferences.getState().pinnedConversationKeys).toEqual([keyBob]);
+    expect(JSON.parse(window.localStorage.getItem(PINNED_CONVERSATIONS_KEY) || '[]')).toEqual([
+      keyBob,
+    ]);
+
+    // Desktop DOM attributes must not change
+    expect(document.documentElement.dataset.vcTheme).toBe(initialThemeAttr);
+    expect(document.documentElement.dataset.vcThemeId).toBe(initialThemeIdAttr);
+
+    // 2. syncFromStorage reads back persisted keys and sanitizes invalid entries
+    const keyClaire = '["claire.png","chat-claire"]';
+    window.localStorage.setItem(
+      PINNED_CONVERSATIONS_KEY,
+      JSON.stringify([keyClaire, keyAlice, keyClaire, '', null]),
+    );
+    act(() => {
+      usePreferences.getState().syncFromStorage();
+    });
+    expect(usePreferences.getState().pinnedConversationKeys).toEqual([keyClaire, keyAlice]);
+
+    // resetForTest syncs from cleared storage
+    window.localStorage.clear();
+    act(() => {
+      usePreferences.getState().resetForTest?.();
+    });
+    expect(usePreferences.getState().pinnedConversationKeys).toEqual([]);
+
+    // 3. Fallback to in-memory state when localStorage throws on read/write
+    const origStorageDesc = Object.getOwnPropertyDescriptor(window, 'localStorage');
+    const throwingStorage = {
+      getItem() {
+        throw new Error('SecurityError: storage read blocked');
+      },
+      setItem() {
+        throw new Error('QuotaExceededError: storage write blocked');
+      },
+      removeItem() {
+        throw new Error('SecurityError');
+      },
+      clear() {},
+      key() {
+        return null;
+      },
+      length: 0,
+    } as Storage;
+
+    Object.defineProperty(window, 'localStorage', {
+      configurable: true,
+      value: throwingStorage,
+    });
+    try {
+      act(() => {
+        usePreferences.getState().togglePinnedConversation(keyAlice);
+      });
+      expect(usePreferences.getState().pinnedConversationKeys).toEqual([keyAlice]);
+
+      // syncFromStorage during storage failure must preserve in-memory pinned state
+      act(() => {
+        usePreferences.getState().syncFromStorage('alice.png');
+      });
+      expect(usePreferences.getState().pinnedConversationKeys).toEqual([keyAlice]);
+
+      act(() => {
+        usePreferences.getState().togglePinnedConversation(keyAlice);
+      });
+      expect(usePreferences.getState().pinnedConversationKeys).toEqual([]);
+    } finally {
+      if (origStorageDesc) {
+        Object.defineProperty(window, 'localStorage', origStorageDesc);
+      }
+    }
   });
 });

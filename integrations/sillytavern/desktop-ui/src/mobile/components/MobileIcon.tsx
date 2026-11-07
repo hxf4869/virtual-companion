@@ -8,6 +8,8 @@ export type MobileIconName =
   | 'clapperboard'
   | 'chevron-left'
   | 'chevron-right'
+  | 'pin'
+  | 'pin-off'
   | string;
 
 export interface MobileIconProps {

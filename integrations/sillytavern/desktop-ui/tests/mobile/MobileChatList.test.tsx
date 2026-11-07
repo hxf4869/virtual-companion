@@ -23,15 +23,19 @@ import {
 import { formatMobileConversationPreview } from '../../src/mobile/chat/data/conversationPreview';
 import { MobileApp } from '../../src/mobile/app/MobileApp';
 import { MobileChatList } from '../../src/mobile/chat/MobileChatList';
+import { usePreferences } from '../../src/design/theme/usePreferences';
 
 describe('MB2-6a SX-2 Paginated Chat Data Layer, Idle Prefetch, Tail Cache & MobileChatList', () => {
   beforeEach(() => {
     window.localStorage.clear();
+    usePreferences.getState().resetForTest?.();
     window.history.replaceState(null, '', '/m/chat');
   });
 
   afterEach(() => {
     cleanup();
+    window.localStorage.clear();
+    usePreferences.getState().resetForTest?.();
     vi.restoreAllMocks();
   });
 
@@ -810,9 +814,10 @@ describe('MB2-6a SX-2 Paginated Chat Data Layer, Idle Prefetch, Tail Cache & Mob
     expect(rowSuzume?.textContent).toContain('铃芽');
     expect(rowSuzume?.textContent).toContain('早安，今天想去哪里？');
 
-    // 2. Verify no fake swipe actions are rendered when no pin/delete capability is injected
+    // 2. Default local-preference pin action is rendered on all 4 rows, while no fake delete action is rendered without onDeleteConversation
     expect(document.querySelectorAll('ion-item-sliding').length).toBe(4);
-    expect(document.querySelectorAll('[data-vc-swipe-action]').length).toBe(0);
+    expect(document.querySelectorAll('[data-vc-swipe-action="pin"]').length).toBe(4);
+    expect(document.querySelectorAll('[data-vc-swipe-action="delete"]').length).toBe(0);
 
     // 3. Top search filters rows by character name or instance chip
     const searchInput = screen.getByRole('searchbox', { name: '搜索会话' });
@@ -1303,5 +1308,215 @@ describe('MB2-6a SX-2 Paginated Chat Data Layer, Idle Prefetch, Tail Cache & Mob
       status: 409,
       code: 'IDEMPOTENCY_KEY_REUSED',
     });
+  });
+
+  it('pins and unpins conversations by default via usePreferences, preserves time order within pinned and unpinned groups, toggles swipe label (置顶/取消置顶), closes IonItemSliding, marks data-vc-pinned="true" with a subtle pin icon, preserves pinned-first order on search, and prioritizes external pin callbacks', () => {
+    const client = createAppClient({
+      fetchImpl: vi.fn(async () => ({
+        ok: true,
+        status: 200,
+        headers: new Headers({ 'content-type': 'application/json' }),
+        json: async () => [],
+        text: async () => '{}',
+      })) as unknown as typeof fetch,
+    });
+    const queryClient = createQueryClient();
+    const sessionBridge = createSessionBridge(client, {
+      prepareRuntime: vi.fn(async () => ({}) as any),
+    });
+
+    const nowMs = Date.parse('2026-11-06T14:00:00.000Z');
+    const keyAlice = '["alice.png","chat-alice"]';
+    const keyBob = '["bob.png","chat-bob"]';
+    const keyClaire = '["claire.png","chat-claire"]';
+    const keySuzume = '["suzume.png","chat-suzume"]';
+
+    const rows = [
+      {
+        key: keyAlice,
+        avatar: 'alice.png',
+        file: 'chat-alice',
+        avatarUrl: '/characters/alice.png',
+        title: '爱丽丝',
+        preview: '晚安约定消息',
+        updatedAt: nowMs - 10_000,
+        timeText: '13:59',
+      },
+      {
+        key: keyBob,
+        avatar: 'bob.png',
+        file: 'chat-bob',
+        avatarUrl: '/characters/bob.png',
+        title: '鲍勃',
+        preview: '晚安约定第二条',
+        updatedAt: nowMs - 20_000,
+        timeText: '13:58',
+      },
+      {
+        key: keyClaire,
+        avatar: 'claire.png',
+        file: 'chat-claire',
+        avatarUrl: '/characters/claire.png',
+        title: '克莱尔',
+        preview: '普通日常闲聊',
+        updatedAt: nowMs - 30_000,
+        timeText: '13:57',
+      },
+      {
+        key: keySuzume,
+        avatar: 'suzume.png',
+        file: 'chat-suzume',
+        avatarUrl: '/characters/suzume.png',
+        title: '铃芽',
+        preview: '晚安约定最早消息',
+        updatedAt: nowMs - 40_000,
+        timeText: '13:56',
+      },
+    ];
+
+    const { rerender } = render(
+      <AppProviders client={client} queryClient={queryClient} sessionBridge={sessionBridge}>
+        <MobileChatList rows={rows} />
+      </AppProviders>,
+    );
+
+    const getOrderedKeys = () =>
+      Array.from(document.querySelectorAll('[data-vc-mobile-convo-row]')).map((el) =>
+        el.getAttribute('data-vc-mobile-convo-row'),
+      );
+
+    const getRowEl = (key: string) =>
+      Array.from(document.querySelectorAll('[data-vc-mobile-convo-row]')).find(
+        (el) => el.getAttribute('data-vc-mobile-convo-row') === key,
+      ) as HTMLElement;
+
+    const getPinActionForKey = (key: string) => {
+      const rowEl = getRowEl(key);
+      const slidingEl = rowEl.closest('ion-item-sliding');
+      return slidingEl?.querySelector('[data-vc-swipe-action="pin"]') as HTMLElement;
+    };
+
+    // Initial order is strictly time descending, no rows pinned, no delete buttons
+    expect(getOrderedKeys()).toEqual([keyAlice, keyBob, keyClaire, keySuzume]);
+    expect(document.querySelectorAll('[data-vc-pinned="true"]').length).toBe(0);
+    expect(document.querySelectorAll('[data-vc-swipe-action="delete"]').length).toBe(0);
+    expect(getPinActionForKey(keySuzume).textContent).toContain('置顶');
+    expect(getPinActionForKey(keySuzume).textContent).not.toContain('取消置顶');
+    expect(getPinActionForKey(keySuzume).querySelector('use')?.getAttribute('href')).toMatch(
+      /#pin$/,
+    );
+
+    // Spy on IonItemSliding.close() public method for Suzume's row
+    const suzumeSliding = getRowEl(keySuzume).closest('ion-item-sliding') as HTMLElement & {
+      close?: () => Promise<void>;
+    };
+    const closeSpy = vi.fn(async () => {});
+    suzumeSliding.close = closeSpy;
+
+    // 1. Pin Suzume (the oldest row) -> moves to top, marks data-vc-pinned="true", renders subtle pin icon without extra text, switches button text to "取消置顶", and calls IonItemSliding.close()
+    fireEvent.click(getPinActionForKey(keySuzume));
+
+    expect(closeSpy).toHaveBeenCalledTimes(1);
+    expect(usePreferences.getState().pinnedConversationKeys).toEqual([keySuzume]);
+    expect(getOrderedKeys()).toEqual([keySuzume, keyAlice, keyBob, keyClaire]);
+    expect(getRowEl(keySuzume).getAttribute('data-vc-pinned')).toBe('true');
+    expect(getRowEl(keyAlice).getAttribute('data-vc-pinned')).toBeNull();
+    expect(getPinActionForKey(keySuzume).textContent).toContain('取消置顶');
+    expect(getPinActionForKey(keySuzume).querySelector('use')?.getAttribute('href')).toMatch(
+      /#pin-off$/,
+    );
+    expect(getPinActionForKey(keyAlice).textContent).toBe('置顶');
+    expect(getPinActionForKey(keyAlice).querySelector('use')?.getAttribute('href')).toMatch(
+      /#pin$/,
+    );
+
+    // Verify subtle pin icon next to time on pinned row and no extra descriptive text
+    const suzumeTop = getRowEl(keySuzume).querySelector('.vc-mobile-convo-top');
+    const suzumePinMark = suzumeTop?.querySelector('[data-vc-convo-pin-mark]');
+    expect(suzumePinMark).toBeTruthy();
+    expect(suzumePinMark?.getAttribute('role')).toBe('img');
+    expect(suzumePinMark?.getAttribute('aria-label')).toBe('已置顶');
+    expect(suzumePinMark?.hasAttribute('aria-hidden')).toBe(false);
+    expect(suzumePinMark?.querySelector('use')?.getAttribute('href')).toMatch(/#pin$/);
+    expect(suzumeTop?.querySelector('svg.vc-mobile-icon')).toBeTruthy();
+    expect(suzumeTop?.textContent).toBe('铃芽13:56');
+    expect(getRowEl(keyAlice).querySelector('.vc-mobile-convo-top svg.vc-mobile-icon')).toBeNull();
+
+    // 2. Pin Bob (newer than Suzume) -> pinned group [Bob, Suzume] keeps time order, unpinned group [Alice, Claire] keeps time order
+    fireEvent.click(getPinActionForKey(keyBob));
+    expect(usePreferences.getState().pinnedConversationKeys).toEqual([keySuzume, keyBob]);
+    expect(getOrderedKeys()).toEqual([keyBob, keySuzume, keyAlice, keyClaire]);
+    expect(document.querySelectorAll('[data-vc-pinned="true"]').length).toBe(2);
+
+    // 3. Search filtering keeps pinned rows in front in time order followed by unpinned matches
+    const searchInput = screen.getByRole('searchbox', { name: '搜索会话' });
+    fireEvent.change(searchInput, { target: { value: '晚安约定' } });
+    expect(getOrderedKeys()).toEqual([keyBob, keySuzume, keyAlice]);
+
+    // Clear search restores all 4 rows in pinned-first order
+    fireEvent.click(screen.getByRole('button', { name: '清除搜索' }));
+    expect(getOrderedKeys()).toEqual([keyBob, keySuzume, keyAlice, keyClaire]);
+
+    // 4. Clicking "取消置顶" on Bob unpins Bob and restores it to its time-ordered unpinned position
+    fireEvent.click(getPinActionForKey(keyBob));
+    expect(usePreferences.getState().pinnedConversationKeys).toEqual([keySuzume]);
+    expect(getOrderedKeys()).toEqual([keySuzume, keyAlice, keyBob, keyClaire]);
+    expect(getRowEl(keyBob).getAttribute('data-vc-pinned')).toBeNull();
+    expect(getPinActionForKey(keyBob).textContent).toBe('置顶');
+
+    // 5. External onPinConversation / onTogglePin takes precedence over default store toggle
+    const externalToggleSpy = vi.fn();
+    rerender(
+      <AppProviders client={client} queryClient={queryClient} sessionBridge={sessionBridge}>
+        <MobileChatList rows={rows} onTogglePin={externalToggleSpy} />
+      </AppProviders>,
+    );
+
+    const claireSliding = getRowEl(keyClaire).closest('ion-item-sliding') as HTMLElement & {
+      close?: () => Promise<void>;
+    };
+    const claireCloseSpy = vi.fn(async () => {});
+    claireSliding.close = claireCloseSpy;
+
+    fireEvent.click(getPinActionForKey(keyClaire));
+    expect(externalToggleSpy).toHaveBeenCalledTimes(1);
+    expect(externalToggleSpy).toHaveBeenCalledWith(expect.objectContaining({ key: keyClaire }));
+    expect(claireCloseSpy).toHaveBeenCalledTimes(1);
+    // Default store state must remain untouched when external callback handles it
+    expect(usePreferences.getState().pinnedConversationKeys).toEqual([keySuzume]);
+
+    // 6. Pinned row with no displayTime (updatedAt: 0 / NaN, no timeText) renders pin icon alone without empty time span and sorts deterministically
+    const keyTimeless = '["timeless.png","chat-timeless"]';
+    act(() => {
+      usePreferences.getState().togglePinnedConversation(keyTimeless);
+      usePreferences.getState().togglePinnedConversation(keyAlice);
+    });
+    rerender(
+      <AppProviders client={client} queryClient={queryClient} sessionBridge={sessionBridge}>
+        <MobileChatList
+          rows={[
+            {
+              ...rows[3], // Suzume: updatedAt = nowMs - 40_000 (pinned)
+            },
+            {
+              key: keyTimeless,
+              avatar: 'timeless.png',
+              file: 'chat-timeless',
+              avatarUrl: '/characters/timeless.png',
+              title: '无时间戳会话',
+              preview: '还没有时间',
+              updatedAt: Number.NaN,
+            },
+            {
+              ...rows[0], // Alice: updatedAt = nowMs - 10_000 (pinned, newer than Suzume despite NaN in between)
+            },
+          ]}
+        />
+      </AppProviders>,
+    );
+    expect(getOrderedKeys()).toEqual([keyAlice, keySuzume, keyTimeless]);
+    const timelessMeta = getRowEl(keyTimeless).querySelector('.vc-mobile-convo-meta');
+    expect(timelessMeta?.querySelector('[data-vc-convo-pin-mark]')).toBeTruthy();
+    expect(timelessMeta?.querySelector('.vc-mobile-convo-time')).toBeNull();
   });
 });
