@@ -5,7 +5,7 @@ SET search_path=vc,pg_catalog;
 
 CREATE FUNCTION vc.go_publish_memorycore(p_owner bigint,p_job bigint,p_token text,p_fence text,p_proposal jsonb,p_refs text[],p_record_refs jsonb)
 RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path=vc,pg_catalog AS $$
-DECLARE op vc.memorycore_operation; r jsonb; t jsonb; ref text; mid bigint; first_id bigint; conv bigint;
+DECLARE op vc.memorycore_operation; r jsonb; t jsonb; ref text; mid bigint; conv bigint;
  record_refs text[]; record_keys text[]; supplied_keys text[]; union_refs text[];
  record_ids text[]; mapped_ids text[]; target_ids text[]; record_targets text[];
  records jsonb := '[]'::jsonb; metadata jsonb; all_keys text[];
@@ -114,6 +114,12 @@ BEGIN
   metadata:=metadata||jsonb_build_object('source_message_ids',to_jsonb(record_keys),'vcDependencies',to_jsonb(record_keys));
   records:=records||jsonb_build_array(r||jsonb_build_object('metadata',metadata,'source_message_ids',to_jsonb(record_keys)));
  END LOOP;
+ -- V290 treats every operation target as replaced. The new overload requires
+ -- an explicit per-record declaration for each target before changing any row.
+ IF EXISTS(SELECT 1 FROM unnest(target_ids) target_id WHERE NOT EXISTS(
+  SELECT 1 FROM jsonb_array_elements(records) rec
+   CROSS JOIN LATERAL jsonb_array_elements_text(COALESCE(rec->'conflictTargetIds','[]')) declared_id
+  WHERE declared_id=target_id)) THEN RAISE EXCEPTION 'memorycore target not referenced'; END IF;
  p_proposal:=(p_proposal-'cleanup_retained_record_ids')||jsonb_build_object(
   'records',records,'dependencies',to_jsonb(all_keys),'record_source_refs',p_record_refs);
 
@@ -121,16 +127,26 @@ BEGIN
   mid:=nextval('vc.memory_id_seq');
   INSERT INTO vc.memory_item(owner_user_id,id,relationship_id,scope,summary,status,conversation_id,auto_saved,engine_record_id,engine_version,engine_operation_id)
   VALUES(p_owner,mid,op.relationship_id,'RELATIONSHIP',r->>'content','ACCEPTED',conv,true,r->>'id',(r->>'version')::bigint,op.operation_id);
+  -- supersedes is singular: among this record's declared targets, retain the
+  -- lowest database id (and its management version), independent of list order.
   UPDATE vc.memory_item n SET supersedes_memory_id=old.id, management_version=old.management_version+1
-   FROM (SELECT id,management_version FROM vc.memory_item WHERE owner_user_id=p_owner AND engine_record_id IN(SELECT value->>'id' FROM jsonb_array_elements(COALESCE(p_proposal->'targets','[]'))) ORDER BY id LIMIT 1) old
+   FROM (SELECT id,management_version FROM vc.memory_item WHERE owner_user_id=p_owner AND engine_record_id IN(SELECT value FROM jsonb_array_elements_text(COALESCE(r->'conflictTargetIds','[]'))) ORDER BY id LIMIT 1) old
    WHERE n.owner_user_id=p_owner AND n.id=mid;
-  first_id:=COALESCE(first_id,mid);
   FOR ref IN SELECT value FROM jsonb_array_elements_text(p_record_refs->(r->>'id')) LOOP
    INSERT INTO vc.memory_evidence(owner_user_id,id,memory_item_id,source_ref) VALUES(p_owner,nextval('vc.memory_id_seq'),mid,ref);
   END LOOP;
  END LOOP;
- UPDATE vc.memory_item SET superseded_at=clock_timestamp(),superseded_by_memory_id=first_id
- WHERE owner_user_id=p_owner AND engine_record_id IN(SELECT value->>'id' FROM jsonb_array_elements(COALESCE(p_proposal->'targets','[]')));
+ -- Several new facts may declare the same target. Its reverse link chooses
+ -- the declaring record with the bytewise-smallest record id, not batch order.
+ UPDATE vc.memory_item old SET superseded_at=clock_timestamp(),superseded_by_memory_id=replacement.id
+ FROM (
+  SELECT DISTINCT ON (declared_id) declared_id,n.id
+  FROM jsonb_array_elements(p_proposal->'records') rec
+   CROSS JOIN LATERAL jsonb_array_elements_text(COALESCE(rec->'conflictTargetIds','[]')) declared_id
+   JOIN vc.memory_item n ON n.owner_user_id=p_owner AND n.engine_operation_id=op.operation_id AND n.engine_record_id=rec->>'id'
+  ORDER BY declared_id,n.engine_record_id COLLATE "C"
+ ) replacement
+ WHERE old.owner_user_id=p_owner AND old.engine_record_id=replacement.declared_id;
  IF jsonb_array_length(COALESCE(p_proposal->'targets','[]'))>0 THEN
  UPDATE vc.conversation_summary cs SET valid=false WHERE cs.owner_user_id=p_owner AND EXISTS(
  SELECT 1 FROM vc.memory_evidence e JOIN vc.memory_item m ON(m.owner_user_id,m.id)=(e.owner_user_id,e.memory_item_id)
