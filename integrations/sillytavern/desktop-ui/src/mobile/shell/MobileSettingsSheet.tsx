@@ -56,6 +56,7 @@ export function MobileSettingsSheet({
   return (
     <IonModal
       className="vc-mobile-settings-modal"
+      data-vc-settings-modal=""
       isOpen={open}
       keepContentsMounted={true}
       breakpoints={[0, 0.56, 1]}

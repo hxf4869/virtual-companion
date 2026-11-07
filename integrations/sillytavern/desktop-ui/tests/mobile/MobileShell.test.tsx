@@ -865,6 +865,7 @@ describe('MB2-5 MobileShell (Ionic React 9 + Router 6)', () => {
     expect(modal.showBackdrop).toBe(true);
     expect(modal.handle).toBe(false);
     expect(modal.presentingElement).toBeUndefined();
+    expect(modal.hasAttribute('data-vc-settings-modal')).toBe(true);
 
     const sheet = document.querySelector('[data-vc-settings-sheet]');
     expect(sheet?.getAttribute('data-open')).toBe('false');
@@ -1112,6 +1113,17 @@ describe('MB2-5 MobileShell (Ionic React 9 + Router 6)', () => {
     expect(allMobileCss).toContain('--backdrop-opacity: 1;');
     expect(allMobileCss).toContain('.vc-mobile-settings-modal::part(backdrop)');
     expect(allMobileCss).not.toContain('.vc-mobile-settings-modal::part(content)');
+    expect(allMobileCss).toMatch(
+      /ion-modal\[data-vc-settings-modal\]::part\(content\)\s*\{[^}]*background:\s*var\(--mob-sheet-bg\);[^}]*-webkit-backdrop-filter:\s*var\(--mob-sheet-blur\);[^}]*backdrop-filter:\s*var\(--mob-sheet-blur\);[^}]*box-shadow:\s*var\(--vc-shadow-rim-overlay\);/,
+    );
+    expect(allMobileCss).toMatch(
+      /\.vc-mobile-settings-sheet\s*\{[^}]*background:\s*transparent;/,
+    );
+    expect(allMobileCss).not.toMatch(
+      /\.vc-mobile-settings-sheet\s*\{[^}]*backdrop-filter:/,
+    );
+    expect(allMobileCss).toContain('.vc-mobile-theme-option:has(.vc-mobile-theme-radio-input:focus-visible)');
+    expect(allMobileCss).not.toContain('.vc-mobile-theme-option:focus-within');
     expect(allMobileCss).toMatch(
       /@media\s*\(orientation:\s*landscape\)\s*and\s*\(max-height:\s*500px\)\s*\{\s*[^{]*\[data-vc-theme\][^{]*\{\s*--mob-header-pad-top:\s*6px;/,
     );
