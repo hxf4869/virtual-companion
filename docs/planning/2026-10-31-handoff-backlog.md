@@ -575,3 +575,5 @@ Owner 选择 React，要求保留现有正常 UI、优先复用成熟开源组�
 | ID | 优先级 | 范围与验收 |
 |---|---|---|
 | SX-7F | P0 | 修复 server-sx@34a4a58c 审计七项：完整 Vitest session 夹具；正文搜索单请求有界扫描及连续游标；管理桥逐方法 chats 白名单与真实桥 GO 链路；conversation/relationship 删除锁序；retention 分批清理七天 changes；profile 最终写入权威/水位栅栏；append/fork 201 与回放状态。验证 quick、全 Go 单元、完整隔离 store/http、RLS、npm test、完整 test:desktop 与受影响受管场景；NOTES 逐项记录红绿证据。本条完成前不合 main，搜索契约调整独立提交复审后再实现。 |
+
+**SX-7F [问]（2026-11-07，正文搜索有界续扫，待审）**：原 q 契约把 hasOlder/hasNewer 定义为已知匹配项，迫使单次请求扫描整聊。修订为每请求最多 200 条选中候选、密文扫描软目标 8 MiB（首条超目标可单独处理）；返回已找到项，允许零项但 has* 与 cursor 表示尚有历史可继续。游标为已扫描窗口排他边界；响应字节截断不得跳过已找到但未返回的项；锚点直接校验、不匹配404。超时明确503 CHAT_SEARCH_TIMEOUT，可重试输入游标；非 q 分页不变。先独立提交 OpenAPI/生成物与计划供 Owner 复审，再实施依赖逻辑；其他六项继续。
