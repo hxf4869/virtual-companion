@@ -10,13 +10,24 @@ const FILES = new Set(['manifest.json', 'samples.jsonl', 'summary.json', 'compar
 
 async function treeSize(root) {
     let bytes = 0;
+    const fileSizes = new Map();
     for (const entry of await fs.readdir(root, { withFileTypes: true })) {
         if (entry.isSymbolicLink()) throw new Error('ARTIFACT_SYMLINK');
         const file = path.join(root, entry.name);
         if (entry.isDirectory()) bytes += await treeSize(file);
-        else bytes += (await fs.stat(file)).size;
+        else {
+            try { fileSizes.set(entry.name, (await fs.stat(file)).size); }
+            catch (error) {
+                // The budget writer atomically renames its private temporary
+                // journal while checkpoints measure retained artifact size.
+                if (error.code !== 'ENOENT' || !/^budget\.json\.[a-f0-9]{16}\.tmp$/.test(entry.name)) throw error;
+                // Replace any earlier observation of the committed journal:
+                // ignoring the vanished temp alone could undercount its growth.
+                fileSizes.set('budget.json', (await fs.stat(path.join(root, 'budget.json'))).size);
+            }
+        }
     }
-    return bytes;
+    return bytes + [...fileSizes.values()].reduce((sum, size) => sum + size, 0);
 }
 
 async function ownedRounds(root) {
