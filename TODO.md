@@ -16,7 +16,7 @@
 - [x] SX-6（2026-11-07）：共享 ChatStore、完整历史/窗口与脚本屏障、原子 insert、权威守卫及生成留稿；Go/store-http/RLS/check/组件与受管 C04/C05/nf-cards/nf-tavern PASS；提交 d72e5f8e。
 - [x] SX-7（2026-11-07）：同事务来源/遗忘屏障、GO 对账与 inbox 同库投递、语音/记忆引用适配；Go/store-http/RLS/check、三项受管与离线记忆 22/22 PASS；提交 51b4f60f。
 - [x] SX-7F（2026-11-07）：修复审计七项；有界搜索、真实管理桥、删除锁序、changes清理、画像栅栏与201回放；quick/Go全单测/整包库/RLS/npm1275/Vitest203/受管PASS；提交 b8ba95d0（夹具 f30115b8、契约 accd79b7）。
-- [ ] SX-8（2026-11-07，进行中）：私有HTTP69f68030已批准；非SQL导出/加密I/O、ST冻结排空与未接线native适配完成；Go/桌面203/受管4项PASS，Node唯一夹具失败修复复验PASS；待V292先合main后做V293/native发布、完整迁移与20k持锁测量，未真实切换。
+- [ ] SX-8（2026-11-07，待Claude审计）：V293导入/别名/checkpoint与正反向迁移已可合成演练，未真实盘点或切换；Node1358/桌面203/完整RLS/整包集成/受管5项PASS；20k导出445ms、全改99.506s、持锁59.297–59.370s，原请求/claim重试无丢失；实现提交6e17ae5c。
 - [ ] SX-9–SX-16：见 Backlog M 节；本轮未开始。
 
 ### 聊天与记忆质量（CM）
