@@ -25,7 +25,8 @@
 - [x] CM-2（2026-11-07）：配置引用、持久 CNY 预留/UNKNOWN恢复与流式计量出口完成，另有Owner显式token模式；23项测试PASS，100并发预留零超限，60对含落盘首块附加p95=16.14ms，实际费用¥0；提交 a2bdcd9e。
 - [ ] CM-3（2026-11-07）：07ecf9bf 核心基线48/140、执行132/140，FAIL/INCOMPLETE；17307f05修复后对照14/14完成（关闭记忆2/7、标准证据6/7），累计输入15,356,108/输出4,948,468 tokens、226 UNKNOWN，人工复核NOT_RUN、费用未核价。
 - [ ] CM-4（2026-11-07）：f25a577f真实比较43/140＜基线48/140、二审18/22，FAIL；bd079e15缓存换序修复19项及桌面203项PASS，修后真实评测NOT_RUN；逐事实迁移待SX，交接63babfc3。
-- [ ] CM-6–CM-13：见 Backlog N 节；CM-11 收编评估待基线后决定，CM-12 滚动摘要与 CM-13 去 AI 味按评测采用。
+- [ ] CM-6–CM-10、CM-12–CM-13：见 Backlog N 节；CM-12 滚动摘要与 CM-13 去 AI 味按评测采用。
+- [x] CM-11（2026-11-07）：[收编评估文档](docs/planning/2026-11-07-cm11-memorycore-go-postgres-assessment.md)完成，Owner决定是否实施；文档diff/引用检查PASS，无迁移/新增评测；提交 c5f60a13。
 - [ ] CM-5（2026-11-07）：4a3321fc修复遗忘版本推进/旧意图重放，cd6da2b6补失败画像日志revision；修前均复现，Go 8/8、Node业务43/43、桌面203项PASS；完整真实出站闭环与历史版本漂移恢复未完成。
 
 ### MB2 手机端 React 重建（方案 `docs/planning/2026-11-06-mobile-react-rebuild-plan.md`）
