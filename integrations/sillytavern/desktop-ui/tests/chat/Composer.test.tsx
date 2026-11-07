@@ -2,7 +2,7 @@ import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, fireEvent, act, cleanup } from '@testing-library/react';
 import { AppProviders } from '../../src/app/providers';
-import { Composer } from '../../src/features/chat/Composer';
+import { Composer, useComposer } from '../../src/features/chat/Composer';
 import { createTestChatEnv } from './fixtures';
 
 describe('Composer keyboard, IME composition, and per-conversation draft persistence', () => {
@@ -167,5 +167,68 @@ describe('Composer keyboard, IME composition, and per-conversation draft persist
         const emojiMartHost = document.querySelector('#vc-emoji-panel .vc-emoji-mart-host');
         expect(emojiMartHost).toBeTruthy();
         expect(emojiMartHost?.querySelector('em-emoji-picker')).toBeTruthy();
+    });
+
+    it('reads target conversation draft and disables sending in useComposer({ conversationKey }) until that conversation is live', async () => {
+        const keyA = '["alice.png","chat-a"]';
+        const env = createTestChatEnv({
+            conversations: [
+                { key: keyA, avatar: 'alice.png', file: 'chat-a', title: 'Alice', preview: '', updatedAt: 1 },
+            ],
+            chatsByKey: {
+                [keyA]: [],
+            },
+        });
+        env.bridge.draft.write(keyA, 'Cached draft before open');
+
+        function Probe() {
+            const { draft, canSend, canSubmit, setDraft, submitComposer } = useComposer({
+                conversationKey: keyA,
+            });
+            return (
+                <div>
+                    <textarea
+                        data-testid="probe-input"
+                        value={draft}
+                        onChange={e => setDraft(e.target.value)}
+                    />
+                    <button
+                        type="button"
+                        data-testid="probe-send"
+                        disabled={!canSubmit}
+                        data-can-send={String(canSend)}
+                        onClick={() => submitComposer()}
+                    >
+                        Send
+                    </button>
+                </div>
+            );
+        }
+
+        const { getByTestId } = render(
+            <AppProviders
+                client={env.client}
+                queryClient={env.queryClient}
+                sessionBridge={env.bridge}
+            >
+                <Probe />
+            </AppProviders>,
+        );
+
+        const input = getByTestId('probe-input') as HTMLTextAreaElement;
+        const sendBtn = getByTestId('probe-send') as HTMLButtonElement;
+
+        // Before bridge.open(keyA) finishes, draft for keyA is visible, but sending is disabled
+        expect(input.value).toBe('Cached draft before open');
+        expect(sendBtn.disabled).toBe(true);
+        expect(sendBtn.getAttribute('data-can-send')).toBe('false');
+
+        // Once bridge.open(keyA) becomes ready, sending becomes enabled for the same draft
+        await act(async () => {
+            expect(await env.bridge.open(keyA)).toBe('opened');
+        });
+        expect(input.value).toBe('Cached draft before open');
+        expect(sendBtn.disabled).toBe(false);
+        expect(sendBtn.getAttribute('data-can-send')).toBe('true');
     });
 });

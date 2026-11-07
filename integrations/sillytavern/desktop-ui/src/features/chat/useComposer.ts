@@ -18,17 +18,31 @@ export interface ComposerQuote {
 }
 
 export interface UseComposerOptions {
+    conversationKey?: string;
     quote?: ComposerQuote | null;
     onClearQuote?: () => void;
     onSent?: () => void;
 }
 
-export function useComposer({ quote = null, onClearQuote, onSent }: UseComposerOptions = {}) {
+export function useComposer({
+    conversationKey,
+    quote = null,
+    onClearQuote,
+    onSent,
+}: UseComposerOptions = {}) {
     const bridge = useSessionBridge();
     const activeKey = useChatSnapshot(s => s.key);
-    const draft = useChatSnapshot(() => bridge.draft.read(activeKey));
-    const canSend = useChatSnapshot(s => s.canSend);
-    const busy = useChatSnapshot(s => s.busy);
+    const status = useChatSnapshot(s => s.status);
+    const targetKey = conversationKey !== undefined ? conversationKey : activeKey;
+    const isTargetLive =
+        conversationKey === undefined ||
+        (activeKey === conversationKey && status === 'ready');
+    const draft = useChatSnapshot(() => bridge.draft.read(targetKey));
+    const snapshotCanSend = useChatSnapshot(s => s.canSend);
+    const snapshotBusy = useChatSnapshot(s => s.busy);
+    const canSend = isTargetLive && snapshotCanSend;
+    const busy =
+        (conversationKey === undefined || activeKey === conversationKey) && snapshotBusy;
     const enterToSend = useChatSnapshot(s => s.enterToSend);
     const preferences = useChatSnapshot(s => s.preferences);
     const messages = useChatSnapshot(s => s.messages);
@@ -43,16 +57,17 @@ export function useComposer({ quote = null, onClearQuote, onSent }: UseComposerO
         if (form.getValues('text') !== draft) {
             form.setValue('text', draft, { shouldDirty: false, shouldTouch: false });
         }
-    }, [draft, form]);
+    }, [targetKey, draft, form]);
 
     const setDraft = useCallback((nextText: string) => {
         const normalized = String(nextText ?? '');
-        bridge.draft.write(activeKey, normalized);
+        bridge.draft.write(targetKey, normalized);
         form.setValue('text', normalized, { shouldDirty: true, shouldTouch: true });
-    }, [activeKey, bridge, form]);
+    }, [targetKey, bridge, form]);
 
     const lastMsg = messages.at(-1);
-    const canContinue = Boolean(lastMsg && !lastMsg.is_user && !lastMsg.is_system);
+    const canContinue =
+        isTargetLive && Boolean(lastMsg && !lastMsg.is_user && !lastMsg.is_system);
     const isNonBlank = composerMessageSchema.safeParse({ text: draft }).success;
     const canSubmit =
         canSend &&
@@ -62,7 +77,7 @@ export function useComposer({ quote = null, onClearQuote, onSent }: UseComposerO
     const submitComposer = useCallback((): boolean => {
         if (!canSubmit || submittingRef.current) return false;
 
-        const rawDraft = bridge.draft.read(activeKey);
+        const rawDraft = bridge.draft.read(targetKey);
         const parsed = composerMessageSchema.safeParse({ text: rawDraft });
 
         if (!parsed.success) {
@@ -94,19 +109,21 @@ export function useComposer({ quote = null, onClearQuote, onSent }: UseComposerO
             submittingRef.current = false;
         });
         return true;
-    }, [activeKey, bridge, canContinue, canSubmit, form, onClearQuote, onSent, preferences?.continue_on_send, quote]);
+    }, [targetKey, bridge, canContinue, canSubmit, form, onClearQuote, onSent, preferences?.continue_on_send, quote]);
 
     const handleFormSubmit = form.handleSubmit(() => {
         submitComposer();
     });
 
     const continueGeneration = useCallback(() => {
+        if (!isTargetLive) return;
         void bridge.continue();
-    }, [bridge]);
+    }, [bridge, isTargetLive]);
 
     const stopGeneration = useCallback(() => {
+        if (conversationKey !== undefined && activeKey !== conversationKey) return;
         void bridge.stop();
-    }, [bridge]);
+    }, [activeKey, bridge, conversationKey]);
 
     return {
         bridge,

@@ -165,7 +165,7 @@ test('场景模块组成有序列表，入口不再 push 或维护实现表', as
     assert.equal(new Set(ids).size, ids.length);
     const extra = [
         'story-view-browser', 'w11-tool-meter', 'w10-inbox-notify', 'hl-proactive', 'ux24-backend', 'voice-backend', 'voice-real', 'voice-chat', 'voice-proactive', 'voice-input', 'voice-settings', 'voice-backup', 'story-outbound', 'story-play',
-        'story-real', 'w15-ui', 'fe4a-ui', 'fe4b-ui', 'f3-settings', 'vc-ui-shell', 'vc-ui-walkthrough', 'f2-chat-ui', 'hl-reply', 'consent-ui', 'hl-persona', 'hl-stickers', 'dr-appearance', 'dr-shell', 'dr-models', 'dr-settings', 'dr-overlays', 'dr-pages', 'dr2-layout', 'dr2-settings', 'dr2-pages', 'dr2-mvu-new', 'nf-startup', 'nf-desktop', 'nf-prompts', 'nf-chat', 'nf-cards', 'nf-operations', 'nf-media', 'nf-settings', 'nf-tavern', 'nf-business', 'nf-performance', 'mb-engine', 'mb-chat', 'mb2-shell', 'mb2-layout',
+        'story-real', 'w15-ui', 'fe4a-ui', 'fe4b-ui', 'f3-settings', 'vc-ui-shell', 'vc-ui-walkthrough', 'f2-chat-ui', 'hl-reply', 'consent-ui', 'hl-persona', 'hl-stickers', 'dr-appearance', 'dr-shell', 'dr-models', 'dr-settings', 'dr-overlays', 'dr-pages', 'dr2-layout', 'dr2-settings', 'dr2-pages', 'dr2-mvu-new', 'nf-startup', 'nf-desktop', 'nf-prompts', 'nf-chat', 'nf-cards', 'nf-operations', 'nf-media', 'nf-settings', 'nf-tavern', 'nf-business', 'nf-performance', 'mb-engine', 'mb-chat', 'mb2-shell', 'mb2-layout', 'mb2-chat',
     ];
     assert.deepEqual(new Set(ids), new Set([...SCENES.map((scene) => scene.id), ...extra]));
     assert.ok(!resolveSceneFilter(undefined, ACCEPT_SCENES).includes('dr-appearance'), '外观浏览器预览只在显式选择时运行');

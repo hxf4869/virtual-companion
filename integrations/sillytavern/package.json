@@ -58,6 +58,7 @@
     "react-hook-form": "7.91.0",
     "react-router": "6.30.4",
     "react-router-dom": "6.30.4",
+    "react-virtuoso": "4.18.20",
     "sqlite-vec": "0.1.7-alpha.2",
     "wavesurfer.js": "8.0.5",
     "yet-another-react-lightbox": "3.33.0",

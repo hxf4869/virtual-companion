@@ -81,6 +81,9 @@ integrationDirectDependencies:
   - name: react-router-dom
     licenseFamily: MIT
     scope: runtime
+  - name: react-virtuoso
+    licenseFamily: MIT
+    scope: runtime
   - name: vite
     licenseFamily: MIT
     scope: dev

@@ -236,6 +236,7 @@ const appPackages = {
     'mobile/app/MobileApp.tsx': ['@tanstack/react-query', 'react'],
     'mobile/app/main.tsx': ['react', 'react-dom/client'],
     'mobile/chat/MobileChatList.tsx': ['@ionic/react', '@tanstack/react-query', 'react'],
+    'mobile/chat/conversation/MobileConversation.tsx': ['react', 'react-virtuoso'],
     'mobile/chat/data/chatTailPrefetch.ts': ['react'],
     'mobile/shell/MobileSettingsSheet.tsx': ['@ionic/react'],
     'mobile/shell/MobileShell.tsx': ['@ionic/react', '@ionic/react-router', '@ionic/react/css/core.css', 'react', 'react-router-dom'],
@@ -290,7 +291,7 @@ export function desktopResolvedGraph() {
             const file = importer?.split('?')[0];
             if (!isFirstPartyModule(file)) return null;
             if (specifier.startsWith('./') || specifier.startsWith('../')) return null;
-            if (allowsDesktopExternal(file, specifier)) return null;
+            if (allowsDesktopExternal(file, specifier)) return { id: specifier, external: true };
             if (specifier === '\0vite/preload-helper.js') return null;
             if (specifier === 'virtual:vc-app.css' && file === path.join(desktopSrc, 'app/main.tsx')) return null;
             if (file.startsWith(`${desktopSrc}${path.sep}`)) {
