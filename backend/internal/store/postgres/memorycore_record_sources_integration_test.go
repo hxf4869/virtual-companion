@@ -785,6 +785,130 @@ func TestCM4RecordTargetInheritanceRequiresEveryActualSource(t *testing.T) {
 	}
 }
 
+func TestCM4RecordSupersessionFollowsDeclaredTargets(t *testing.T) {
+	const oldX, oldY = "cm4-record-a", "cm4-record-b"
+	const newA, newB = "cm4-next-a", "cm4-next-b"
+	type link struct {
+		supersedes, supersededBy string
+		superseded               bool
+		managementVersion        int64
+	}
+	for _, tc := range []struct {
+		name         string
+		groups       [][]int
+		declarations [][]string
+		targets      []string
+		want         map[string]link
+		reject       bool
+	}{
+		{"unrelated-sibling", [][]int{{0}, {1}}, [][]string{{oldX}, {}}, []string{oldX}, map[string]link{
+			oldX: {"", newA, true, 3}, oldY: {"", "", false, 7},
+			newA: {oldX, "", false, 4}, newB: {"", "", false, 1},
+		}, false},
+		{"crossed-targets", [][]int{{1}, {0}}, [][]string{{oldY}, {oldX}}, []string{oldX, oldY}, map[string]link{
+			oldX: {"", newB, true, 3}, oldY: {"", newA, true, 7},
+			newA: {oldY, "", false, 8}, newB: {oldX, "", false, 4},
+		}, false},
+		{"shared-target-lowest-record-id", [][]int{{0}, {0}}, [][]string{{oldX}, {oldX}}, []string{oldX}, map[string]link{
+			oldX: {"", newA, true, 3}, oldY: {"", "", false, 7},
+			newA: {oldX, "", false, 4}, newB: {oldX, "", false, 4},
+		}, false},
+		{"multiple-targets-lowest-memory-id", [][]int{{0, 1}, {1}}, [][]string{{oldY, oldX}, {}}, []string{oldY, oldX}, map[string]link{
+			oldX: {"", newA, true, 3}, oldY: {"", newA, true, 7},
+			newA: {oldX, "", false, 4}, newB: {"", "", false, 1},
+		}, false},
+		{"unclaimed-target-rejects-whole-batch", [][]int{{0}, {1}}, [][]string{{oldX}, {}}, []string{oldX, oldY}, map[string]link{
+			oldX: {"", "", false, 3}, oldY: {"", "", false, 7},
+		}, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := cm4Records(t)
+			if err := f.publish(t, f.proposal([]int{0}, []int{1}), f.refs[:2], f.mapping([]int{0}, []int{1}), false); err != nil {
+				t.Fatal(err)
+			}
+			f.exec(t, `UPDATE vc.memory_item SET management_version=CASE engine_record_id WHEN $1 THEN 3 ELSE 7 END WHERE owner_user_id=1 AND engine_operation_id=$2`, oldX, f.op.ID)
+			replacement := *f
+			replacement.claim, _ = loadProfileClaim(t, f.refs[1], f.binding.RelationshipID)
+			var err error
+			replacement.op, err = f.s.PrepareEngineOperation(t.Context(), replacement.claim)
+			if err != nil {
+				t.Fatal(err)
+			}
+			proposal := replacement.proposal(tc.groups...)
+			mapping := replacement.mapping(tc.groups...)
+			records := proposal["records"].([]any)
+			for i, id := range []string{newA, newB} {
+				record := records[i].(map[string]any)
+				previousID := record["id"].(string)
+				record["id"] = id
+				record["conflictTargetIds"] = tc.declarations[i]
+				mapping[id] = mapping[previousID]
+				delete(mapping, previousID)
+			}
+			// Put B first to prove both link directions ignore batch order.
+			proposal["records"] = []any{records[1], records[0]}
+			targets := []any{}
+			for _, id := range tc.targets {
+				targets = append(targets, map[string]any{"id": id, "version": 1})
+			}
+			proposal["targets"] = targets
+			refs := []string{}
+			for _, group := range tc.groups {
+				for _, i := range group {
+					if !slices.Contains(refs, f.refs[i]) {
+						refs = append(refs, f.refs[i])
+					}
+				}
+			}
+			err = replacement.publish(t, proposal, refs, mapping, false)
+			if tc.reject {
+				if err == nil || !strings.Contains(err.Error(), "memorycore target not referenced") {
+					t.Fatalf("unclaimed target error=%v", err)
+				}
+				replacement.assertUnpublished(t)
+			} else {
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err = replacement.publish(t, proposal, refs, mapping, false); err != nil {
+					t.Fatalf("published replay: %v", err)
+				}
+			}
+			got := map[string]link{}
+			if err := f.withBoundSuper(t, func(ctx context.Context, tx pgx.Tx) error {
+				rows, err := tx.Query(ctx, `SELECT m.engine_record_id,COALESCE(prev.engine_record_id,''),COALESCE(next.engine_record_id,''),m.superseded_at IS NOT NULL,m.management_version
+ FROM vc.memory_item m
+ LEFT JOIN vc.memory_item prev ON (prev.owner_user_id,prev.id)=(m.owner_user_id,m.supersedes_memory_id)
+ LEFT JOIN vc.memory_item next ON (next.owner_user_id,next.id)=(m.owner_user_id,m.superseded_by_memory_id)
+ WHERE m.owner_user_id=1 AND m.engine_record_id=ANY($1::text[])`, []string{oldX, oldY, newA, newB})
+				if err != nil {
+					return err
+				}
+				defer rows.Close()
+				for rows.Next() {
+					var id string
+					var l link
+					if err = rows.Scan(&id, &l.supersedes, &l.supersededBy, &l.superseded, &l.managementVersion); err != nil {
+						return err
+					}
+					got[id] = l
+				}
+				return rows.Err()
+			}); err != nil {
+				t.Fatal(err)
+			}
+			for id, want := range tc.want {
+				if actual, ok := got[id]; !ok || actual != want {
+					t.Errorf("%s links=%+v present=%t, want %+v", id, actual, ok, want)
+				}
+			}
+			if len(got) != len(tc.want) {
+				t.Errorf("projected %d records, want %d", len(got), len(tc.want))
+			}
+		})
+	}
+}
+
 func TestCM4RecordAndCleanupSerializeWithForget(t *testing.T) {
 	for _, action := range []string{"publish", "cleanup"} {
 		t.Run(action, func(t *testing.T) {
