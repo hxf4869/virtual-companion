@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PRIVATE_ST_PATHS } from './source-bridge.js';
+import { isLegacyChatRoute, normalizeNativeApiPath } from './legacy-chat-routes.js';
 
 const ASSETS = new Map([['/auth/', 'index.html'], ['/auth/index.js', 'index.js'], ['/auth/style.css', 'style.css']]);
 // 首屏反馈随 HTML 返回，不等待宿主脚本或扩展初始化；由原生 preloader 一并移除。
@@ -20,6 +21,23 @@ export function goCookies(header = '') {
 function fail(res, status, code, message) {
     res.setHeader('Cache-Control', 'no-store');
     res.status(status).json({ code, message });
+}
+function chatStorageUnavailable(res) {
+    return fail(res, 503, 'SCHEMA_UNAVAILABLE', '聊天存储暂不可用，请稍后重试');
+}
+function validChatStorageHint(hint) {
+    return hint && ['ST', 'GO', 'FROZEN'].includes(hint.mode)
+        && typeof hint.authorityEpoch === 'string' && /^[1-9][0-9]*$/.test(hint.authorityEpoch)
+        && Object.keys(hint).length === 2;
+}
+function pageIdentityMeta(identity, chatStorage) {
+    const identityMeta = identity?.accountId && identity?.sessionId
+        ? `<meta name="vc-account-id" content="${identity.accountId}"><meta name="vc-session-id" content="${identity.sessionId}">`
+        : '';
+    const chatMeta = chatStorage
+        ? `<meta name="vc-chat-mode" content="${chatStorage.mode}"><meta name="vc-chat-authority-epoch" content="${chatStorage.authorityEpoch}">`
+        : '';
+    return identityMeta + chatMeta;
 }
 export function parseAccountHandles(raw) {
     if (!raw) return {};
@@ -78,7 +96,7 @@ export function isMobileRoutePath(reqPath) {
     return false;
 }
 
-export function serveMobile(mobileDir, req, res) {
+export function serveMobile(mobileDir, req, res, chatStorage) {
     const pathname = String(req.path || '').split('?')[0];
     const rawTail = pathname.slice('/m/'.length);
     let rel;
@@ -91,10 +109,7 @@ export function serveMobile(mobileDir, req, res) {
     const indexFile = path.join(root, 'index.html');
     if (!fs.existsSync(indexFile)) return fail(res, 503, 'VC_MOBILE_UNAVAILABLE', '手机界面暂不可用');
     if (routeEntry) {
-        const identity = req.vcIdentity;
-        const meta = identity?.accountId && identity?.sessionId
-            ? `<meta name="vc-account-id" content="${identity.accountId}"><meta name="vc-session-id" content="${identity.sessionId}">`
-            : '';
+        const meta = pageIdentityMeta(req.vcIdentity, chatStorage);
         const html = fs.readFileSync(indexFile, 'utf8').replace('<head>', `<head>${meta}`);
         res.setHeader('Content-Type', 'text/html; charset=utf-8');
         res.setHeader('Cache-Control', 'no-store');
@@ -145,7 +160,10 @@ export function createHostAuth({ config, getUser, accountVersion, indexHtml, fet
         }
         const write = !['GET', 'HEAD'].includes(req.method);
         if (write) headers['Content-Type'] = 'application/json';
-        const upstream = await fetchImpl(`${config.goBaseUrl}/api/v1/auth/${suffix}`, {
+        const rawUrl = req.url || '';
+        const queryAt = rawUrl.indexOf('?');
+        const query = suffix === 'session' && queryAt !== -1 ? rawUrl.slice(queryAt) : '';
+        const upstream = await fetchImpl(`${config.goBaseUrl}/api/v1/auth/${suffix}${query}`, {
             method: req.method, headers, ...(write ? { body: JSON.stringify(req.body ?? {}) } : {}),
             redirect: 'error', signal: AbortSignal.timeout(config.timeoutMs),
         });
@@ -176,15 +194,20 @@ export function createHostAuth({ config, getUser, accountVersion, indexHtml, fet
             }
             if (!config.goBaseUrl) return fail(res, 503, 'VC_AUTH_UNAVAILABLE', '登录服务暂不可用');
             if (req.path.startsWith('/auth/api/')) return await proxyAuth(req, res, req.path.slice('/auth/api/'.length));
+            const nativePath = normalizeNativeApiPath(req.path);
             // ST 自己的登录、恢复与账号管理不构成第二套入口。
-            if ((req.path === '/api/users' || req.path.startsWith('/api/users/'))
-                && !(req.method === 'GET' && req.path === '/api/users/me')) return fail(res, 403, 'ACCESS_DENIED', '请使用账户登录入口');
-            const response = await fetchImpl(`${config.goBaseUrl}/api/v1/auth/session`, {
+            if ((nativePath === '/api/users' || nativePath.startsWith('/api/users/'))
+                && !(req.method === 'GET' && nativePath === '/api/users/me')) return fail(res, 403, 'ACCESS_DENIED', '请使用账户登录入口');
+            const legacyChatRoute = isLegacyChatRoute(req, nativePath);
+            const includeChatStorage = pageEntry || legacyChatRoute;
+            const query = includeChatStorage ? '?include=chatStorage' : '';
+            const response = await fetchImpl(`${config.goBaseUrl}/api/v1/auth/session${query}`, {
                 headers: { Accept: 'application/json', Cookie: goCookies(req.headers.cookie) },
                 redirect: 'error', signal: AbortSignal.timeout(config.timeoutMs),
             });
             if (!response.ok) {
                 if (response.status === 401 && pageEntry) return res.redirect(303, '/auth/');
+                if (includeChatStorage && response.status !== 401) return chatStorageUnavailable(res);
                 return fail(res, response.status === 401 ? 401 : 503, 'AUTHENTICATION_REQUIRED', '请重新登录');
             }
             const identity = await response.json();
@@ -201,6 +224,16 @@ export function createHostAuth({ config, getUser, accountVersion, indexHtml, fet
             const mismatch = req.session?.vcAccountId !== identity.accountId || req.session?.vcSessionId !== identity.sessionId || req.session?.handle !== handle;
             const canBind = pageEntry || req.method === 'GET' && (req.path === '/auth/access' || req.path === '/csrf-token' && !req.session?.vcSessionId);
             if (mismatch && !canBind) return fail(res, 409, 'ACCOUNT_CONTEXT_CHANGED', '登录状态已变化，请重新打开聊天');
+            if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
+                if (req.headers['x-vc-expected-account-id'] !== identity.accountId || req.headers['x-vc-expected-session-id'] !== identity.sessionId) {
+                    return fail(res, 409, 'ACCOUNT_CONTEXT_CHANGED', '此页面的登录状态已变化，请重新打开聊天');
+                }
+            }
+            const chatStorage = includeChatStorage ? identity.chatStorage : undefined;
+            if (includeChatStorage && !validChatStorageHint(chatStorage)) return chatStorageUnavailable(res);
+            if (legacyChatRoute && chatStorage.mode !== 'ST') {
+                return fail(res, 409, 'CHAT_AUTHORITY_CHANGED', chatStorage.mode === 'FROZEN' ? '正在迁移' : '聊天存储已切换');
+            }
             if (canBind) {
                 const registered = await fetchImpl(`${config.goBaseUrl}/api/v1/service/st/profile`, {
                     method: 'POST', headers: { Authorization: `Bearer ${config.serviceToken}`, 'Content-Type': 'application/json' },
@@ -210,20 +243,15 @@ export function createHostAuth({ config, getUser, accountVersion, indexHtml, fet
                 if (scope?.ownerAccountId !== identity.accountId || scope?.handle !== handle) return fail(res, 503, 'VC_DATA_NOT_CONFIGURED', '聊天空间登记尚未完成');
             }
             if (mismatch) req.session = { handle, version: accountVersion(user), vcAccountId: identity.accountId, vcSessionId: identity.sessionId };
-            if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
-                if (req.headers['x-vc-expected-account-id'] !== identity.accountId || req.headers['x-vc-expected-session-id'] !== identity.sessionId) {
-                    return fail(res, 409, 'ACCOUNT_CONTEXT_CHANGED', '此页面的登录状态已变化，请重新打开聊天');
-                }
-            }
             req.vcIdentity = { accountId: identity.accountId, sessionId: identity.sessionId, handle };
             if (accountData && !await accountData.enter(identity.accountId, handle, res)) return fail(res, 409, 'ACCOUNT_DELETION_PENDING', '账号删除处理中，聊天已暂停。');
             res.setHeader('Cache-Control', 'no-store'); res.setHeader('Vary', 'Cookie');
             if (req.method === 'GET' && req.path === '/auth/access') return res.json({ allowed: true });
-            if (['GET', 'HEAD'].includes(req.method) && req.path.startsWith('/m/')) return serveMobile(mobileDir, req, res);
+            if (['GET', 'HEAD'].includes(req.method) && req.path.startsWith('/m/')) return serveMobile(mobileDir, req, res, chatStorage);
             if (['GET', 'HEAD'].includes(req.method) && req.path.startsWith('/desktop/assets/')) return serveDesktopAsset(desktopAppDir, req, res);
             if (pageEntry) {
-                // 只输出非凭据十进制 ID；getRequestHeaders 在模块初始化时捕获，旧页不能冒用新 cookie。
-                const meta = `<meta name="vc-account-id" content="${identity.accountId}"><meta name="vc-session-id" content="${identity.sessionId}">`;
+                // 只输出经过核验的非凭据字段；旧页不能冒用新 cookie。
+                const meta = pageIdentityMeta(req.vcIdentity, chatStorage);
                 res.setHeader('Cache-Control', 'no-store'); res.setHeader('Vary', 'Cookie');
                 res.setHeader('Content-Type', 'text/html; charset=utf-8');
                 if (['/', '/desktop/'].includes(req.path)) return res.end(desktopHtml().replace('<head>', `<head>${meta}`));

@@ -1,16 +1,16 @@
 {
   "id": "st-f2-characters",
   "kind": "deterministic-string-replacement",
-  "reason": "W05 角色改名/删除的子聊天按请求携带的每条读取基线批量核验；BYAF保留原转换器，导入新副本生成新身份。先核验后写头像，缺基线不允许先破坏卡片。",
+  "reason": "W05 角色改名/删除的子聊天按请求携带的每条读取基线批量核验；BYAF保留原转换器，导入新副本生成新身份。先核验后写头像，缺基线不允许先破坏卡片。SX-6 角色卡资源投影可跳过旧聊天统计。",
   "upstream": {
     "component": "sillytavern",
     "commit": "7e8663cd9c184a550b37238218bdd32c6efc68e9",
     "version": "1.19.0"
   },
   "target": "src/endpoints/characters.js",
-  "removal_condition": "上游提供等价F2边界并通过相关回归后移除。",
+  "removal_condition": "上游提供等价F2边界并通过相关回归后移除。ST 角色卡资源迁移到 Go 后移除资源投影。",
   "expected_input_sha256": "3235555529e9ff17ecc2ebe9168b0af77fe6ef5947f3d1f7de3df6d5f2567d89",
-  "expected_output_sha256": "8131dfbbefaf2d8279c26a211552ff01e99cdd645d2812be74a11faaf9d673a4",
+  "expected_output_sha256": "cac1f4431d56f8b76a82ba687029b8deb0adadfa0ba17fcb81cc6dfa33727fed",
   "replacements": [
     {
       "from": "import cacheBuster from '../middleware/cacheBuster.js';\n\n// With 100 MB",
@@ -65,6 +65,26 @@
     {
       "from": "        response.send({ file_name: fileName, ...(request.vcF2ImportedChats ? { vc_f2_chats: request.vcF2ImportedChats } : {}) });\n    } catch (err) {\n        console.error(err);\n",
       "to": "        response.send({ file_name: fileName, ...(request.vcF2ImportedChats ? { vc_f2_chats: request.vcF2ImportedChats } : {}) });\n    } catch (err) {\n        if (vcF2Error(err, response)) return;\n        console.error(err);\n",
+      "count": 1
+    },
+    {
+      "from": " * @param  {boolean} options.shallow If true, only return the core character's metadata\n * @return {Promise<object>}     A Promise that resolves when the character processing is done.\n */\nconst processCharacter = async (item, directories, { shallow }) => {",
+      "to": " * @param  {boolean} options.shallow If true, only return the core character's metadata\n * @param  {boolean} options.resourceOnly If true, skip statistics from legacy chat files\n * @return {Promise<object>}     A Promise that resolves when the character processing is done.\n */\nconst processCharacter = async (item, directories, { shallow, resourceOnly }) => {",
+      "count": 1
+    },
+    {
+      "from": "        const chatsDirectory = path.join(directories.chats, item.replace('.png', ''));\n\n        const { chatSize, dateLastChat } = calculateChatSize(chatsDirectory);\n        character.chat_size = chatSize;\n        character.date_last_chat = dateLastChat;",
+      "to": "        if (resourceOnly) {\n            character.chat_size = 0;\n            character.date_last_chat = 0;\n        } else {\n            const { chatSize, dateLastChat } = calculateChatSize(path.join(directories.chats, item.replace('.png', '')));\n            character.chat_size = chatSize;\n            character.date_last_chat = dateLastChat;\n        }",
+      "count": 1
+    },
+    {
+      "from": "        const processingPromises = pngFiles.map(file => processCharacter(file, request.user.directories, { shallow: useShallowCharacters }));",
+      "to": "        const resourceOnly = request.body?.vc_resource_only === true;\n        const processingPromises = pngFiles.map(file => processCharacter(file, request.user.directories, { shallow: useShallowCharacters, resourceOnly }));",
+      "count": 1
+    },
+    {
+      "from": "        const data = await processCharacter(item, request.user.directories, { shallow: false });",
+      "to": "        const resourceOnly = request.body?.vc_resource_only === true;\n        const data = await processCharacter(item, request.user.directories, { shallow: false, resourceOnly });",
       "count": 1
     }
   ],

@@ -314,6 +314,19 @@ ON CONFLICT (id) DO UPDATE SET role = 'ADMIN', status = 'ACTIVE';
         const rightsAuth = await authRequest(`challenges/${rightsChallenge.challengeId}/authenticator-confirm`, { code:totpCode(rightsSetup.manualKey), trustDevice:false });
         secrets.rightsSession = sessionFrom(rightsAuth.response, rightsAuth.data);
     }
+    if (secrets.sx7Chat) {
+        const owner = BigInt(secrets.sx7Chat.ownerId);
+        sql(`
+INSERT INTO vc.vc_user(id,display_name) VALUES (${owner}, 'SX7 synthetic chat');
+INSERT INTO vc.identity_account(id,username,password_hash,role,status,display_name)
+VALUES (${owner},'sx7-accept-chat','${vector.goHash}','USER','ACTIVE','SX7 synthetic chat');
+INSERT INTO vc.chat_authority(owner_user_id,authority,epoch) VALUES (${owner},'GO',2);
+`);
+        const { data: challenge } = await authenticate('login', { account: 'sx7-accept-chat', password: secrets.password });
+        const { data: setup } = await authenticate(`challenges/${challenge.challengeId}/authenticator-setup`, {});
+        const auth = await authenticate(`challenges/${challenge.challengeId}/authenticator-confirm`, { code: totpCode(setup.manualKey), trustDevice: false });
+        secrets.sx7Chat.session = sessionFrom(auth.response, auth.data);
+    }
     async function authenticatedSession(account) {
         const { response, data } = await activate(account);
         const session = sessionFrom(response, data);
@@ -526,6 +539,7 @@ export async function seedManagedProfiles(dataRoot, upstreamSt, rightsHandle, ju
         fs.mkdirSync(path.dirname(defaultSettingsPath), { recursive: true, mode: 0o700 });
         fs.writeFileSync(defaultSettingsPath, JSON.stringify(defaultSettings), { mode: 0o600 });
     }
+    return storage;
 }
 
 async function startManagedStack(secrets, artifactsDir) {
@@ -543,7 +557,25 @@ async function startManagedStack(secrets, artifactsDir) {
         env: { VC_ST_DEV_DIR: DEV_MANAGED, VC_ST_PORT: String(ST_PORT) },
         label: 'assemble-managed（受管 st-run 组装，幂等）',
     });
-    await seedManagedProfiles(path.join(DEV_MANAGED, 'data'), path.join(INTEG, 'upstream/SillyTavern'), secrets.needsRights ? RIGHTS_HANDLE : null);
+    const storage = await seedManagedProfiles(path.join(DEV_MANAGED, 'data'), path.join(INTEG, 'upstream/SillyTavern'), secrets.needsRights ? RIGHTS_HANDLE : null);
+    if (secrets.sx7Chat) {
+        const { ownerId, handle } = secrets.sx7Chat;
+        const key = `user:${handle}`;
+        const profileDir = path.join(DEV_MANAGED, 'data', handle);
+        const accountFile = path.join(DEV_MANAGED, 'data', '_vc_accounts', `${ownerId}.json`);
+        if (await storage.getItem(key) || fs.existsSync(profileDir) || fs.existsSync(accountFile)) {
+            dieLifecycle('SX7 合成聊天空间已存在');
+        }
+        secrets.sx7Chat.removeProfile = async () => {
+            try {
+                await storage.removeItem(key);
+            } finally {
+                fs.rmSync(profileDir, { recursive: true, force: true });
+                fs.rmSync(accountFile, { force: true });
+            }
+        };
+        await storage.setItem(key, { handle, name: 'SX7 合成聊天账号', created: Date.now(), password: '', salt: '', enabled: true, admin: false });
+    }
     const clearedBindings = clearStaleVcBindings(path.join(DEV_MANAGED, 'data'));
     log.info(`已清除持久 dataRoot 中旧库实例绑定 ${clearedBindings} 个聊天文件`);
     runChecked(process.execPath, [path.join(SCRIPTS, 'start-managed.mjs')], {
@@ -556,7 +588,8 @@ async function startManagedStack(secrets, artifactsDir) {
             VC_MEMORYCORE_SERVICE_TOKEN: secrets.memorycoreToken,
             VC_MEMORYCORE_CALLBACK_BASE_URL: GO_BASE,
             VC_MEMORYCORE_CALLBACK_TOKEN: secrets.memorycoreCallbackToken,
-            VC_ST_ACCOUNT_HANDLES: JSON.stringify({ [OWNER_ACCOUNT_ID]: 'default-user', [SECOND_ACCOUNT_ID]: 'vc-w05-second', ...(secrets.needsRights ? { [RIGHTS_ACCOUNT_ID]: RIGHTS_HANDLE } : {}) }),
+            VC_ST_ACCOUNT_HANDLES: JSON.stringify({ [OWNER_ACCOUNT_ID]: 'default-user', [SECOND_ACCOUNT_ID]: 'vc-w05-second', ...(secrets.needsRights ? { [RIGHTS_ACCOUNT_ID]: RIGHTS_HANDLE } : {}),
+                ...(secrets.sx7Chat ? { [secrets.sx7Chat.ownerId]: secrets.sx7Chat.handle } : {}) }),
             VC_ST_GO_TIMEOUT_MS: secrets.needsMemory ? '30000' : '2000',
         },
         label: 'start-managed（ST 8752 + 插件桥环境）',
@@ -588,6 +621,7 @@ async function cleanupManaged(secrets) {
         try { await stopW10Capture(capture); } catch { /* 证书和监听已尽力关闭 */ }
     }
     const stopped = [];
+    let sx7CleanupError;
     // ST 进程归属：B 的 stop-managed.mjs 按 st.pid + 命令行核对停止（防误杀原生实例）
     const stopManaged = path.join(SCRIPTS, 'stop-managed.mjs');
     if (fs.existsSync(stopManaged)) {
@@ -597,6 +631,11 @@ async function cleanupManaged(secrets) {
         } catch (e) {
             log.warn(`stop-managed 失败：${e.message}（继续清理其余归属）`);
         }
+    }
+    try {
+        await secrets.sx7Chat?.removeProfile?.();
+    } catch (error) {
+        sx7CleanupError = new LifecycleError(`SX7 合成聊天空间清理失败（${error.code ?? error.name}）`);
     }
     // 本脚本自有进程：只终止本轮实际启动的 child（secrets.goPid/fixturePid，spawn 返回值，
     // 不是 PID 文件），并清除本轮写入的 PID 文件；残留历史 PID 文件不代表所有权，
@@ -629,6 +668,7 @@ async function cleanupManaged(secrets) {
     }
     // 等子进程真正退出，避免端口残留影响下一轮
     await new Promise((r) => setTimeout(r, 700));
+    if (sx7CleanupError) throw sx7CleanupError;
 }
 
 // ---------------------------------------------------------------------------
@@ -714,6 +754,12 @@ async function runFull() {
         memorycoreCallbackToken: synthServiceToken(),
         fixtureKey: synthApiKey(),
     };
+    const sx7Interrupt = new AbortController();
+    const interruptSX7 = () => sx7Interrupt.abort(new LifecycleError('SX7 受管验收已中断'));
+    if (selected.includes('sx7f-chat-bridge')) {
+        const ownerId = String(BigInt(RIGHTS_ACCOUNT_ID) + 1n);
+        secrets.sx7Chat = { ownerId, handle: `vc-sx7-chat-${ownerId}` };
+    }
     const results = { startedAt: new Date().toISOString(), selected, scenes: {}, artifactsDir };
     const ctx = {
         secrets, artifactsDir, results,
@@ -793,7 +839,32 @@ async function runFull() {
             await startFixtureProvider(secrets, artifactsDir);
         }
         if (needsStack) {
+            if (secrets.sx7Chat) {
+                process.on('SIGINT', interruptSX7);
+                process.on('SIGTERM', interruptSX7);
+            }
             await startManagedStack(secrets, artifactsDir);
+            sx7Interrupt.signal.throwIfAborted();
+            if (secrets.sx7Chat) {
+                const { ownerId, session } = secrets.sx7Chat;
+                const st = createStClient({
+                    baseUrl: ST_BASE,
+                    extraCookies: `vc_session=${session.vcSession}; vc_csrf=${session.vcCsrf}`,
+                    expectedIdentity: session,
+                });
+                ctx.sx7Chat = {
+                    st, origin: ST_BASE, vcCsrf: session.vcCsrf, signal: sx7Interrupt.signal,
+                    sources: () => JSON.parse(psql(`
+SELECT coalesce(json_agg(json_build_object('chatId',c.st_chat_identity,'messageId',s.message_id,
+    'candidateId',s.candidate_id,'revision',s.source_revision::text,'generation',s.source_generation::text,
+    'sourceRef',s.source_ref,'present',s.present,'eligible',s.eligible,'goRevision',c.st_applied_revision::text,
+    'goSource',c.st_source_state='PRESENT' AND c.st_location IS NULL)), '[]'::json)
+FROM vc.st_message_source s JOIN vc.conversation c
+  ON (c.owner_user_id,c.id)=(s.owner_user_id,s.conversation_id)
+WHERE s.owner_user_id=${BigInt(ownerId)};
+`).trim()),
+                };
+            }
             // 桥的 pickSessionCookies 从 generate 请求 Cookie 里取 Go 会话做核验（生产链路
             // 浏览器同源持有 vc_session/vc_csrf 一并带上），此处按同形状注入
             ctx.st = createStClient({
@@ -810,14 +881,17 @@ async function runFull() {
         }
 
         for (const id of selected) {
+            sx7Interrupt.signal.throwIfAborted();
             const scene = ACCEPT_SCENES.find((s) => s.id === id);
             log.info(`场景 ${id}：${scene.title}`);
             const startedAt = Date.now();
             try {
                 await scene.run(ctx);
+                sx7Interrupt.signal.throwIfAborted();
                 results.scenes[id] = { status: 'PASS', ms: Date.now() - startedAt };
                 log.ok(`场景 ${id} PASS（${Date.now() - startedAt}ms）`);
             } catch (e) {
+                sx7Interrupt.signal.throwIfAborted();
                 failed += 1;
                 results.scenes[id] = { status: 'FAIL', ms: Date.now() - startedAt, error: e.message };
                 log.fail(`场景 ${id} FAIL：${e.message}`);
@@ -825,13 +899,22 @@ async function runFull() {
             }
         }
     } finally {
-        results.finishedAt = new Date().toISOString();
-        results.screenshots = ctx.screenshots;
-        const resultsPath = path.join(artifactsDir, 'results.json');
-        fs.writeFileSync(resultsPath, JSON.stringify(results, null, 2) + '\n', { mode: 0o600 });
-        log.info(`结果 JSON 已写入 ${path.relative(REPO_ROOT, resultsPath)}`);
-        if (needsGo || needsStack || needsFixture) await cleanupManaged(secrets);
+        try {
+            results.finishedAt = new Date().toISOString();
+            results.screenshots = ctx.screenshots;
+            const resultsPath = path.join(artifactsDir, 'results.json');
+            fs.writeFileSync(resultsPath, JSON.stringify(results, null, 2) + '\n', { mode: 0o600 });
+            log.info(`结果 JSON 已写入 ${path.relative(REPO_ROOT, resultsPath)}`);
+        } finally {
+            try {
+                if (needsGo || needsStack || needsFixture) await cleanupManaged(secrets);
+            } finally {
+                process.off('SIGINT', interruptSX7);
+                process.off('SIGTERM', interruptSX7);
+            }
+        }
     }
+    sx7Interrupt.signal.throwIfAborted();
     if (failed > 0) {
         log.fail(`${failed} 个场景失败（退出码 4）`);
         process.exit(4);

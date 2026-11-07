@@ -282,7 +282,7 @@ export async function createChatEngine({ client, context, signal, settings, deci
             const count=await createTokenizer({settings,models,request:(url,body)=>client.request(url,body)}).getTokenCountAsync(context.chat.at(-1).mes,0);
             return count<auto.target_length;
         },
-        async generateHelper(config, { signal, onPhase = () => {} } = {}) {
+        async generateHelper(config, { signal, generation, onPhase = () => {} } = {}) {
             const [{createHelperPromptRuntime},{createGenerateResult}] = await Promise.all([import('./helper-computation.js'),import('./helper-types.js')]);
             signal.throwIfAborted();
             const original = structuredClone(settings.oai_settings);
@@ -333,9 +333,9 @@ export async function createChatEngine({ client, context, signal, settings, deci
                 if (destroyed) throw new DOMException('Engine destroyed', 'AbortError');
                 onPhase('transport');
                 let previous='',reasoning='';
-                const result=await readGenerationResponse(await client.generate({url:'/api/backends/chat-completions/generate',body:JSON.parse(JSON.stringify(packet.generate_data))},{signal}),{
+                const result=await readGenerationResponse(await client.generate({url:'/api/backends/chat-completions/generate',body:JSON.parse(JSON.stringify(packet.generate_data))},{signal,generation}),{
                     settings:settings.oai_settings,powerSettings:settings.power_user,signal,stream:packet.stream,onUpdate:async result=>{
-                        if(!packet.stream)return;
+                        if(signal.aborted || !packet.stream)return;
                         const full=result.text,thought=result.state.reasoning;
                         const incremental=services.computation.cleanUpMessage({getMessage:full.slice(previous.length),isImpersonate:false,isContinue:false,displayIncompleteSentences:true});
                         await context.eventSource.emit('js_stream_token_received_fully',full,config.generation_id);

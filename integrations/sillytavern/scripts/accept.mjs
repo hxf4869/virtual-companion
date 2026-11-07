@@ -224,11 +224,20 @@ const chatLen = (page) => ctxEval(page, () => window.SillyTavern.getContext().ch
 async function sendSolo(page, text) {
     const since = await mockClear();
     const n0 = await chatLen(page);
-    await typeAndSend(page, text);
+    const generated = page.waitForResponse(response => new URL(response.url()).pathname === '/api/backends/chat-completions/generate'
+        && response.request().method() === 'POST', { timeout: 60000 }).then(async response => {
+        if (response.ok()) return;
+        const body = await response.json().catch(() => null);
+        const rawCode = body?.code ?? body?.error?.code;
+        const code = /^[A-Z0-9_]{1,80}$/.test(rawCode || '') ? rawCode : 'UNKNOWN';
+        throw new Error(`生成请求被拒绝：HTTP ${response.status()} ${code}`);
+    });
+    await Promise.all([typeAndSend(page, text), generated]);
     await poll(() => ctxEval(page, (p) => { const ch = window.SillyTavern.getContext().chat; const last = ch[ch.length - 1]; const s = document.querySelector('#mes_stop'); return ch.length >= p.n + 2 && ch[p.n]?.is_user === true && !last.is_user && last.mes.includes(p.mark) && (!s || getComputedStyle(s).display === 'none'); }, { n: n0, mark: REPLY_MARK }), 60000, '固定回复完整到达');
     const caps = await waitCaptures(since, 1);
     return { capture: caps[caps.length - 1], userIdx: n0, replyIdx: n0 + 1 };
 }
+
 const mesText = (page, idx) => ctxEval(page, (i) => document.querySelector(`#chat .mes[mesid="${i}"] .mes_text`)?.textContent ?? null, idx);
 const chatMes = (page, idx) => ctxEval(page, (i) => { const m = window.SillyTavern.getContext().chat[i]; return m ? { mes: m.mes, is_user: m.is_user, name: m.name, swipes: m.swipes?.length ?? 0, original_avatar: m.original_avatar ?? null } : null; }, idx);
 async function shot(page, name) { const p = path.join(ART, `${name}.png`); await page.screenshot({ path: p, fullPage: false }); return p; }
@@ -488,11 +497,11 @@ async function caseC04(page) {
     let ok = await step('C04.1 原生导入，启用可信合成脚本与显示正则', true, async () => {
         const c = await importCharacterFile(page, file, name); complex = { name, ...c };
         await selectCharacter(page, name); await importEmbeddedBookAndBind(page, book, c.avatar);
+        const scriptConsent = page.locator('.TH-popup [role="dialog"]').filter({ hasText: c.avatar });
+        await scriptConsent.getByRole('button', { name: /^确认$/ }).click({ timeout: 20000 });
+        await scriptConsent.waitFor({ state: 'hidden', timeout: 10000 });
         await page.evaluate((avatar) => {
             const c = SillyTavern.getContext(), es = c.extensionSettings;
-            es.tavern_helper ??= {}; es.tavern_helper.script ??= {}; es.tavern_helper.script.enabled ??= {};
-            const enabled = es.tavern_helper.script.enabled.characters ??= [];
-            if (!enabled.includes(avatar)) enabled.push(avatar);
             es.character_allowed_regex ??= [];
             if (!es.character_allowed_regex.includes(avatar)) es.character_allowed_regex.push(avatar);
             c.saveSettingsDebounced();

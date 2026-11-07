@@ -258,6 +258,9 @@
 “SX-2 已冻结、尚未实现，由 SX-3–SX-6 实现并验证后转 KEEP”。这不表示撤回 ADR-0013 的迁出决定，
 也不宣称这些路由当前已存在。既有 `/conversations/...` 接口及 `listMessages` 保持不变。
 
+实施回填（SX-4，2026-11-07）：五个聊天 GET（会话列表/详情、消息页/完整单条、changes）已实现并经合成隔离验证，
+对应 catalog 转 KEEP。SX-5 实施回填：七个公开写接口及内部生成登记已实现，批次/回执/生成栅栏/inbox 去重同事务，转 KEEP；导入导出仍 DEFER。§4.4.1 修订契约 5f55e4c6 已经 Owner 复审通过。
+
 下表路径均以 `/api/v1` 为前缀：
 
 | 路径 | 方法 / operationId | 请求与响应 schema |
@@ -283,7 +286,7 @@
 `StoryExpectedSession` 参数及既有 Origin 精确白名单规则；读取在身份头存在时比对。Cookie 身份始终是
 唯一授权来源，身份头和 epoch 只是前置条件。认证失败不得自动切账号重放，资源不存在/非本人一律隐藏存在性。
 
-`ChatOperation` 按 kind 使用 `oneOf` / discriminator，8 个分支的 envelope、target、preconditions、payload
+`ChatOperation` 按 kind 使用 `oneOf` / discriminator，9 个分支（insert 具体契约待复审）的 envelope、target、preconditions、payload
 均为关闭未知字段的类型化对象（无载荷的 delete/selectSwipe 为 null）。`data` 与字段值槽保留任意 JSON，
 以兼容 ST 未知字段；这不允许扩展操作协议或修改受保护身份。
 
@@ -291,6 +294,7 @@
 |---|---|---|---|
 | edit / `ChatEditOperation` | messageId，可选 candidateId | baseRevision（messageRevision）；旧字段值在 changes.before | changes[{path,before,after}] |
 | append / `ChatAppendOperation` | 会话根 `{}` | `{}`，不校验无关 chatRevision | messages[{clientMessageId,data}] |
+| insert / `ChatInsertOperation`（SX-6 已复审） | 已有 beforeMessageId | 精确 orderRevision | messages；同批计入 100 条新消息限制 |
 | delete / `ChatDeleteOperation` | messageId | 精确 messageRevision | null |
 | metadata / `ChatMetadataOperation` | 会话根 `{}` | baseRevision（metadataRevision）；旧字段值在 changes.before | changes，路径以 title/header/metadata 开头 |
 | addSwipe / `ChatAddSwipeOperation` | messageId | 精确 messageRevision | candidate{candidateId,data}，默认保留旧选择 |
@@ -316,7 +320,7 @@
 - **一次打开**：`GET /chats/{chatId}/messages?include=chat` 从同一次读取返回显示页及完整 header、metadata、各域版本；省略 include 时不带 chat。默认 `view=display`，`view=full` 返回全部候选、变量及未知字段。单消息 GET 始终 full。
 - **删除优先**：删除/权利撤销屏障高于任何游标；删除账号/会话后读取立即拒绝，已删除消息永不由旧游标返回正文。changes 返回删除 ID/整聊失效信息，客户端立即剔除缓存；404 不区分不存在或非本人。
 - **过期与锚点**：游标有效 15 分钟。到期/重排后用 `anchorMessageId` 重新读取包含该锚点、以其结束的一页（最多 limit-1 条更早消息），不传 before/after；锚点也被删则收到 404，回到末页。changes 保留 7 天，过期返回 410 `CHAT_CHANGES_EXPIRED` 并重建当前页；不得跨 orderRevision 盲拼页面。changes 的 throughRevision 为最后完整事务，hasMore=true 时继续追平，不拆事务。
-- **列表**：按 `(updatedAt DESC, chatId DESC)` 的排他 keyset 排序，cursor 绑定 Owner、过滤及到期时间，不维持列表快照。更新可能导致行移动，客户端按 chatId 去重并刷新首屏；不承诺并发更新期间无跳项。列表直接给摘要/条数及账号 authorityEpoch，不扫描正文。`q` 只搜标题/角色；全聊正文搜索仍由 SX-4 后续补齐，不能把当前页查找冒充全聊搜索。
+- **列表与搜索**：会话列表按 `(updatedAt DESC, chatId DESC)` 的排他 keyset 排序，cursor 绑定 Owner、过滤及到期时间，不维持列表快照。更新可能导致行移动，客户端按 chatId 去重并刷新首屏；不承诺并发更新期间无跳项。列表直接给摘要/条数及账号 authorityEpoch，不扫描正文；列表的 `q` 只搜标题/角色。Owner 2026-11-07 批准 SX-4 在消息分页增加 `q`：原值最多 200 个 Unicode 码点（超长 400 `INVALID_REQUEST`），trim 后对整聊当前选中候选的 `mes` 做 Unicode 大小写不敏感子串搜索，游标绑定查询，锚点不匹配直接返回 404。正文保持应用层加密，不搜索未选候选，不把当前页查找冒充全聊搜索。SX-7F 经 Owner 复审通过（accd79b7）的修订：每个 q 请求最多检查 200 条选中候选（含锚点验证），密文扫描软目标 8 MiB，首条可单独越过字节目标以保证大消息前进。hasOlder/hasNewer 改为扫描窗口之外仍有可访问历史，不承诺已知命中；游标为窗口排他边界，允许 0 条结果加 true 标志和可续游标。客户端按方向标志持续翻页，不按 items.length 终止；响应字节裁剪必须停在最后返回的命中处，不得跳过未返回命中。存在性探测只查位置索引，禁止再解密远端历史。事务超时明确返回 503 CHAT_SEARCH_TIMEOUT，可重试输入游标，不报告已扫描完成。非 q 分页不变；20k 稀疏/无命中双向完整遍历在生产 5 秒事务预算及 GOMAXPROCS=2 下给出单请求 P50/P95/最大值与内存增量，不上调 TxTimeout。
 - **容量**：页 default=50/max=200，响应软目标 ≤256 KiB；full 可按字节提早结束并给下一 cursor，至少返回一条符合条件的消息，**不能截断一条消息**。完整单消息（含候选）/操作上限建议 1 MiB/8 MiB；超限显式 413 `CHAT_PAYLOAD_TOO_LARGE`。导入预检报告旧数据超限，不丢字段；multipart 文件采用独立 256 MiB 上限。这是已冻结的实施参数，尚非当前服务已实施限制。
 
 ### 4.4 幂等、并发及生成提交
@@ -332,7 +336,57 @@
 9. **后台 inbox**：以 eventId + chatId 唯一约束与前台共用追加事务；readback 确认后 ack。删除/回档后的旧投递不得再次补回（`inbox-bridge.js` 的 removed/invalidated 语义保留）。这消除“后台先全文件保存、前台随即 409”的常见冲突。
 10. **兼容旧 save**：过渡 `/api/chats/save` 收整份 JSON，若有可信读取基线可在服务端计算操作 diff 后逐目标校验；无法证明字段基线时保留严格版本拒绝。不能把旧快照盲覆盖新库，也不能宣称所有旧客户端冲突已消失。尽快将自有 Session 切到原生操作 API，兼容门面随后只服务必要脚本路径。
 
+### 4.4.1 SX-5 生成登记补充（2026-11-07，Owner 已复审通过）
+
+Owner 批准增加过渡内部接口 `POST /api/v1/service/chats/{chatId}/generation-runs`，机器定义已写入 OpenAPI，
+契约单独修订提交 5f55e4c6 已经 Owner 审阅通过；SX-5 实施登记与 Node 调用后，catalog 转 KEEP。
+
+- 鉴权只用现有 `serviceToken`，沿用 `/service/model-usage/reservations` 的“插件先核验 Owner”模式；拒绝浏览器 Origin，
+  不接 Cookie-only 请求、不加入浏览器代理白名单，不放宽前台原有 CSRF/Origin/身份守卫。
+- 必填 `ownerAccountId/requestId/authorityEpoch/generationRunId/chatRevision/inputMessageId/inputCandidateId`。
+  输入必须已保存且候选当前选中；`chatRevision` 是客户端组装上下文的基线，不要求与登记时当前版本精确相等。
+  按终态相同的相关变化核验：输入消息改/删、输入候选切换、基线时已有历史前缀的来源签名/选择变化，以及
+  metadata/order/branch 变化，均 409 `REVISION_CONFLICT`；输入不存在/未保存、候选已切换或无法证明/来自未来的基线同样拒绝。
+  epoch 过旧或非 Go 写权威为 409 `CHAT_AUTHORITY_CHANGED`。无关尾部追加（inbox/他端）允许登记，且不扩大原历史前缀。
+  例如用户消息保存为 revision 10，登记前 inbox 追加使当前为 11，以 `chatRevision=10` 和该已保存输入登记仍成功。
+  服务端记录接受的原始基线、输入消息/来源版本、generation、branchRoot、metadata/order 版本和基线已有历史边界；run 中不保存正文。
+- `continue` 的 `inputMessageId` 是被续写的助手消息，`inputCandidateId` 是它的选中候选；`regenerate` 的输入是
+  被重新生成的回复之前的用户消息及其选中候选。嵌套 Helper/EJS/tool 共用原 run，不创造新的因果输入。
+- 每个 Owner/chat **最多 1 个活动逻辑 run**。新 requestId/runId 成功登记时，同事务将旧活动 run 标为 FENCED；
+  有部分输出的停止在原 run 上提交 aborted，重新生成另登记新 run。嵌套 Helper/EJS/tool 属于同一前台操作时共用原 run，不另争活动名额。
+  这只控制存储终态，不自动重发或取消 provider 请求；既有生成与用量流程继续负责这些副作用。
+- Owner 已确认零输出停止不写消息、不新增接口：Session 取消上游请求并走既有流程释放预留，停止后丢弃迟到片段，不再用该 run 提交终态。未终结 run 由下一次登记失效或满 15 分钟过期；紧凑记录将过期标为 `expired`，与 `settled/aborted/fenced` 区分，不对外新增状态字段。
+- 登记按 Owner + 方法/资源 + requestId 幂等；相同请求返回最初 201 登记（原时间/版本），不重新激活或续期。
+  仍先验证当前授权、epoch 与聊天删除屏障。同 requestId 不同内容为 `IDEMPOTENCY_KEY_REUSED`；不同 requestId
+  复用同 runId 一律 `CHAT_GENERATION_FENCED`。登记 ACK 不能用作自动重发结果未知模型请求的依据。
+- run 从首次成功登记起 **15 分钟过期、不续期**。输入改/删、输入候选切换、已存在历史的来源签名/选择变化、metadata/order/
+  branch/authority 变化使它失效；无关尾部追加不改变已登记历史前缀。终态先核对 run 的 Owner 和 chatId 均与提交方及目标聊天一致，
+  任一不符为 `CHAT_GENERATION_FENCED`。settled/aborted 只有一次，终态校验与消息写入同事务；
+  过期/失效提交为 `CHAT_GENERATION_FENCED`，Session 保留最终或部分输出为待处理草稿。
+- 登记、终态入口和现有 retention worker 清理逾期活动状态；同步 deadline 检查不依赖清理是否已跑。7 天后清除回执正文和历史
+  栅栏明细；紧凑 runId/requestId/摘要/结果记录至少保留至聊天删除与权利屏障完成，账号删除级联清除，过期不能重启旧 run。
+- **退出安排**：SX-9/SX-10 生成迁入 Go 后改为同规则的 Go 内部登记；SX-15 移除 Node 调用面。
+
+### 4.4.2 SX-6 历史插入补充（2026-11-07，具体契约 a3e7e426 已经 Owner 复审通过）
+
+Helper `createChatMessages(insert_before/insert_at)` 对应类型化 insert：已有 beforeMessageId + 精确 orderRevision + messages，沿用请求幂等、clientMessageId 墓碑和整批 100 命令/100 新消息/8 MiB 上限。锚点不存在/已删除/不属本聊天为404；版本不符409留稿。首条之前与同锚点连续插入均可表达；单批共用初始版本，跨请求用上次 ACK 的新版本。
+
+成功事务推进一次 orderRevision，旧游标410，活动run因顺序变化被 fence；changes 包含新消息ID及 orderChanged。来源和入队沿 append 的 no_memory/无痕规则，不能带 generation 提交终态（整批422）。无关尾部追加不推进 orderRevision，因此与插入均可成功且互不覆盖；先发生的插入/重排会让旧版本插入409。既有候选/消息来源身份不因位置变化重建。同一前台操作中的嵌套 Helper 插入也会 fence 自己的活动 run，不设豁免；生成结果保留为待处理草稿。
+
+独立 Helper `generate/generateRaw` 只返回文本、不写聊天时不需要存储 run，空聊天也沿用既有用量预留和受控用途调用模型。只有带 generation 的助手生成提交需要已登记 run；有开场助手消息时先保存开场消息并以其选中候选为输入，真正空聊天不能提交生成终态，结果保留为待处理草稿，列为 SX-8 真实切换前置；不伪造输入消息，不绕过栅栏。
+
 ### 4.5 Session 与读取整段聊天的脚本兼容
+
+**SX-6 Owner 补充边界（2026-11-07，按需字段契约 63fa64e5 已复审通过）**：已认证 `GET /api/v1/auth/session?include=chatStorage` 按需增加
+`chatStorage: {mode: ST|GO|FROZEN, authorityEpoch}`；不带 include 的响应与每请求插件核验保持原样，不查询存储权威。
+宿主页面启动注入与 Session 初始化请求 include；旧 ST 聊天存储入口是 Owner 批准的窄例外，必须用这次带 include 的核验替换普通核验（每请求只一次），不缓存权威；只有确认 ST 才允许旧盘读写，GO/FROZEN/查询失败均在触盘前拒绝，其他插件、资源与模型请求保持普通核验。其查询失败为 503，客户端视为暂时不可用，保留身份与草稿，稍后重试，不当作登出。
+它仅用于选择存储，
+服务端每次写仍校验当前权威与 epoch；查询失败不默认 ST。409 `CHAT_AUTHORITY_CHANGED` 后只重新读取 session、
+保留草稿，不自动重发；FROZEN 显示“正在迁移”，界面只读、本地留稿，不回退 ST、不排队写入。
+SX-6 的 Go 共享 Session 与脚本走原生操作 API；GO/FROZEN 下旧 ST 聊天入口明确拒绝且不得触盘。
+完整旧 native 文件名别名、新建/fork 门面和迁移契约归 SX-8，均完成且 Owner 另行授权前，真实账号不得置为
+GO/FROZEN；本轮这两种模式只出现在隔离测试库。会话字段先独立提交契约供 Owner 审阅，再实施依赖逻辑。
+验收必须故障注入或计数证明：权威查询失败时，普通 `/auth/session` 不调用该查询且仍返回 200。
 
 把现有 `S/session.js:109` 的整聊 payload 边界替换为一个共享 ChatStore 适配器，由服务端迁移线拥有接口与实现；MB2 使用 `D/runtime/session-bridge.ts` 的窗口化只读投影，不另造手机保存链。显示页、引擎上下文、完整脚本快照三个状态显式区分。
 
@@ -354,6 +408,11 @@
 阶段 1 新原始消息存储负责完整正文和所有候选。保留 `st_message_source` 的 ID、source_ref、suppressed/present/eligible/settled 与 Go conversation 绑定作为既有记忆兼容投影；不先重命名 `st:` 前缀，不触发全量重新提取。projection 可以仍叫 st，但**来源权威从 HTTP ST reader 改为同事务 Go reader**。
 
 消息编辑、切候选、删除、no_memory、分支变化须在同一事务先提交来源撤销/版本屏障；异步 outbox 可负责补充派生/提取，检索和 MemoryCore commit 必须看到最新屏障，不能等待异步镜像更新后才禁止旧记忆。未更改来源签名的纯 UI extra/标题改动不推进 sourceRevision；签名按已有文本、说话者、hidden/type/no_memory、候选 variables 及时间规则保持。可信迁移保留所有 revision/generation 和遗忘状态；来源未知返回 UNAVAILABLE，不能当 DELETED。
+
+
+SX-7 私有来源/inbox 由 Go 调用方在每次 HTTP 调用前读取当前权威（不缓存）：只有 ST 才发请求；GO 直接走同库来源/追加，FROZEN 或查询失败拒绝旧路径。不新增 ST→Go 权威回查接口。SX-8 切换前置按 Owner 2026-11-07 决定执行：先置 FROZEN，停止产生新的旧存储请求，再排空 ST 侧已经进入的来源读取/inbox 保存；只有确认排空后才导出迁移。排空判定必须覆盖服务端处理生命周期（含已断开客户端但尚未完成的处理），不能以 Go 请求数、超时或固定等待时长替代：在 ST 私有 sources/inbox 入口维护活动处理计数，finally 完成时递减；冻结后切换控制先原子关闭 ST 本地准入闸门（不回查 Go），拒绝已通过 Go 检查但尚未到达 ST 的迟到请求，再等待活动计数为零，才能进入导出。实际计数/切换控制实现归 SX-8，未具备时不得切换真实账号。
+
+SX-8 对应合成测试：分别暂停 sources 读与 inbox 落盘于准入后，置 FROZEN 后新 Go 调用均零 ST 请求；迁移流程在活动计数非零时不得导出。释放暂停操作并等待服务端完成后才允许导出，已完成 inbox 只出现一次；再覆盖客户端先取消/超时而服务端仍在保存的情况，导出仍须等待 finally 排空。切换失败保持冻结或按已批准回滚流程处理，不以重新查询权威代替排空。
 
 JSONL 新 API 在一个一致的当前读取中导出**完整**头部与全部消息/candidates/extra/variables/未知字段；可选 revision 只作当前 chatRevision 的精确前置条件，过旧返回 409 `REVISION_CONFLICT`，不提供历史版本下载，UTF-8+LF；当前 MVU 的 `/api/chats/export` 兼容门面仍返回 `{message,result}`。JSONL 行语义往返，不承诺重新序列化后的逐字节相同；原始备份另保留原字节哈希。
 
@@ -452,7 +511,7 @@ node /tmp/next-st/st-exit-audit/measure-proxy-cpu.mjs
 | SX-1 / 0 | 当前调用面、供应商补丁与合成测量归档；本轮交付 | 无 | 本文脚本、数据/路径复核、`git diff --check` |
 | SX-2 / 0 | 总调度与 Owner 审定 §4 外部契约、来源/并发/缓存边界；之后实施项才同步 specs/catalog | SX-1；三线共同输入 | 契约例子：双向游标、并发追加、同字段冲突、重试、删除；未来 `bash scripts/check.sh --quick` |
 | SX-3 / 1 | Go 原始聊天/候选/顺序/metadata 存储、身份与 authority epoch、RLS、事务/回执/outbox | SX-2；DB migration 单一写入 owner | Go 对应包离线测试；获准后 `infra/db/run-rls-tests.sh`；故障注入事务回滚 |
-| SX-4 / 1 | 会话索引、双向快照分页、changes、完整 message、全聊搜索/按 messageId 定位；不扫描 JSONL 实现每次翻页 | SX-3；可与 SX-5/SX-7 分接口并行 | 20,000 条合成分页无重复/漏项；并发 edit/delete/reorder、游标过期/跨 Owner 拒绝；页字节与 P95 |
+| SX-4 / 1 | 会话索引、双向当前状态 keyset 分页、changes、完整 message、全聊搜索/按 messageId 定位；不扫描 JSONL 实现每次翻页 | SX-3；可与 SX-5/SX-7 分接口并行 | 20,000 条合成分页无重复/漏项；并发 edit/delete/reorder、游标过期/跨 Owner 拒绝；页字节与 P95 |
 | SX-5 / 1 | 消息/候选/metadata 批量操作、幂等、重排/fork、生成终态与 inbox 去重 | SX-3；与读 API 并行 | 复用 `tests/f2-store.test.mjs`、`source-identity.test.mjs` 的行为向量；新增 Go 同语义测试，重复 ACK/断连恢复 |
 | SX-6 / 1 | 共享 Session ChatStore、原生/脚本兼容适配、完整历史屏障、窗口投影；旧 ST 路由不得写旧盘 | SX-2 起可用合成适配；整合依赖 SX-4/5 | `desktop-session*.test.mjs`、`desktop-helper-api.test.mjs`、`settings-documents.test.mjs`；后续 `nf-cards`、`nf-tavern`、复杂卡 C04/C05 |
 | SX-7 / 1 | Go stsource reader 切权威、source_ref/generation/屏障同事务、inbox 改同库追加、语音/收藏/记忆来源适配 | SX-2 可先设计；数据库改动由 SX-3 owner 落入；与手机独立 | `source-bridge.test.mjs`、`source-identity.test.mjs`、`inbox-bridge.test.mjs`；后续 `source-native,rights-native,rights-browser` 与 `node scripts/eval-memory.mjs` |

@@ -12,6 +12,41 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
+func TestSTMemoryRecentTopicUsesGoAuthorityProjection(t *testing.T) {
+	const topic = "市集筹备"
+	const question = "我们上次谈到哪一步了？"
+	for _, blocked := range []bool{false, true} {
+		t.Run(fmt.Sprintf("no_memory_barrier=%t", blocked), func(t *testing.T) {
+			chat := sx7SourceChat(t)
+			docs := []ChatData{
+				{"is_user": true, "mes": "今天想继续" + topic + "。"},
+				{"is_user": false, "mes": "我想继续玻璃温室翻新项目。"},
+			}
+			if blocked {
+				docs = append(docs, ChatData{"is_user": true, "mes": "先回顾一下吧。", "extra": map[string]any{"no_memory": true}})
+			}
+			docs = append(docs, ChatData{"is_user": true, "mes": question})
+			written := sx5Append(t, chat, sx5AppendRequest(chat, docs...))
+			states, err := testEnv.store.ReconcileSTSources(t.Context(), 1, []string{chat.ChatID})
+			if err != nil || len(states) != 1 || states[0].State != "PRESENT" || states[0].Revision == nil || *states[0].Revision != written.Revision {
+				t.Fatalf("GO source projection is not current: %v", err)
+			}
+			query, err := testEnv.store.stQuerySource(t.Context(), 1, *chat.ConversationID)
+			if err != nil || query.text != question || query.position != len(docs) {
+				t.Fatalf("GO query source differs from the selected last turn: %v", err)
+			}
+			got, err := testEnv.store.stRecallQueryText(t.Context(), 1, stMemoryBinding{id: *chat.ConversationID, revision: written.Revision}, query)
+			want := topic + "：" + question
+			if blocked {
+				want = ""
+			}
+			if err != nil || got != want {
+				t.Fatalf("GO query = %q, want %q; err=%v", got, want, err)
+			}
+		})
+	}
+}
+
 func TestSTMemoryRecentTopicUsesVerifiedTargetWindow(t *testing.T) {
 	b, snapshots := stMemoryFixture(t)
 	ctx := context.Background()

@@ -1,16 +1,43 @@
-# CM-4 → SX：逐事实来源发布迁移需求
+# CM-4 → SX：逐事实来源发布迁移需求（基于 main 79b4d72c）
 
-Owner 2026-11-07 已批准，由 Owner 转交 server-sx。迁移只由 SX 编写；CM 负责 prepare 补丁、Go 逐记录校验与调用参数。此文是待双方冻结的接口提案，不代表迁移已经存在。
+Owner 2026-11-07 转交 server-sx 实现。本文替代旧版交接，以 main `79b4d72c` 的 V290/V291 为基线；它是待实施契约，不代表新函数已经存在。SX 独占迁移与 SQL/RLS，CM 负责 prepare、Go 逐事实校验与调用参数。迁移合入 main 前，依赖新签名的 CM 代码继续保留在隔离候选。
 
-## 问题与范围
+## 1. 问题与范围
 
-现 `vc.go_publish_memorycore(bigint,bigint,text,text,jsonb,text[])` 定义于 `V149__memorycore_production_projection.sql`，将同一 `p_refs` 写给每条记录。把提取窗口直接并入该列表后，遗忘独立事实 B 会抑制无关事实 A 的来源，并触发原生记录清理。必须把“模型看过的上下文”与“每条事实真正依赖的来源”分开。
+当前发布把同一个 `p_refs` 写给提取批次中的每条事实。直接将上下文窗口加入 `p_refs` 会使独立事实 A、B 互相绑定来源，遗忘 B 时连带删除 A。需要分别保存每条事实真正依赖的来源；模型看过的上下文不能自动成为事实证据。
 
-只调整现有发布函数族，不新增表，不修改 source_ref 格式、来源读取协议、generation、屏障或既有权限边界。保留 `vc.memory_write_barrier` 先于来源行锁，以及 operation、scope、claim、来源和目标版本的现有校验顺序。不要改写 V149；迁移版本由 SX 从自己的最新版本顺延。
+只增加现有发布/清理函数的重载，不加表，不改 source_ref、来源读取协议、generation、SQL 触发器或锁序。不要修改历史迁移或恢复 V149 的旧函数正文；从 SX 届时最大版本顺延一个迁移（当前最大 V291）。
 
-## 建议 SQL 契约
+## 2. 当前 main 的函数基线
 
-保留原六参数入口，新增同名七参数重载：
+发布函数以 `V290__stored_chat_sources.sql` 的定义为准：
+
+```sql
+vc.go_publish_memorycore(
+  p_owner bigint, p_job bigint, p_token text, p_fence text,
+  p_proposal jsonb, p_refs text[]
+) RETURNS void
+```
+
+它依次保留 owner assertion / memory barrier、operation 锁与已发布幂等返回、scope revision、有效 claim/lease、auto-save、非空来源、`guard_st_evidence_write`、会话/来源 scope、target version，以及全批原子发布校验。
+
+`guard_st_evidence_write` 不能退回旧的来源 guard：V290 在原来源检查之外增加 authority 的 `FOR SHARE` 锁、FROZEN 禁写、GO 权威下 raw chat 存在且未删除、`st_applied_revision = raw.revision` 的水位检查。evidence 插入触发器也必须继续走此写 guard。旧来源 guard 没有 user-only 限制，助手支持来源不需要扩大 SQL 权限。
+
+画像函数以 `V291__stored_chat_audit_fixes.sql` 的九参定义为准：
+
+```sql
+vc.go_record_memorycore_profile(
+  p_owner bigint, p_job bigint, p_token text, p_fence text,
+  p_refs text[], p_persona text, p_scenes jsonb,
+  p_record_ids text[], p_fingerprint text
+) RETURNS bigint
+```
+
+**本需求不新增画像签名，也不要求替换该函数。** 保留 V291 对模型声明 refs 和完整 allowlist 剩余 refs 的全部写 guard、完整 record set / fingerprint 校验，并继续持久化 `full_refs` / `full_ids`，不能缩成模型引用的子集。
+
+清理函数仍为 V149 的 `vc.go_memorycore_cleaned(bigint,bigint)`：将 REVOKED operation 改为 CLEANED 并清空 proposal。它无法完成“保留仍有效的兄弟事实”后的持续失效追踪，因此本次同时需要三参重载。
+
+## 3. 新七参发布契约
 
 ```sql
 vc.go_publish_memorycore(
@@ -19,63 +46,66 @@ vc.go_publish_memorycore(
 ) RETURNS void
 ```
 
-`p_record_refs` 由 Go 从已核验来源生成，以本次 record ID 为键、稳定 source_ref 数组为值；不接受浏览器或模型直接提供的完整 source_ref。例如以下只是形状占位，不是可执行来源：
+实现以 V290 六参函数为底稿，保留第 2 节全部守卫与校验，仅增加逐事实映射校验并改变 evidence 写入集合。
+
+`p_record_refs` 是由 Go 根据真实核验结果生成的 JSON 对象，键为本次 record ID，值为该事实的稳定 source_ref 数组。下例仅表示形状，不是可执行来源：
 
 ```json
 {
-  "record-a": ["<A 的已核验 source_ref>"],
-  "record-b": ["<B 的已核验 source_ref>", "<B 的助手支持 source_ref>"]
+  "record-a": ["<A 的用户来源 source_ref>"],
+  "record-b": ["<B 的用户来源 source_ref>", "<B 的助手支持 source_ref>"]
 }
 ```
 
-- `p_refs` 是所有记录真实来源的去重并集，继续使用现有逐来源 guard 和 scope 校验。
-- 新入口要求映射键与 `p_proposal.records` 的唯一 ID 集合严格相等；每个非空记录的来源数组非空、无重复且无额外来源；有记录时全部数组的并集与 `p_refs` 相等。空输出沿用既有空提案流程：映射为 `{}`，`p_refs` 仍含已核验的当前用户锚点（V149 明确拒绝空 `p_refs`）；无事实 evidence 写入，不为满足并集条件取消锚点 guard。
-- 每条记录至少含已核验的用户主来源。Go 逐条核对真实 `source_message_ids`，不能以聚合 metadata 替代；助手支持限定为该用户锚点同会话、窗口内、当前候选且符合隐私门禁的来源。
-- 发布循环只把该 record 对应的数组写入 `memory_evidence`。保持同一 operation 内全部记录原子发布，不能逐条拆 operation 或重复调用绕过 `PUBLISHED` 幂等返回。
-- `p_proposal` 保存每条事实的实际 source keys 和逐条 conflict target 对应关系（候选字段 `conflictTargetIds`）；上下文窗口只参与在途核验，不自动成为每条事实的持久 evidence。实际引用的旧 target evidence 必须继承，不能为缩小来源而丢失。
-- 保留既有 owner/role EXECUTE 授权及 SECURITY DEFINER/search_path 约束，不授予应用直接写 evidence 的权限。
+- 映射键严格等于 `p_proposal.records` 的唯一 ID 集合；每条记录对应非空、无重复的字符串数组，不接受缺键、多键或未核验来源。
+- 有记录时，各数组的去重并集严格等于 `p_refs`；每个并集来源继续通过 V290 的写 guard 与 scope 校验。发布循环只将当前 record 对应数组写入 `memory_evidence`。
+- 零记录沿用现有空提案路径：`p_record_refs = {}`，`p_refs` 仍包含已核验的当前用户锚点，保留非空来源及写 guard，不写事实 evidence。
+- 每条事实至少有一个已核验用户主来源。Go 从真实 `source_message_ids` 逐条核对，不能用聚合 metadata 替代，也不接受浏览器或模型直接提供完整 source_ref。该用户来源必须实际被该事实引用，不强制所有事实都引用当前 operation 的锚点。
+- 助手支持限同会话、提取窗口内、当前选中候选且符合隐私门禁；纯助手事实拒绝。窗口中的无关用户/助手消息只参与在途校验，不持久绑定到每条事实。
+- prepare / proposal 保留逐记录实际 source keys 与 `conflictTargetIds`；真正引用的旧 target evidence 从 PG 核验并继承，不能为缩小数组而丢弃真实依赖。
+- 同一 operation 的全部记录原子发布，保留重复调用的幂等返回；不能逐条拆 operation 绕过发布状态。沿用现有 EXECUTE 角色、SECURITY DEFINER 与固定 search_path，不开放直接写 evidence 权限。
 
-## 过渡与合入顺序
+## 4. 新三参清理完成契约
 
-1. SX 保留六参数旧入口的现有行为；可由旧入口构造“每条记录共用旧 p_refs”的映射后委托新实现。旧 Go 与已持久化旧提案仍可续跑，不给既有记录批量改写 evidence。
-2. SX 先提交迁移与 SQL/RLS 回归，经其流程合入 main；交给 CM 实际迁移版本、函数契约及测试结果。
-3. CM 同步该 main 后才启用七参数调用和提取窗口。新调用不回退六参数：新函数缺失时应明确失败，不能静默丢失逐事实语义。
-4. 迁移落 main 前，CM 只交付查询补全和原生检索计算复用；依赖新入口的代码保留在隔离候选，不能作为可合 main 的完整 CM-4 提交。
-5. 迁移与新调用均保留同一个 operation 的 claim/fence、事务和幂等语义；重复发布不重复插入事实或 evidence。旧入口移除不属于本任务。
+```sql
+vc.go_memorycore_cleaned(
+  p_owner bigint, p_job bigint, p_retained_record_ids text[]
+) RETURNS void
+```
 
-## CM 配套与联合验收
+来源 fence 会把受影响的已发布 operation 标为 REVOKED；它只继续追踪 NEW / PROPOSED / PUBLISHED。若保留了事实却仍调用两参全清入口，其 proposal 被清空，幸存事实以后再失效就失去跟踪。
 
-CM 修改既有 prepare 补丁以保留每条新记录对应的 conflict targets，并调整 Node/Go：分别维护实际上下文核验集合、逐事实来源、真正继承的旧证据。Go 的 `memorycore_runtime.go` 改动范围将明确列在提交说明中，供 SX-7 合并。
+新入口要求：
 
-必须在同一稳定候选上验证：
+- 只处理 REVOKED；已完成的相同请求保持幂等。retained IDs 不重复，必须严格等于本 operation 中已发布到 PG、尚未删除/替换、具有完整 evidence 且全部来源仍有效的记录集合。集合由 PG 独立核对，不能相信调用方任意挑选的保留列表。
+- 任一来源因编辑、删除、遗忘、no_memory、无痕或权利屏障永久失效，整条事实清理；未发布记录、缺 evidence 记录不得保留。原生来源清理仍须保留幸存事实实际依赖的来源。
+- **FROZEN 或暂时水位未对齐不能直接等同于来源永久失效。** 恢复沿用持久来源有效性语义；无法确定时停止本次恢复并重试，不能仅因写 guard 暂时返回 false 就删除事实。
+- 非空幸存集合：把原 proposal 收敛到这些 records、实际 `source_message_ids` / 来源键及 dependencies，移除失效正文、vectors、无关上下文和旧 targets；原子恢复 PUBLISHED，使既有 source fence 能继续追踪。空集合采用原 CLEANED 语义。
+- Go 的有效性判断、原生清理、结果回读及完成调用在同一个持有 owner memory barrier 的事务中；PG 完成失败应回滚，原生重复清理必须幂等。不得把“移出 allowlist”当作物理清理完成，也不让 REVOKED 永久滞留来绕过缺口。
 
-1. 相邻独立事实 A、B：遗忘 B 后，A 的 PG 来源、原生记录、召回与真实出站均保留；B 不再出站。
-2. 一个事实确实联合依赖 A、B：任一来源被遗忘、删除或失效后，该事实均不再召回或出站，不能只留另一来源继续发布。
-3. 助手支持按每条事实生效：支持句编辑、删除、切换候选使对应事实失效；no_memory、无痕、跨会话、窗口外助手不可成为支持来源；纯助手引用即使伪装聚合 metadata 也被 Go 拒绝。
-4. 原生 gate 过滤用户主来源时，不得只把助手上下文交给模型产生事实。
-5. 原 `memorycore_proposal_lock_integration_test` 继续通过；覆盖模型执行期间来源变化、并发遗忘与发布、旧六参数调用、旧提案恢复、新七参数调用及重复发布。
-6. CM-3 同一数据集比较查询、提取、候选、最终排序、实际注入、回答和 token；失败与未覆盖项保留分母。迁移尚未完成前不声明上述联合验收通过。
+原锚点失效后的画像重建仍受现有合法锚点规则约束；本需求不扩展画像重建流程，不能把尚未重建报告为成功。
 
-## 恢复清理边界（Owner 已批准）
+## 5. 锁序与旧调用过渡
 
-**[问]（2026-11-07）**：V149 的 `memorycore_source_fence` 会在来源失效时把关联的已发布 operation 标为 REVOKED；Go `memorycore_profile.go::RecoverEngineOperations` 随后收集该 operation 全部 record/source IDs 并清理。同一批次的事实有不同助手支持或不同旧 target 证据时，只修逐事实发布仍会误删有效的兄弟事实。
+- 新发布保留 V290 原顺序。Go 的逐来源核验/恢复先持有同一事务的 `memory_write_barrier`，再锁来源；保留 SX 写路径已有 `vc_user → export_pointer_barrier → memory_write_barrier` 前缀及后续 authority / scope / source 锁序。不得持有来源锁后再倒序申请前置 owner/raw-chat 写锁。
+- 六参发布入口保留 V290 行为；两参清理入口保留旧全清行为。允许内部委托，但必须证明不带新逐事实 metadata 的旧 Go 调用及已落盘旧提案仍能恢复，不能强迫旧调用满足新字段要求，也不批量改写历史 evidence。
+- SX 迁移先合 main，并返回实际版本、准确签名及验证结果；CM 同步后才启用七参发布、三参清理与提取窗口。新调用缺函数时明确失败，不回退六参丢弃逐事实语义。
+- 迁移前可继续查询补全、检索计算复用及已授权的普通清理版本修正；它们不依赖新签名。CM 不自行合 main、不部署，Owner 转交本说明，CM 不直接向其他聊天派发。
 
-**答（Owner 2026-11-07）**：允许该 Go 函数的最小修正及直接回归。逐事实判断：任一来源因编辑、删除、遗忘、no_memory、无痕或权利屏障失效，该事实即清理；仅全部来源仍有效且已有 PG 发布投影的事实保留，宁可多删、不可漏删。来源清理也须保留有效事实仍依赖的来源。
+## 6. 联合验收
 
-来源有效判断与清理在同一事务内完成，保持 `memory_write_barrier` 先于来源行锁。直接回归必须覆盖同批独立 A/B 忘 B 后恢复 A 留/B 清、联合依赖 A+B 忘任一清除、未发布记录清理、重复恢复幂等，以及恢复中并发遗忘不得使已忘内容重新出现在出站召回。不改 SQL 触发器、来源协议或锁序；依赖新签名部分仍等迁移合 main 后再合入。查询补全与检索计算复用不依赖该修正。
+在迁移后的同一稳定候选验证，失败与未覆盖均单列：
 
-### 部分清理完成的函数提案（须 SX 一并冻结）
+1. 同批独立事实 A/B：忘 B 后，A 的 PG evidence、native 记录、召回与真实出站保留，B 不再出站。
+2. 一条事实确实依赖 A+B：任一来源失效即清理整条事实，不保留另一来源继续发布。
+3. 助手逐事实支持：编辑、删除、切换候选使对应事实失效；no_memory、无痕、跨会话、窗口外来源和纯助手提案拒绝。原生 gate 过滤用户主来源时，不得只把助手上下文送模型。
+4. 未发布 native 记录清理；部分恢复后幸存事实再次编辑/删除仍能撤回；重复发布/恢复幂等；并发遗忘与发布/恢复不使已忘内容重新出站。
+5. 六参旧调用、旧持久提案恢复、七参新调用、两参全清和三参部分清理均覆盖；缺少新函数时明确失败。
+6. FROZEN 禁止新 evidence / profile 写入且不误清有效历史事实；GO raw revision 不一致拒绝发布/画像；权威恢复且水位对齐后可按现有流程重试。
+7. V291 画像 full_refs / full_ids 保持完整：模型只声明来源子集，未声明但属于 allowlist 的来源变化仍使画像失效；不回退旧画像实现。
+8. 保持 `memorycore_proposal_lock_integration_test` 与相关 profile/source/cleanup 回归通过；运行 RLS、受影响 Go store 集成及 CM 真实 SQLite/出站用例。
+9. 用 CM-3 同一数据集比较提取、候选、最终排序、实际注入、回答与 token；人工复核、费用未核价及未跑项如实保留，不用离线通过代替质量通过。
 
-现 `vc.go_memorycore_cleaned(bigint,bigint)` 将 operation 标为 CLEANED 并清空 proposal。若恢复时保留了有效事实，仍调用它会失去这些事实后续编辑/删除时的失效追踪：既有 source fence 只处理 NEW/PROPOSED/PUBLISHED。因此只修改 Go 筛选仍不完整。
+CM 内部的旧 L0 回退时间兼容不需要新 SQL 结构：标记仅由 Go 根据实际缺少时间戳设置，新回退时间确定性；只在同 ID/scope/正文且有可信回退证据时复用，真实时间冲突仍拒绝。该候选继续随窗口代码隔离，不改变本迁移的来源协议和锁序。
 
-建议在同次函数迁移中增加 `vc.go_memorycore_cleaned(p_owner bigint,p_job bigint,p_retained_record_ids text[]) RETURNS void` 重载；保留现两参数入口供无幸存记录的旧清理调用。新入口沿用 owner/EXECUTE/SECURITY DEFINER 约束，在同一事务中先 owner barrier 再锁 operation 与来源：
-
-- 仅处理 REVOKED；已经 PUBLISHED/CLEANED 的重复完成调用沿用幂等语义。非空 retained IDs 去重，必须严格等于该 operation 中已经发布且全部 evidence 仍有效的 PG 事实集合；不可保留未发布、已删、已替换、来源失效或缺少 evidence 的记录。Go 不提交重新编造的正文或 source refs。
-- 从已核验 PG evidence 得出幸存来源键并集，将原 proposal 收敛到幸存 record 与其实际 `source_message_ids`、`dependencies`，移除已清理正文、vectors、上下文和旧 targets。原子恢复 PUBLISHED，使未来任一幸存来源失效仍可被既有 source fence 发现；没有幸存则走既有 CLEANED 语义。
-- Go 的有效性判断、原生清理和完成调用都在同一个持有 owner barrier 的事务里；调用失败回滚 PG 状态，重复清理必须幂等。保留原生结果回读校验，不将“离开 allowlist”当成物理清理完成。
-
-这仍是待 SX 冻结的函数提案，CM 不编写迁移、不用应用角色直接改 operation、不改变 trigger，也不把 REVOKED 永久滞留以绕过状态缺口。原画像重建仍依赖既有合法锚点；当只剩其他来源支持的事实而原锚点失效时，不能把画像未重建报告为成功，本项不扩展画像重建流程。
-
-## CM 内部时间兼容（不需要新增 SQL 结构）
-
-Owner 已批准修复真实 SQLite 回归中的旧 L0 回退时间冲突。Go 仅根据已核验来源实际缺少原始时间生成内部标记，新回退值使用确定性的会话创建时间；不接受浏览器/请求参数提供标记。原生提交只在同稳定 ID、同 scope、同正文且有可信回退证据时复用既存行；涉及真实时间且不一致、正文或 scope 不同仍拒绝。旧无标记行不能自动当作回退：候选要求受控提交回执，并依赖 W07 已将原始时间变更纳入来源 revision、早于 MemoryCore 生产启用这一既有保证。修复不改 ST 来源读取协议、来源格式、generation 或已有 L0 数据；正反回归仍须运行后才能报告通过。
+当前状态：本文契约核对完成；新迁移、上述新入口联验均 NOT_RUN。请 SX 基于当前 main 实现后回传迁移版本、最终签名和测试结果。

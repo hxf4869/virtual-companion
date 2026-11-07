@@ -79,3 +79,8 @@ entries:
   order: 37
 - code: CHAT_IMPORT_EXPIRED
   order: 38
+- code: CHAT_SEARCH_TIMEOUT
+  order: 39
+  httpStatus: 503
+  retryable: true
+  retrySemantics: Retry the same q request and input cursor. No completed scan progress is claimed; never fall back to an unbounded scan or silently truncate history.

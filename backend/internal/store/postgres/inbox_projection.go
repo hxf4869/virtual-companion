@@ -24,8 +24,8 @@ type inboxProjection struct {
 	Intent         string
 }
 
-// ProjectInbox creates inbox rows for ready follow-ups and asks the ST
-// bridge to save BODY text. WAITING_HOST does not write a chat message.
+// ProjectInbox creates inbox rows for ready follow-ups and saves BODY text
+// through the owner's current chat authority. WAITING_HOST creates no chat message.
 // A missing consent skips channel creation and is not a batch failure.
 // Reconciliation is not done here and does not send a replacement notice.
 func (s *Store) ProjectInbox(ctx context.Context) error {
@@ -99,17 +99,34 @@ func (s *Store) projectInboxRow(ctx context.Context, row inboxProjection) error 
 }
 
 func (s *Store) deliverProjectedInbox(ctx context.Context, row inboxProjection) error {
-	if s.stSources == nil || !stsource.ValidIdentity(row.ChatIdentity) {
+	if !stsource.ValidIdentity(row.ChatIdentity) {
 		return nil
 	}
-	bridge, ok := s.stSources.(interface {
+	state, err := s.GetChatStorageState(ctx, row.OwnerID)
+	if err != nil {
+		return err
+	}
+	type stInboxBridge interface {
+		stsource.Reader
 		DeliverInbox(context.Context, stsource.InboxDeliveryRequest) (stsource.InboxDeliveryResult, error)
-	})
-	if !ok {
-		return nil
 	}
-	snaps, err := s.stSources.Read(ctx, row.OwnerID, []stsource.Query{{ChatIdentity: row.ChatIdentity}})
-	if err != nil || len(snaps) != 1 || snaps[0].State != "PRESENT" || snaps[0].Location == "" {
+	var bridge stInboxBridge
+	var location string
+	switch state.Mode {
+	case "ST":
+		var ok bool
+		bridge, ok = s.stSources.(stInboxBridge)
+		if !ok {
+			return nil
+		}
+		snaps, err := bridge.Read(ctx, row.OwnerID, []stsource.Query{{ChatIdentity: row.ChatIdentity}})
+		if err != nil || len(snaps) != 1 || snaps[0].State != "PRESENT" || snaps[0].Location == "" {
+			return nil
+		}
+		location = snaps[0].Location
+	case "GO":
+		// DeliverStoredInbox resolves the destination under the authority lock.
+	default:
 		return nil
 	}
 	event, err := s.GetInboxEvent(ctx, row.OwnerID, row.EventID)
@@ -122,6 +139,9 @@ func (s *Store) deliverProjectedInbox(ctx context.Context, row inboxProjection) 
 	if event.Intent == "WAITING_HOST" || event.STDelivered {
 		return nil
 	}
+	if state.Mode == "GO" && event.LinkStatus != "present" {
+		return nil
+	}
 	claim, err := s.ClaimInboxEvent(ctx, row.OwnerID, row.EventID, 60)
 	if err != nil {
 		if errors.Is(err, ErrInboxLeaseHeld) || errors.Is(err, ErrNotFound) || errors.Is(err, ErrInvalid) {
@@ -129,21 +149,34 @@ func (s *Store) deliverProjectedInbox(ctx context.Context, row inboxProjection) 
 		}
 		return err
 	}
-	result, err := bridge.DeliverInbox(ctx, stsource.InboxDeliveryRequest{
-		OwnerAccountID: strconv.FormatInt(row.OwnerID, 10),
-		File:           snaps[0].Location,
-		Event: stsource.InboxDeliveryEvent{
-			EventID:     event.EventID,
-			Intent:      event.Intent,
-			Body:        event.Body,
-			Voice:       event.Voice,
-			Branch:      event.Branch,
-			STDelivered: event.STDelivered,
-		},
-		Lease: stsource.InboxDeliveryLease{Token: claim.LeaseToken, ExpiresAt: claim.LeaseExpiresAt},
-	})
+	var result stsource.InboxDeliveryResult
+	if state.Mode == "GO" {
+		result, err = s.DeliverStoredInbox(ctx, row.OwnerID, row.ChatIdentity, row.EventID, claim.LeaseToken)
+	} else {
+		// The legacy read and write are separate requests. Check again before writing.
+		current, stateErr := s.GetChatStorageState(ctx, row.OwnerID)
+		if stateErr != nil {
+			return stateErr
+		}
+		if current.Mode != "ST" || current.AuthorityEpoch != state.AuthorityEpoch {
+			return nil
+		}
+		result, err = bridge.DeliverInbox(ctx, stsource.InboxDeliveryRequest{
+			OwnerAccountID: strconv.FormatInt(row.OwnerID, 10),
+			File:           location,
+			Event: stsource.InboxDeliveryEvent{
+				EventID:     event.EventID,
+				Intent:      event.Intent,
+				Body:        event.Body,
+				Voice:       event.Voice,
+				Branch:      event.Branch,
+				STDelivered: event.STDelivered,
+			},
+			Lease: stsource.InboxDeliveryLease{Token: claim.LeaseToken, ExpiresAt: claim.LeaseExpiresAt},
+		})
+	}
 	if err != nil {
-		if errors.Is(err, stsource.ErrUnavailable) {
+		if errors.Is(err, stsource.ErrUnavailable) || errors.Is(err, ErrInboxLeaseRejected) || errors.Is(err, ErrNotFound) {
 			return nil
 		}
 		return err

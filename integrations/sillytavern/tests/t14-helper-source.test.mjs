@@ -417,6 +417,7 @@ function createRuntimeFixture() {
     const f2Saves = [];
     const client = {
         headers: () => ({}),
+        getChatStorage: () => ({ mode: 'ST', authorityEpoch: '1' }),
         documents: {
             captureWorldbook(name, next) {
                 capturedDocs[name] = structuredClone(next);

@@ -10,7 +10,13 @@
 
 - [x] SX-1（2026-11-06）：ADR-0013（Accepted，Owner 决定见 §6.1）、ST 依赖与补丁清单、接口契约草案、阶段 0 合成测量（1k 条每次保存 2.5 MiB / 234 ms，20k 条 50 MiB / 5.2 s）；提交 1f1dd9ef。
 - [x] SX-2（2026-11-06）：聊天存储与分页历史接口契约经总调度审定后冻结进 OpenAPI / catalog（11 路径、15 操作、12 错误码，均 DEFER 待实现）：body `requestId` 幂等、keyset before/after 与 `anchorMessageId`、重排后 410、类型化 operations、`include=chat`。quick PASS。
-- [ ] SX-3–SX-16：见 Backlog M 节。
+- [x] SX-3（2026-11-07）：新增 V287 加密聊天/候选/顺序与 metadata、权威 epoch、幂等回执及事务 outbox，补齐无痕/清空删除；Go 离线、store/http 集成、RLS PASS；提交 bf3ba14b。
+- [x] SX-4（2026-11-07）：五个聊天读接口、双向 keyset/changes/full/锚点及 Owner 批准的全聊 q；20k 无重漏，服务端分页 P95 41.74ms；Go/store/http/RLS/quick PASS；提交 787b48b4（契约 48439039）。
+- [x] SX-5（2026-11-07）：原子消息/候选/metadata 操作、重排/fork、幂等、生成登记/终态及 inbox 去重；Go/store-http/RLS/Node1211/quick PASS；提交 2d42f2ee。
+- [x] SX-6（2026-11-07）：共享 ChatStore、完整历史/窗口与脚本屏障、原子 insert、权威守卫及生成留稿；Go/store-http/RLS/check/组件与受管 C04/C05/nf-cards/nf-tavern PASS；提交 d72e5f8e。
+- [x] SX-7（2026-11-07）：同事务来源/遗忘屏障、GO 对账与 inbox 同库投递、语音/记忆引用适配；Go/store-http/RLS/check、三项受管与离线记忆 22/22 PASS；提交 51b4f60f。
+- [x] SX-7F（2026-11-07）：修复审计七项；有界搜索、真实管理桥、删除锁序、changes清理、画像栅栏与201回放；quick/Go全单测/整包库/RLS/npm1275/Vitest203/受管PASS；提交 b8ba95d0（夹具 f30115b8、契约 accd79b7）。
+- [ ] SX-8–SX-16：见 Backlog M 节；本轮完成至 SX-7，未实施真实切换。
 
 ### 聊天与记忆质量（CM）
 

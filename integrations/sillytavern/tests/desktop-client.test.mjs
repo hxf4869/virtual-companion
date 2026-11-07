@@ -8,20 +8,25 @@ test('独立客户端的每次ST请求绑定HTML初始身份；换页身份后�
     const client = createDesktopClient({ document: { querySelector(selector) { return { content: selector.includes('account-id') ? account : session }; } },
         fetchImpl: async (url, options) => {
             calls.push({ url, ...options });
-            return new Response(JSON.stringify(url === '/csrf-token' ? { token: 'synthetic-token' } : []), { status: 200 });
+            return new Response(JSON.stringify(url === '/csrf-token' ? { token: 'synthetic-token' } : url === '/auth/api/session?include=chatStorage'
+                ? { accountId: account, sessionId: session, chatStorage: { mode: 'ST', authorityEpoch: '1' } } : []), { status: 200 });
         } });
     await client.initialize();
     account = '52'; session = '18';
     await client.readChat({ avatar: 'synthetic.png', file: 'synthetic' });
-    assert.equal(calls[1].headers['X-VC-Expected-Account-ID'], '9007199254740993');
-    assert.equal(calls[1].headers['X-VC-Expected-Session-ID'], '17');
-    assert.equal(calls[1].headers['X-CSRF-Token'], 'synthetic-token');
-    assert.equal(calls[1].credentials, 'same-origin');
+    const chat = calls.find(call => call.url === '/api/chats/get');
+    assert.ok(chat);
+    assert.equal(chat.headers['X-VC-Expected-Account-ID'], '9007199254740993');
+    assert.equal(chat.headers['X-VC-Expected-Session-ID'], '17');
+    assert.equal(chat.headers['X-CSRF-Token'], 'synthetic-token');
+    assert.equal(chat.credentials, 'same-origin');
 });
 
 test('身份验证失败或缺失时不发聊天请求；F2/身份冲突响应保留结构供界面处理', async () => {
     const client = createDesktopClient({ document: { querySelector() { return { content: '1' }; } }, fetchImpl: async url =>
-        new Response(JSON.stringify(url === '/csrf-token' ? { token: 'synthetic' } : { code: 'ACCOUNT_CONTEXT_CHANGED' }), { status: url === '/csrf-token' ? 200 : 409 }) });
+        new Response(JSON.stringify(url === '/csrf-token' ? { token: 'synthetic' } : url === '/auth/api/session?include=chatStorage'
+            ? { accountId: '1', sessionId: '1', chatStorage: { mode: 'ST', authorityEpoch: '1' } } : { code: 'ACCOUNT_CONTEXT_CHANGED' }),
+        { status: url === '/csrf-token' || url === '/auth/api/session?include=chatStorage' ? 200 : 409 }) });
     await client.initialize();
     await assert.rejects(client.readChat({ avatar: 'synthetic.png', file: 'synthetic' }), error => error.status === 409 && error.details.code === 'ACCOUNT_CONTEXT_CHANGED');
     const absent = createDesktopClient({ document: { querySelector() { return null; } }, fetchImpl() { assert.fail('无身份不得发请求'); } });

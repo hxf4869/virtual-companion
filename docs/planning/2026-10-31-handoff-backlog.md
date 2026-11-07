@@ -520,7 +520,7 @@ Owner 选择 React，要求保留现有正常 UI、优先复用成熟开源组�
 | SX-1 | P0 | 调用面、补丁职责与阶段 0 合成测量归档（已随计划交付） |
 | SX-2 | P0 | 聊天存储与分页历史接口契约审定并冻结，之后同步 specs |
 | SX-3 | P0 | Go 聊天 / 候选 / 顺序 / metadata 存储、身份与 authority epoch、RLS、回执与 outbox |
-| SX-4 | P0 | 会话索引、双向快照分页、changes、按 messageId 定位与全聊搜索 |
+| SX-4 | P0 | 会话索引、双向当前状态 keyset 分页、changes、按 messageId 定位与全聊搜索 |
 | SX-5 | P0 | 消息批量操作、幂等、重排 / fork、生成终态与 inbox 去重 |
 | SX-6 | P0 | 共享 Session ChatStore、原生与卡片脚本兼容、完整历史屏障与窗口投影 |
 | SX-7 | P1 | Go 来源镜像切权威、source_ref / generation 同事务、inbox / 语音 / 收藏 / 记忆来源适配 |
@@ -533,6 +533,21 @@ Owner 选择 React，要求保留现有正常 UI、优先复用成熟开源组�
 | SX-14 | P2 | 资源权威切换与反向导出演练，停止 ST 内资源写入 |
 | SX-15 | P2 | ST 完全不启动跑全链；按 ADR-0012 退出 `/native/`；移除核心补丁与插件装配 |
 | SX-16 | P2 | 退役运行手册、发布 / 回滚制品、最终备份演练、OP-11 定向清理（真实操作另行授权） |
+
+**SX-4 [问]（2026-11-07，已答）**：冻结 OpenAPI 的 `listStoredMessages` 没有正文搜索参数/路由，`listStoredChats.q` 明确只搜索标题/角色，无法按原契约完成“全聊搜索”。建议给 `GET /api/v1/chats/{chatId}/messages` 增加可选 `q`，搜索当前选中候选正文、复用消息分页响应并将查询绑定到游标。**答（Owner 2026-11-07）**：批准上述 `q` 扩展；先补 OpenAPI 再实现，不将当前页过滤充作全聊搜索。
+
+**SX-5 [问]（2026-11-07，接口方向已答、具体契约待审）**：`ChatGenerationCommit` 要求生成前已持久化的 run/输入版本栅栏，但现有 Go/插件没有该注册入口，冻结聊天 API 只有终态提交。建议新增仅现有 serviceToken 通道可调用的 `POST /api/v1/service/chats/{chatId}/generation-runs`，携带 `ownerAccountId`、`requestId`、`authorityEpoch`、`generationRunId`、上下文基线 `chatRevision`；Node 生成桥在出站前登记当前输入/候选及分支栅栏，Session 在原有终态结构中引用同一 run。公开 `/chats*` 终态语义不变；未经注册或已失效的 run 一律拒绝。**答（Owner 2026-11-07）**：批准仅 serviceToken 的过渡登记入口，沿用 model-usage reservations 的已核验 Owner/Origin 边界；必须绑定已保存输入 messageId/选中候选并拒绝过期 epoch，明确活动 run 数量、新 run 失效规则、TTL 与清理；先单独提交 OpenAPI/catalog/生成物供 Owner 审阅，审完才实施依赖登记的逻辑。Owner 复审要求已纳入修订：登记按相关变化校验基线，允许无关尾部追加；明确 continue/regenerate 输入及终态 Owner/chat 绑定，内部接口移除 428；正文 q 上限 200 并补无命中扫描测量。具体候选见退出计划 §4.4.1；Owner 已复审通过 5f55e4c6，按修订契约实施。
+
+**SX-5 [问]（2026-11-07，零输出停止，已答）**：现有 append/edit/operations 均要求至少一项，登记后尚无任何输出就停止（包括登记 ACK 丢失）无法提交无消息的 `aborted`。建议不新增空操作或取消接口：零输出不做消息终态写入，原 run 沿用 15 分钟期限，后续新登记立即使其失效；有部分输出仍以原 run 提交 aborted。**答（Owner 2026-11-07）**：确认；Session 停止后丢弃迟到片段，不再用该 run 提交终态，取消上游并释放用量预留；过期未终结 run 在紧凑记录中标为内部 `expired`，不新增对外状态。
+
+**SX-6 [问]（2026-11-07，权威发现与旧门面阶段边界，方向已答）**：现有 `GET /api/v1/auth/session`/宿主 HTML 只有账号、会话身份；`GET /chats` 在 ST 权威时与故障同为 503，不能以失败回退 ST。建议给已认证 session 增加 `chatStorage: {mode: ST|GO|FROZEN, authorityEpoch: 十进制字符串}`，宿主从已核验响应注入页面和请求上下文；查询失败不默认 ST。旧 native 的文件名解析、新建/分支预分配 ID 与 F2 同 ID/+1 ACK 则缺少 Go 别名/原子全聊 CAS 契约（`stored_chat` 尚无别名；普通 operations 允许并发尾部追加，不能先读再伪装严格 whole-save）。建议本项先完成 Go 共享 Session/脚本全史与增量持久化；GO/FROZEN 权威下旧 ST 聊天入口明确拒绝且不触碰旧盘。完整旧文件名/新建/fork 门面随 SX-8 别名与迁移契约一起实施并作为切换前置。若 Owner 要求 SX-6 即具备完整 native GO 门面，先补别名、创建身份及仅 serviceToken 的严格 revision 兼容 operations 契约再实现；不以新 epoch 重新标记旧页面。**答（Owner 2026-11-07）**：同意先完成共享 Session/脚本并拒绝旧入口、native 完整门面归 SX-8 的边界；字段名用 `mode`。Owner 对 ecc25b73 复审后要求改为仅 `GET /auth/session?include=chatStorage` 按需返回，不带 include 的响应/插件每请求核验不变且不得查询权威；宿主页面启动与 Session 初始化才请求 include。其查询失败仅影响 included 请求，视为暂不可用而非登出；补故障注入证明普通 session 仍 200。按需修订 63fa64e5 已经 Owner 复审通过，开始依赖实现与查询隔离回归。 Owner 随后批准仅旧 ST 聊天存储路由使用 include 替换原核验（单次、不缓存）；GO/FROZEN/查询失败均拒绝读写且零触盘，其他插件/资源/模型保持普通核验，集中路由清单逐项回归并记录 ST 保存增量耗时。字段仅提示，写入仍查当前权威；409 后重读 session 留稿且不自动重发；FROZEN 提示“正在迁移”、只读、本地留稿、不回退或排队。SX-8 前置全部完成且 Owner 授权切换前，真实账号不得置为 GO/FROZEN，测试覆盖旧入口拒绝且零触盘。
+
+**SX-6 [问]（2026-11-07，Helper 历史插入，已复审通过）**：现有 `cards/helper-message.js:createChatMessages` 支持 `insert_before/insert_at`，但冻结 append 只允许尾部，reorder 又禁止新增 ID，不能原子表达该受支持调用。建议增加类型化 `insert` 命令：target 为已有 `beforeMessageId`，preconditions 为精确 `orderRevision`，payload 复用 `messages[{clientMessageId,data}]`；同批初始状态校验、整体回滚、总计 100 条新消息/100 命令/8 MiB 限制不变，推进 orderRevision 并使旧游标/生成顺序栅栏失效，既有来源身份不改。**答（Owner 2026-11-07）**：批准原子 insert，先独立提交契约复审；orderRevision 不符409、失效或外聊锚点404；成功推进orderRevision/变化流并失效旧游标与活动run；新来源沿append屏障/记忆入队，不绕过no_memory/无痕，不用于生成终态。测试覆盖Helper首条前插入、连续同位置插入及并发尾追加的版本冲突边界。Owner 已复审通过 a3e7e426；同一前台操作的嵌套 Helper insert 也会 fence 自己的 run，生成结果转待处理草稿，不设豁免，必须测试固定。
+
+**SX-6 [问]（2026-11-07，独立 Helper 无用户输入）**：已批准的 run 登记必须绑定已保存消息/选中候选；现有独立 `generate/generateRaw` 可在只有开场助手或空聊天时调用。当前 GO 适配只取最后一条用户消息，因此会在出站前明确拒绝（不伪造输入、无 provider 调用）。建议独立 Helper 使用当前实际上下文的最后一条已保存消息作为输入；开场助手先按普通 append 保存，再初始化卡片脚本。真正空聊天仍明确拒绝并保留脚本状态，列为 SX-8 真实切换前兼容前置。若本阶段要求无历史 Helper 也能生成，须先补无输入 run 的专门登记契约并复审，不能用虚构消息或无栅栏调用绕过。 **答（Owner 2026-11-07）**：仅助手生成写入（append/addSwipe/edit 带 generation）需要 run；只返回文本的 Helper 无需存储 run，空聊也允许模型，保留现有用量和受控用途。生成写入有开场助手时先保存并以它为输入；完全无已保存消息时拒绝该提交且留结果草稿，列 SX-8 前置。不伪造输入。测试纯文本空聊零存储、开场输入提交和空聊生成提交拒绝留稿，并核对 mb2-cards 的 MVU 空会话开场路径。
+
+
+**SX-7 [问]（2026-11-07，私有来源 / inbox 的权威核验，已答）**：私有 sources/inbox 使用服务令牌、没有浏览器 session；原建议新增只读 service/chat-storage 回查。**答（Owner）**：不新增接口、不让 ST 回查 Go。调用方本来就是 Go，每次调用前读取当前权威，仅 ST 发起 sources/inbox 请求；GO 走同库路径，FROZEN/查询失败明确不可用且零 ST 请求，不缓存。检查到触盘间的竞态由 SX-8 “置 FROZEN → ST 侧在途来源/inbox 排空 → 再导出迁移”解决，须给出排空判定与测试设计。测试覆盖 GO/FROZEN/故障零 ST 请求及 ST 行为不变。
 
 ## N. 聊天与记忆质量（CM，2026-11-06 Owner 决定以指标驱动）
 
@@ -558,6 +573,7 @@ Owner 选择 React，要求保留现有正常 UI、优先复用成熟开源组�
 - CM-4 Owner 补充边界（2026-11-07）：允许修改 `jobs/memorycore_extract.go`、`store/postgres/st_memory*.go`、Node `lib/memory-guard.js` 的记忆质量逻辑及直接回归；新窗口/查询逻辑集中到独立函数或文件，原入口最小调用。来源读取、stsource reader、ST 读回、source_ref / generation / 屏障归 SX-7，不修改。CM-4 推送后通知 Owner，由 Claude 审计并先合 main，SX-7 开工前同步该 main；CM 线不自行合入 main。
 - CM-4 Owner 补充授权（2026-11-07）：允许在 `store/postgres/memorycore_runtime.go` 的 `ValidateEngineProposal` 增加支持来源校验；每条派生事实至少有一个已核验用户主来源，拒绝纯助手提案，助手只限同会话、提取窗口内、当前选中候选。保持函数开头 `vc.memory_write_barrier` 先于来源行锁，新增校验在其后；不改来源协议、source_ref 格式、generation、屏障或表结构。直接回归覆盖助手支持来源编辑/删除/候选切换导致失效，no_memory/无痕不得作为来源、纯助手拒绝，并保持 `memorycore_proposal_lock_integration_test` 通过；提交说明列明此文件范围供 SX-7 合并。
 - CM-4 Owner 决定（2026-11-07）：逐事实来源发布的函数迁移由 Owner 转交 SX，需求见 [迁移交接](2026-11-07-cm4-source-publication-handoff.md)。CM 获准补 prepare 逐记录目标映射及 Go 校验/发布参数；迁移合 main 前只交查询补全与检索计算复用，依赖新入口的窗口候选不能合 main。联合验收覆盖独立 A/B 不连带遗忘、真实 A+B 任一失效即撤回、助手逐事实生效及遗忘后真实出站零召回。
+- CM-4 Owner 同步要求（2026-11-07）：合并 main `79b4d72c`（SX-3–SX-7F、V287–V291），迁移交接已改以 V290 发布与 V291 画像定义为基线，保留 `guard_st_evidence_write`、完整画像来源与锁序；七参发布/三参清理仍待 SX，画像九参保持现有实现。临时 FROZEN/水位不齐不得直接当作永久来源失效。只交函数需求全文，由 Owner 转交，不在 CM 新建迁移。
 - CM-4 Owner 补充授权（2026-11-07）：`memorycore_profile.go::RecoverEngineOperations` 纳入最小修正与直接回归；逐事实任一来源失效即清理，仅全部来源有效且 PG 已发布者保留，宁可多删不可漏删。判断与清理同一事务，barrier 先于来源行锁；覆盖独立/联合来源、未发布清理、幂等和并发遗忘出站零泄漏。依赖新签名仍等迁移合 main；详见迁移交接。
 - CM-4 Owner 时间兼容授权（2026-11-07）：真实 SQLite 复现旧 L0 回退时间导致 SOURCE_CONFLICT 后，允许 Go 根据核验来源缺少原始时间设置内部回退标记，并在现有 commit 补丁的事务中仅对同 ID/scope/正文且有可信回退证据的旧 L0 复用时间；涉及真实时间且值不同、正文或 scope 不同仍拒绝，标记不接受浏览器/请求参数。新回退时间须确定性，覆盖回退复用、真实时间冲突及正文冲突；不改 ST 来源读取协议、source_ref、generation 或旧数据，候选继续等待迁移。
 - CM-5 Owner 提前独立修复授权（2026-11-07）：`memory_management.go::continueMemoryCleanup` 补 `revisionAdvanced: true`，避免 V155 已推进的 PG cleanup revision 被 native 再加一。先以中断后恢复清理的回归保留修前 FAIL、修后 PASS，核对其他 forget 调用的版本语义；不改 SQL、来源协议或数据结构。该 main 既有缺陷独立一个 `fix(CM-5)` / `fix(memory)` 提交，不混 CM-4 改动，推送后交 Owner/Claude 审核，可先行合 main；CM 分支不自行合 main。完整 CM-5 真实出站闭环仍按原验收，不因这处修复直接勾完。
@@ -584,3 +600,11 @@ COMMIT;
 2026-11-07，`07ecf9bf` 的 core 140 题运行中，20 道遗忘题有 14 道到达清理检查但为 `PARTIAL`，另 6 道目标缺失；已执行的遗忘后阶段未观测到泄漏，不等于清理完成。只读检查其中两道的隔离合成 PG：各有一次 L2 `HTTP_5XX`，未进入 L3；最后一次领取在租约内约 0.2 秒结束且没有新模型调用，首次失败后约 76 秒进入死信，符合 15/60 秒退避。原任务 `last_error_code` 为空，无法从 PG 逐次确认后续关闭码。
 
 待回归验证的链路：`memorycore-service/business.mjs` 的画像失败日志未写 revision，普通遗忘恢复把缺失 revision 视作旧操作并删除；Go 再用原 operation 从 sequence 1 重建，会遇到已登记序号的防重放门禁。最小回归为首次 L2 返回 500、下次成功，两次领取之间执行实际遗忘恢复；验证是否能重新调用、发布画像并到达 `DONE`。现阶段只是代码和时序证据，不宣称已复现或修复；不修改 SQL/防重放规则，不检测开发或生产数据。
+
+## O. SX-7 审计修复（Owner 2026-11-07）
+
+| ID | 优先级 | 范围与验收 |
+|---|---|---|
+| SX-7F | P0 | 修复 server-sx@34a4a58c 审计七项：完整 Vitest session 夹具；正文搜索单请求有界扫描及连续游标；管理桥逐方法 chats 白名单与真实桥 GO 链路；conversation/relationship 删除锁序；retention 分批清理七天 changes；profile 最终写入权威/水位栅栏；append/fork 201 与回放状态。验证 quick、全 Go 单元、完整隔离 store/http、RLS、npm test、完整 test:desktop 与受影响受管场景；NOTES 逐项记录红绿证据。本条完成前不合 main，搜索契约调整独立提交复审后再实现。 |
+
+**SX-7F [问]（2026-11-07，正文搜索有界续扫，已复审通过）**：原 q 契约把 hasOlder/hasNewer 定义为已知匹配项，迫使单次请求扫描整聊。修订为每请求最多 200 条选中候选、密文扫描软目标 8 MiB（首条超目标可单独处理）；返回已找到项，允许零项但 has* 与 cursor 表示尚有历史可继续。游标为已扫描窗口排他边界；响应字节截断不得跳过已找到但未返回的项；锚点直接校验、不匹配404。超时明确503 CHAT_SEARCH_TIMEOUT，可重试输入游标；非 q 分页不变。契约 accd79b7 已经 Owner 复审通过，按此实施；同时登记 CHAT_SEARCH_TIMEOUT 的 HTTP 503/可重试语义并生成。NOTES 报 GOMAXPROCS=2 下单请求 P95，以及20k无命中遍历全部续扫的请求数与总耗时。

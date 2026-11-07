@@ -234,6 +234,27 @@ test('受管 seed 可导入，不启动 CLI 或修改调用方的端口环境', 
     assert.deepEqual(keys.map(key => process.env[key]), before);
 });
 
+test('受管 profile seed 返回 SX 夹具可复用的存储并保留 CM 评审账号', async () => {
+    const fs = await import('node:fs/promises');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const { fileURLToPath } = await import('node:url');
+    const { seedManagedProfiles } = await import('../scripts/accept-managed.mjs');
+    const root = await fs.mkdtemp(join(tmpdir(), 'vc-managed-seed-'));
+    try {
+        const storage = await seedManagedProfiles(root,
+            fileURLToPath(new URL('../upstream/SillyTavern/', import.meta.url)), null, 'synthetic-judge');
+        for (const handle of ['default-user', 'vc-w05-second', 'synthetic-judge']) {
+            assert.equal((await storage.getItem(`user:${handle}`)).enabled, true);
+        }
+        assert.equal(await storage.getItem('user:synthetic-sx7'), undefined);
+        await storage.setItem('user:synthetic-sx7', { handle: 'synthetic-sx7', enabled: true });
+        assert.equal((await storage.getItem('user:synthetic-sx7')).enabled, true);
+        await storage.removeItem('user:synthetic-sx7');
+        assert.equal(await storage.getItem('user:synthetic-sx7'), undefined);
+    } finally { await fs.rm(root, { recursive: true, force: true }); }
+});
+
 test('CM-3 隔离入口在 round 不合法或已取消时拒绝启动', async () => {
     const { withIsolatedChatMemoryStack } = await import('../scripts/lib/chat-memory-isolated-stack.mjs');
     const evaluate = () => assert.fail('不应启动评测');

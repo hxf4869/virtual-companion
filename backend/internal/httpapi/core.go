@@ -179,6 +179,7 @@ type Core struct {
 
 func (s *Server) registerCore() {
 	s.registerVoice()
+	s.registerStoredChatReads()
 	s.mux.HandleFunc("POST /api/v1/service/memorycore/llm", s.handleMemoryCoreLLM)
 	s.mux.HandleFunc("GET /api/v1/admin/embedding-config", s.handleGetEmbeddingConfig)
 	s.mux.HandleFunc("PUT /api/v1/admin/embedding-config", s.handleSaveEmbeddingConfig)
@@ -310,6 +311,10 @@ func (s *Server) registerCore() {
 }
 
 func (s *Server) corePrincipal(w http.ResponseWriter, r *http.Request, write bool) *auth.Principal {
+	return s.corePrincipalWithUnavailableCode(w, r, write, "INVALID_REQUEST")
+}
+
+func (s *Server) corePrincipalWithUnavailableCode(w http.ResponseWriter, r *http.Request, write bool, unavailableCode string) *auth.Principal {
 	if write {
 		s.metrics.ObserveCoreWrite()
 		if !auth.AllowOrigin(r.Header.Get("Origin"), s.cfg.HTTP.AllowedOrigins) {
@@ -332,7 +337,7 @@ func (s *Server) corePrincipal(w http.ResponseWriter, r *http.Request, write boo
 	}
 	p, err := s.core.Sessions.Lookup(r.Context(), token)
 	if err != nil {
-		s.writeAPIError(w, http.StatusServiceUnavailable, "INVALID_REQUEST", "temporarily unavailable")
+		s.writeAPIError(w, http.StatusServiceUnavailable, unavailableCode, "temporarily unavailable")
 		return nil
 	}
 	if p == nil || p.AccountID <= 0 {
@@ -367,7 +372,7 @@ func (s *Server) corePrincipal(w http.ResponseWriter, r *http.Request, write boo
 	if write && r.URL.Path != "/api/v1/auth/account" && r.URL.Path != "/api/v1/auth/logout" && r.URL.Path != "/api/v1/exports/recover" {
 		deleting, err := s.core.Store.DeletionIntentActive(r.Context(), p.AccountID)
 		if err != nil {
-			s.writeStoreErr(w, err)
+			s.writeStoreErrWithUnavailableCode(w, err, unavailableCode)
 			return nil
 		}
 		if deleting {
@@ -479,6 +484,10 @@ func (s *Server) writeJSON(w http.ResponseWriter, status int, body any) {
 }
 
 func (s *Server) writeStoreErr(w http.ResponseWriter, err error) {
+	s.writeStoreErrWithUnavailableCode(w, err, "INVALID_REQUEST")
+}
+
+func (s *Server) writeStoreErrWithUnavailableCode(w http.ResponseWriter, err error, unavailableCode string) {
 	switch {
 	case err == nil:
 		return
@@ -495,7 +504,7 @@ func (s *Server) writeStoreErr(w http.ResponseWriter, err error) {
 	case errors.Is(err, postgres.ErrOwnerContextRejected):
 		s.writeAPIError(w, http.StatusUnauthorized, "AUTHENTICATION_REQUIRED", "authentication required")
 	default:
-		s.writeAPIError(w, http.StatusServiceUnavailable, "INVALID_REQUEST", "temporarily unavailable")
+		s.writeAPIError(w, http.StatusServiceUnavailable, unavailableCode, "temporarily unavailable")
 	}
 }
 

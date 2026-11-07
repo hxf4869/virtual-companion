@@ -3,12 +3,17 @@ import assert from 'node:assert/strict';
 import { createHostAuth, isMobileRoutePath, parseAccountHandles } from '../server-plugin/virtual-companion/lib/host-auth.js';
 
 const active = { stDataConfigured: true, nextStep: 'ACTIVE', accountId: '42', sessionId: '7', authenticatorEnabled: true, passwordMustChange: false };
+function sessionResponse(url, identity, status) {
+    const body = status === 200 && url.endsWith('/auth/session?include=chatStorage')
+        ? { ...identity, chatStorage: { mode: 'ST', authorityEpoch: '1' } } : identity;
+    return Response.json(body, { status });
+}
 function harness({ identity = active, status = 200, fetchImpl } = {}) {
     const requests = [];
     const gate = createHostAuth({
         config: { serviceToken: 'synthetic-service-token-0123456789', goBaseUrl: 'http://go.local', timeoutMs: 1000, accountHandles: { '42': 'owner', '43': 'other' } },
         getUser: async (handle) => ({ handle, enabled: true }), accountVersion: () => 'v1', indexHtml: () => '<html><head></head><body><div id="preloader"></div><a href="#bg_global_tab">global</a><a href="#bg_chat_tab">chat</a></body></html>',
-        fetchImpl: fetchImpl || (async (url, options) => { requests.push({ url, options }); if(url.endsWith('/service/st/profile')) return new Response(options.body, { status:200 }); return new Response(JSON.stringify(identity), { status }); }),
+        fetchImpl: fetchImpl || (async (url, options) => { requests.push({ url, options }); if(url.endsWith('/service/st/profile')) return new Response(options.body, { status:200 }); return sessionResponse(url, identity, status); }),
     });
     async function call(path = '/', { method = 'GET', session = {}, headers = {}, body, requestUrl = path } = {}) {
         const req = { path, url: requestUrl, method, session, headers: { cookie: 'vc_session=synthetic; st_session=not-forwarded', ...headers }, body };
@@ -169,7 +174,7 @@ test('手机界面 /m/：未登录跳登录页；入口绑定会话并注入meta
             config: { serviceToken: 'synthetic-service-token-0123456789', goBaseUrl: 'http://go.local', timeoutMs: 1000, accountHandles: { '42': 'owner' } },
             getUser: async (handle) => ({ handle, enabled: true }), accountVersion: () => 'v1', indexHtml: () => '<html><head></head><body><div id="preloader"></div>native</body></html>',
             desktopHtml: () => '<!doctype html><html><head><title>VC Desktop</title></head><body>desktop</body></html>',
-            fetchImpl: async (url, options) => url.endsWith('/service/st/profile') ? new Response(options.body, { status: 200 }) : new Response(JSON.stringify(identity), { status }),
+        fetchImpl: async (url, options) => url.endsWith('/service/st/profile') ? new Response(options.body, { status: 200 }) : sessionResponse(url, identity, status),
             mobileDir: customMobileDir,
         });
         const run = async (gate, p, session = {}, method = 'GET') => {
@@ -204,6 +209,7 @@ test('手机界面 /m/：未登录跳登录页；入口绑定会话并注入meta
         assert.equal(entry.res.statusCode, 200);
         assert.match(String(entry.res.payload), /VC Mobile/);
         assert.match(String(entry.res.payload), /<meta name="vc-account-id" content="42"><meta name="vc-session-id" content="7">/);
+        assert.match(String(entry.res.payload), /<meta name="vc-chat-mode" content="ST"><meta name="vc-chat-authority-epoch" content="1">/);
         assert.equal(entry.res.headers['Cache-Control'], 'no-store');
         assert.equal(entry.res.headers['Vary'], 'Cookie');
         assert.equal(entry.res.headers['X-Content-Type-Options'], 'nosniff');
@@ -300,7 +306,7 @@ test('serves built desktop app shell with identity meta', async () => {
             getUser: async (handle) => ({ handle, enabled: true }),
             accountVersion: () => 'v1',
             indexHtml: () => '<html><head></head><body></body></html>',
-            fetchImpl: async (url, options) => url.endsWith('/service/st/profile') ? new Response(options.body, { status: 200 }) : new Response(JSON.stringify(identity), { status: 200 }),
+            fetchImpl: async (url, options) => url.endsWith('/service/st/profile') ? new Response(options.body, { status: 200 }) : sessionResponse(url, identity, 200),
             desktopAppDir: dir,
         });
         const call = async (p, session = {}) => {
@@ -348,7 +354,7 @@ test('serves hashed desktop assets immutable and rejects traversal', async () =>
             getUser: async (handle) => ({ handle, enabled: true }),
             accountVersion: () => 'v1',
             indexHtml: () => '<html><head></head><body></body></html>',
-            fetchImpl: async (url, options) => url.endsWith('/service/st/profile') ? new Response(options.body, { status: 200 }) : new Response(JSON.stringify(identity), { status }),
+            fetchImpl: async (url, options) => url.endsWith('/service/st/profile') ? new Response(options.body, { status: 200 }) : sessionResponse(url, identity, status),
             desktopAppDir: dir,
         });
         const gate = gateFor(200);
