@@ -108,12 +108,17 @@ async function main(){
                 mode: arg('--budget-mode', 'tokens'), tokenReferenceFile: arg('--token-reference', undefined),
                 seed: Number(arg('--seed', '20261106')), variant: arg('--variant', 'baseline'),
                 quoteFile: arg('--quote-file', undefined), root: arg('--output', undefined), maxCalls: Number(arg('--max-calls', '6000')),
-                baselineFile: arg('--baseline', undefined), resume: process.argv.includes('--resume'),
+                baselineFile: arg('--baseline', undefined), noiseReferenceFile: arg('--noise-reference', undefined),
+                previousRoundFiles: arg('--previous-rounds', '').split(',').filter(Boolean), resume: process.argv.includes('--resume'),
+                judgeOnly: process.argv.includes('--judge-only'),
                 diagnosticsOnly: process.argv.includes('--diagnostics-only'), signal: controller.signal,
                 onProgress: progress => console.log(JSON.stringify(progress)) });
             console.log(JSON.stringify({ executionStatus: report.executionStatus, verdict: report.verdict,
                 diagnosticSupplement: report.diagnosticSupplement,
+                judgeReevaluation: report.judgeReevaluation, judgeCalibration: report.judgeCalibration,
                 accuracy: report.quality.accuracy, byCategory: report.quality.byCategory, gates: report.gates,
+                actions: report.quality.actions, failureAttribution: report.failureAttribution,
+                pairedComparison: report.pairedComparison, metrics: report.metrics, baselineNoise: report.baselineNoise,
                 budget: report.budget, actualCostCny: report.actualCostCny }));
             if ((process.argv.includes('--diagnostics-only') ? report.diagnosticSupplement?.executionStatus : report.executionStatus) !== 'COMPLETE') process.exitCode = 1;
         } finally { process.removeListener('SIGINT', interrupt); process.removeListener('SIGTERM', interrupt); }
@@ -134,6 +139,6 @@ async function main(){
     console.log(JSON.stringify({...report,regressions}));if(regressions.length)process.exitCode=1;
 }
 if(process.argv[1] && path.resolve(process.argv[1])===fileURLToPath(import.meta.url))main().catch(error=>{
-    console.error(/^(?:CM|ISOLATION|BUDGET|CONFIG|ARTIFACT|EVALUATION)_[A-Z0-9_]+$/.test(error.message)
+    console.error(/^(?:CM|ISOLATION|BUDGET|CONFIG|ARTIFACT|EVALUATION|SYNTHETIC)_[A-Z0-9_]+$/.test(error.message)
         ? error.message : 'MEMORY_EVAL_FAILED'); process.exitCode=1;
 });

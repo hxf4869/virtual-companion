@@ -6,6 +6,9 @@ import { createRoundArtifacts } from './chat-memory-artifacts.mjs';
 import { createRoundBudget } from './chat-memory-budget.mjs';
 import { loadEvaluationConfiguration } from './chat-memory-config.mjs';
 import { generateChatMemoryDataset } from './chat-memory-dataset.mjs';
+import { createSyntheticAnswerStore } from './chat-memory-answers.mjs';
+import { JUDGE_RUBRIC_VERSION } from './chat-memory-scoring.mjs';
+import { attributeMemoryFailures, compareMemoryRounds, freezeBaselineNoise } from './chat-memory-round-statistics.mjs';
 import { compareSamples, comparisonMarkdown, summarizeSamples } from './chat-memory-metrics.mjs';
 import { startEvaluationMeter } from '../../integrations/sillytavern/scripts/lib/real-model-meter.mjs';
 
@@ -71,12 +74,15 @@ export function qualityGates(report) {
         abstention: q.abstention.accuracy.value >= .95,
         falseAbstention: q.answerableFalseAbstentions.value <= .05,
         judgeAgreement: (report.judgeCalibration.agreement ?? 0) >= .90,
+        judgePreflight: report.judgePreflight ? report.judgePreflight.passed === true : true,
+        actionsCompleted: q.actions ? q.actions.coverage.value === 1 : true,
     };
 }
 
 export function compareQuality(baseline, candidate) {
     if (baseline.dataset.hashes.dataset !== candidate.dataset.hashes.dataset
-        || JSON.stringify(baseline.configuration) !== JSON.stringify(candidate.configuration)) throw new Error('CM_COMPARISON_GROUP_MISMATCH');
+        || JSON.stringify(baseline.configuration) !== JSON.stringify(candidate.configuration)
+        || baseline.judgeRubricVersion !== candidate.judgeRubricVersion) throw new Error('CM_COMPARISON_GROUP_MISMATCH');
     return Object.fromEntries(Object.keys(baseline.quality.byCategory).map(category => {
         const before = baseline.quality.byCategory[category].accuracy, after = candidate.quality.byCategory[category].accuracy;
         return [category, { baseline: before, candidate: after, delta: after.value - before.value,
@@ -85,16 +91,16 @@ export function compareQuality(baseline, candidate) {
 }
 
 async function loadRealRuntime() {
-    const [{ withIsolatedChatMemoryStack }, { evaluateCoreOnStack }] = await Promise.all([
+    const [{ withIsolatedChatMemoryStack }, { evaluateCoreOnStack, reviewSavedAnswersOnStack }] = await Promise.all([
         import('../../integrations/sillytavern/scripts/lib/chat-memory-isolated-stack.mjs'),
         import('../../integrations/sillytavern/scripts/chat-memory-real-eval.mjs'),
     ]);
-    return { withIsolatedChatMemoryStack, evaluateCoreOnStack };
+    return { withIsolatedChatMemoryStack, evaluateCoreOnStack, reviewSavedAnswersOnStack };
 }
 
 function evaluationFailure(error, fallback) {
     const message = error?.message;
-    return /^(?:CM|ISOLATION|BUDGET|CONFIG|ARTIFACT)_[A-Z0-9_]{1,60}$/.test(message) ? message : fallback;
+    return /^(?:CM|ISOLATION|BUDGET|CONFIG|ARTIFACT|SYNTHETIC)_[A-Z0-9_]{1,60}$/.test(message) ? message : fallback;
 }
 
 function archiveAttempts(manifest, summary) {
@@ -116,10 +122,12 @@ function journalCall(record, annotation) {
 
 export async function runRealEvaluation({ round, configRef, seed = 20261106, variant = 'baseline',
     mode = 'tokens', ownerTokenOnly = false, quoteFile, root = QUALITY_ROOT, maxCalls = 6000, tokenReferenceFile,
-    baselineFile, resume = false, diagnosticsOnly = false, signal, onProgress = () => {}, caseTimeoutMs, extractionTimeoutMs } = {},
+    baselineFile, noiseReferenceFile, previousRoundFiles = [], resume = false, diagnosticsOnly = false, judgeOnly = false,
+    signal, onProgress = () => {}, caseTimeoutMs, extractionTimeoutMs } = {},
 { loadConfig = loadEvaluationConfiguration, startMeter = startEvaluationMeter, loadRuntime = loadRealRuntime } = {}) {
     if (!/^round-[a-z0-9-]{1,80}$/.test(round || '') || !['baseline', 'candidate'].includes(variant)) throw new Error('CONFIG_NOT_READY');
     if (diagnosticsOnly && (!resume || baselineFile)) throw new Error('CONFIG_NOT_READY');
+    if (judgeOnly && (!resume || baselineFile || diagnosticsOnly)) throw new Error('CONFIG_NOT_READY');
     const tokenReference = await readTokenReference(tokenReferenceFile);
     ownerTokenOnly ||= mode === 'tokens' && Boolean(tokenReference);
     const dataset = generateChatMemoryDataset({ seed });
@@ -133,10 +141,11 @@ export async function runRealEvaluation({ round, configRef, seed = 20261106, var
     const budgetFile = path.join(dir, 'budget.json');
     const budgetOptions = { file: budgetFile, round, profiles: roles.map(row => row.profile), mode, ownerTokenOnly, maxCalls,
         tokenReference, recipe: evaluationTokenRecipe(dataset) };
-    const provenance = { variant, dataset: { version: dataset.version, seed, hashes: dataset.hashes, sourceCounts: dataset.sourceCounts },
+    const provenance = { round, variant, judgeRubricVersion: JUDGE_RUBRIC_VERSION,
+        dataset: { version: dataset.version, seed, hashes: dataset.hashes, sourceCounts: dataset.sourceCounts },
         configuration: config.manifest, replayMode: resume ? 'full-replay-existing-ledger' : 'fresh' };
     let artifacts, budget, meter, outboundObserver, pipelineFailureCode, failureCode;
-    let priorCalls = [], attempts = [], manifestWritten = false, priorManifest, priorSummary, callAnnotations = [];
+    let priorCalls = [], attempts = [], manifestWritten = false, priorManifest, priorSummary, callAnnotations = [], answerStore;
     let report = { schemaVersion: 1, ...provenance, executionStatus: 'INCOMPLETE' };
     const progress = entry => {
         // A display callback must not surface its error or interrupt the paid run.
@@ -167,9 +176,12 @@ export async function runRealEvaluation({ round, configRef, seed = 20261106, var
             catch { throw new Error('ARTIFACT_RESUME_INVALID'); }
             if (prior.variant !== variant || prior.dataset?.hashes?.dataset !== dataset.hashes.dataset
                 || JSON.stringify(prior.configuration) !== JSON.stringify(config.manifest)) throw new Error('CM_COMPARISON_GROUP_MISMATCH');
+            if (!judgeOnly && prior.judgeRubricVersion !== undefined && prior.judgeRubricVersion !== JUDGE_RUBRIC_VERSION) {
+                throw new Error('CM_COMPARISON_GROUP_MISMATCH');
+            }
             priorManifest = prior;
             try { priorSummary = JSON.parse(await fs.readFile(path.join(dir, 'summary.json'), 'utf8')); } catch { /* journal is authoritative */ }
-            if (diagnosticsOnly && (!priorSummary?.quality || !priorSummary?.extraction || !priorSummary?.judgeCalibration
+            if ((diagnosticsOnly || judgeOnly) && (!priorSummary?.quality || !priorSummary?.extraction || !priorSummary?.judgeCalibration
                 || !Array.isArray(priorSummary?.modelCalls) || priorSummary.modelCalls.length !== budget.snapshot().calls
                 || priorSummary.attempt !== prior.attempt
                 || priorSummary.attempt !== (prior.attempts ? prior.attempts.length : undefined))) {
@@ -178,6 +190,10 @@ export async function runRealEvaluation({ round, configRef, seed = 20261106, var
             if (diagnosticsOnly && (priorSummary.variant !== variant || priorSummary.dataset?.hashes?.dataset !== dataset.hashes.dataset
                 || JSON.stringify(priorSummary.configuration) !== JSON.stringify(config.manifest))) throw new Error('CM_COMPARISON_GROUP_MISMATCH');
             artifacts = await createRoundArtifacts(root, { round, resume: true });
+            if (!diagnosticsOnly && !judgeOnly) {
+                try { await fs.access(path.join(artifacts.dir, 'synthetic-answers.json')); throw new Error('CM_REPLAY_HAS_SAVED_ANSWERS'); }
+                catch (error) { if (error.code !== 'ENOENT') throw error; }
+            }
             const recorded = new Map((priorSummary?.modelCalls || []).map(row => [row.id, row]));
             priorCalls = budget.callRecords().map(row => journalCall(row, recorded.get(row.id)));
             attempts = archiveAttempts(prior, priorSummary);
@@ -191,9 +207,19 @@ export async function runRealEvaluation({ round, configRef, seed = 20261106, var
         const git = args => execFileSync('git', args, { encoding: 'utf8', cwd: fileURLToPath(new URL('../../', import.meta.url)) }).trim();
         const attempt = { ...provenance, commit: git(['rev-parse', 'HEAD']), worktreeDirty: Boolean(git(['status', '--porcelain'])),
             instrumentation: 'cm-final-recall-before-budget-v1' };
-        const identity = { schemaVersion: 1, ...provenance, attempt: attempts.length + 1,
+        const identity = { schemaVersion: 1, ...provenance, attempt: judgeOnly ? priorManifest.attempt : attempts.length + 1,
             ...(budget.snapshot().tokenGuard ? { tokenGuard: budget.snapshot().tokenGuard } : {}) };
-        if (diagnosticsOnly) {
+        if (judgeOnly) {
+            answerStore = createSyntheticAnswerStore(artifacts, { round, attempt: priorManifest.attempt, dataset });
+            // Read before starting the meter/stack: old rounds without retained
+            // outputs cannot silently regenerate answers during reevaluation.
+            await answerStore.read();
+            const judgeReevaluation = { sourceAttempt: priorManifest.attempt, sourceCommit: priorManifest.commit,
+                commit: attempt.commit, rubricVersion: JUDGE_RUBRIC_VERSION, foregroundReplayed: false,
+                extractionReplayed: false, priorModelCalls: priorCalls.length, executionStatus: 'INCOMPLETE' };
+            report = { ...priorSummary, judgeReevaluation };
+            await write('manifest.json', { ...priorManifest, judgeReevaluation });
+        } else if (diagnosticsOnly) {
             const supplementIdentity = { schemaVersion: 1, ...attempt,
                 ...(identity.tokenGuard ? { tokenGuard: identity.tokenGuard } : {}),
                 replayMode: 'diagnostic-controls-only-existing-ledger',
@@ -210,20 +236,35 @@ export async function runRealEvaluation({ round, configRef, seed = 20261106, var
             await write('manifest.json', { ...identity, ...attempt, attempts, mode: 'real', protocol: 'actual-source-and-node-outbound',
                 requestOutputCap: roles[1].profile.maxOutputTokens, queryMemorySaving: false,
                 querySourcePolicy: 'eligible-unsettled-no-answer-save', foregroundRules: 'inactive', humanReview: 'NOT_RUN' });
+            answerStore = createSyntheticAnswerStore(artifacts, { round, attempt: identity.attempt, dataset });
         }
         manifestWritten = true;
         await write('summary.json', { ...report, modelCalls: priorCalls, budget: budget.snapshot() });
+        if (baselineFile) {
+            const baseline = JSON.parse(await fs.readFile(baselineFile, 'utf8'));
+            if (baseline.dataset?.hashes?.dataset !== dataset.hashes.dataset
+                || JSON.stringify(baseline.configuration) !== JSON.stringify(config.manifest)
+                || baseline.judgeRubricVersion !== JUDGE_RUBRIC_VERSION) throw new Error('CM_COMPARISON_GROUP_MISMATCH');
+        }
         runSignal.throwIfAborted();
         meter = await startMeter({ routes: roles.map(row => row.profile), budget,
             upstreamTimeoutMs: 330000, onOutbound: entry => outboundObserver?.(entry) });
-        const { withIsolatedChatMemoryStack, evaluateCoreOnStack } = await loadRuntime();
+        const { withIsolatedChatMemoryStack, evaluateCoreOnStack, reviewSavedAnswersOnStack } = await loadRuntime();
         progress({ phase: 'isolated-stack', status: 'STARTING' });
         const result = await withIsolatedChatMemoryStack({ round, meterPort: Number(new URL(meter.routes[0].baseUrl).port), signal: runSignal }, async ctx => {
             ctx.scope = round;
             ctx.setOutboundObserver = observer => { outboundObserver = observer; };
             try {
+                if (judgeOnly) return await reviewSavedAnswersOnStack(ctx, { dataset, roles, modelRoutes: meter.routes, meter, budget,
+                    priorReport: priorSummary, savedAnswers: await answerStore.read(),
+                    signal: AbortSignal.any([runSignal, ...(ctx.signal ? [ctx.signal] : [])]), onProgress: progress, caseTimeoutMs,
+                    checkpoint: async partial => {
+                        report = { ...report, ...partial, executionStatus: 'INCOMPLETE' };
+                        await write('summary.json', { ...report, modelCalls: calls() });
+                    } });
                 return await evaluateCoreOnStack(ctx, { dataset, roles, modelRoutes: meter.routes, meter, budget, variant,
                     signal: AbortSignal.any([runSignal, ...(ctx.signal ? [ctx.signal] : [])]), onProgress: progress, caseTimeoutMs, extractionTimeoutMs, diagnosticsOnly,
+                    saveAnswer: answerStore ? row => answerStore.save(row) : undefined,
                     checkpoint: async partial => {
                         if (diagnosticsOnly) report.diagnosticSupplement = { ...report.diagnosticSupplement,
                             phase: partial.phase, diagnosticControls: partial.diagnosticControls };
@@ -242,18 +283,37 @@ export async function runRealEvaluation({ round, configRef, seed = 20261106, var
             report.diagnosticSupplement = { ...report.diagnosticSupplement, diagnosticControls: result.diagnosticControls,
                 executionStatus: complete ? 'COMPLETE' : 'INCOMPLETE' };
         } else {
-        report = { ...result, ...identity };
-        report.gates = qualityGates(report);
-        const controlsComplete = ['memory-off', 'gold-evidence'].every(name => report.diagnosticControls?.[name]?.coverage.value === 1);
-        report.executionStatus = report.quality.coverage.value === 1 && controlsComplete && !report.extraction.timedOut ? 'COMPLETE' : 'INCOMPLETE';
-        report.verdict = Object.values(report.gates).every(Boolean) ? 'NOT_RUN' : 'FAIL'; // Human calibration remains unperformed.
-        if (baselineFile) {
-            const baseline = JSON.parse(await fs.readFile(baselineFile, 'utf8'));
-            report.comparison = compareQuality(baseline, report);
-            report.latencyComparison = compareSamples(baseline.metricRows, report.metricRows);
-        }
-        await write('samples.jsonl', report.metricRows.map(row => JSON.stringify(row)).join('\n') + '\n');
-        await write('comparison.md', comparisonMarkdown(summarizeSamples(report.metricRows), report.latencyComparison || []));
+            const judgeReevaluation = report.judgeReevaluation;
+            report = { ...result, ...identity, ...(judgeOnly ? { judgeReevaluation } : {}) };
+            report.gates = qualityGates(report);
+            const controlsComplete = ['memory-off', 'gold-evidence'].every(name => report.diagnosticControls?.[name]?.coverage.value === 1);
+            report.questionExecutionStatus = report.quality.coverage.value === 1 && controlsComplete && !report.extraction.timedOut ? 'COMPLETE' : 'INCOMPLETE';
+            report.actionExecutionStatus = !report.quality.actions || report.quality.actions.coverage.value === 1 ? 'COMPLETE' : 'INCOMPLETE';
+            report.executionStatus = report.questionExecutionStatus === 'COMPLETE' && report.actionExecutionStatus === 'COMPLETE' ? 'COMPLETE' : 'INCOMPLETE';
+            report.verdict = Object.values(report.gates).every(Boolean) ? 'NOT_RUN' : 'FAIL'; // Human calibration remains unperformed.
+            report.failureAttribution = attributeMemoryFailures(dataset, report);
+            if (judgeOnly) {
+                report.judgeReevaluation.executionStatus = 'COMPLETE';
+                await write('manifest.json', { ...priorManifest, judgeReevaluation: report.judgeReevaluation });
+            }
+            if (baselineFile) {
+                const baseline = JSON.parse(await fs.readFile(baselineFile, 'utf8'));
+                report.comparison = compareQuality(baseline, report);
+                report.latencyComparison = compareSamples(baseline.metricRows, report.metricRows);
+                if (variant === 'baseline') {
+                    report.baselineNoise = freezeBaselineNoise(dataset, baseline, report);
+                } else if (noiseReferenceFile) {
+                    const reference = JSON.parse(await fs.readFile(noiseReferenceFile, 'utf8'));
+                    const previous = await Promise.all(previousRoundFiles.map(async file => {
+                        const summary = JSON.parse(await fs.readFile(file, 'utf8'));
+                        return summary.pairedComparison;
+                    }));
+                    report.pairedComparison = compareMemoryRounds(dataset, baseline, report,
+                        { noiseReference: reference.baselineNoise ?? reference, priorImprovementRounds: previous });
+                }
+            }
+            await write('samples.jsonl', report.metricRows.map(row => JSON.stringify(row)).join('\n') + '\n');
+            await write('comparison.md', comparisonMarkdown(summarizeSamples(report.metricRows), report.latencyComparison || []));
         }
     } catch (error) {
         failureCode = budget?.signal.aborted ? 'BUDGET_TOKEN_ANOMALY' : pipelineFailureCode || evaluationFailure(error, 'CM_EVALUATION_FAILED');
@@ -265,6 +325,7 @@ export async function runRealEvaluation({ round, configRef, seed = 20261106, var
             await finalize(async () => {
                 if (failureCode) Object.assign(diagnosticsOnly ? report.diagnosticSupplement : report,
                     { executionStatus: 'INCOMPLETE', failureCode });
+                if (failureCode && judgeOnly && report.judgeReevaluation) report.judgeReevaluation.executionStatus = 'INCOMPLETE';
                 report.budget = budget?.snapshot() ?? null;
                 report.actualCostCny = report.budget?.calls ? null : 0;
                 report.modelCalls = calls();

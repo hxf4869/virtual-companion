@@ -15,12 +15,16 @@ export function instrumentEvaluationBuild(context) {
     let go = fs.readFileSync(goFile, 'utf8');
     if (go.includes('CMObservedMemoryIDs')) throw new Error('CM_OBSERVATION_PATCH_MISMATCH');
     go = replaceOnce(go, /\tObserve\s+RecallObserve\s+`json:"-"`/,
-        '\tCMObservedMemoryIDs []string `json:"cmObservedMemoryIds,omitempty"`\n\tObserve RecallObserve `json:"-"`');
+        '\tCMObservedMemoryIDs []string `json:"cmObservedMemoryIds,omitempty"`\n\tCMObservedRecallStats map[string]any `json:"cmObservedRecallStats,omitempty"`\n\tObserve RecallObserve `json:"-"`');
+    go = replaceOnce(go, /\t\tout.Observe.RecallMs = int\(time.Since\(started\).Milliseconds\(\)\)/,
+        '$&\n\t\tout.CMObservedRecallStats = map[string]any{"recallMs": out.Observe.RecallMs, "sourceMs": out.Observe.SourceMs, "engineMs": out.Observe.EngineMs, "stats": out.Observe}');
     go = replaceOnce(go, /\tstale, err := s\.oldMemorySources\(ctx, owner, refs, queryAt\)/,
         '\tfor _, memory := range memories { out.CMObservedMemoryIDs = append(out.CMObservedMemoryIDs, fmt.Sprint(memory.ID)) }\n\tstale, err := s.oldMemorySources(ctx, owner, refs, queryAt)');
     let node = fs.readFileSync(nodeFile, 'utf8');
+    node = replaceOnce(node, /async function refreshMemorySlotBody\(\{ config, request, response, finalBody, signal, fetchImpl \}\) \{/,
+        '$&\n    const cmStarted = performance.now();');
     node = replaceOnce(node, /    const slots = replaceMemorySlots\(finalBody, valid \? result\.block : '', request\.body\.vc_memory\.block\);/,
-        "    response.setHeader('X-CM-Recall-Ids', JSON.stringify(result?.cmObservedMemoryIds || []));\n    const slots = replaceMemorySlots(finalBody, valid ? result.block : '', request.body.vc_memory.block);");
+        "    response.setHeader('X-CM-Recall-Ids', JSON.stringify(result?.cmObservedMemoryIds || []));\n    response.setHeader('X-CM-Recall-Stats', JSON.stringify({ ...result?.cmObservedRecallStats, recheckMs: performance.now() - cmStarted }));\n    const slots = replaceMemorySlots(finalBody, valid ? result.block : '', request.body.vc_memory.block);");
     fs.writeFileSync(goFile, go);
     fs.writeFileSync(nodeFile, node);
 }

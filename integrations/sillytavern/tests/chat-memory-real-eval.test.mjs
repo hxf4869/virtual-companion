@@ -5,12 +5,13 @@ import { once } from 'node:events';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { factsInText, outboundMemoryText, readEvaluationResponse, evaluationQueryRows, diagnosticEvidence, assertDiagnosticControl, evaluateCoreOnStack, waitExtraction, createEvaluationReauthentication, recallWorkCounts } from '../scripts/chat-memory-real-eval.mjs';
+import { factsInText, outboundMemoryText, readEvaluationResponse, evaluationQueryRows, diagnosticEvidence, assertDiagnosticControl, evaluateCoreOnStack, waitExtraction, createEvaluationReauthentication, recallWorkCounts, reviewSavedAnswersOnStack, selectEvaluationActionTarget, verifyEvaluationModels } from '../scripts/chat-memory-real-eval.mjs';
 import { AI_FLAVOR_FIELDS, summarizeDiagnosticControls } from '../../../scripts/lib/chat-memory-scoring.mjs';
 import { prepareSourceIdentities, sourceMessages } from '../server-plugin/virtual-companion/lib/source-identity.js';
 import { getF2Store } from '../server-plugin/virtual-companion/lib/f2-store.js';
 import { startEngineObservationProxy } from '../scripts/lib/chat-memory-engine-proxy.mjs';
 import { generateChatMemoryDataset } from '../../../scripts/lib/chat-memory-dataset.mjs';
+import { createJudgeCalibrationDataset } from '../../../scripts/lib/chat-memory-judge-calibration.mjs';
 import { createRoundArtifacts } from '../../../scripts/lib/chat-memory-artifacts.mjs';
 import { instrumentEvaluationBuild } from '../scripts/lib/chat-memory-observation-build.mjs';
 import { createEvaluationStClient } from '../scripts/lib/chat-memory-isolated-stack.mjs';
@@ -151,7 +152,8 @@ test('diagnostic controls accept empty observed memory and still require actual 
 });
 
 test('diagnostics-only uses the real observer/ask/judge for 14 fixed controls without replaying sources or core', async () => {
-    const dataset = generateChatMemoryDataset(), calls = [], queries = [], reviews = [], checkpoints = [];
+    const dataset = generateChatMemoryDataset(), calls = [], queries = [], reviews = [], checkpoints = [], savedAnswers = [];
+    const calibration = createJudgeCalibrationDataset();
     let observer, bindings = 0, memories = 0, omitGold = false;
     const ok = json => ({ status: 200, json });
     const admin = {
@@ -182,7 +184,10 @@ test('diagnostics-only uses the real observer/ask/judge for 14 fixed controls wi
         calls.push({ id, state: 'SETTLED' });
         const observed = omitGold ? { ...body, messages: body.messages.filter(message => !message.content.includes('<cm-diagnostic-evidence>')) } : body;
         await observer({ route, id, body: observed });
-        const answer = route === 2 ? JSON.stringify({ correct: true, grounded: true, abstains: false, reasonCode: 'OK',
+        const material = route === 2 ? JSON.parse(body.messages[0].content.split('\n').at(-1)) : null;
+        const known = material && calibration.fixtures.find(row => row.answer === material.answer
+            && calibration.cases.find(testCase => testCase.id === row.caseId).query === material.question);
+        const answer = route === 2 ? JSON.stringify({ ...(known?.expected ?? { correct: true, grounded: true, abstains: false, reasonCode: 'OK' }),
             aiFlavor: Object.fromEntries(AI_FLAVOR_FIELDS.map(key => [key, false])) }) : '合成回答';
         return { res: new Response(`data: ${JSON.stringify({ choices: [{ delta: { content: answer } }] })}\n\ndata: [DONE]\n\n`) };
     };
@@ -206,6 +211,7 @@ test('diagnostics-only uses the real observer/ask/judge for 14 fixed controls wi
         modelId: 'synthetic', protocol: 'OPENAI_CHAT_COMPLETIONS', maxOutputTokens: 128, contextWindowTokens: 2048 } }));
     const options = { dataset, roles, modelRoutes: roles.map((_role, at) => ({ baseUrl: `http://meter.test/${at}`, credential: 'synthetic' })),
         meter: { snapshot: () => ({ calls }) }, budget: { snapshot: () => ({ calls: calls.length }) }, diagnosticsOnly: true,
+        saveAnswer: async row => savedAnswers.push(row),
         checkpoint: async partial => checkpoints.push(partial) };
     const result = await evaluateCoreOnStack(ctx, options);
     assert.equal(queries.length, 14);
@@ -220,6 +226,15 @@ test('diagnostics-only uses the real observer/ask/judge for 14 fixed controls wi
         assert.equal(result.diagnosticControls[control].coverage.value, 1);
     }
     assert.ok(checkpoints.every(row => ['diagnostic-control', 'judge'].includes(row.phase) && !row.results));
+    const beforeReview = calls.length;
+    const reviewed = await reviewSavedAnswersOnStack(ctx, { ...options,
+        priorReport: { results: [], diagnosticControls: result.diagnosticControls, quality: { extraction: { retained: true } } },
+        savedAnswers: { responses: savedAnswers } });
+    assert.equal(queries.length, 14, 'judge-only must not call the foreground or replay its provider probe');
+    assert.equal(memories, 14, 'judge-only must not read/replay the source or memory history');
+    assert.equal(calls.length - beforeReview, 38, '24 calibration requests plus the 14 saved answers; no foreground request');
+    assert.ok(reviewed.modelCalls.slice(beforeReview).every(row => row.role === 'judge'));
+    assert.deepEqual(reviewed.quality.extraction, { retained: true });
     // Dropping evidence at the final wire must still reject the affected gold
     // controls even though the evaluator put evidence into its initial body.
     omitGold = true;
@@ -233,6 +248,47 @@ test('diagnostics-only uses the real observer/ask/judge for 14 fixed controls wi
     }
 });
 
+test('target diagnostics distinguish previous mapping from missing extraction and retain no memory prose', () => {
+    const dataset = generateChatMemoryDataset(), testCase = dataset.cases.find(row => row.action?.kind === 'forget');
+    const fact = dataset.facts.find(row => row.factId === testCase.action.targetFactId);
+    const recordAliases = new Map(), seenFactRecords = new Map();
+    const row = { memoryId: '99', lifecycle: 'ACTIVE', recallEligible: true, sourceStatus: 'VALID',
+        summary: 'private synthetic memory prose', sourceTurnIds: fact.sourceTurnIds,
+        mapping: { factIds: [fact.factId], mappingUncertain: false } };
+    const common = { dataset, jobs: [{ message_id: 'synthetic-message', status: 'DONE', operation_state: 'PUBLISHED', published: 1 }],
+        sourceMap: new Map([['synthetic-message', fact.sourceTurnIds[0]]]), pagesRead: 2, recordAliases, seenFactRecords, priorActions: [] };
+    const first = selectEvaluationActionTarget(testCase, { ...common, memories: [row] });
+    assert.equal(first.target, row);
+    const second = selectEvaluationActionTarget(testCase, { ...common,
+        priorActions: [{ caseId: 'forget-previous', kind: 'forget', record: first.diagnostic.records[0].record }],
+        memories: [{ ...row, lifecycle: 'FORGOTTEN', sourceTurnIds: [], mapping: { factIds: [], mappingUncertain: true } }] });
+    assert.equal(second.target, undefined);
+    assert.equal(second.diagnostic.evidenceGap, 'PREVIOUS_MAPPING_NO_ACTIVE_TARGET');
+    assert.equal(second.diagnostic.priorRelatedActions.length, 1);
+    assert.equal(second.diagnostic.pagesRead, 2);
+    assert.equal(second.diagnostic.sourceJobs[0].status, 'DONE');
+    assert.equal(JSON.stringify(second.diagnostic).includes(row.summary), false);
+    assert.deepEqual(second.diagnostic.previouslyMappedRecords, ['memory-1']);
+});
+
+test('production-path parity requires both a healthy deployed reranker and every synthetic owner switch', async () => {
+    const accounts = new Map([['first', { session: { accountId: '1' } }], ['second', { session: { accountId: '2' } }]]);
+    const view = { embedding: { model: 'qwen3-embedding:0.6b', dimensions: 1024, healthy: true },
+        rerank: { model: 'bge-reranker-v2-m3', enabled: true, healthy: true, deploymentEnabled: true } };
+    let owners = 0, enabled = true;
+    const ctx = { admin: { call: async () => ({ status: 200, json: view }) },
+        w08: { psql: sql => { assert.match(sql, /go_service_resolve_owner_memory_rerank/); owners++; return JSON.stringify(enabled); } } };
+    const parity = await verifyEvaluationModels(ctx, accounts);
+    assert.equal(owners, 2);
+    assert.equal(parity.rerank.candidateLimit, 20);
+    assert.equal(parity.rerank.threshold, -1.02938437461853);
+    assert.equal(parity.productionRuntimeInspection, 'NOT_RUN');
+    enabled = false;
+    await assert.rejects(verifyEvaluationModels(ctx, accounts), /CM_RERANK_DISABLED/);
+    view.rerank.healthy = false;
+    await assert.rejects(verifyEvaluationModels(ctx, accounts), /CM_LOCAL_MODEL_PARITY_FAILED/);
+});
+
 test('recall accounting keeps both HTTP checks and does not turn failed calls into known computation counts', () => {
     assert.deepEqual(recallWorkCounts([{ status: 200, stats: { searchReuseHit: 0 } },
         { status: 200, stats: { searchReuseHit: 1 } }, { status: 503, stats: {} }]),
@@ -244,6 +300,90 @@ test('recall accounting keeps both HTTP checks and does not turn failed calls in
     // result. HTTP success alone cannot prove native computation occurred.
     assert.deepEqual(recallWorkCounts([{ status: 200, stats: {} }]),
         { httpCalls: 1, searchExecutions: 0, searchReuseHits: 0, unknownExecutions: 1 });
+});
+
+test('all planned questions still run when real action targets are missing, while action quality remains blocked', async () => {
+    const dataset = generateChatMemoryDataset(), calls = [], saved = [];
+    const calibration = createJudgeCalibrationDataset();
+    let observer, writes = 0, restarts = 0, sourceSaves = 0, wrongCalibration = false;
+    const ok = json => ({ status: 200, json });
+    const admin = {
+        reauth: async () => ok({}), saveProvider: async () => ok({}), savePurpose: async () => ok({}),
+        listPurposes: async () => ok(['FOREGROUND_CHAT', 'MEMORY_EXTRACTION_DEDUP_SUMMARY'].map(purpose => ({ purpose, revision: 1 }))),
+        listProviders: async () => ok(['extraction', 'foreground', 'judge'].map(name => ({ providerId: `cm-${name}`, revision: 1 }))),
+        async call(method, route) {
+            if (route === '/api/v1/admin/embedding-config') return ok({ revision: 1, model: 'qwen3-embedding:0.6b', dimensions: 1024 });
+            if (route === '/api/v1/admin/local-models') return ok({ embedding: { model: 'qwen3-embedding:0.6b', dimensions: 1024, healthy: true },
+                rerank: { model: 'bge-reranker-v2-m3', enabled: true, healthy: true, deploymentEnabled: true } });
+            if (route === '/api/v1/st/bindings') return ok({ relationshipId: '2', conversationId: '3' });
+            if (route === '/api/v1/st/sources/reconcile') return ok({});
+            if (route === '/api/v1/st/memory/recall') return ok({ status: 'ok', block: '', memoryIds: [], summaryIds: [], sources: [] });
+            if (route.startsWith('/api/v1/relationships/2/memories?')) return ok([]);
+            if (route === '/api/v1/story/runs') return ok({ runId: '1', branchId: '1', worldVersion: 1, participants: [{ role: 'NPC', actorId: '1' }] });
+            if (['PATCH', 'DELETE'].includes(method)) { writes++; assert.fail('a missing target must never be synthesized or replaced by an inactive record'); }
+            assert.fail(`unexpected fixture route ${method} ${route}`);
+        },
+    };
+    const generate = route => async body => {
+        const id = calls.length + 1;
+        calls.push({ id, state: 'SETTLED' });
+        await observer({ route, id, body });
+        const input = route === 2 ? JSON.parse(body.messages[0].content.split('\n').at(-1)) : null;
+        const known = input && calibration.fixtures.find(row => row.answer === input.answer
+            && calibration.cases.find(testCase => testCase.id === row.caseId).query === input.question);
+        const factual = known ? wrongCalibration ? { correct: false, grounded: false, abstains: false, reasonCode: 'WRONG_VALUE' }
+            : known.expected : { correct: true, grounded: true, abstains: input?.shouldAbstain ?? false, reasonCode: 'OK' };
+        const answer = route === 2 ? JSON.stringify({ ...factual,
+            aiFlavor: Object.fromEntries(AI_FLAVOR_FIELDS.map(key => [key, false])) }) : '没有足够资料，我不确定。';
+        return { res: new Response(`data: ${JSON.stringify({ choices: [{ delta: { content: answer } }] })}\n\ndata: [DONE]\n\n`) };
+    };
+    const st = { generate: generate(1), async call(_method, route, body) {
+        if (route === '/api/characters/import') return ok({ file_name: 'synthetic-card' });
+        if (route === '/api/chats/save') { sourceSaves++; return ok({ vc_f2: body.chat[0].chat_metadata.vc_f2 }); }
+        assert.fail(`unexpected fixture ST route ${route}`);
+    } };
+    const ctx = { admin, st, secrets: { password: 'synthetic', session: { accountId: '1' } },
+        second: { admin, st, password: 'synthetic', session: { accountId: '4' } },
+        judge: { st: { generate: generate(2) } }, meterBase: 'http://meter.test', scope: 'round-fixture',
+        embeddingModel: { name: 'qwen3-embedding:0.6b', digest: 'synthetic' },
+        setOutboundObserver: value => { observer = value; },
+        restartMemorycore: async () => { restarts++; },
+        readEngineObservations: async () => ({ sequence: 0, searches: [], incomplete: false }),
+        w08: { psql: sql => sql.includes('go_service_resolve_owner_memory_rerank') ? 'true'
+            : sql.includes('FROM vc.work_item') ? JSON.stringify(Array.from({ length: 300 }, () => ({ status: 'DONE', published: 0 }))) : '[]' },
+    };
+    const roles = ['extraction', 'foreground', 'judge'].map(name => ({ name, profile: {
+        modelId: 'synthetic', protocol: 'OPENAI_CHAT_COMPLETIONS', maxOutputTokens: 128, contextWindowTokens: 2048 } }));
+    const options = { dataset, roles,
+        modelRoutes: roles.map((_role, at) => ({ baseUrl: `http://meter.test/${at}`, credential: 'synthetic' })),
+        meter: { snapshot: () => ({ calls }) }, budget: { snapshot: () => ({ calls: calls.length }) },
+        saveAnswer: async row => saved.push(row) };
+    const result = await evaluateCoreOnStack(ctx, options);
+    assert.equal(result.judgePreflight.passed, true);
+    assert.equal(result.judgePreflight.knownCaseAccuracy.numerator, 12);
+    assert.equal(result.results.length, 140);
+    assert.equal(result.quality.coverage.numerator, 140);
+    assert.equal(saved.length, 234);
+    assert.equal(writes, 0);
+    assert.equal(result.quality.actions.coverage.value, 0);
+    assert.equal(result.quality.boundary.zeroLeaks, false);
+    for (const testCase of dataset.cases.filter(row => row.action)) {
+        const row = result.results.find(row => row.caseId === testCase.id);
+        assert.equal(row.actionStatus, 'BLOCKED');
+        assert.equal(row.actionDiagnostic.targetFound, false);
+        assert.equal(row.targetMissing, true);
+        if (testCase.category === 'forget') {
+            assert.equal(Object.keys(row.forgetStages).length, 5);
+            assert.equal(row.forgetStages.done.cleanupStatus, 'NOT_RUN');
+        }
+    }
+    assert.equal(result.quality.byCategory.forget.accuracy.numerator, 0);
+    assert.equal(restarts, 20);
+    const before = { calls: calls.length, sources: sourceSaves };
+    wrongCalibration = true;
+    await assert.rejects(evaluateCoreOnStack(ctx, options), /CM_JUDGE_CALIBRATION_FAILED/);
+    assert.equal(calls.length - before.calls, 24, 'only the two fixed judge passes are invoked on calibration failure');
+    assert.equal(sourceSaves, before.sources, 'no source replay or foreground probe starts when the ruler fails');
 });
 
 test('rank instrumentation changes only the disposable copy and observes before budget clipping', async () => {
@@ -260,7 +400,10 @@ test('rank instrumentation changes only the disposable copy and observes before 
         instrumentEvaluationBuild(root);
         const observedGo = await fs.readFile(path.join(root, goPath), 'utf8');
         assert.ok(observedGo.indexOf('CMObservedMemoryIDs = append') < observedGo.indexOf('if stMemoryBlockTokens(next)'));
+        assert.match(observedGo, /CMObservedRecallStats = map\[string\]any/);
+        assert.match(observedGo, /"recallMs": out.Observe.RecallMs/);
         assert.match(await fs.readFile(path.join(root, nodePath), 'utf8'), /X-CM-Recall-Ids/);
+        assert.match(await fs.readFile(path.join(root, nodePath), 'utf8'), /X-CM-Recall-Stats/);
         assert.equal(await fs.readFile(new URL(goPath, repository), 'utf8'), originalGo);
         assert.equal(await fs.readFile(new URL(nodePath, repository), 'utf8'), originalNode);
         assert.throws(() => instrumentEvaluationBuild(root), /PATCH_MISMATCH/);

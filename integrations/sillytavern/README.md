@@ -581,7 +581,7 @@ UNKNOWN 按参考中 SETTLED 调用的冻结平均 token 估算供熔断，真�
 常规 CNY 兼容工具另可用 `--mode preflight --quote-file <报价文件>` 核验价格，缺价拒绝发包。
 真实评测固定 7 类各 20 题、800 条消息，
 含 300 条陪伴模式用户来源及 100 条剧情隔离来源；所有合格来源均经原提取队列。查询按正常发送中的
-`settled:false` 状态保存，保持可召回读取而不触发提取，答案不保存；
+`settled:false` 状态保存，保持可召回读取而不触发提取，答案不保存到聊天或记忆；
 评审使用第三个合成账号，不把答案或评审文本存为新记忆。
 
 栈由现有 Compose 配置启动独立数据库、卷、账号及本地模型实例；只复用只读模型文件。最终召回排序观察
@@ -591,10 +591,22 @@ UNKNOWN 按参考中 SETTLED 调用的冻结平均 token 估算供熔断，真�
 每类首题另跑 memory-off 与 gold-evidence 两个 7 题诊断对照，均关闭产品记忆注入；gold 只含该题允许的事实，
 最终出站核对其确实保留。对照的回答、评审与 token 都纳入同轮账本，分母和成绩单列，不混入 core 的产品指标。
 
-数值与事实 ID 报告写入 `.local/chat-memory-quality/<round>/`，不持久化对话正文、provider 地址或凭据。
+数值与事实 ID 报告写入 `.local/chat-memory-quality/<round>/`，报告不含对话正文、provider 地址或凭据。
+仅合成被测输出通过专用接口写入同轮 `synthetic-answers.json`（目录0700、文件0600），不保留来源聊天或prompt；
+与账本共用每轮10MiB、最多10轮/30天/总200MiB保留规则，禁止提交、截图或写入普通日志。
 保留上限见 `scripts/lib/chat-memory-artifacts.mjs`；退出清理本轮容器、卷、镜像和临时目录，保留共享模型。
 失败后加 `--resume` 会在**原预算账本**上从头重放全部数据和题目，不恢复上次数据快照或题目进度；不得改
-seed、variant 或配置，历史尝试与调用计量保留。比较候选时用相同数据和配置，并传 `--baseline <summary.json>`。
+seed、variant 或配置，历史尝试与调用计量保留。有合成答案缓存后，普通全量resume拒绝覆盖；应优先加
+`--resume --judge-only`，只重评原输出，不重放提取、不调用前台模型，缺答案明确失败。需要全量新轮使用新round。
+评审固定rubric版本，先用12个人工可核验的合成判例双审；一致率和两审均匹配率都达到90%才开始来源提取。
+core仍另取按seed冻结的每类2题二审（遗忘展开五阶段，共22次），两次结果/callId/分歧字段留在数值报告，
+事实分歧题不能直接采用第一次通过结果，风格分歧单列，不改变事实门槛。
+目标缺失不再让问题整组漏跑：继续实际答题，操作状态单列为BLOCKED并计零分；遗忘的清理/迟到来源检查标NOT_RUN，不能因此通过零泄漏或动作完整性门禁。逐目标诊断只含合成来源/作业状态、分页数、记录别名与生命周期、既往操作关联，不把缺映射冒报为未提取。
+
+同配置第二次新基线使用 `--variant baseline --baseline <first-summary.json>` 冻结噪声；比较候选使用
+`--variant candidate --baseline <second-summary.json> --noise-reference <second-summary.json>`，可用
+`--previous-rounds <summary1.json>,<summary2.json>` 提供此前完整改进轮。按case配对、七类分层bootstrap，遗忘五阶段先合成一题；缺失保留零分母。报告逐类区间、退步红标、失败归因及证据缺口、召回/最终重查/首字时延和>20%退步；显著正差且超过冻结噪声才认定可信提升。连续五个完整改进轮无可信提升给出停止信号，产品门槛与hold-out仍须另验。
+
 已有核心报告需要补跑诊断对照时，可加 `--resume --diagnostics-only`：只在空的隔离实例中运行固定两组各7题与评审，
 不重放历史提取或核心题。结果追加到 `summary.json.diagnosticSupplement`，标明补跑版本和空历史差异；原核心结果、
 失败对照、二审、性能样本及执行身份保持不变，预算与所有调用继续累计。CLI 退出状态只表示补充对照执行是否完整，

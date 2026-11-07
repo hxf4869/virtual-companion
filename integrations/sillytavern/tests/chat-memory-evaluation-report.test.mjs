@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import * as evaluation from '../../../scripts/lib/chat-memory-evaluation.mjs';
-import { generateChatMemoryDataset } from '../../../scripts/lib/chat-memory-dataset.mjs';
+import { generateChatMemoryDataset, forgetStageCase, FORGET_STAGES } from '../../../scripts/lib/chat-memory-dataset.mjs';
 import { runRealEvaluation } from '../../../scripts/lib/chat-memory-evaluation.mjs';
 
 const PRIVATE_DETAIL = 'fixture-only progress and upstream detail';
@@ -20,7 +20,18 @@ async function fixture(t) {
     const assignments = { extraction: 0, foreground: 0, judge: 0 };
     const configuration = { configRef: 'fixture-config', mode: 'tokens', assignments,
         profiles: [{ modelId: PROFILE.modelId }] };
-    const state = { runs: 0, diagnosticRuns: 0, stopped: 0, coreCoverage: 1, controlCoverage: 1, beforeReport: async () => {} };
+    const state = { runs: 0, diagnosticRuns: 0, judgeRuns: 0, stopped: 0, coreCoverage: 1, controlCoverage: 1,
+        retainAnswers: false, beforeReport: async () => {} };
+    const observation = testCase => ({ caseId: testCase.id,
+        status: state.coreCoverage === 1 ? 'COMPLETED' : 'NOT_RUN', rule: { passed: true, injectionCovered: true, boundaryLeak: false, answerLeak: false },
+        judge: { correct: true, grounded: true, abstains: !testCase.goldFactIds.length },
+        extractedFactIds: testCase.goldFactIds, legalCandidateFactIds: testCase.goldFactIds,
+        injectedFactIds: testCase.goldFactIds, finalRankedFactIds: testCase.goldFactIds.map(id => [id]) });
+    const resultsFor = dataset => dataset.cases.map(testCase => testCase.category === 'forget'
+        ? { caseId: testCase.id, status: state.coreCoverage === 1 ? 'COMPLETED' : 'NOT_RUN', actionStatus: 'COMPLETED',
+            forgetStages: Object.fromEntries(FORGET_STAGES.map(stage => [stage,
+                { ...observation(forgetStageCase(dataset, testCase, stage)), cleanupStatus: 'DONE' }])) }
+        : { ...observation(testCase), ...(testCase.action ? { actionStatus: 'COMPLETED' } : {}) });
     const deps = {
         loadConfig: async () => ({ routes: [PROFILE], assignments, manifest: configuration }),
         startMeter: async ({ budget }) => {
@@ -28,9 +39,9 @@ async function fixture(t) {
             return {
                 routes: [{ baseUrl: 'http://127.0.0.1:1234' }],
                 snapshot: () => ({ calls: calls.map(row => ({ ...row })) }),
-                async makeCall() {
+                async makeCall(role = 'foreground') {
                     const { id } = await budget.reserve({ route: 0, outputCap: 32 });
-                    calls.push({ id, state: 'RESERVED' });
+                    calls.push({ id, state: 'RESERVED', evalRole: role });
                 },
                 async stop() {
                     state.stopped++;
@@ -43,20 +54,33 @@ async function fixture(t) {
         },
         loadRuntime: async () => ({
             withIsolatedChatMemoryStack: async (_options, evaluate) => evaluate({}),
-            evaluateCoreOnStack: async (_ctx, { dataset, variant, meter, checkpoint, onProgress, diagnosticsOnly }) => {
+            reviewSavedAnswersOnStack: async (_ctx, { priorReport, savedAnswers, meter }) => {
+                state.judgeRuns++;
+                assert.equal(state.retainAnswers, true);
+                assert.equal(savedAnswers.responses.length, 220);
+                await meter.makeCall('judge');
+                return { ...priorReport, modelCalls: meter.snapshot().calls };
+            },
+            evaluateCoreOnStack: async (_ctx, { dataset, variant, meter, checkpoint, onProgress, diagnosticsOnly, saveAnswer }) => {
                 state.runs++;
                 if (diagnosticsOnly) state.diagnosticRuns++;
                 await meter.makeCall();
                 const diagnosticControls = Object.fromEntries(['memory-off', 'gold-evidence'].map(name =>
-                    [name, { coverage: { value: state.controlCoverage } }]));
+                    [name, { coverage: { value: state.controlCoverage }, results: [] }]));
+                if (state.retainAnswers && !diagnosticsOnly) for (const testCase of dataset.cases) {
+                    if (testCase.category === 'forget') for (const stage of FORGET_STAGES) {
+                        await saveAnswer({ caseId: testCase.id, stage, control: null, answer: 'synthetic output for reevaluation' });
+                    } else await saveAnswer({ caseId: testCase.id, stage: null, control: null, answer: 'synthetic output for reevaluation' });
+                }
                 onProgress({ phase: 'answer' });
                 await checkpoint(diagnosticsOnly ? { phase: 'diagnostic-control', diagnosticControls }
                     : { phase: 'answer', results: [{ status: 'COMPLETED' }] });
                 await state.beforeReport();
-                const modelCalls = meter.snapshot().calls.map(row => ({ ...row, evalRole: 'foreground' }));
+                const modelCalls = meter.snapshot().calls;
                 if (diagnosticsOnly) return { diagnosticControls, modelCalls };
                 return {
                     schemaVersion: 1, variant, dataset: { hashes: dataset.hashes },
+                    results: resultsFor(dataset),
                     quality: { coverage: { value: state.coreCoverage }, extraction: { supportedRecordRate: RATE },
                         retrieval: { final: { 5: { macro: 1 }, 20: { macro: 1 } } },
                         injection: { allEvidence: RATE }, answerable: { accuracy: RATE },
@@ -89,7 +113,7 @@ test('incomplete diagnostic controls cannot be reported as complete core executi
     await assertClosed(f);
 });
 
-test('incompatible baseline keeps failed final status after the meter settles', async t => {
+test('an incompatible baseline is rejected before any provider or stack starts and keeps failed final status', async t => {
     const f = await fixture(t);
     const baselineFile = path.join(f.root, 'baseline.json');
     await fs.writeFile(baselineFile, JSON.stringify({ dataset: { hashes: { dataset: 'wrong' } } }));
@@ -97,12 +121,13 @@ test('incompatible baseline keeps failed final status after the meter settles', 
     const report = await f.read('summary.json');
     assert.equal(report.executionStatus, 'INCOMPLETE');
     assert.equal(report.failureCode, 'CM_COMPARISON_GROUP_MISMATCH');
-    assert.equal(report.budget.inputTokens, 42);
-    assert.equal(report.budget.outputTokens, 28);
-    assert.equal(report.actualCostCny, null);
-    assert.deepEqual(report.modelCalls, [{ id: 1, state: 'SETTLED', evalRole: 'foreground' }]);
+    assert.equal(report.budget.inputTokens, 0);
+    assert.equal(report.budget.outputTokens, 0);
+    assert.equal(report.actualCostCny, 0);
+    assert.deepEqual(report.modelCalls, []);
     assert.equal(JSON.stringify(report).includes(PRIVATE_DETAIL), false);
-    assert.equal(f.state.stopped, 1);
+    assert.equal(f.state.stopped, 0);
+    assert.equal(f.state.runs, 0);
     await assertClosed(f);
 });
 
@@ -371,4 +396,54 @@ test('resume uses journal states when an interrupted summary still says RESERVED
     const report = await f.run({ resume: true });
     assert.deepEqual(report.modelCalls.map(row => [row.id, row.state]), [[1, 'SETTLED'], [2, 'SETTLED']]);
     await assertClosed(f);
+});
+
+test('saved synthetic answers can be rejudged on the same ledger with zero new foreground or extraction runs', async t => {
+    const f = await fixture(t); f.state.retainAnswers = true;
+    const original = await f.run();
+    const cache = await fs.readFile(path.join(f.dir, 'synthetic-answers.json'), 'utf8');
+    const report = await f.run({ resume: true, judgeOnly: true });
+    assert.equal(f.state.runs, 1);
+    assert.equal(f.state.judgeRuns, 1);
+    assert.equal(report.attempt, original.attempt);
+    assert.equal(report.judgeReevaluation.foregroundReplayed, false);
+    assert.equal(report.judgeReevaluation.extractionReplayed, false);
+    assert.equal(report.judgeReevaluation.executionStatus, 'COMPLETE');
+    assert.deepEqual(report.modelCalls.map(row => row.evalRole), ['foreground', 'judge']);
+    assert.equal(report.budget.calls, 2);
+    assert.equal(report.budget.inputTokens, 84);
+    assert.equal(await fs.readFile(path.join(f.dir, 'synthetic-answers.json'), 'utf8'), cache);
+    assert.equal(JSON.stringify(await f.read('summary.json')).includes('synthetic output for reevaluation'), false);
+    assert.equal((await f.read('manifest.json')).attempt, 1);
+    await assert.rejects(f.run({ resume: true }), { message: 'CM_REPLAY_HAS_SAVED_ANSWERS' });
+    assert.equal(f.state.runs, 1);
+    assert.equal(f.state.stopped, 2);
+    await assertClosed(f);
+});
+
+test('missing saved outputs refuse reevaluation before any model call instead of silently answering again', async t => {
+    const f = await fixture(t);
+    await f.run();
+    await assert.rejects(f.run({ resume: true, judgeOnly: true }), { message: 'SYNTHETIC_ANSWERS_MISSING' });
+    assert.equal(f.state.runs, 1);
+    assert.equal(f.state.judgeRuns, 0);
+    assert.equal(f.state.stopped, 1);
+    assert.equal((await f.read('budget.json')).calls.length, 1);
+    await assertClosed(f);
+});
+
+test('two fresh baselines freeze noise and candidate reports wire paired statistics and failure attribution', async t => {
+    const f = await fixture(t);
+    await f.run();
+    const baselineFile = path.join(f.dir, 'summary.json');
+    const second = await f.run({ round: 'round-test-noise', baselineFile });
+    assert.equal(second.baselineNoise.overall.bound, 0);
+    assert.equal(second.baselineNoise.actionsComplete, true);
+    const candidate = await f.run({ round: 'round-test-candidate', variant: 'candidate', baselineFile,
+        noiseReferenceFile: path.join(f.root, 'round-test-noise/summary.json') });
+    assert.equal(candidate.pairedComparison.overall.delta, 0);
+    assert.equal(candidate.pairedComparison.acceptedImprovement, false);
+    assert.equal(candidate.failureAttribution.cases.length, 140);
+    assert.equal(candidate.pairedComparison.latency.recallStatus, 'NOT_RUN');
+    assert.equal(f.state.runs, 3);
 });
